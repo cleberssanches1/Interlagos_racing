@@ -1,5 +1,7 @@
 #include <srl.hpp>
 #include "modelObject.hpp"
+#include "camera_controller.hpp"
+#include "car_renderer.hpp"
 #include <vector>
 #include <array>
 
@@ -42,18 +44,22 @@ int main()
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(60.0f));
 
     // Camera base (Saturn: Y+ para baixo; Y- acima)
-    int32_t camYawDeg = 180;    // atras do carro
-    int32_t camPitchDeg = -21;  // pitch que resulta em raw ~61714
-    int32_t viewYawDeg = 0;     // yaw de olhar (Z + esquerda/direita)
-    int32_t viewPitchDeg = 0;   // pitch de olhar (Z + cima/baixo)
-    Fxp camRadius = Fxp(46.0f); // raio padrao solicitado
-    Angle camYaw = Angle::FromDegrees(Fxp::Convert(camYawDeg));
-    Angle camPitch = Angle::FromDegrees(Fxp::Convert(camPitchDeg));
-    Angle viewYaw = Angle::FromDegrees(Fxp::Convert(viewYawDeg));
-    Angle viewPitch = Angle::FromDegrees(Fxp::Convert(viewPitchDeg));
-    Vector3D cameraLocation = Vector3D(0.0, 0.0, -50.0f); // sera recalculada no loop
-    // Posiciona a camera para chegar em (0, -20, -45) atras do carro, centro no horizonte
-    Vector3D camStrafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-4), Fxp::Convert(-2));
+    Camera::State cameraState{
+        .yawDeg = 180,          // atras do carro
+        .pitchDeg = -21,        // pitch que resulta em raw ~61714
+        .viewYawDeg = 0,        // yaw de olhar (Z + esquerda/direita)
+        .viewPitchDeg = 0,      // pitch de olhar (Z + cima/baixo)
+        .radius = Fxp(46.0f),   // raio padrao solicitado
+        .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-4), Fxp::Convert(-2)),
+        .location = Vector3D(0.0, 0.0, -50.0f), // sera recalculada no loop
+        .yaw = Angle::FromDegrees(Fxp::Convert(180)),
+        .pitch = Angle::FromDegrees(Fxp::Convert(-21)),
+        .viewYaw = Angle::FromDegrees(Fxp::Convert(0)),
+        .viewPitch = Angle::FromDegrees(Fxp::Convert(0)),
+    };
+    Camera::Tuning cameraTuning{};
+    Camera::RefreshAngles(cameraState);
+    cameraState.location = Camera::OrbitPosition(cameraState.yaw, cameraState.pitch, cameraState.radius) + cameraState.strafe;
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
     SRL::Scene3D::SetDirectionalLight(lightDirection);
@@ -70,29 +76,19 @@ int main()
         SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
     }
 
-    // Draw order: wheels first (1..4), then body (0)
-    size_t order[] = {1, 2, 3, 4, 0};
-    size_t orderCount = (meshCount < 5) ? meshCount : 5;
-    // Rotation of the whole model
-    Angle rotY = Angle::FromDegrees(0);
-    Angle rotStep = Angle::FromDegrees(0.0f); // keep static for debugging visibility
     // Center of model from bounds (approx) to bring into view
     Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
+    Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     SRL::Debug::Print(1, 3, "Center: %d, %d, %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
+
+    // Draw order: wheels first (1..4), then body (0)
+    std::array<size_t, 5> drawOrder = {1, 2, 3, 4, 0};
+    size_t orderCount = (meshCount < 5) ? meshCount : 5;
+    CarRenderer::Config carConfig{modelCenter, lightDirection, drawOrder, orderCount};
+    CarRenderer carRenderer(car, isSmoothMesh, carConfig);
 
     // Input e calculo de camera orbitando o modelo
     SRL::Input::Digital pad(0);
-    auto computeCamera = [&](Angle yaw, Angle pitch, Fxp radius) -> Vector3D
-    {
-        Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
-        Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
-        Fxp sinPitch = SRL::Math::Trigonometry::Sin(pitch);
-        Fxp cosPitch = SRL::Math::Trigonometry::Cos(pitch);
-        return Vector3D(
-            radius * sinYaw * cosPitch,
-            radius * sinPitch,
-            radius * cosYaw * cosPitch);
-    };
 
     // Compute bounds for debugging
     SRL::Math::Types::Vector3D minV = Vector3D(32767, 32767, 32767);
@@ -115,63 +111,15 @@ int main()
     SRL::Debug::Print(1, 7, "Max: %d %d %d", maxV.X.As<int16_t>(), maxV.Y.As<int16_t>(), maxV.Z.As<int16_t>());
     SRL::Debug::Print(1, 9, "Model pos: %d %d %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
 
-    // posicao inicial da camera calculada a partir dos angulos/raio
-    cameraLocation = computeCamera(camYaw, camPitch, camRadius) + camStrafe;
-
     while (1)
     {
-        // Controles de camera:
-        // Z + direcional = girar yaw/pitch (limite +/-90 graus). Diagonais funcionam.
-        // Y + direcional = mover a camera (frente/tras/esquerda/direita) sem girar.
-        const int32_t yawStepDeg = 2;    // ~50% mais suave
-        const int32_t pitchStepDeg = 2;  // ~50% mais suave
-        const Fxp moveStep = Fxp(0.5f);  // ~50% mais suave
-        const Fxp strafeStep = Fxp(0.5f);
-        bool zHeld = pad.IsHeld(SRL::Input::Digital::Button::Z);
-        bool yHeld = pad.IsHeld(SRL::Input::Digital::Button::Y);
+        Camera::UpdateInput(cameraState, cameraTuning, pad);
 
-        if (zHeld)
-        {
-            // Ajuste apenas a direcao de olhar (sem mover a camera)
-            if (pad.IsHeld(SRL::Input::Digital::Button::Up))   viewPitchDeg -= pitchStepDeg;
-            if (pad.IsHeld(SRL::Input::Digital::Button::Down)) viewPitchDeg += pitchStepDeg;
-            if (pad.IsHeld(SRL::Input::Digital::Button::Left)) viewYawDeg   -= yawStepDeg;
-            if (pad.IsHeld(SRL::Input::Digital::Button::Right)) viewYawDeg += yawStepDeg;
-        }
-        if (yHeld)
-        {
-            // Movimento absoluto (mundo)
-            Vector3D moveDelta = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
-            // Inverte frente/tras para corresponder ao esperado pelo jogador
-            if (pad.IsHeld(SRL::Input::Digital::Button::Up))    moveDelta += Vector3D(Fxp::Convert(0), Fxp::Convert(0),  moveStep);
-            if (pad.IsHeld(SRL::Input::Digital::Button::Down))  moveDelta += Vector3D(Fxp::Convert(0), Fxp::Convert(0), -moveStep);
-            // Invertemos lateral para corresponder ao esperado na tela (Y + Left/Right)
-            if (pad.IsHeld(SRL::Input::Digital::Button::Left))  moveDelta += Vector3D(strafeStep, Fxp::Convert(0), Fxp::Convert(0));
-            if (pad.IsHeld(SRL::Input::Digital::Button::Right)) moveDelta += Vector3D(-strafeStep, Fxp::Convert(0), Fxp::Convert(0));
-            camStrafe += moveDelta;
-        }
-        // Limites em graus
-        if (camYawDeg < 90) camYawDeg = 90;
-        if (camYawDeg > 270) camYawDeg = 270;
-        if (camPitchDeg < -80) camPitchDeg = -80;
-        if (camPitchDeg > 80) camPitchDeg = 80;
-        if (viewYawDeg < -90) viewYawDeg = -90;
-        if (viewYawDeg > 90) viewYawDeg = 90;
-        if (viewPitchDeg < -80) viewPitchDeg = -80;
-        if (viewPitchDeg > 80) viewPitchDeg = 80;
-
-        camYaw = Angle::FromDegrees(Fxp::Convert(camYawDeg));
-        camPitch = Angle::FromDegrees(Fxp::Convert(camPitchDeg));
-        viewYaw = Angle::FromDegrees(Fxp::Convert(viewYawDeg));
-        viewPitch = Angle::FromDegrees(Fxp::Convert(viewPitchDeg));
-
-        // Recalcula posicao (orbita + deslocamento linear)
-        cameraLocation = computeCamera(camYaw, camPitch, camRadius) + camStrafe;
+        Vector3D cameraLocation = cameraState.location;
+        Vector3D horizonTarget = Camera::ComputeLookTarget(cameraState, cameraTuning);
 
         // LookAt focando no ponto de fuga/horizonte (em vez do carro)
         SRL::Scene3D::LoadIdentity();
-        // Mantem camera atras do carro mirando horizonte a frente (ponto de fuga) conforme Z+direcional
-        Vector3D horizonTarget = camStrafe + computeCamera(viewYaw, viewPitch, Fxp(120.0f));
         SRL::Scene3D::LookAt(cameraLocation, horizonTarget, Angle::FromDegrees(0.0));
 
         // Piso (grid) no plano Y = -8
@@ -199,36 +147,10 @@ int main()
             }
         }
 
-        SRL::Scene3D::PushMatrix();
-        {
-            // Move model center to origin
-            Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
-            SRL::Scene3D::Translate(modelOffset);
-            // Flip X para garantir modelo em pe
-            SRL::Scene3D::RotateX(Angle::FromDegrees(180.0f));
-            SRL::Debug::Print(1, 4, "Offset: %d, %d, %d", modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
-            SRL::Debug::Print(1, 5, "Cam: %d, %d, %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
-            SRL::Debug::Print(1, 8, "Yaw:%u Pitch:%u R:%d", camYaw.RawValue(), camPitch.RawValue(), camRadius.As<int16_t>());
-            SRL::Scene3D::RotateY(rotY);
-            for (size_t idx = 0; idx < orderCount; ++idx)
-            {
-                size_t meshId = order[idx];
-                if (meshId >= meshCount)
-                {
-                    continue;
-                }
-
-                if (isSmoothMesh)
-                {
-                    car.Draw(meshId, lightDirection);
-                }
-                else
-                {
-                    car.Draw(meshId);
-                }
-            }
-        }
-        SRL::Scene3D::PopMatrix();
+        SRL::Debug::Print(1, 4, "Offset: %d, %d, %d", modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
+        SRL::Debug::Print(1, 5, "Cam: %d, %d, %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
+        SRL::Debug::Print(1, 8, "Yaw:%u Pitch:%u R:%d", cameraState.yaw.RawValue(), cameraState.pitch.RawValue(), cameraState.radius.As<int16_t>());
+        carRenderer.Render();
 
         // Draw axis lines at the origin for reference
         Vector2D o2D, x2D, y2D, z2D;
@@ -240,8 +162,6 @@ int main()
         SRL::Scene2D::DrawLine(o2D, x2D, HighColor::Colors::Red, sort2D);
         SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
         SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
-
-        rotY += rotStep;
         SRL::Core::Synchronize();
     }
 
