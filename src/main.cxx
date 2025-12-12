@@ -2,6 +2,9 @@
 #include "modelObject.hpp"
 #include "camera_controller.hpp"
 #include "car_renderer.hpp"
+#include "sky_background.hpp"
+#include "srl_tga.hpp"
+#include "srl_tilemap_interfaces.hpp"
 #include <vector>
 #include <array>
 
@@ -42,6 +45,20 @@ int main()
 
     // Simple frustum
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(60.0f));
+
+    // Sky via VDP2 (componente reutilizável)
+    SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 0, 31)); // fallback azul
+    SkyBackground skyBg;
+    skyBg.yawFactor = Fxp(0.10f);
+    skyBg.driftStep = Fxp(0.02f);
+    const char* skyPaths[] = {
+        "cd/data/skybox_1.tga",
+        "cd/data/SKYBOX_1.TGA",
+        "data/skybox_1.tga",
+        "data/SKYBOX_1.TGA",
+        "skybox_1.tga",
+        "SKYBOX_1.TGA"};
+    skyBg.Load(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
 
     // Camera base (Saturn: Y+ para baixo; Y- acima)
     Camera::State cameraState{
@@ -113,14 +130,16 @@ int main()
 
     while (1)
     {
+        // Atualiza skybox VDP2
+        skyBg.Update(cameraState.yawDeg);
         Camera::UpdateInput(cameraState, cameraTuning, pad);
 
         Vector3D cameraLocation = cameraState.location;
-        Vector3D horizonTarget = Camera::ComputeLookTarget(cameraState, cameraTuning);
+        Vector3D lookTarget = Camera::ComputeLookTarget(cameraState, cameraTuning, pad, Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)));
 
         // LookAt focando no ponto de fuga/horizonte (em vez do carro)
         SRL::Scene3D::LoadIdentity();
-        SRL::Scene3D::LookAt(cameraLocation, horizonTarget, Angle::FromDegrees(0.0));
+        SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
 
         // Piso (grid) no plano Y = -8
         {
@@ -167,3 +186,7 @@ int main()
 
     return 0;
 }
+
+
+
+

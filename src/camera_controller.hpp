@@ -70,6 +70,7 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 {
     bool zHeld = pad.IsHeld(Digital::Button::Z);
     bool yHeld = pad.IsHeld(Digital::Button::Y);
+    bool xHeld = pad.IsHeld(Digital::Button::X);
 
     if (zHeld)
     {
@@ -77,6 +78,13 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
         if (pad.IsHeld(Digital::Button::Down))  state.viewPitchDeg += tuning.pitchStepDeg;
         if (pad.IsHeld(Digital::Button::Left))  state.viewYawDeg   -= tuning.yawStepDeg;
         if (pad.IsHeld(Digital::Button::Right)) state.viewYawDeg   += tuning.yawStepDeg;
+    }
+
+    if (xHeld)
+    {
+        // Orbita ao redor do modelo
+        if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= tuning.yawStepDeg;
+        if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += tuning.yawStepDeg;
     }
 
     if (yHeld)
@@ -100,8 +108,15 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
     state.location = OrbitPosition(state.yaw, state.pitch, state.radius) + state.strafe;
 }
 
-inline Vector3D ComputeLookTarget(const State& state, const Tuning& tuning)
+inline Vector3D ComputeLookTarget(const State& state,
+                                  const Tuning& tuning,
+                                  Digital& pad,
+                                  const Vector3D& modelTarget = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)))
 {
+    if (pad.IsHeld(Digital::Button::X))
+    {
+        return modelTarget; // orbita olhando para o centro do modelo
+    }
     return state.strafe + OrbitPosition(state.viewYaw, state.viewPitch, tuning.targetDistance);
 }
 } // namespace Camera
