@@ -1,0 +1,2074 @@
+Archive member included to satisfy reference by file (symbol)
+
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CMN.O)
+                              src/main.o (CDC_CdInit)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_REG.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CMN.O) (CDREG_ClrHirqReq)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SUB.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CMN.O) (CDSUB_UpdStatus)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+                              src/main.o (GFS_Init)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_BUF.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (GFBF_GetNumData)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDB.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (GFCB_Close)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (GFCD_SetCdbfs)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (GFCF_Init)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_DIR.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (GFDR_SetupDirTbl)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (GFTR_Setup)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DRV.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O) (CDC_CdPlay)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DEV.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O) (CDC_CdSetCon)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SEL.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O) (CDC_SetFiltRange)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIF.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O) (CDC_GetBufSiz)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIO.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O) (CDC_SetSctLen)
+../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CFS.O)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O) (CDC_ChgDir)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o)
+                              src/main.o (slLookAt)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA17.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o) (slRotZ)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA18.o)
+                              src/main.o (slRotY)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA19.o)
+                              src/main.o (slRotX)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA20.o)
+                              src/main.o (slUnitMatrix)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA21.o)
+                              src/main.o (slPushMatrix)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA27.o)
+                              src/main.o (slTranslate)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA39.o)
+                              src/main.o (slConvert3Dto2DFX)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB001.o)
+                              src/main.o (slTVOn)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB002.o)
+                              src/main.o (slColRAMMode)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB015.o)
+                              src/main.o (slScrAutoDisp)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB016.o)
+                              src/main.o (slBack1ColSet)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB034.o)
+                              src/main.o (slMapNbg3)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB038.o)
+                              src/main.o (slRparaInitSet)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB058.o)
+                              src/main.o (slPlaneNbg3)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB063.o)
+                              src/main.o (slPriority)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB200.o)
+                              src/main.o (slCharNbg3)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC01.o)
+                              src/main.o (slPerspective)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC02.o)
+                              src/main.o (slLight)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC04.o)
+                              src/main.o (slZdspLevel)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC05.o)
+                              src/main.o (slSetSprite)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC08.o)
+                              src/main.o (slPutPolygon)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC20.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC05.o) (SpriteEntry)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD00.o)
+                              src/main.o (slDMACopy)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD01.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O) (slDMAXCopy)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD03.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O) (slDMAStatus)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD15.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O) (CSH_Purge)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD16.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O) (DMA_ScuSetPrm)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD17.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O) (DMA_ScuStart)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD18.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O) (DMA_ScuGetStatus)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglG00.o)
+                              src/main.o (slInitSound)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o)
+                              src/main.o (slSetPortDir1)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH02.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o) (smpc_pfr_tbl)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH04.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o) (slComPrmIntBack)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI01.o)
+                              src/main.o (slSynch)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI04.o)
+                              src/main.o (slIntFunction)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o)
+                              src/main.o (slInitSystem)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ00.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o) (InitSlaveSH)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o) (SlaveControl)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ02.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o) (sbMakePolygon)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ03.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o) (sbMakeDMATable)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ04.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o) (sbMakeSprite)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ05.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o) (sbSortEntry)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglK01.o)
+                              src/main.o (SynchCount)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o)
+                              src/main.o (slInitGouraud)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM01.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC08.o) (DepthWorkArea)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA00.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o) (_builtin_set_imask)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA01.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA17.o) (GetSinCos)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA03.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC01.o) (slTan)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA10.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o) (slSquartDbl)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA25.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o) (slTransposeMatrix)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA40.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o) (slCalcVector)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB000.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o) (slInitScroll)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB035.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB200.o) (rbank_set)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC00.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o) (slInitSprite)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC13.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o) (slPutPolygonS)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD02.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglG00.o) (slDMAWait)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD19.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o) (DMA_ScuMemCopy)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o) (slInitInterrupt)
+../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH03.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o) (slSmpcIntBack)
+../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+                              src/main.o (SND_Init)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o) (__ashiftrt_r4_8)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt_n.o)
+                              src/main.o (__ashrsi3)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftlt.o)
+                              src/main.o (__ashlsi3_r0)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_sdivsi3.o)
+                              src/main.o (__sdivsi3)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_udivsi3.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (__udivsi3)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+                              src/main.o (abort)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+                              src/main.o (snprintf)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O) (memcmp)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_DIR.O) (strncmp)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+                              ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_DIR.O) (strncpy)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o) (raise)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o) (_impure_ptr)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o) (_kill_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcpy.o)
+                              src/main.o (memcpy)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memset.o)
+                              src/main.o (memset)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o) (_malloc_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o) (__malloc_lock)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o) (_svfprintf_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o) (_printf_i)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o) (__sf)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o) (_fwalk_sglue)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o) (__sread)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o) (memchr)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o) (memmove)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o) (_close_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o) (errno)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o) (_lseek_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o) (_read_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o) (_sbrk_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o) (_write_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o) (_free_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o) (_realloc_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o) (_fflush_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o) (_malloc_usable_size_r)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_lshiftrt.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o) (__lshrsi3_r0)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o) (_close)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o) (_getpid)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o) (_kill)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o) (_lseek)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o) (_read)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o) (_sbrk)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o) (_write)
+C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+                              C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o) (_exit)
+
+Allocating common symbols
+Common symbol       size              file
+
+GFMC_base           0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+gfs_mng_ptr         0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+gfcf_fad            0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+gfcd_fatal_err      0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+gfs_use_scudma      0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+gfcd_work           0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+gfcf_stat           0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+snd_adr_sys_int_work
+                    0x4               ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+gfcd_playflag       0x4               ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+snd_msk_work_work   0x4               ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+
+Discarded input sections
+
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0xc src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .group         0x00000000        0x8 src/main.o
+ .gnu.warning._close
+                0x00000000        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .gnu.warning._getpid
+                0x00000000        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .gnu.warning._kill
+                0x00000000        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .gnu.warning._lseek
+                0x00000000        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .gnu.warning._read
+                0x00000000        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .gnu.warning._write
+                0x00000000        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+
+SLSTART         0x06004000       0x30
+                0x06004000                        ___Start = .
+ *(SLSTART)
+ SLSTART        0x06004000       0x28 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o)
+                0x06004000                SGL_Start
+                0x06004002                slStartSGL
+
+.text           0x06004040     0xe8e0
+ *(.text*)
+ .text          0x06004040        0x0 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+ .text          0x06004040      0x220 src/main.o
+ .text._ZN3SRL7Scene3D21LightCopyGouraudTableEv
+                0x06004260        0xc src/main.o
+                0x06004260                SRL::Scene3D::LightCopyGouraudTable()
+ .text._ZN3SRL4Core14VblankHandlingEv
+                0x0600426c      0x1b4 src/main.o
+                0x0600426c                SRL::Core::VblankHandling()
+ .text._ZN3SRL4Math5Types3FxpC2Ev
+                0x06004420        0x8 src/main.o
+                0x06004420                SRL::Math::Types::Fxp::Fxp()
+                0x06004420                SRL::Math::Types::Fxp::Fxp()
+ .text._ZN3SRL4Math5Types3FxpC2ERKS2_
+                0x06004428        0x8 src/main.o
+                0x06004428                SRL::Math::Types::Fxp::Fxp(SRL::Math::Types::Fxp const&)
+                0x06004428                SRL::Math::Types::Fxp::Fxp(SRL::Math::Types::Fxp const&)
+ .text._ZNK3SRL4Math5Types3Fxp8RawValueEv
+                0x06004430        0x4 src/main.o
+                0x06004430                SRL::Math::Types::Fxp::RawValue() const
+ .text._ZN3SRL4Math5Types5Angle11FromDegreesERKNS1_3FxpE
+                0x06004434       0x28 src/main.o
+                0x06004434                SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp const&)
+ .text.unlikely
+                0x0600445c        0x4 src/main.o
+                0x0600445c                std::__throw_length_error(char const*)
+ .text._ZN3SRL6Memory4FreeEPv
+                0x06004460      0x114 src/main.o
+                0x06004460                SRL::Memory::Free(void*)
+ .text._ZN3SRL4VDP210InitializeERKNS_5Types9HighColorE
+                0x06004574      0x1ac src/main.o
+                0x06004574                SRL::VDP2::Initialize(SRL::Types::HighColor const&)
+ .text._ZN3SRL5Input3Gun11SynchronizeEv
+                0x06004720      0x1d0 src/main.o
+                0x06004720                SRL::Input::Gun::Synchronize()
+ .text._ZN3SRL5Sound8Hardware10InitializeEv
+                0x060048f0      0x774 src/main.o
+                0x060048f0                SRL::Sound::Hardware::Initialize()
+ .text._ZN3SRL4Core10InitializeERKNS_5Types9HighColorE
+                0x06005064      0x120 src/main.o
+                0x06005064                SRL::Core::Initialize(SRL::Types::HighColor const&)
+ .text._ZN11ModelObjectC2EPKcj
+                0x06005184     0x2240 src/main.o
+                0x06005184                ModelObject::ModelObject(char const*, unsigned int)
+                0x06005184                ModelObject::ModelObject(char const*, unsigned int)
+ .text._ZN3SRL5Debug5PrintIJsssEEEvhhPKcDpT_
+                0x060073c4      0x18c src/main.o
+                0x060073c4                void SRL::Debug::Print<short, short, short>(unsigned char, unsigned char, char const*, short, short, short)
+ .text._ZNSt6vectorIPFvvESaIS1_EE7reserveEj
+                0x06007550      0x150 src/main.o
+                0x06007550                std::vector<void (*)(), std::allocator<void (*)()> >::reserve(unsigned int)
+ .text.startup  0x060076a0     0x1c30 src/main.o
+                0x060076a0                main
+ .text.exit     0x060092d0       0x54 src/main.o
+ *fill*         0x06009324        0xc 
+ .text          0x06009330      0x3a0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CMN.O)
+                0x06009330                CDC_GetCurStat
+                0x06009380                CDC_GetLastStat
+                0x06009398                CDC_GetPeriStat
+                0x0600946c                CDC_GetHwInfo
+                0x060094d4                CDC_TgetToc
+                0x06009524                CDC_GetSes
+                0x06009560                CDC_CdInit
+                0x060095e4                CDC_CdOpen
+                0x0600960c                CDC_DataReady
+                0x06009678                CDC_DataEnd
+ .text          0x060096d0      0x2dc ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_REG.O)
+                0x060096d0                CDC_GetDataPtr
+                0x060096e0                CDC_GetHirqReq
+                0x060096f4                CDC_ClrHirqReq
+                0x06009724                CDREG_ClrHirqReq
+                0x06009734                CDREG_InitHirqReq
+                0x0600975c                CDREG_SetHirqFlag
+                0x06009770                CDC_GetHirqMsk
+                0x06009784                CDC_SetHirqMsk
+                0x06009794                CDC_GetMpegPtr
+                0x060097a4                CDREG_TgetData
+                0x06009800                CDREG_CmdRsp
+                0x06009900                CDREG_WaitHirq
+                0x06009970                CDREG_ReadRsp
+ *fill*         0x060099ac        0x4 
+ .text          0x060099b0      0x152 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SUB.O)
+                0x060099b0                CDSUB_UpdStatus
+                0x060099c8                CDSUB_UpdCdstat
+                0x060099e8                CDSUB_CdCmd
+                0x06009a58                CDSUB_GetCdstat
+                0x06009a98                CDSUB_RspToCdstat
+                0x06009ae0                CDSUB_SoftTimer
+ *fill*         0x06009b02        0xe 
+ .text          0x06009b10     0x1adc ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+                0x06009b10                gfs_version
+                0x06009b30                GFS_Init
+                0x06009c18                GFS_LoadDir
+                0x06009cc0                GFS_SetDir
+                0x06009d28                GFS_NameToId
+                0x06009d8c                GFS_IdToName
+                0x06009df8                GFS_GetDirInfo
+                0x06009e68                GFS_Reset
+                0x06009eec                GFS_Open
+                0x06009fa0                GFS_Close
+                0x06009fd8                GFS_Seek
+                0x0600a08c                GFS_Tell
+                0x0600a0dc                GFS_IsEof
+                0x0600a130                GFS_ByteToSct
+                0x0600a18c                GFS_GetFileSize
+                0x0600a1e8                GFS_GetFileInfo
+                0x0600a25c                GFS_GetNumCdbuf
+                0x0600a284                GFS_Load
+                0x0600a348                GFS_Fread
+                0x0600a3e4                gfs_waitRead
+                0x0600a48c                GFS_NwFread
+                0x0600a598                GFS_NwCdRead
+                0x0600a610                GFS_NwIsComplete
+                0x0600a648                GFS_NwStop
+                0x0600a6b4                GFS_NwGetStat
+                0x0600a730                gfs_recovRdErr
+                0x0600a760                GFS_NwExecOne
+                0x0600a820                GFS_NwExecServer
+                0x0600a89c                GFS_SetGmode
+                0x0600a900                GFS_SetTmode
+                0x0600a96c                GFS_SetReadPara
+                0x0600a9d0                GFS_SetTransPara
+                0x0600aa3c                GFS_SetTrFunc
+                0x0600aaa0                GFS_StartTrans
+                0x0600aaec                GFS_CdMovePickup
+                0x0600ab58                GFS_SetErrFunc
+                0x0600ab84                GFS_GetErrStat
+                0x0600aba8                GFS_ConvTno
+                0x0600abd0                gfs_chgRoot
+                0x0600ac9c                gfs_aborttrans
+                0x0600aca8                gfs_mngSetupFuncTbl
+                0x0600acdc                gfs_mngInitWork
+                0x0600ad80                gfs_mngGetNumFile
+                0x0600ade8                GFS_mngAllocGrp
+                0x0600ae30                gfs_mngFreeGrp
+                0x0600ae3c                gfs_mngTermAccess
+                0x0600aec0                gfs_mngSetErrCode
+                0x0600af40                gfs_svrSearchHndl
+                0x0600af80                gfs_svrAddHndl
+                0x0600afbc                gfs_svrRemoveHndl
+                0x0600b018                GFS_OpenSub
+                0x0600b070                gfs_loadVol
+                0x0600b134                gfs_getRootDir
+                0x0600b230                gfs_loadRootDir
+                0x0600b2b8                gfs_flowIn
+                0x0600b360                gfs_transData
+                0x0600b404                GFS_GetFad
+                0x0600b45c                gfs_SetSct
+                0x0600b49c                gfs_GetFinfo
+                0x0600b4dc                gfs_closeSub
+                0x0600b518                gfs_getGmode
+                0x0600b524                gfs_isTaskDone
+                0x0600b578                gfs_convFinStat
+ *fill*         0x0600b5ec        0x4 
+ .text          0x0600b5f0      0x106 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_BUF.O)
+                0x0600b620                GFBF_GetTranData
+                0x0600b648                GFBF_GetNumData
+                0x0600b678                GFBF_GetSrcPk
+                0x0600b6a0                GFBF_GetSctData
+                0x0600b6c4                GFBF_RtnPk
+                0x0600b6ec                gfbf_getSctDt
+ *fill*         0x0600b6f6        0xa 
+ .text          0x0600b700      0x600 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDB.O)
+                0x0600b700                GFCB_Setup
+                0x0600b820                GFCB_Close
+                0x0600b848                GFCB_GetLenData
+                0x0600b8f4                GFCB_GetLenRoom
+                0x0600b900                GFCB_SetFilt
+                0x0600b968                GFCB_DeleteAllData
+                0x0600b990                GFCB_Tell
+                0x0600b9a0                gfcb_getSctNum
+                0x0600b9f0                GFCB_Seek
+                0x0600baec                GFCB_GetSrcPack
+                0x0600bbcc                GFCB_GetSctData
+                0x0600bc04                GFCB_GetDstPack
+                0x0600bc10                GFCB_RtnPk
+                0x0600bc58                GFCB_MovePickup
+                0x0600bc74                GFCB_SetCon
+                0x0600bca8                GFCB_GetPickup
+                0x0600bcd0                GFCB_IsPuOwner
+                0x0600bce8                GFCB_UngetPickup
+ .text          0x0600bd00     0x1a10 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+                0x0600bd00                GFCD_SetCdbfs
+                0x0600bd2c                GFCD_Init
+                0x0600bf30                GFCD_AllocFilt
+                0x0600bf6c                GFCD_FreeFilt
+                0x0600bf9c                GFCD_AllocBuf
+                0x0600bfd0                GFCD_FreeBuf
+                0x0600c074                GFCD_GetBaseFad
+                0x0600c0a8                GFCD_GetPickup
+                0x0600c0dc                GFCD_UngetPickup
+                0x0600c108                GFCD_IsPuOwner
+                0x0600c12c                GFCD_SetFilt
+                0x0600c1f0                GFCD_GetFilt
+                0x0600c238                GFCD_SetCon
+                0x0600c290                GFCD_Play
+                0x0600c2f0                GFCD_GetLenData
+                0x0600c358                GFCD_ReqData
+                0x0600c3b4                GFCD_EndData
+                0x0600c3fc                GFCD_DelSctData
+                0x0600c454                GFCD_CheckDelSctData
+                0x0600c484                GFCD_GetStat
+                0x0600c538                GFCD_MovePickup
+                0x0600c584                GFCD_MoveSctData
+                0x0600c5f8                GFCD_CheckMove
+                0x0600c61c                GFCD_GetSctInfo
+                0x0600c664                GFCD_ChgDir
+                0x0600c6d8                GFCD_SetFiltCon
+                0x0600c7c0                GFCD_GetFileInfo
+                0x0600c89c                GFCD_GetBufSiz
+                0x0600c8d4                GFCD_ExecServer
+                0x0600c9a8                gfcd_isIdleTask
+                0x0600ca34                gfcd_doTask
+                0x0600cae0                GFCD_SetTimer
+                0x0600caf4                GFCD_WaitServer
+                0x0600cb30                gfcd_doSetFiltTsk
+                0x0600ccf4                gfcd_doSetConTsk
+                0x0600cd84                gfcd_doGetLenDataTsk
+                0x0600ced8                gfcd_doReqDataTsk
+                0x0600cf78                gfcd_doDelSctDataTsk
+                0x0600d0ac                gfcd_doMoveSctTsk
+                0x0600d210                gfcd_doChgDirTsk
+                0x0600d40c                gfcd_doSetFiltConTsk
+                0x0600d550                gfcd_checkEflag
+                0x0600d574                gfcd_initCdbMng
+                0x0600d5f4                gfcd_setStat
+                0x0600d620                GFCD_SetCsctFunc
+                0x0600d63c                GFCD_ChkScdqFlag
+                0x0600d660                GFCD_ClrScdqFlag
+                0x0600d67c                GFCD_WaitScdqFlag
+                0x0600d6c0                GFCD_WaitPause
+ .text          0x0600d710      0x8d8 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+                0x0600d710                GFCF_Init
+                0x0600d7b0                GFCF_Setup
+                0x0600d8f8                GFCF_SetSct
+                0x0600d93c                GFCF_GetFileInfo
+                0x0600d9b0                GFCF_FlowInBuf
+                0x0600db04                GFCF_StopInBuf
+                0x0600dba4                GFCF_Recover
+                0x0600dbec                GFCF_Tell
+                0x0600dc04                GFCF_Seek
+                0x0600dc1c                GFCF_MovePickup
+                0x0600dcb8                GFCF_cnvIntlvOfs
+                0x0600dd0c                GFCF_GetStat
+                0x0600dda4                gfcf_getSctSize
+                0x0600dde0                gfcf_isCdOk
+                0x0600dea0                gfcf_getPlayRange
+ *fill*         0x0600dfe8        0x8 
+ .text          0x0600dff0      0x92c ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_DIR.O)
+                0x0600dff0                GFDR_SetupDirTbl
+                0x0600e064                GFDR_NameToId
+                0x0600e0c4                GFDR_GetInfoDirId
+                0x0600e0d8                GFDR_GetInfoDirName
+                0x0600e0ec                GFDR_GetAtrDirId
+                0x0600e104                GFDR_GetAtrDirName
+                0x0600e11c                GFDR_ChgRoot
+                0x0600e134                GFDR_ChgDir
+                0x0600e1a8                gfdr_setupDirIdTbl
+                0x0600e22c                gfdr_setupDirNameTbl
+                0x0600e2d8                gfdr_open
+                0x0600e300                gfdr_read
+                0x0600e3c0                gfdr_readByte
+                0x0600e3ec                gfdr_readWord
+                0x0600e418                gfdr_readWordNB
+                0x0600e46c                gfdr_readLongNB
+                0x0600e4b8                gfdr_readLongNM
+                0x0600e4e0                gfdr_setNextRec
+                0x0600e564                gfdr_readDirEnt
+                0x0600e8e0                gfdr_setDirrecCd
+ *fill*         0x0600e91c        0x4 
+ .text          0x0600e920      0x9c6 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O)
+                0x0600e950                GFTR_Setup
+                0x0600e994                GFTR_SetMode
+                0x0600e9a8                GFTR_SetUnit
+                0x0600e9b4                GFTR_SetTransPara
+                0x0600e9e8                GFTR_GetTransPara
+                0x0600e9f4                GFTR_GetNumTrans
+                0x0600ea00                GFTR_SetTransMax
+                0x0600ea0c                GFTR_Start
+                0x0600ea18                GFTR_Pause
+                0x0600ea24                GFTR_Stop
+                0x0600eadc                GFTR_Exec
+                0x0600eb60                GFTR_Idle
+                0x0600ebd8                GFTR_ExecSvr
+                0x0600ece0                gftr_getSrcPack
+                0x0600ed68                gftr_getDstPack
+                0x0600edc4                gftr_reqScu
+                0x0600edd0                gftr_execScu
+                0x0600ee6c                gftr_remScu
+                0x0600eea0                gfdma_canUse
+                0x0600eeac                gfdma_exec
+                0x0600ef1c                gfdma_getBytecnt
+                0x0600ef54                gftr_reqDma0
+                0x0600ef6c                gftr_execSdma0
+                0x0600ef90                gftr_remDma0
+                0x0600efa8                gftr_reqDma1
+                0x0600efc0                gftr_execSdma1
+                0x0600efe4                gftr_remDma1
+                0x0600effc                gftr_reqCpu
+                0x0600f008                gftr_execCpu
+                0x0600f048                gftr_remCpu
+                0x0600f054                gftr_reqTrn
+                0x0600f0c4                gftr_execTrn
+                0x0600f19c                gftr_remTrn
+                0x0600f210                gftr_copyFrac
+                0x0600f238                GFTR_GetLenData
+                0x0600f244                GFTR_GetLenRoom
+                0x0600f25c                GFTR_GetDstPack
+                0x0600f290                GFTR_RtnDstPk
+                0x0600f2ac                GFTR_GetData
+                0x0600f2c0                GFTR_SetData
+                0x0600f2d4                GFTR_SetTransFunc
+ *fill*         0x0600f2e6        0xa 
+ .text          0x0600f2f0      0x130 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DRV.O)
+                0x0600f2f0                CDC_CdPlay
+                0x0600f3bc                CDC_CdSeek
+                0x0600f3f0                CDC_CdScan
+ .text          0x0600f420       0xa8 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DEV.O)
+                0x0600f420                CDC_CdSetCon
+                0x0600f450                CDC_CdGetCon
+                0x0600f48c                CDC_CdGetLastBuf
+ *fill*         0x0600f4c8        0x8 
+ .text          0x0600f4d0      0x2b8 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SEL.O)
+                0x0600f4d0                CDC_SetFiltRange
+                0x0600f504                CDC_GetFiltRange
+                0x0600f55c                CDC_SetFiltSubh
+                0x0600f5cc                CDC_GetFiltSubh
+                0x0600f648                CDC_SetFiltMode
+                0x0600f67c                CDC_GetFiltMode
+                0x0600f6c0                CDC_SetFiltCon
+                0x0600f700                CDC_GetFiltCon
+                0x0600f754                CDC_ResetSelector
+ *fill*         0x0600f788        0x8 
+ .text          0x0600f790      0x270 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIF.O)
+                0x0600f790                CDC_GetBufSiz
+                0x0600f7ec                CDC_GetSctNum
+                0x0600f830                CDC_CalActSiz
+                0x0600f86c                CDC_GetActSiz
+                0x0600f8ec                CDC_GetSctInfo
+                0x0600f96c                CDC_ExeFadSearch
+                0x0600f9a4                CDC_GetFadSearch
+ .text          0x0600fa00      0x1e4 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIO.O)
+                0x0600fa00                CDC_SetSctLen
+                0x0600fa34                CDC_GetSctData
+                0x0600fa70                CDC_DelSctData
+                0x0600faac                CDC_GetdelSctData
+                0x0600fae8                CDC_PutSctData
+                0x0600fb20                CDC_CopySctData
+                0x0600fb64                CDC_MoveSctData
+                0x0600fba8                CDC_GetCopyErr
+ *fill*         0x0600fbe4        0xc 
+ .text          0x0600fbf0      0x194 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CFS.O)
+                0x0600fbf0                CDC_ChgDir
+                0x0600fc24                CDC_ReadDir
+                0x0600fc58                CDC_GetFileScope
+                0x0600fcb8                CDC_TgetFileInfo
+                0x0600fd14                CDC_ReadFile
+                0x0600fd48                CDC_AbortFile
+ *fill*         0x0600fd84        0xc 
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA17.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA18.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA19.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA20.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA21.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA27.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA39.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB001.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB002.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB015.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB016.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB034.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB038.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB058.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB063.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB200.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC01.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC02.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC04.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC05.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC08.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC20.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD00.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD01.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD03.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD15.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD16.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD17.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD18.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglG00.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH02.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH04.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI01.o)
+ .text          0x0600fd90        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI04.o)
+ .text          0x0600fd90      0x128 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o)
+                0x0600fd90                slInitSystem
+ *fill*         0x0600feb8        0x8 
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ00.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ02.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ03.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ04.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ05.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglK01.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM01.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA00.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA01.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA03.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA10.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA25.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA40.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB000.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB035.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC00.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC13.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD02.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD19.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o)
+ .text          0x0600fec0        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH03.o)
+ .text          0x0600fec0     0x10b4 ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+                0x0600fec0                SND_Init
+                0x06010038                SND_MoveData
+                0x06010084                SND_ChgMap
+                0x0601015c                SND_SetTlVl
+                0x060101bc                SND_ChgEfct
+                0x0601021c                SND_ChgMix
+                0x06010288                SND_ChgMixPrm
+                0x06010310                SND_ChkHard
+                0x060103ac                SND_StopDsp
+                0x06010400                SND_OffAllSound
+                0x06010454                SND_StartSeq
+                0x060104d8                SND_StopSeq
+                0x06010538                SND_PauseSeq
+                0x06010598                SND_ContSeq
+                0x060105f8                SND_SetSeqVl
+                0x06010670                SND_ChgTempo
+                0x060106ec                SND_CtrlDirMidi
+                0x060107a4                SND_SetSeqPan
+                0x06010818                SND_StartPcm
+                0x06010928                SND_StopPcm
+                0x06010988                SND_ChgPcm
+                0x06010a58                SND_StartVlAnl
+                0x06010aac                SND_StopVlAnl
+                0x06010b00                SND_SetCdDaLev
+                0x06010b7c                SND_SetCdDaPan
+                0x06010bf8                SND_GetSeqStat
+                0x06010c20                SND_GetSeqPlayPos
+                0x06010c3c                SND_GetPcmPlayAdr
+                0x06010c64                SND_GetAnlTlVl
+                0x06010c80                SND_GetAnlHzVl
+                0x06010e3c                SND_SetQSound
+                0x06010ea8                SND_Set3D_Stat
+                0x06010f20                SND_Set3D_Init
+ .text          0x06010f74       0x52 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt.o)
+                0x06010f74                __ashiftrt_r4_31
+                0x06010f74                __ashiftrt_r4_32
+                0x06010f7a                __ashiftrt_r4_30
+                0x06010f7c                __ashiftrt_r4_29
+                0x06010f7e                __ashiftrt_r4_28
+                0x06010f80                __ashiftrt_r4_27
+                0x06010f82                __ashiftrt_r4_26
+                0x06010f84                __ashiftrt_r4_25
+                0x06010f86                __ashiftrt_r4_24
+                0x06010f8e                __ashiftrt_r4_23
+                0x06010f90                __ashiftrt_r4_22
+                0x06010f92                __ashiftrt_r4_21
+                0x06010f94                __ashiftrt_r4_20
+                0x06010f96                __ashiftrt_r4_19
+                0x06010f98                __ashiftrt_r4_18
+                0x06010f9a                __ashiftrt_r4_17
+                0x06010f9c                __ashiftrt_r4_16
+                0x06010fa2                __ashiftrt_r4_15
+                0x06010fa4                __ashiftrt_r4_14
+                0x06010fa6                __ashiftrt_r4_13
+                0x06010fa8                __ashiftrt_r4_12
+                0x06010faa                __ashiftrt_r4_11
+                0x06010fac                __ashiftrt_r4_10
+                0x06010fae                __ashiftrt_r4_9
+                0x06010fb0                __ashiftrt_r4_8
+                0x06010fb2                __ashiftrt_r4_7
+                0x06010fb4                __ashiftrt_r4_6
+                0x06010fb6                __ashiftrt_r4_5
+                0x06010fb8                __ashiftrt_r4_4
+                0x06010fba                __ashiftrt_r4_3
+                0x06010fbc                __ashiftrt_r4_2
+                0x06010fbe                __ashiftrt_r4_1
+                0x06010fc2                __ashiftrt_r4_0
+ *fill*         0x06010fc6        0x2 
+ .text          0x06010fc8       0x80 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt_n.o)
+                0x06010fc8                __ashrsi3
+ .text          0x06011048       0xbc C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftlt.o)
+                0x06011048                __ashlsi3
+                0x0601104c                __ashlsi3_r0
+ .text          0x06011104       0xa0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_sdivsi3.o)
+                0x06011104                __sdivsi3
+ .text          0x060111a4       0x6c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_udivsi3.o)
+                0x060111c6                __udivsi3
+ .text          0x06011210       0x18 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+                0x06011210                abort
+ .text          0x06011228      0x108 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+                0x06011228                _snprintf_r
+                0x06011228                _sniprintf_r
+                0x060112a8                snprintf
+                0x060112a8                sniprintf
+ .text          0x06011330       0x1e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+                0x06011330                memcmp
+ .text          0x0601134e       0x26 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+                0x0601134e                strncmp
+ .text          0x06011374       0x32 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+                0x06011374                strncpy
+ *fill*         0x060113a6        0x2 
+ .text          0x060113a8      0x1a8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+                0x060113a8                _init_signal_r
+                0x060113e8                _signal_r
+                0x06011434                _raise_r
+                0x060114a4                __sigtramp_r
+                0x06011504                raise
+                0x06011518                signal
+                0x0601152c                _init_signal
+                0x0601153c                __sigtramp
+ .text          0x06011550        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .text          0x06011550       0x40 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+                0x06011550                _kill_r
+                0x06011584                _getpid_r
+ .text          0x06011590       0x94 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcpy.o)
+                0x06011590                memcpy
+ .text          0x06011624       0x40 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memset.o)
+                0x06011624                memset
+ .text          0x06011664      0x194 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+                0x060116c0                _malloc_r
+ .text          0x060117f8        0x8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+                0x060117f8                __malloc_lock
+                0x060117fc                __malloc_unlock
+ .text          0x06011800      0x42c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+                0x06011800                __ssputs_r
+                0x060118f4                __ssprint_r
+                0x06011a1c                _svfprintf_r
+                0x06011a1c                _svfiprintf_r
+ .text          0x06011c2c      0x374 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+                0x06011c2c                _printf_common
+                0x06011d2c                _printf_i
+ .text          0x06011fa0      0x1fc C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+                0x060120a8                __sfp
+                0x06012174                __sinit
+ .text          0x0601219c       0x58 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+                0x0601219c                _fwalk_sglue
+ .text          0x060121f4       0xdc C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+                0x060121f4                __sread
+                0x0601222c                __seofread
+                0x06012230                __swrite
+                0x06012280                __sseek
+                0x060122c0                __sclose
+ .text          0x060122d0       0x1c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+                0x060122d0                memchr
+ .text          0x060122ec       0x3c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+                0x060122ec                memmove
+ .text          0x06012328       0x30 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+                0x06012328                _close_r
+ .text          0x06012358       0xa4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+                0x06012358                _reclaim_reent
+ .text          0x060123fc       0x34 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+                0x060123fc                _lseek_r
+ .text          0x06012430       0x34 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+                0x06012430                _read_r
+ .text          0x06012464       0x30 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+                0x06012464                _sbrk_r
+ .text          0x06012494       0x34 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+                0x06012494                _write_r
+ .text          0x060124c8       0xc4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+                0x060124c8                _free_r
+ .text          0x0601258c       0x98 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+                0x0601258c                _realloc_r
+ .text          0x06012624      0x1a8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+                0x06012624                __sflush_r
+                0x0601275c                _fflush_r
+                0x0601279c                fflush
+ .text          0x060127cc       0x16 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+                0x060127cc                _malloc_usable_size_r
+ *fill*         0x060127e2        0x2 
+ .text          0x060127e4       0xbc C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_lshiftrt.o)
+                0x060127e4                __lshrsi3
+                0x060127e8                __lshrsi3_r0
+ .text          0x060128a0       0x10 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+                0x060128a0                _close
+ .text          0x060128b0       0x10 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+                0x060128b0                _getpid
+ .text          0x060128c0       0x10 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+                0x060128c0                _kill
+ .text          0x060128d0       0x10 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+                0x060128d0                _lseek
+ .text          0x060128e0       0x10 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+                0x060128e0                _read
+ .text          0x060128f0       0x18 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+                0x060128f0                _sbrk
+ .text          0x06012908       0x10 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+                0x06012908                _write
+ .text          0x06012918        0x4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+                0x06012918                _exit
+ *(.strings*)
+ *(SEGA_P)
+ *(.eh_frame_hdr*)
+ *(.eh_frame*)
+                0x0601291c                        __etext = .
+
+COMMON          0x06012920       0x28
+ *(COMMON)
+ COMMON         0x06012920        0xc ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+                0x06012920                GFMC_base
+                0x06012924                gfs_mng_ptr
+                0x06012928                gfs_use_scudma
+ COMMON         0x0601292c        0xc ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+                0x0601292c                gfcd_fatal_err
+                0x06012930                gfcd_work
+                0x06012934                gfcd_playflag
+ COMMON         0x06012938        0x8 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+                0x06012938                gfcf_fad
+                0x0601293c                gfcf_stat
+ COMMON         0x06012940        0x8 ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+                0x06012940                snd_adr_sys_int_work
+                0x06012944                snd_msk_work_work
+
+SLPROG          0x06012960     0xdc60
+                0x06012960                        __slprog_start = .
+ *(SLPROG)
+ SLPROG         0x06012960       0xd0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o)
+                0x06012960                slLookAt
+ SLPROG         0x06012a30       0x78 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA17.o)
+                0x06012a30                slRotZ
+                0x06012a3a                slRotZSC
+ *fill*         0x06012aa8        0x8 
+ SLPROG         0x06012ab0       0x78 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA18.o)
+                0x06012ab0                slRotY
+                0x06012aba                slRotYSC
+ *fill*         0x06012b28        0x8 
+ SLPROG         0x06012b30       0x78 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA19.o)
+                0x06012b30                slRotX
+                0x06012b3a                slRotXSC
+ *fill*         0x06012ba8        0x8 
+ SLPROG         0x06012bb0      0x42c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA20.o)
+                0x06012bb0                slInitMatrix
+                0x06012bba                slPushUnitMatrix
+                0x06012bce                slUnitMatrix
+ *fill*         0x06012fdc        0x4 
+ SLPROG         0x06012fe0       0x48 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA21.o)
+                0x06012fe0                slPushMatrix
+                0x06013014                slDecMatrixPtr
+                0x06013014                slPopMatrix
+ *fill*         0x06013028        0x8 
+ SLPROG         0x06013030       0x50 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA27.o)
+                0x06013030                slTranslate
+ SLPROG         0x06013080       0x98 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA39.o)
+                0x06013080                slConvert3Dto2DFX
+ *fill*         0x06013118        0x8 
+ SLPROG         0x06013120       0x20 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB001.o)
+                0x06013120                slTVOn
+                0x0601312a                slTVOff
+ SLPROG         0x06013140       0x1e ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB002.o)
+                0x06013140                slColRAMMode
+ *fill*         0x0601315e        0x2 
+ SLPROG         0x06013160      0x40c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB015.o)
+                0x06013160                slScrAutoDisp
+ *fill*         0x0601356c        0x4 
+ SLPROG         0x06013570        0xc ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB016.o)
+                0x06013570                slBack1ColSet
+ *fill*         0x0601357c        0x4 
+ SLPROG         0x06013580       0xb4 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB034.o)
+                0x06013580                slMapNbg3
+ *fill*         0x06013634        0xc 
+ SLPROG         0x06013640       0x70 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB038.o)
+                0x06013640                slRparaInitSet
+ SLPROG         0x060136b0       0x10 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB058.o)
+                0x060136b0                slPlaneNbg3
+ SLPROG         0x060136c0        0xc ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB063.o)
+                0x060136c0                slPriority
+ *fill*         0x060136cc        0x4 
+ SLPROG         0x060136d0      0x114 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB200.o)
+                0x060136d0                slCharRbg0
+                0x060136dc                slCharNbg0
+                0x060136e8                slCharNbg1
+                0x060136f4                slCharNbg2
+                0x0601370a                slCharNbg3
+                0x06013722                slPageRbg0
+                0x06013738                slPageNbg1
+                0x06013740                slPageNbg2
+                0x06013748                slPageNbg3
+                0x06013754                slPageNbg0
+ *fill*         0x060137e4        0xc 
+ SLPROG         0x060137f0       0x6c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC01.o)
+                0x060137f0                slPerspective
+ *fill*         0x0601385c        0x4 
+ SLPROG         0x06013860       0x30 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC02.o)
+                0x06013860                slLight
+ SLPROG         0x06013890       0x2c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC04.o)
+                0x06013890                slZdspLevel
+ *fill*         0x060138bc        0x4 
+ SLPROG         0x060138c0       0x78 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC05.o)
+                0x060138c0                slSetSprite
+ *fill*         0x06013938        0x8 
+ SLPROG         0x06013940     0x1218 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC08.o)
+                0x06013940                slPutPolygon
+                0x060145bc                MsCalcDepthFlat
+ *fill*         0x06014b58        0x8 
+ SLPROG         0x06014b60       0x40 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC20.o)
+                0x06014b60                SpriteEntry
+ SLPROG         0x06014ba0       0x84 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD00.o)
+                0x06014ba0                slCpuDMACopy
+                0x06014ba0                slDMACopy
+                0x06014bfa                CSH_AllClr
+                0x06014bfa                slCashPurge
+ *fill*         0x06014c24        0xc 
+ SLPROG         0x06014c30       0xa0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD01.o)
+                0x06014c30                slDMAXCopy
+ SLPROG         0x06014cd0        0xc ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD03.o)
+                0x06014cd0                slDMAStatus
+ *fill*         0x06014cdc        0x4 
+ SLPROG         0x06014ce0       0x20 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD15.o)
+                0x06014ce0                CSH_Purge
+ SLPROG         0x06014d00       0x84 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD16.o)
+                0x06014d00                DMA_ScuSetPrm
+                0x06014d48                DMA_SCU_PRM0
+ *fill*         0x06014d84        0xc 
+ SLPROG         0x06014d90       0x88 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD17.o)
+                0x06014d90                DMA_ScuStart
+ *fill*         0x06014e18        0x8 
+ SLPROG         0x06014e20       0x34 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD18.o)
+                0x06014e20                DMA_ScuGetStatus
+ *fill*         0x06014e54        0xc 
+ SLPROG         0x06014e60      0x1d0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglG00.o)
+                0x06014e60                slInitSound
+                0x06014f64                slWaitSound
+                0x06014f7c                slSndFlush
+ SLPROG         0x06015030      0xfc8 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o)
+                0x06015048                slGetPortDir1
+                0x06015050                slGetPortDir2
+                0x06015058                slSetPortDir1
+                0x06015082                slSetPortDir2
+                0x060150bc                slGetPortData1
+                0x060150c4                slGetPortData2
+                0x060150cc                slSetPortData1
+                0x060150d6                slSetPortData2
+                0x060150e8                slGetPortSelect1
+                0x060150f2                slGetPortSelect2
+                0x060150fc                slSetPortSelect1
+                0x06015130                slSetPortSelect2
+                0x0601516c                slGetPortExt1
+                0x06015176                slGetPortExt2
+                0x06015180                slSetPortExt1
+                0x060151b0                slSetPortExt2
+                0x06015324                slSmpcDirectAccess
+                0x060153a4                slInitPeripheral
+                0x06015436                slSetResultBuffer
+                0x060154c2                slCheckIntBackSet
+                0x060154ce                slIntBackCancel
+                0x060154f8                slCheckReset
+                0x06015502                slClearReset
+                0x060156c8                slSmpcCashSend
+                0x06015784                slSmpcCashBlow
+                0x06015860                slGetOptimize
+                0x0601586a                slSetOptimize
+                0x06015890                slGetPortMode1
+                0x0601589c                slGetPortMode2
+                0x060158aa                slSetPortMode1
+                0x060158e8                slSetPortMode2
+                0x06015a74                slRequestCommand
+                0x06015ae4                Smpc_Status
+                0x06015ae8                Smpc_Result
+                0x06015aec                Smpc_Peripheral
+                0x06015af2                Per_Connect1
+                0x06015af3                Per_Connect2
+                0x06015b14                SmpcStatusBuf
+ *fill*         0x06015ff8        0x8 
+ SLPROG         0x06016000      0x470 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH02.o)
+                0x060163f0                smpc_pfr_tbl
+                0x06016430                smpc_ptf_tbl
+ SLPROG         0x06016470       0x60 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH04.o)
+                0x06016470                slComPrmIntBack
+                0x06016484                slComPrmSetMemory
+                0x0601649a                slComPrmSetTime
+ SLPROG         0x060164d0      0x3a4 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI01.o)
+                0x060164d0                slInitSynch
+                0x060164ea                slSynch
+                0x060165e0                slRandom
+                0x060165fe                PCM_EndCheck
+                0x060166ba                RetPCMBuf
+                0x06016754                PCM_Buf
+                0x060167f4                Sound_Buf
+ *fill*         0x06016874        0xc 
+ SLPROG         0x06016880       0x10 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI04.o)
+                0x06016880                slIntFunction
+ SLPROG         0x06016890       0x74 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ00.o)
+                0x06016890                InitSlaveSH
+                0x060168f8                SlaveCommand
+ *fill*         0x06016904        0xc 
+ SLPROG         0x06016910      0x3d0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o)
+                0x06016910                SlaveControl
+                0x06016ccc                ErasePolygonData
+ SLPROG         0x06016ce0     0x12b8 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ02.o)
+                0x06016ce0                sbMakePolygon
+                0x06016ec8                sbCalcPolygon
+                0x06017c00                SetTexture
+                0x06017c0c                SetPolygon
+                0x06017c14                SetPosition
+                0x06017c4c                stvtc_4
+                0x06017d04                stvtc_3
+                0x06017f14                stvtc_1
+                0x06017f28                stvtc_2
+                0x06017f3c                stvtc_0
+ *fill*         0x06017f98        0x8 
+ SLPROG         0x06017fa0      0x140 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ03.o)
+                0x06017fa0                sbMakeDMATable
+ SLPROG         0x060180e0      0x470 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ04.o)
+                0x0601813e                sbMakeSprite
+                0x060181a4                sbMakeRotSprite
+ SLPROG         0x06018550       0x3c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ05.o)
+                0x06018550                sbSortEntry
+ *fill*         0x0601858c        0x4 
+ SLPROG         0x06018590      0x4b8 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o)
+                0x06018590                slInitGouraud
+                0x06018684                slPutPolygonX
+                0x060186ca                slGouraudTblCopy
+                0x06018722                slSetGouraudTbl
+                0x06018728                slSetGouraudColor
+                0x060187a0                slSetAmbient
+                0x060187c4                slSetFlatColor
+ *fill*         0x06018a48        0x8 
+ SLPROG         0x06018a50       0x6a ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM01.o)
+                0x06018a50                slSetDepthLimit
+                0x06018a7c                slSetDepthTbl
+                0x06018aac                DepthWorkArea
+ *fill*         0x06018aba        0x6 
+ SLPROG         0x06018ac0       0x20 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA00.o)
+                0x06018ac0                set_imask
+                0x06018ac0                _builtin_set_imask
+                0x06018ad4                _builtin_get_imask
+                0x06018ad4                get_imask
+ SLPROG         0x06018ae0     0x411e ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA01.o)
+                0x06018ae0                slSin
+                0x06018b04                slCos
+                0x06018b28                GetSinCos
+                0x06018bbc                sin_cos_index_tbl
+                0x06018bfc                sin_tbl
+ *fill*         0x0601cbfe        0x2 
+ SLPROG         0x0601cc00     0x215c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA03.o)
+                0x0601cc00                slTan
+ *fill*         0x0601ed5c        0x4 
+ SLPROG         0x0601ed60       0x34 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA10.o)
+                0x0601ed60                slSquartDbl
+ *fill*         0x0601ed94        0xc 
+ SLPROG         0x0601eda0       0x24 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA25.o)
+                0x0601eda0                slTransposeMatrix
+ *fill*         0x0601edc4        0xc 
+ SLPROG         0x0601edd0       0x22 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA40.o)
+                0x0601edd0                slCalcVector
+ *fill*         0x0601edf2        0xe 
+ SLPROG         0x0601ee00      0xbd0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB000.o)
+                0x0601ee00                slInitScroll
+                0x0601ef20                setASC_1to8
+                0x0601ef50                setASC_4to8
+                0x0601f060                TVSizeTbl
+                0x0601f0e0                TVModeTbl
+                0x0601f2b8                SGL_ASCII_CG
+ SLPROG         0x0601f9d0       0xd4 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB035.o)
+                0x0601f9d0                sl1MapRA
+                0x0601fa62                rbank_set
+ *fill*         0x0601faa4        0xc 
+ SLPROG         0x0601fab0      0x134 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC00.o)
+                0x0601fab0                slInitSprite
+ *fill*         0x0601fbe4        0xc 
+ SLPROG         0x0601fbf0       0xac ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC13.o)
+                0x0601fbf0                slPutPolygonS
+ *fill*         0x0601fc9c        0x4 
+ SLPROG         0x0601fca0       0x10 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD02.o)
+                0x0601fca0                slDMAWait
+ SLPROG         0x0601fcb0       0xc0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD19.o)
+                0x0601fcb0                DMA_ScuMemCopy
+ SLPROG         0x0601fd70      0x75c ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o)
+                0x06020060                slInitInterrupt
+ *fill*         0x060204cc        0x4 
+ SLPROG         0x060204d0       0xf0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH03.o)
+                0x06020534                slSmpcIntBack
+                0x060205c0                        __slprog_end = .
+
+.tors           0x060205c0       0x10
+                0x060205c0                        ___ctors = .
+ *(.ctors*)
+ .ctors         0x060205c0        0x4 src/main.o
+                0x060205c4                        ___ctors_end = .
+                0x060205c4                        ___dtors = .
+ *(.dtors*)
+ .dtors         0x060205c4        0x4 src/main.o
+                0x060205c8                        ___dtors_end = .
+
+.data           0x060205d0      0x470
+ *(.data*)
+ .data          0x060205d0       0x28 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+                0x060205d0                PCM_Work
+                0x060205d4                SlaveStack
+                0x060205d8                TransList
+                0x060205dc                MasterStack
+                0x060205e0                SortList
+                0x060205e4                Zbuffer
+                0x060205e8                SpriteBuf
+                0x060205ec                Pbuffer
+                0x060205f0                CLOfstBuf
+                0x060205f4                CommandBuf
+ .data          0x060205f8       0x40 src/main.o
+                0x060205f8                shadingTable
+ .data._ZZN3SRL5Input3Gun11SynchronizeEvE14secondPlayerId
+                0x06020638        0x1 src/main.o
+                0x06020638                SRL::Input::Gun::Synchronize()::secondPlayerId
+ .data._ZZN3SRL5Input3Gun11SynchronizeEvE13firstPlayerId
+                0x06020639        0x1 src/main.o
+                0x06020639                SRL::Input::Gun::Synchronize()::firstPlayerId
+ *fill*         0x0602063a        0x2 
+ .data._ZN3SRL5Input10Management11PeripheralsE
+                0x0602063c      0x120 src/main.o
+                0x0602063c                SRL::Input::Management::Peripherals
+ .data._ZN3SRL5Input10Management24PeripheralsPreviousStateE
+                0x0602075c      0x120 src/main.o
+                0x0602075c                SRL::Input::Management::PeripheralsPreviousState
+ .data._ZN3SRL4VDP213ActiveScrollsE
+                0x0602087c        0x2 src/main.o
+                0x0602087c                SRL::VDP2::ActiveScrolls
+ .data._ZN3SRL5ASCII7maxFontE
+                0x0602087e        0x1 src/main.o
+                0x0602087e                SRL::ASCII::maxFont
+ .data._ZN3SRL5ASCII12maxYPositionE
+                0x0602087f        0x1 src/main.o
+                0x0602087f                SRL::ASCII::maxYPosition
+ .data._ZN3SRL5ASCII12maxXPositionE
+                0x06020880        0x1 src/main.o
+                0x06020880                SRL::ASCII::maxXPosition
+ *fill*         0x06020881        0x1 
+ .data._ZN3SRL5ASCII8fontBankE
+                0x06020882        0x2 src/main.o
+                0x06020882                SRL::ASCII::fontBank
+ .data._ZN3SRL5ASCII9colorBankE
+                0x06020884        0x2 src/main.o
+                0x06020884                SRL::ASCII::colorBank
+ *fill*         0x06020886        0x2 
+ .data._ZN3SRL5ASCII7tileMapE
+                0x06020888        0x4 src/main.o
+                0x06020888                SRL::ASCII::tileMap
+ .data._ZN3SRL4CRAM11BaseAddressE
+                0x0602088c        0x4 src/main.o
+                0x0602088c                SRL::CRAM::BaseAddress
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CMN.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_REG.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SUB.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_BUF.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDB.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_DIR.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DRV.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DEV.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SEL.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIF.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIO.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CFS.O)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA17.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA18.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA19.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA20.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA21.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA27.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA39.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB001.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB002.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB015.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB016.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB034.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB038.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB058.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB063.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB200.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC01.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC02.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC04.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC05.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC08.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC20.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD00.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD01.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD03.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD15.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD16.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD17.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD18.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglG00.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH02.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH04.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI01.o)
+ .data          0x06020890        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI04.o)
+ .data          0x06020890       0x80 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o)
+                0x06020890                IntPrioMask
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ00.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ02.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ03.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ04.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ05.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglK01.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM01.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA00.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA01.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA03.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA10.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA25.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA40.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB000.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB035.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC00.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC13.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD02.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD19.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH03.o)
+ .data          0x06020910        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt_n.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftlt.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_sdivsi3.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_udivsi3.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .data          0x06020910        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .data          0x06020910      0x120 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+                0x06020910                _impure_ptr
+                0x06020914                _impure_data
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcpy.o)
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memset.o)
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .data          0x06020a30        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .data          0x06020a30        0xc C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+                0x06020a30                __sglue
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_lshiftrt.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .data          0x06020a3c        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+                0x06020a3c                        __edata = .
+
+.rodata         0x06020a40      0x370
+ *(.rodata*)
+ .rodata        0x06020a40       0x18 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+                0x06020a40                PCM_WkSize
+                0x06020a44                MaxVertices
+                0x06020a46                MaxPolygons
+                0x06020a48                SortListSize
+                0x06020a4c                SpriteBufSize
+                0x06020a50                EventSize
+                0x06020a52                MaxEvents
+                0x06020a54                WorkSize
+                0x06020a56                MaxWorks
+ .rodata._ZN3SRL5Sound8Hardware10InitializeEv.str1.4
+                0x06020a58       0x25 src/main.o
+ *fill*         0x06020a7d        0x3 
+ .rodata._ZN11ModelObjectC2EPKcj.str1.4
+                0x06020a80       0x26 src/main.o
+ *fill*         0x06020aa6        0x2 
+ .rodata.str1.4
+                0x06020aa8       0xc5 src/main.o
+ *fill*         0x06020b6d        0x3 
+ .rodata._ZN3SRL4Math12Trigonometry8sinTableE
+                0x06020b70      0x200 src/main.o
+                0x06020b70                SRL::Math::Trigonometry::sinTable
+ .rodata.str1.4
+                0x06020d70       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ *fill*         0x06020d83        0x1 
+ .rodata.str1.4
+                0x06020d84       0x25 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+
+.bss            0x06020db0     0x6928
+                0x06020db0                        __bstart = .
+ *(.bss*)
+ .bss           0x06020db0      0x320 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+                0x06020db0                RemainWork
+                0x06020dc0                WorkBuf
+                0x06020ec0                RemainEvent
+                0x06020ed0                EventBuf
+ .bss           0x060210d0        0x0 src/main.o
+ .bss._ZGVN3SRL4Core8OnVblankE
+                0x060210d0        0x8 src/main.o
+                0x060210d0                guard variable for SRL::Core::OnVblank
+ .bss._ZGVN3SRL4VDP212ScrollScreenINS0_4RBG0ELs5ELt16EE11TilePaletteE
+                0x060210d8        0x8 src/main.o
+                0x060210d8                guard variable for SRL::VDP2::ScrollScreen<SRL::VDP2::RBG0, (short)5, (unsigned short)16>::TilePalette
+ .bss._ZGVN3SRL4VDP212ScrollScreenINS0_4NBG3ELs2ELt8EE11TilePaletteE
+                0x060210e0        0x8 src/main.o
+                0x060210e0                guard variable for SRL::VDP2::ScrollScreen<SRL::VDP2::NBG3, (short)2, (unsigned short)8>::TilePalette
+ .bss._ZGVN3SRL4VDP212ScrollScreenINS0_4NBG2ELs3ELt4EE11TilePaletteE
+                0x060210e8        0x8 src/main.o
+                0x060210e8                guard variable for SRL::VDP2::ScrollScreen<SRL::VDP2::NBG2, (short)3, (unsigned short)4>::TilePalette
+ .bss._ZGVN3SRL4VDP212ScrollScreenINS0_4NBG1ELs0ELt2EE11TilePaletteE
+                0x060210f0        0x8 src/main.o
+                0x060210f0                guard variable for SRL::VDP2::ScrollScreen<SRL::VDP2::NBG1, (short)0, (unsigned short)2>::TilePalette
+ .bss._ZGVN3SRL4VDP212ScrollScreenINS0_4NBG0ELs1ELt1EE11TilePaletteE
+                0x060210f8        0x8 src/main.o
+                0x060210f8                guard variable for SRL::VDP2::ScrollScreen<SRL::VDP2::NBG0, (short)1, (unsigned short)1>::TilePalette
+ .bss._ZGVN3SRL4VDP18MetadataE
+                0x06021100        0x8 src/main.o
+                0x06021100                guard variable for SRL::VDP1::Metadata
+ .bss._ZGVN3SRL4VDP18TexturesE
+                0x06021108        0x8 src/main.o
+                0x06021108                guard variable for SRL::VDP1::Textures
+ .bss._ZN3SRL7Scene2D7EffectsE
+                0x06021110        0x4 src/main.o
+                0x06021110                SRL::Scene2D::Effects
+ .bss._ZN3SRL4Core8OnVblankE
+                0x06021114       0x18 src/main.o
+                0x06021114                SRL::Core::OnVblank
+ .bss._ZN3SRL5Input3Gun26Player2MegadriveGunControlE
+                0x0602112c        0x1 src/main.o
+                0x0602112c                SRL::Input::Gun::Player2MegadriveGunControl
+ .bss._ZN3SRL5Input3Gun26Player1MegadriveGunControlE
+                0x0602112d        0x1 src/main.o
+                0x0602112d                SRL::Input::Gun::Player1MegadriveGunControl
+ *fill*         0x0602112e        0x2 
+ .bss._ZN3SRL4VDP212ScrollScreenINS0_4RBG0ELs5ELt16EE11TilePaletteE
+                0x06021130        0x8 src/main.o
+                0x06021130                SRL::VDP2::ScrollScreen<SRL::VDP2::RBG0, (short)5, (unsigned short)16>::TilePalette
+ .bss._ZN3SRL4VDP212ScrollScreenINS0_4NBG3ELs2ELt8EE11TilePaletteE
+                0x06021138        0x8 src/main.o
+                0x06021138                SRL::VDP2::ScrollScreen<SRL::VDP2::NBG3, (short)2, (unsigned short)8>::TilePalette
+ .bss._ZN3SRL4VDP212ScrollScreenINS0_4NBG2ELs3ELt4EE11TilePaletteE
+                0x06021140        0x8 src/main.o
+                0x06021140                SRL::VDP2::ScrollScreen<SRL::VDP2::NBG2, (short)3, (unsigned short)4>::TilePalette
+ .bss._ZN3SRL4VDP212ScrollScreenINS0_4NBG1ELs0ELt2EE11TilePaletteE
+                0x06021148        0x8 src/main.o
+                0x06021148                SRL::VDP2::ScrollScreen<SRL::VDP2::NBG1, (short)0, (unsigned short)2>::TilePalette
+ .bss._ZN3SRL4VDP212ScrollScreenINS0_4NBG0ELs1ELt1EE11TilePaletteE
+                0x06021150        0x8 src/main.o
+                0x06021150                SRL::VDP2::ScrollScreen<SRL::VDP2::NBG0, (short)1, (unsigned short)1>::TilePalette
+ .bss._ZN3SRL4VDP18MetadataE
+                0x06021158     0x1f40 src/main.o
+                0x06021158                SRL::VDP1::Metadata
+ .bss._ZN3SRL4VDP18TexturesE
+                0x06023098     0x1f40 src/main.o
+                0x06023098                SRL::VDP1::Textures
+ .bss._ZN3SRL4VDP111HeapPointerE
+                0x06024fd8        0x2 src/main.o
+                0x06024fd8                SRL::VDP1::HeapPointer
+ *fill*         0x06024fda        0x2 
+ .bss._ZN3SRL5Debug10lineBufferE
+                0x06024fdc       0x2d src/main.o
+                0x06024fdc                SRL::Debug::lineBuffer
+ *fill*         0x06025009        0x1 
+ .bss._ZN3SRL4CRAM14AllocationMaskE
+                0x0602500a       0x10 src/main.o
+                0x0602500a                SRL::CRAM::AllocationMask
+ .bss._ZN3SRL2Cd13isInitializedE
+                0x0602501a        0x1 src/main.o
+                0x0602501a                SRL::Cd::isInitialized
+ *fill*         0x0602501b        0x1 
+ .bss._ZN3SRL2Cd7GfsWorkE
+                0x0602501c      0xd08 src/main.o
+                0x0602501c                SRL::Cd::GfsWork
+ .bss._ZN3SRL2Cd17GfsDirectoryNamesE
+                0x06025d24     0x1800 src/main.o
+                0x06025d24                SRL::Cd::GfsDirectoryNames
+ .bss._ZN3SRL2Cd14GfsDirectoriesE
+                0x06027524        0xc src/main.o
+                0x06027524                SRL::Cd::GfsDirectories
+ .bss._ZN3SRL6Memory10LowWorkRam4zoneE
+                0x06027530        0x8 src/main.o
+                0x06027530                SRL::Memory::LowWorkRam::zone
+ .bss._ZN3SRL6Memory11HighWorkRam4zoneE
+                0x06027538        0x8 src/main.o
+                0x06027538                SRL::Memory::HighWorkRam::zone
+ .bss           0x06027540        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CMN.O)
+ .bss           0x06027540        0x2 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_REG.O)
+ *fill*         0x06027542        0xe 
+ .bss           0x06027550        0xc ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SUB.O)
+ *fill*         0x0602755c        0x4 
+ .bss           0x06027560        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS.O)
+ .bss           0x06027560        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_BUF.O)
+ .bss           0x06027560        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDB.O)
+ .bss           0x06027560        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDC.O)
+ .bss           0x06027560        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_CDF.O)
+ .bss           0x06027560        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_DIR.O)
+ .bss           0x06027560        0xc ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(GFS_TRN.O)
+ *fill*         0x0602756c        0x4 
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DRV.O)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_DEV.O)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_SEL.O)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIF.O)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_BIO.O)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBCD.A(CDC_CFS.O)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA16.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA17.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA18.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA19.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA20.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA21.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA27.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA39.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB001.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB002.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB015.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB016.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB034.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB038.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB058.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB063.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB200.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC02.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC04.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC05.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC08.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC20.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD03.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD15.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD16.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD17.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD18.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglG00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH02.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH04.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI04.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglIc0.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ02.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ03.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ04.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglJ05.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglK01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglM01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA01.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA03.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA10.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA25.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglA40.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB000.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglB035.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglC13.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD02.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglD19.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglI00.o)
+ .bss           0x06027570        0x0 ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A(sglH03.o)
+ .bss           0x06027570       0x28 ../../saturnringlib/../modules/sgl/LIB/LIBSND.A(snd_main.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftrt_n.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_ashiftlt.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_sdivsi3.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_udivsi3.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcpy.o)
+ .bss           0x06027598        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memset.o)
+ .bss           0x06027598        0x8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+                0x06027598                __malloc_sbrk_start
+                0x0602759c                __malloc_free_list
+ .bss           0x060275a0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .bss           0x060275a0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .bss           0x060275a0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .bss           0x060275a0      0x130 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+                0x060275a0                __sf
+                0x060276cc                __stdio_exit_handler
+ .bss           0x060276d0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .bss           0x060276d0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .bss           0x060276d0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .bss           0x060276d0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .bss           0x060276d0        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .bss           0x060276d0        0x4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+                0x060276d0                errno
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a(_lshiftrt.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .bss           0x060276d4        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .bss           0x060276d4        0x4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .bss           0x060276d8        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .bss           0x060276d8        0x0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+                0x060276d8                        __bend = .
+                0x060276d8                        _end = .
+
+HEAP            0x060276e0        0x0
+                0x060276e0                        __heap_start = .
+
+WORK_AREA_DUMMY
+                0x00000000   0x1e9280
+ *(WORK_AREA_DUMMY)
+ WORK_AREA_DUMMY
+                0x00000000   0x1e9278 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+                0x00000000                WORK_AREA_DUMMY
+
+WORK_AREA       0x060c0000   0x1ea000
+                0x060c0000                        __heap_end = .
+ *(WORK_AREA)
+ WORK_AREA      0x060c0000   0x1e9278 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+                0x060c0000                WorkArea
+                0x062a9278                        __work_area_end = .
+LOAD ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+LOAD src/main.o
+LOAD ../../saturnringlib/../modules/sgl/LIB/LIBCPK.A
+LOAD ../../saturnringlib/../modules/sgl/LIB/SEGA_SYS.A
+LOAD ../../saturnringlib/../modules/sgl/LIB/LIBCD.A
+LOAD ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A
+LOAD ../../saturnringlib/../modules/sgl/LIB/LIBSND.A
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc-Os-4-200.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc-Os-4-200.a
+START GROUP
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0\libgcc-Os-4-200.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a
+LOAD C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a
+END GROUP
+OUTPUT(./BuildDrop/Interlagos_racing.elf coff-sh)
+
+.comment        0x00000000      0x2c0
+ .comment       0x00000000       0x13 ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+ .comment       0x00000013       0x13 src/main.o
+ .comment       0x00000026       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .comment       0x00000039       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .comment       0x0000004c       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .comment       0x0000005f       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .comment       0x00000072       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .comment       0x00000085       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .comment       0x00000098       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .comment       0x000000ab       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .comment       0x000000be       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .comment       0x000000d1       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .comment       0x000000e4       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .comment       0x000000f7       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .comment       0x0000010a       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .comment       0x0000011d       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .comment       0x00000130       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .comment       0x00000143       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .comment       0x00000156       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .comment       0x00000169       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .comment       0x0000017c       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .comment       0x0000018f       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .comment       0x000001a2       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .comment       0x000001b5       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .comment       0x000001c8       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .comment       0x000001db       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .comment       0x000001ee       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .comment       0x00000201       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .comment       0x00000214       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .comment       0x00000227       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .comment       0x0000023a       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .comment       0x0000024d       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .comment       0x00000260       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .comment       0x00000273       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .comment       0x00000286       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .comment       0x00000299       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .comment       0x000002ac       0x13 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_info     0x00000000     0xc830
+ .debug_info    0x00000000       0xd8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .debug_info    0x000000d8      0x86e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_info    0x00000946       0xf0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_info    0x00000a36       0xd2 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_info    0x00000b08      0x101 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_info    0x00000c09      0x9d1 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_info    0x000015da      0x704 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .debug_info    0x00001cde      0x7c2 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_info    0x000024a0      0x985 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_info    0x00002e25      0x708 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .debug_info    0x0000352d      0xf9c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_info    0x000044c9      0xd36 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_info    0x000051ff      0xcc2 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_info    0x00005ec1      0x7a7 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_info    0x00006668      0xa28 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_info    0x00007090       0xfc C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_info    0x0000718c       0xff C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_info    0x0000728b      0x73d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_info    0x000079c8      0x7f0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_info    0x000081b8      0x781 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_info    0x00008939      0x798 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_info    0x000090d1      0x763 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_info    0x00009834      0x79e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_info    0x00009fd2      0x83a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_info    0x0000a80c      0x894 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_info    0x0000b0a0      0x973 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_info    0x0000ba13      0x775 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_info    0x0000c188       0xd8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .debug_info    0x0000c260       0xc9 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .debug_info    0x0000c329       0xe4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .debug_info    0x0000c40d       0xf0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .debug_info    0x0000c4fd       0xf6 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .debug_info    0x0000c5f3       0xa4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .debug_info    0x0000c697       0xf6 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .debug_info    0x0000c78d       0x9e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_abbrev   0x00000000     0x37d0
+ .debug_abbrev  0x00000000       0x99 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .debug_abbrev  0x00000099      0x23d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_abbrev  0x000002d6       0x8a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_abbrev  0x00000360       0x76 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_abbrev  0x000003d6       0xa1 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_abbrev  0x00000477      0x28a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_abbrev  0x00000701      0x185 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .debug_abbrev  0x00000886      0x233 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_abbrev  0x00000ab9      0x27f C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_abbrev  0x00000d38      0x1bd C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .debug_abbrev  0x00000ef5      0x329 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_abbrev  0x0000121e      0x297 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_abbrev  0x000014b5      0x3a4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_abbrev  0x00001859      0x1d0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_abbrev  0x00001a29      0x255 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_abbrev  0x00001c7e       0xb8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_abbrev  0x00001d36       0xa6 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_abbrev  0x00001ddc      0x1e6 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_abbrev  0x00001fc2      0x22d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_abbrev  0x000021ef      0x1f7 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_abbrev  0x000023e6      0x1e6 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_abbrev  0x000025cc      0x20d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_abbrev  0x000027d9      0x1eb C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_abbrev  0x000029c4      0x26c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_abbrev  0x00002c30      0x247 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_abbrev  0x00002e77      0x2db C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_abbrev  0x00003152      0x1c9 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_abbrev  0x0000331b       0x93 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .debug_abbrev  0x000033ae       0x82 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .debug_abbrev  0x00003430       0x94 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .debug_abbrev  0x000034c4       0xa6 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .debug_abbrev  0x0000356a       0xaf C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .debug_abbrev  0x00003619       0x9b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .debug_abbrev  0x000036b4       0xaf C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .debug_abbrev  0x00003763       0x66 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_aranges  0x00000000      0x460
+ .debug_aranges
+                0x00000000       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .debug_aranges
+                0x00000020       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_aranges
+                0x00000040       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_aranges
+                0x00000060       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_aranges
+                0x00000080       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_aranges
+                0x000000a0       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_aranges
+                0x000000c0       0x18 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .debug_aranges
+                0x000000d8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_aranges
+                0x000000f8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_aranges
+                0x00000118       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .debug_aranges
+                0x00000138       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_aranges
+                0x00000158       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_aranges
+                0x00000178       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_aranges
+                0x00000198       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_aranges
+                0x000001b8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_aranges
+                0x000001d8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_aranges
+                0x000001f8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_aranges
+                0x00000218       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_aranges
+                0x00000238       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_aranges
+                0x00000258       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_aranges
+                0x00000278       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_aranges
+                0x00000298       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_aranges
+                0x000002b8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_aranges
+                0x000002d8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_aranges
+                0x000002f8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_aranges
+                0x00000318       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_aranges
+                0x00000338       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_aranges
+                0x00000358       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .debug_aranges
+                0x00000378       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .debug_aranges
+                0x00000398       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .debug_aranges
+                0x000003b8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .debug_aranges
+                0x000003d8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .debug_aranges
+                0x000003f8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .debug_aranges
+                0x00000418       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .debug_aranges
+                0x00000438       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_line     0x00000000     0x4c50
+ .debug_line    0x00000000      0x164 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .debug_line    0x00000164      0x30a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_line    0x0000046e      0x167 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_line    0x000005d5      0x17c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_line    0x00000751      0x181 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_line    0x000008d2      0x3d7 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_line    0x00000ca9      0x138 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .debug_line    0x00000de1      0x21c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_line    0x00000ffd      0x4d1 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_line    0x000014ce      0x1af C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .debug_line    0x0000167d      0x7c9 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_line    0x00001e46      0x661 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_line    0x000024a7      0x46e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_line    0x00002915      0x20e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_line    0x00002b23      0x27b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_line    0x00002d9e      0x15d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_line    0x00002efb      0x184 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_line    0x0000307f      0x1f5 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_line    0x00003274      0x252 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_line    0x000034c6      0x1fb C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_line    0x000036c1      0x1fa C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_line    0x000038bb      0x1f5 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_line    0x00003ab0      0x1fb C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_line    0x00003cab      0x2ef C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_line    0x00003f9a      0x257 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_line    0x000041f1      0x3b7 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_line    0x000045a8      0x1d8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_line    0x00004780       0x9a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .debug_line    0x0000481a       0x9b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .debug_line    0x000048b5       0x99 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .debug_line    0x0000494e       0x9a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .debug_line    0x000049e8       0x99 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .debug_line    0x00004a81       0xa3 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .debug_line    0x00004b24       0x9a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .debug_line    0x00004bbe       0x8c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_str      0x00000000     0x7aa0
+ .debug_str     0x00000000      0x168 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .debug_str     0x00000168      0x4a8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_str     0x00000610      0x165 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_str     0x00000775      0x167 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_str     0x000008dc      0x183 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_str     0x00000a5f      0x4de C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_str     0x00000f3d      0x45c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-impure.o)
+ .debug_str     0x00001399      0x473 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_str     0x0000180c      0x538 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_str     0x00001d44      0x45c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .debug_str     0x000021a0      0x780 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_str     0x00002920      0x724 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_str     0x00003044      0x5ef C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_str     0x00003633      0x467 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_str     0x00003a9a      0x4c4 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_str     0x00003f5e      0x175 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_str     0x000040d3      0x180 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_str     0x00004253      0x44d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_str     0x000046a0      0x476 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_str     0x00004b16      0x45b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_str     0x00004f71      0x45b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_str     0x000053cc      0x460 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_str     0x0000582c      0x45d C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_str     0x00005c89      0x4d7 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_str     0x00006160      0x4cd C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_str     0x0000662d      0x4de C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_str     0x00006b0b      0x4a0 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_str     0x00006fab      0x176 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .debug_str     0x00007121      0x172 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .debug_str     0x00007293      0x16c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .debug_str     0x000073ff      0x174 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .debug_str     0x00007573      0x171 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .debug_str     0x000076e4       0xfb C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .debug_str     0x000077df      0x174 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .debug_str     0x00007953      0x147 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_frame    0x00000000      0xbf0
+ .debug_frame   0x00000000       0x28 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-abort.o)
+ .debug_frame   0x00000028       0xa8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_frame   0x000000d0       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_frame   0x000000f0       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_frame   0x00000110       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_frame   0x00000130      0x118 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_frame   0x00000248       0x4c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_frame   0x00000294       0xac C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_frame   0x00000340       0x30 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mlock.o)
+ .debug_frame   0x00000370      0x130 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_frame   0x000004a0       0xd8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_frame   0x00000578       0xec C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_frame   0x00000664       0x6c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_frame   0x000006d0       0xb8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_frame   0x00000788       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_frame   0x000007a8       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_frame   0x000007c8       0x3c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_frame   0x00000804       0x70 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_frame   0x00000874       0x3c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_frame   0x000008b0       0x3c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_frame   0x000008ec       0x3c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_frame   0x00000928       0x3c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_frame   0x00000964       0x58 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_frame   0x000009bc       0x74 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_frame   0x00000a30       0x9c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_frame   0x00000acc       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_frame   0x00000aec       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(close.o)
+ .debug_frame   0x00000b0c       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(getpid.o)
+ .debug_frame   0x00000b2c       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(kill.o)
+ .debug_frame   0x00000b4c       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(lseek.o)
+ .debug_frame   0x00000b6c       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(read.o)
+ .debug_frame   0x00000b8c       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+ .debug_frame   0x00000bac       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(write.o)
+ .debug_frame   0x00000bcc       0x20 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(_exit.o)
+
+.debug_loclists
+                0x00000000     0x1b90
+ .debug_loclists
+                0x00000000      0x147 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-snprintf.o)
+ .debug_loclists
+                0x00000147       0xbb C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memcmp.o)
+ .debug_loclists
+                0x00000202       0x92 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncmp.o)
+ .debug_loclists
+                0x00000294       0x4f C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-strncpy.o)
+ .debug_loclists
+                0x000002e3      0x289 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signal.o)
+ .debug_loclists
+                0x0000056c       0x66 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-signalr.o)
+ .debug_loclists
+                0x000005d2      0x1aa C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_loclists
+                0x0000077c      0x45b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_loclists
+                0x00000bd7      0x36b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_loclists
+                0x00000f42      0x177 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_loclists
+                0x000010b9       0x8c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fwalk.o)
+ .debug_loclists
+                0x00001145      0x249 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-stdio.o)
+ .debug_loclists
+                0x0000138e       0xa3 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memchr.o)
+ .debug_loclists
+                0x00001431       0xcd C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-memmove.o)
+ .debug_loclists
+                0x000014fe       0x39 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-closer.o)
+ .debug_loclists
+                0x00001537       0x71 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_loclists
+                0x000015a8       0x6b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-lseekr.o)
+ .debug_loclists
+                0x00001613       0x6b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-readr.o)
+ .debug_loclists
+                0x0000167e       0x39 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-sbrkr.o)
+ .debug_loclists
+                0x000016b7       0x6b C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-writer.o)
+ .debug_loclists
+                0x00001722       0xb8 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-freer.o)
+ .debug_loclists
+                0x000017da      0x13e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reallocr.o)
+ .debug_loclists
+                0x00001918      0x210 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)
+ .debug_loclists
+                0x00001b28       0x36 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-msizer.o)
+ .debug_loclists
+                0x00001b5e       0x2a C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libnosys.a(sbrk.o)
+
+.debug_rnglists
+                0x00000000      0x170
+ .debug_rnglists
+                0x00000000       0x26 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-mallocr.o)
+ .debug_rnglists
+                0x00000026       0x35 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-svfprintf.o)
+ .debug_rnglists
+                0x0000005b       0x63 C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-nano-vfprintf_i.o)
+ .debug_rnglists
+                0x000000be       0x4c C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-findfp.o)
+ .debug_rnglists
+                0x0000010a       0x1e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-reent.o)
+ .debug_rnglists
+                0x00000128       0x3e C:/saturn/SaturnRingLib-main/Compiler/sh2eb-elf/bin/../lib/gcc/sh-elf/14.2.0/../../../../sh-elf/lib\libc.a(libc_a-fflush.o)

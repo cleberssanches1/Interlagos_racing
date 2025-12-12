@@ -1,0 +1,216 @@
+#include <srl.hpp>
+#include "modelObject.hpp"
+#include <vector>
+#include <array>
+
+using namespace SRL::Types;
+using namespace SRL::Math::Types;
+
+// Simple shading table
+HighColor shadingTable[32] = {
+    HighColor::FromRGB555(0, 0, 0), HighColor::FromRGB555(1, 1, 1),
+    HighColor::FromRGB555(2, 2, 2), HighColor::FromRGB555(3, 3, 3),
+    HighColor::FromRGB555(4, 4, 4), HighColor::FromRGB555(5, 5, 5),
+    HighColor::FromRGB555(6, 6, 6), HighColor::FromRGB555(7, 7, 7),
+    HighColor::FromRGB555(8, 8, 8), HighColor::FromRGB555(9, 9, 9),
+    HighColor::FromRGB555(10, 10, 10), HighColor::FromRGB555(11, 11, 11),
+    HighColor::FromRGB555(12, 12, 12), HighColor::FromRGB555(13, 13, 13),
+    HighColor::FromRGB555(14, 14, 14), HighColor::FromRGB555(15, 15, 15),
+    HighColor::FromRGB555(16, 16, 16), HighColor::FromRGB555(17, 17, 17),
+    HighColor::FromRGB555(18, 18, 18), HighColor::FromRGB555(19, 19, 19),
+    HighColor::FromRGB555(20, 20, 20), HighColor::FromRGB555(21, 21, 21),
+    HighColor::FromRGB555(22, 22, 22), HighColor::FromRGB555(23, 23, 23),
+    HighColor::FromRGB555(24, 24, 24), HighColor::FromRGB555(25, 25, 25),
+    HighColor::FromRGB555(26, 26, 26), HighColor::FromRGB555(27, 27, 27),
+    HighColor::FromRGB555(28, 28, 28), HighColor::FromRGB555(29, 29, 29),
+    HighColor::FromRGB555(30, 30, 30), HighColor::FromRGB555(31, 31, 31)
+};
+
+int main()
+{
+    SRL::Core::Initialize(HighColor(0x10, 0x20, 0x18));
+    SRL::Debug::Print(1, 1, "CAR1.NYA viewer");
+
+    ModelObject car("CAR1.NYA", 0);
+    bool isSmoothMesh = car.IsSmooth();
+    uint32_t faceCount = car.GetFaceCount();
+    uint32_t vertexCount = car.GetVertexCount();
+    uint32_t meshCount = car.GetMeshCount();
+    SRL::Debug::Print(1, 2, "Faces:%u Verts:%u Meshes:%u Smooth:%d", faceCount, vertexCount, meshCount, isSmoothMesh ? 1 : 0);
+
+    // Simple frustum
+    SRL::Scene3D::SetPerspective(Angle::FromDegrees(60.0f));
+
+    // Camera fixed pointing to origin (reset to neutral)
+    // Em coordenadas da Saturn, Y positivo é para baixo; use Y negativo para ficar acima do modelo
+    // Reposiciona a câmera para uma visão superior moderada
+    Angle camYaw = Angle::FromDegrees(180.0f);   // atrás do carro
+    Angle camPitch = Angle::FromDegrees(0.0f);   // mesma altura do carro
+    Fxp camRadius = Fxp(60.0f);                  // distância inicial
+    Vector3D cameraLocation = Vector3D(0.0, 0.0, -50.0f); // será recalculada no loop
+    Vector3D camStrafe = Vector3D(0.0, 0.0, 0.0); // deslocamento lateral adicional
+    Vector3D camOffset = Vector3D(0.0, 0.0, 0.0); // deslocamento absoluto
+
+    Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
+    SRL::Scene3D::SetDirectionalLight(lightDirection);
+
+    // Prepare Gouraud/light tables if smooth
+    std::vector<HighColor> workTable;
+    std::vector<uint8_t> vertWork;
+    if (isSmoothMesh)
+    {
+        workTable.resize(faceCount << 2);
+        vertWork.resize(vertexCount);
+        SRL::Scene3D::LightInitGouraudTable(0, vertWork.data(), workTable.data(), faceCount);
+        SRL::Scene3D::LightSetGouraudTable(shadingTable);
+        SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
+    }
+
+    // Draw order: wheels first (1..4), then body (0)
+    size_t order[] = {1, 2, 3, 4, 0};
+    size_t orderCount = (meshCount < 5) ? meshCount : 5;
+    // Rotation of the whole model
+    Angle rotY = Angle::FromDegrees(0);
+    Angle rotStep = Angle::FromDegrees(0.0f); // keep static for debugging visibility
+    // Center of model from bounds (approx) to bring into view
+    Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
+    SRL::Debug::Print(1, 3, "Center: %d, %d, %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
+
+    // Input e cálculo de câmera orbitando o modelo
+    SRL::Input::Digital pad(0);
+    auto computeCamera = [&](Angle yaw, Angle pitch, Fxp radius) -> Vector3D
+    {
+        Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
+        Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
+        Fxp sinPitch = SRL::Math::Trigonometry::Sin(pitch);
+        Fxp cosPitch = SRL::Math::Trigonometry::Cos(pitch);
+        return Vector3D(
+            radius * sinYaw * cosPitch,
+            radius * sinPitch,
+            radius * cosYaw * cosPitch);
+    };
+
+    // Compute bounds for debugging
+    SRL::Math::Types::Vector3D minV = Vector3D(32767, 32767, 32767);
+    SRL::Math::Types::Vector3D maxV = Vector3D(-32768, -32768, -32768);
+    for (size_t m = 0; m < meshCount; ++m)
+    {
+        auto* mesh = car.GetMesh<SRL::Types::SmoothMesh>(m);
+        for (size_t v = 0; v < mesh->VertexCount; ++v)
+        {
+            const auto& p = mesh->Vertices[v];
+            minV.X = SRL::Math::Min(minV.X, p.X);
+            minV.Y = SRL::Math::Min(minV.Y, p.Y);
+            minV.Z = SRL::Math::Min(minV.Z, p.Z);
+            maxV.X = SRL::Math::Max(maxV.X, p.X);
+            maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
+            maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
+        }
+    }
+    SRL::Debug::Print(1, 6, "Min: %d %d %d", minV.X.As<int16_t>(), minV.Y.As<int16_t>(), minV.Z.As<int16_t>());
+    SRL::Debug::Print(1, 7, "Max: %d %d %d", maxV.X.As<int16_t>(), maxV.Y.As<int16_t>(), maxV.Z.As<int16_t>());
+
+    // posição inicial da câmera calculada a partir dos ângulos/raio
+    cameraLocation = computeCamera(camYaw, camPitch, camRadius) + camStrafe;
+
+    while (1)
+    {
+        // Controles de câmera (hold Z = rotacionar/pitch, hold Y = aproximar/afastar/mover lateral)
+        const Angle yawStep = Angle::FromDegrees(2.0f);
+        const Angle pitchStep = Angle::FromDegrees(2.0f);
+        const Fxp radiusStep = Fxp(2.0f);
+        const Fxp strafeStep = Fxp(2.0f);
+        bool zHeld = pad.IsHeld(SRL::Input::Digital::Button::Z);
+        bool yHeld = pad.IsHeld(SRL::Input::Digital::Button::Y);
+
+        if (zHeld)
+        {
+            if (pad.IsHeld(SRL::Input::Digital::Button::Up))   camPitch -= pitchStep;
+            if (pad.IsHeld(SRL::Input::Digital::Button::Down)) camPitch += pitchStep;
+            if (pad.IsHeld(SRL::Input::Digital::Button::Left)) camYaw -= yawStep;
+            if (pad.IsHeld(SRL::Input::Digital::Button::Right)) camYaw += yawStep;
+        }
+        if (yHeld)
+        {
+            if (pad.IsHeld(SRL::Input::Digital::Button::Up))   camRadius -= radiusStep;
+            if (pad.IsHeld(SRL::Input::Digital::Button::Down)) camRadius += radiusStep;
+            if (pad.IsHeld(SRL::Input::Digital::Button::Left))
+            {
+                // deslocamento lateral com base no yaw (para mover sem girar)
+                Fxp sinYaw = SRL::Math::Trigonometry::Sin(camYaw);
+                Fxp cosYaw = SRL::Math::Trigonometry::Cos(camYaw);
+                camStrafe += Vector3D(-cosYaw * strafeStep, Fxp(0), sinYaw * strafeStep);
+            }
+            if (pad.IsHeld(SRL::Input::Digital::Button::Right))
+            {
+                Fxp sinYaw = SRL::Math::Trigonometry::Sin(camYaw);
+                Fxp cosYaw = SRL::Math::Trigonometry::Cos(camYaw);
+                camStrafe += Vector3D(cosYaw * strafeStep, Fxp(0), -sinYaw * strafeStep);
+            }
+        }
+        // Limites simples
+        if (camRadius < Fxp(8.0f))  camRadius = Fxp(8.0f);
+        if (camRadius > Fxp(200.0f)) camRadius = Fxp(200.0f);
+        // clamp rotacao em +/-90 graus
+        const Angle yawMin = Angle::FromDegrees(90.0f);
+        const Angle yawMax = Angle::FromDegrees(270.0f);
+        const Angle pitchMin = Angle::FromDegrees(-90.0f);
+        const Angle pitchMax = Angle::FromDegrees(90.0f);
+        if (camYaw < yawMin) camYaw = yawMin;
+        if (camYaw > yawMax) camYaw = yawMax;
+        if (camPitch < pitchMin) camPitch = pitchMin;
+        if (camPitch > pitchMax) camPitch = pitchMax;
+
+        cameraLocation = computeCamera(camYaw, camPitch, camRadius) + camStrafe;
+
+        SRL::Scene3D::LoadIdentity();
+        // Ajuste de roll zero; alvo no centro do carro
+        SRL::Scene3D::LookAt(cameraLocation, Vector3D(0.0, 0.0, 0.0), Angle::FromDegrees(0.0));
+
+        SRL::Scene3D::PushMatrix();
+        {
+            // Move model center to origin
+            Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
+            SRL::Scene3D::Translate(modelOffset);
+            SRL::Debug::Print(1, 4, "Offset: %d, %d, %d", modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
+            SRL::Debug::Print(1, 5, "Cam: %d, %d, %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
+            SRL::Debug::Print(1, 8, "Yaw:%u Pitch:%u R:%d", camYaw.RawValue(), camPitch.RawValue(), camRadius.As<int16_t>());
+            SRL::Scene3D::RotateY(rotY);
+            for (size_t idx = 0; idx < orderCount; ++idx)
+            {
+                size_t meshId = order[idx];
+                if (meshId >= meshCount)
+                {
+                    continue;
+                }
+
+                if (isSmoothMesh)
+                {
+                    car.Draw(meshId, lightDirection);
+                }
+                else
+                {
+                    car.Draw(meshId);
+                }
+            }
+        }
+        SRL::Scene3D::PopMatrix();
+
+        // Draw axis lines at the origin for reference
+        Vector2D o2D, x2D, y2D, z2D;
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
+        const SRL::Math::Types::Fxp sort2D = 0;
+        SRL::Scene2D::DrawLine(o2D, x2D, HighColor::Colors::Red, sort2D);
+        SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
+        SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
+
+        rotY += rotStep;
+        SRL::Core::Synchronize();
+    }
+
+    return 0;
+}
+
