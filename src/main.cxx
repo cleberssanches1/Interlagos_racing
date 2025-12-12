@@ -3,6 +3,9 @@
 #include "camera_controller.hpp"
 #include "car_renderer.hpp"
 #include "sky_background.hpp"
+#include "hud_stats.hpp"
+#include "sky_background_rbg.hpp"
+#include "sky_background.hpp"
 #include "srl_tga.hpp"
 #include "srl_tilemap_interfaces.hpp"
 #include <vector>
@@ -48,7 +51,7 @@ int main()
 
     // Sky via VDP2 (componente reutilizável)
     SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 0, 31)); // fallback azul
-    SkyBackground skyBg;
+    SkyBackgroundRbg skyBg;
     skyBg.yawFactor = Fxp(0.10f);
     skyBg.driftStep = Fxp(0.02f);
     const char* skyPaths[] = {
@@ -128,6 +131,9 @@ int main()
     SRL::Debug::Print(1, 7, "Max: %d %d %d", maxV.X.As<int16_t>(), maxV.Y.As<int16_t>(), maxV.Z.As<int16_t>());
     SRL::Debug::Print(1, 9, "Model pos: %d %d %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
 
+    HudStats hudStats;
+    hudStats.Init(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
+
     while (1)
     {
         // Atualiza skybox VDP2
@@ -136,6 +142,8 @@ int main()
 
         Vector3D cameraLocation = cameraState.location;
         Vector3D lookTarget = Camera::ComputeLookTarget(cameraState, cameraTuning, pad, Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)));
+        hudStats.Update(cameraState, modelOffset, cameraLocation, modelCenter);
+
 
         // LookAt focando no ponto de fuga/horizonte (em vez do carro)
         SRL::Scene3D::LoadIdentity();
@@ -186,6 +194,8 @@ int main()
 
     return 0;
 }
+
+
 
 
 
