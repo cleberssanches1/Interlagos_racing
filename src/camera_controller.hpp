@@ -30,8 +30,8 @@ struct Tuning
     int32_t pitchStepDeg{2};
     Fxp moveStep{Fxp(0.5f)};
     Fxp strafeStep{Fxp(0.5f)};
-    int32_t yawMinDeg{90};
-    int32_t yawMaxDeg{270};
+    int32_t yawMinDeg{0};
+    int32_t yawMaxDeg{360};
     int32_t pitchMinDeg{-80};
     int32_t pitchMaxDeg{80};
     int32_t viewYawMinDeg{-90};
@@ -72,6 +72,22 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
     bool yHeld = pad.IsHeld(Digital::Button::Y);
     bool xHeld = pad.IsHeld(Digital::Button::X);
 
+    // Salva posição inicial e restaura quando X não estiver pressionado
+    static bool homeSet = false;
+    static int32_t homeYawDeg = 0, homePitchDeg = 0, homeViewYawDeg = 0, homeViewPitchDeg = 0;
+    static Vector3D homeStrafe;
+    static bool wasXHeld = false;
+
+    if (!homeSet)
+    {
+        homeYawDeg = state.yawDeg;
+        homePitchDeg = state.pitchDeg;
+        homeViewYawDeg = state.viewYawDeg;
+        homeViewPitchDeg = state.viewPitchDeg;
+        homeStrafe = state.strafe;
+        homeSet = true;
+    }
+
     if (zHeld)
     {
         if (pad.IsHeld(Digital::Button::Up))    state.viewPitchDeg -= tuning.pitchStepDeg;
@@ -86,6 +102,17 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
         if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= tuning.yawStepDeg;
         if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += tuning.yawStepDeg;
     }
+    // Se X foi solto neste frame, restaurar posição inicial uma única vez
+    if (wasXHeld && !xHeld)
+    {
+        state.yawDeg = homeYawDeg;
+        state.pitchDeg = homePitchDeg;
+        state.viewYawDeg = homeViewYawDeg;
+        state.viewPitchDeg = homeViewPitchDeg;
+        state.strafe = homeStrafe;
+    }
+
+    wasXHeld = xHeld;
 
     if (yHeld)
     {

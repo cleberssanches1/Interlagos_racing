@@ -4,6 +4,9 @@
 #include "car_renderer.hpp"
 #include "sky_background.hpp"
 #include "hud_stats.hpp"
+#include "sky_environment.hpp"
+#include "background_manager.hpp"
+#include "sky_background_dome.hpp"
 #include "sky_background_rbg.hpp"
 #include "sky_background.hpp"
 #include "srl_tga.hpp"
@@ -51,17 +54,10 @@ int main()
 
     // Sky via VDP2 (componente reutilizável)
     SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 0, 31)); // fallback azul
-    SkyBackgroundRbg skyBg;
-    skyBg.yawFactor = Fxp(0.10f);
-    skyBg.driftStep = Fxp(0.02f);
-    const char* skyPaths[] = {
-        "cd/data/skybox_1.tga",
-        "cd/data/SKYBOX_1.TGA",
-        "data/skybox_1.tga",
-        "data/SKYBOX_1.TGA",
-        "skybox_1.tga",
-        "SKYBOX_1.TGA"};
-    skyBg.Load(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+
+    BackgroundManager bgManager;
+    const char* skyPaths[] = {"cd/data/skybox_1.tga","data/skybox_1.tga","skybox_1.tga","cd/data/SKYBOX_1.TGA","data/SKYBOX_1.TGA","SKYBOX_1.TGA"};
+    bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
 
     // Camera base (Saturn: Y+ para baixo; Y- acima)
     Camera::State cameraState{
@@ -136,14 +132,14 @@ int main()
 
     while (1)
     {
-        // Atualiza skybox VDP2
-        skyBg.Update(cameraState.yawDeg);
         Camera::UpdateInput(cameraState, cameraTuning, pad);
+
+        // Atualiza skybox VDP2
+        bgManager.Update(cameraState);
 
         Vector3D cameraLocation = cameraState.location;
         Vector3D lookTarget = Camera::ComputeLookTarget(cameraState, cameraTuning, pad, Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)));
         hudStats.Update(cameraState, modelOffset, cameraLocation, modelCenter);
-
 
         // LookAt focando no ponto de fuga/horizonte (em vez do carro)
         SRL::Scene3D::LoadIdentity();

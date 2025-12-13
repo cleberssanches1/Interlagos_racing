@@ -11,6 +11,7 @@ struct SkyBackground
     SRL::Math::Types::Fxp mapWidth = SRL::Math::Types::Fxp::Convert(512);
     SRL::Math::Types::Fxp mapHeight = SRL::Math::Types::Fxp::Convert(256);
     SRL::Math::Types::Fxp yawFactor = SRL::Math::Types::Fxp(0.10f);
+    SRL::Math::Types::Fxp pitchFactor = SRL::Math::Types::Fxp(0.08f);
     SRL::Math::Types::Fxp drift = SRL::Math::Types::Fxp::Convert(0);
     SRL::Math::Types::Fxp driftStep = SRL::Math::Types::Fxp(0.02f);
     bool loaded = false;
@@ -64,7 +65,7 @@ struct SkyBackground
         return false;
     }
 
-    void Update(int32_t yawDeg)
+    void Update(int32_t yawDeg, int32_t pitchDeg)
     {
         if (!loaded || mapWidth.RawValue() == 0)
         {
@@ -83,7 +84,11 @@ struct SkyBackground
         while (scrollX.RawValue() < 0) scrollX += mapWidth;
 
         scroll.X = scrollX;
-        scroll.Y = SRL::Math::Types::Fxp::Convert(0);
+        SRL::Math::Types::Fxp pitchOffset = pitchFactor * SRL::Math::Types::Fxp::Convert(pitchDeg);
+        SRL::Math::Types::Fxp scrollY = pitchOffset;
+        while (scrollY.RawValue() >= mapHeight.RawValue()) scrollY -= mapHeight;
+        while (scrollY.RawValue() < 0) scrollY += mapHeight;
+        scroll.Y = scrollY;
         SRL::VDP2::NBG0::SetPosition(scroll);
     }
 };
