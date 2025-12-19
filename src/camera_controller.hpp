@@ -128,7 +128,14 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 
     Clamp(state.yawDeg, tuning.yawMinDeg, tuning.yawMaxDeg);
     Clamp(state.pitchDeg, tuning.pitchMinDeg, tuning.pitchMaxDeg);
-    Clamp(state.viewYawDeg, tuning.viewYawMinDeg, tuning.viewYawMaxDeg);
+
+    // Yaw de olhar: sempre livre 360°, apenas normaliza
+    if (state.viewYawDeg >= 360 || state.viewYawDeg < 0)
+    {
+        state.viewYawDeg %= 360;
+        if (state.viewYawDeg < 0) state.viewYawDeg += 360;
+    }
+    // Pitch de olhar continua limitado para evitar virar de ponta-cabeça
     Clamp(state.viewPitchDeg, tuning.viewPitchMinDeg, tuning.viewPitchMaxDeg);
 
     RefreshAngles(state);
