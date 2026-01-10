@@ -35,18 +35,19 @@ struct SkyBackground
                 continue;
             }
 
-            SRL::Debug::Print(1, 10, "Sky load: %s", paths[i]);
+            // Silencia logs de sky para liberar tela
+            // SRL::Debug::Print(1, 10, "Sky load: %s", paths[i]);
             SRL::Bitmap::TGA skyBmp(&skyFile);
             auto skyInfo = skyBmp.GetInfo();
-            SRL::Debug::Print(1, 11, "Sky info: %u x %u mode %d pal %p",
-                              skyInfo.Width, skyInfo.Height,
-                              (int)skyInfo.ColorMode, skyInfo.Palette);
+            // SRL::Debug::Print(1, 11, "Sky info: %u x %u mode %d pal %p",
+            //                   skyInfo.Width, skyInfo.Height,
+            //                   (int)skyInfo.ColorMode, skyInfo.Palette);
 
             tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
             auto tileInfo = tile->GetInfo();
-            SRL::Debug::Print(1, 12, "Sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
-                              tileInfo.MapWidth, tileInfo.MapHeight,
-                              tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
+            // SRL::Debug::Print(1, 12, "Sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
+            //                   tileInfo.MapWidth, tileInfo.MapHeight,
+            //                   tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
 
             mapWidth = SRL::Math::Types::Fxp::Convert(tileInfo.MapWidth * (tileInfo.CharSize ? 16 : 8));
             mapHeight = SRL::Math::Types::Fxp::Convert(tileInfo.MapHeight * (tileInfo.CharSize ? 16 : 8));
@@ -61,7 +62,7 @@ struct SkyBackground
             return true;
         }
 
-        SRL::Debug::Print(1, 10, "Sky missing: skybox_1.tga");
+        // SRL::Debug::Print(1, 10, "Sky missing: skybox_1.tga");
         return false;
     }
 

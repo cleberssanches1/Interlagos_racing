@@ -5,6 +5,7 @@
 #include "camera_controller.hpp"
 
 #include "car_renderer.hpp"
+#include "track_renderer.hpp"
 
 #include "sky_background.hpp"
 
@@ -28,14 +29,33 @@
 #include <vector>
 
 #include <array>
+#include <memory>
+
+extern "C" void __throw_bad_array_new_length() {}
+extern "C" void __throw_bad_alloc() {}
+namespace std { void __throw_bad_array_new_length() {} void __throw_bad_alloc() {} }
 
 
+#include "resource_loader.hpp"
 
 using namespace SRL::Types;
 
 using namespace SRL::Math::Types;
 
+// Logs essenciais na tela (reduzido)
+constexpr bool kLog = true;
+#define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
+// Procura o primeiro caminho existente em disco.
+static const char* FindExistingPath(const char* const* paths, size_t count)
+{
+    for (size_t i = 0; i < count; ++i)
+    {
+        SRL::Cd::File f(paths[i]);
+        if (f.Exists() && f.Size.Bytes > 0) return paths[i];
+    }
+    return nullptr;
+}
 
 // Simple shading table
 
@@ -75,31 +95,120 @@ HighColor shadingTable[32] = {
 
 };
 
+// Representa o pipeline de carga do carro: cart (DRAM 4MB) e c贸pia opcional na WRAM.
+struct CarPipeline
+{
+    CarLoadResult cart;                     // Resultado da carga obrigat贸ria no cart.
+    std::unique_ptr<ModelObject> wramCopy;  // C贸pia independente na work RAM.
+
+    // Retorna o modelo ativo (c贸pia em WRAM se existir, sen茫o o do cart).
+    ModelObject* ActiveModel() const { return wramCopy ? wramCopy.get() : cart.car; }
+
+    // Indica se h谩 um modelo utiliz谩vel.
+    bool Loaded() const { return cart.loaded && ActiveModel(); }
+};
+
+// Executa a carga CD -> cart (4MB) e opcionalmente cart -> WRAM.
+static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, bool makeWramCopy)
+{
+    CarPipeline pipe{};
+    const char* chosenPath = FindExistingPath(paths, pathCount);
+
+    // 1) Carga principal no cart (forceCart = true garante DRAM 4MB).
+    pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true);
+
+    // 2) C贸pia independente em WRAM para evitar compartilhar ponteiros do cart.
+    if (makeWramCopy && chosenPath)
+    {
+        pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, 0, false, 0, false, false, false);
+    }
+    return pipe;
+}
 
 
-int main()
+class GameApp {
+public:
+    // Inicializa engine, carrega recursos e executa o loop principal.
+    int Run();
+};
+
+
+int GameApp::Run()
 
 {
 
     SRL::Core::Initialize(HighColor(0x10, 0x20, 0x18));
 
-    SRL::Debug::Print(1, 1, "CAR1.NYA viewer");
+    const bool logCar = true;
+    const bool logTrack = true;
+    // Log inicial simples do Cart e HWR
+    auto crep = SRL::Memory::CartRam::GetReport();
+    SRL::Debug::Print(0, 0, "CRT ok:%d free:%d total:%d", crep.TotalSize > 0 ? 1 : 0, (int)crep.FreeSize, (int)crep.TotalSize);
+    auto rep = SRL::Memory::HighWorkRam::GetReport();
+    SRL::Debug::Print(0, 1, "HWR free:%d total:%d", (int)rep.FreeSize, (int)rep.TotalSize);
+    const bool cartOk = crep.TotalSize > 0;
 
+    // Teste simples: escreve string na HWR e l^ de volta (VDP2 debug)
+    const char testMsg[] = "Cart DRAM OK";
+    int32_t hwrBeforeStr = SRL::Memory::CartRam::GetFreeSpace();
+    size_t testLen = sizeof(testMsg); // inclui terminador
+    char* hwrStr = reinterpret_cast<char*>(SRL::Memory::CartRam::Malloc(testLen));
+    if (hwrStr)
+    {
+        for (size_t i = 0; i < testLen; ++i) hwrStr[i] = testMsg[i];
+        int32_t hwrAfterStr = SRL::Memory::CartRam::GetFreeSpace();
+        MLOG(0, 6, "CRT addr:%08lx", (unsigned long)hwrStr);
+        MLOG(0, 7, "CRT free b:%d", hwrBeforeStr);
+        MLOG(0, 8, "CRT free a:%d", hwrAfterStr);
+        MLOG(0, 9, "CRT txt:%s", hwrStr);
+    }
+    else
+    {
+    // silencia logs do teste HWR
+    }
 
+        // Carrega carro na DRAM do cart (sem usar WRAM)
+    const char* carPaths[] = { "CD/DATA/CAR1.NYA", "CD/DATA/CAR1.NYA;1", "cd/data/car1.nya", "cd/data/car1.nya;1", "CAR1.NYA", "CAR1.NYA;1", "car1.nya", "car1.nya;1" };
+    const bool useCartCopyPipeline = true; // cart -> WRAM -> VDP1
+    CarPipeline carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline);
 
-    ModelObject car("CAR1.NYA", 0);
+    ModelObject* carPtr = carPipe.ActiveModel();
+    bool carValid = carPipe.Loaded();
+    if (!carValid && logCar)
+    {
+        MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
+    }
 
-    bool isSmoothMesh = car.IsSmooth();
+// Se faltar cart, travamos o loop exibindo a mensagem
+    bool cartOkFlag = cartOk;
+    // Carrega pista (INTLAGOS.NYA) na mesma pasta
+    TrackRenderer trackRenderer;
+    trackRenderer.SetDirect2D(true);
+    trackRenderer.SetSglDirect(false);
+    const bool hasTrackSegment = false;
+    SRL::Math::Types::Vector3D trackSegOffset(0, 0, 0);
+    const bool enableTrack = true; // ativa carga da pista na DRAM (sem render)
+    bool hasTrack = false;
+    bool isTrackSmooth = false;
+    uint32_t trackFaceCount = 0;
+    uint32_t trackVertexCount = 0;
+    size_t trackMeshCount = 0;
+    ModelBounds trackBounds{};
+    uint32_t trackDrawnFaces = 0;
+    uint32_t trackDrawnMeshes = 0;
+    const bool renderTrack = false; // pista desligada para focar no comparativo do carro
+    const bool renderCar = true; // carro ligado
+    const bool renderAxes = false; // desliga eixos de debug
 
-    uint32_t faceCount = car.GetFaceCount();
+    const bool carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
+    const bool isSmoothMesh = carWasSmooth; // restaura carregamento smooth
+    MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
-    uint32_t vertexCount = car.GetVertexCount();
+    uint32_t faceCount = carPtr ? carPtr->GetFaceCount() : 0;
 
-    uint32_t meshCount = car.GetMeshCount();
+    uint32_t vertexCount = carPtr ? carPtr->GetVertexCount() : 0;
 
-    SRL::Debug::Print(1, 2, "Faces:%u Verts:%u Meshes:%u Smooth:%d", faceCount, vertexCount, meshCount, isSmoothMesh ? 1 : 0);
-
-
+    uint32_t meshCount = carPtr ? carPtr->GetMeshCount() : 0;
 
     // Simple frustum
 
@@ -107,48 +216,41 @@ int main()
 
 
 
-    // Sky via VDP2 (componente reutiliz醰el)
+    // Sky via VDP2 (componente reutilizavel)
 
     SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 0, 31)); // fallback azul
 
 
 
-            BackgroundManager bgManager;    const char* skyPaths[] = {"cd/data/skybox_1.tga","data/skybox_1.tga","skybox_1.tga","cd/data/SKYBOX_1.TGA","data/SKYBOX_1.TGA","SKYBOX_1.TGA"};    bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+    const bool enableBg = true; // desativa background para liberar HWR
+    BackgroundManager bgManager;
+    if (enableBg)
+    {
+        const char* skyPaths[] = {"cd/data/skybox_1.tga","data/skybox_1.tga","skybox_1.tga","cd/data/SKYBOX_1.TGA","data/SKYBOX_1.TGA","SKYBOX_1.TGA"};
+        bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+    }
 
 
 
     // Camera base (Saturn: Y+ para baixo; Y- acima)
 
     Camera::State cameraState{
-
-        .yawDeg = 180,          // atras do carro
-
-        .pitchDeg = -21,        // pitch que resulta em raw ~61714
-
-        .viewYawDeg = 0,        // yaw de olhar (Z + esquerda/direita)
-
-        .viewPitchDeg = 0,      // pitch de olhar (Z + cima/baixo)
-
-        .radius = Fxp(46.0f),   // raio padrao solicitado
-
+        .yawDeg = 180,
+        .pitchDeg = -21,
+        .viewYawDeg = 0,
+        .viewPitchDeg = 0,
+        .radius = Fxp(46.0f),
         .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-4), Fxp::Convert(-2)),
-
-        .location = Vector3D(0.0, 0.0, -50.0f), // sera recalculada no loop
-
+        .location = Vector3D(0.0, 0.0, -50.0f),
         .yaw = Angle::FromDegrees(Fxp::Convert(180)),
-
         .pitch = Angle::FromDegrees(Fxp::Convert(-21)),
-
         .viewYaw = Angle::FromDegrees(Fxp::Convert(0)),
-
         .viewPitch = Angle::FromDegrees(Fxp::Convert(0)),
-
     };
 
     Camera::Tuning cameraTuning{};
 
     Camera::RefreshAngles(cameraState);
-
     cameraState.location = Camera::OrbitPosition(cameraState.yaw, cameraState.pitch, cameraState.radius) + cameraState.strafe;
 
 
@@ -164,6 +266,8 @@ int main()
     std::vector<HighColor> workTable;
 
     std::vector<uint8_t> vertWork;
+    std::vector<HighColor> trackWorkTable;
+    std::vector<uint8_t> trackVertWork;
 
     if (isSmoothMesh)
 
@@ -186,12 +290,7 @@ int main()
     // Center of model from bounds (approx) to bring into view
 
     Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
-
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
-
-    SRL::Debug::Print(1, 3, "Center: %d, %d, %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
-
-
 
     // Draw order: wheels first (1..4), then body (0)
 
@@ -200,8 +299,15 @@ int main()
     size_t orderCount = (meshCount < 5) ? meshCount : 5;
 
     CarRenderer::Config carConfig{modelCenter, lightDirection, drawOrder, orderCount};
-
-    CarRenderer carRenderer(car, isSmoothMesh, carConfig);    carRenderer.SetWheel1Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));    carRenderer.SetWheel2Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));    carRenderer.SetWheel3Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));    carRenderer.SetWheel4Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+    std::unique_ptr<CarRenderer> carRendererPtr;
+    if (carValid && carPtr)
+    {
+        carRendererPtr = std::make_unique<CarRenderer>(*carPtr, isSmoothMesh, carConfig);
+        carRendererPtr->SetWheel1Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+        carRendererPtr->SetWheel2Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+        carRendererPtr->SetWheel3Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+        carRendererPtr->SetWheel4Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+    }
 
 
 
@@ -223,35 +329,63 @@ int main()
 
     {
 
-        auto* mesh = car.GetMesh<SRL::Types::SmoothMesh>(m);
-
-        for (size_t v = 0; v < mesh->VertexCount; ++v)
+        if (isSmoothMesh)
 
         {
 
-            const auto& p = mesh->Vertices[v];
+            auto* mesh = carPtr ? carPtr->template GetMesh<SRL::Types::SmoothMesh>(m) : nullptr;
 
-            minV.X = SRL::Math::Min(minV.X, p.X);
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
 
-            minV.Y = SRL::Math::Min(minV.Y, p.Y);
+            {
 
-            minV.Z = SRL::Math::Min(minV.Z, p.Z);
+                const auto& p = mesh->Vertices[v];
 
-            maxV.X = SRL::Math::Max(maxV.X, p.X);
+                minV.X = SRL::Math::Min(minV.X, p.X);
 
-            maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
+                minV.Y = SRL::Math::Min(minV.Y, p.Y);
 
-            maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
+                minV.Z = SRL::Math::Min(minV.Z, p.Z);
+
+                maxV.X = SRL::Math::Max(maxV.X, p.X);
+
+                maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
+
+                maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
+
+            }
+
+        }
+
+        else
+
+        {
+
+            auto* mesh = carPtr ? carPtr->template GetMesh<SRL::Types::Mesh>(m) : nullptr;
+
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
+
+            {
+
+                const auto& p = mesh->Vertices[v];
+
+                minV.X = SRL::Math::Min(minV.X, p.X);
+
+                minV.Y = SRL::Math::Min(minV.Y, p.Y);
+
+                minV.Z = SRL::Math::Min(minV.Z, p.Z);
+
+                maxV.X = SRL::Math::Max(maxV.X, p.X);
+
+                maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
+
+                maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
+
+            }
 
         }
 
     }
-
-    SRL::Debug::Print(1, 6, "Min: %d %d %d", minV.X.As<int16_t>(), minV.Y.As<int16_t>(), minV.Z.As<int16_t>());
-
-    SRL::Debug::Print(1, 7, "Max: %d %d %d", maxV.X.As<int16_t>(), maxV.Y.As<int16_t>(), maxV.Z.As<int16_t>());
-
-    SRL::Debug::Print(1, 9, "Model pos: %d %d %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
 
 
 
@@ -261,9 +395,42 @@ int main()
 
     CameraRig::OrbitState xOrbitState{};
 
+    // Pista INTLAGOS: caminhos em cd/data (nome sem variacoes)
+    static const char* trackPaths[] = {
+        "cd/data/INTLAGOS.NYA",
+        "cd/data/INTLAGOS.NYA;1",
+        "CD/DATA/INTLAGOS.NYA",
+        "CD/DATA/INTLAGOS.NYA;1",
+        "INTLAGOS.NYA",
+        "INTLAGOS.NYA;1"
+    };
+    // Usa valor alto para carregar todos os meshes, mas sem texturas (maxMeshes>0 zera texturas no loader)
+    const size_t maxTrackMeshes = 65535;
+    if (enableTrack)
+    {
+        TrackLoadResult trRes = LoadTrackToCart(trackPaths, sizeof(trackPaths)/sizeof(trackPaths[0]), maxTrackMeshes);
+        hasTrack = trRes.loaded;
+        isTrackSmooth = trRes.isSmooth;
+        trackFaceCount = trRes.faceCount;
+        trackVertexCount = trRes.vertexCount;
+        trackMeshCount = trRes.meshCount;
+        trackBounds = trRes.renderer.Bounds();
+        trackRenderer = std::move(trRes.renderer);
+        trackRenderer.SetStartMesh(0);
+        trackRenderer.SetScale(Fxp::Convert(1));
+        auto segCenter = trackRenderer.StartMeshCenter() + trackRenderer.Offset();
+        MLOG(1, 2, "Track center:%d %d %d", segCenter.X.As<int16_t>(), segCenter.Y.As<int16_t>(), segCenter.Z.As<int16_t>());
+    }
+
     while (1)
 
     {
+        if (!cartOkFlag)
+        {
+            MLOG(1, 3, "ERRO: Cartucho 4MB ausente");
+            MLOG(1, 4, "Insira cart DRAM e reinicie");
+            continue;
+        }
 
         Camera::UpdateInput(cameraState, cameraTuning, pad);
 
@@ -282,68 +449,85 @@ int main()
 
 
         // Rotaciona apenas o carro com L/R (plano horizontal)
-
         if (!aHeld && !bHeld && !cHeld)
-
         {
-
             if (lHeld) carYawDeg -= carYawStepDeg;
-
             if (rHeld) carYawDeg += carYawStepDeg;
-
             if (carYawDeg < 0) carYawDeg += 360;
-
             if (carYawDeg >= 360) carYawDeg -= 360;
-
         }
 
-
-
-        // Rotaciona carro e camera (modo X) usando CameraRig utilit?rio
+        // Rotaciona carro e camera (modo X) usando CameraRig utilitario
         CameraRig::HandleOrbitAroundCar(cameraState, carYawStepDeg, xHeld, lHeld, rHeld, carYawDeg, xOrbitState, true);
 
         // Controles de rodas: C inicia/resume, B para
-        if (cHeld) { carRenderer.StartAllWheels(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15))); carRenderer.ResumeAllWheels(); }
-        if (bHeld) { carRenderer.StopAllWheels(); }
+        if (carRendererPtr)
+        {
+            if (cHeld) { carRendererPtr->StartAllWheels(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15))); carRendererPtr->ResumeAllWheels(); }
+            if (bHeld) { carRendererPtr->StopAllWheels(); }
+        }
 
 // Atualiza skybox VDP2
-        bgManager.Update(cameraState);
+        if (enableBg) bgManager.Update(cameraState); // mant'm VDP2 background ativo
 
         Vector3D cameraLocation = cameraState.location;
         Vector3D lookTarget = Camera::ComputeLookTarget(cameraState, cameraTuning, pad, modelCenter);
+        MLOG(0, 18, "Cam pos: %d %d %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
         // lookTarget padrao segue o alvo calculado (b livre)
         hudStats.Update(cameraState, modelOffset, cameraLocation, modelCenter);
 
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
         // Debug: posicoes das rodas
-                const auto& centers = carRenderer.MeshCenters();
-        if (centers.size() > 4)
-        {
-            SRL::Debug::Print(1, 10, "Roda_1: %d %d %d", centers[1].X.As<int16_t>(), centers[1].Y.As<int16_t>(), centers[1].Z.As<int16_t>());
-            SRL::Debug::Print(1, 11, "Roda_2: %d %d %d", centers[2].X.As<int16_t>(), centers[2].Y.As<int16_t>(), centers[2].Z.As<int16_t>());
-            auto r3pivot = centers[3] - modelCenter;
-            SRL::Debug::Print(1, 12, "Roda_3: %d %d %d", centers[3].X.As<int16_t>(), centers[3].Y.As<int16_t>(), centers[3].Z.As<int16_t>());
-            SRL::Debug::Print(1, 13, "R3 piv: %d %d %d", r3pivot.X.As<int16_t>(), r3pivot.Y.As<int16_t>(), r3pivot.Z.As<int16_t>());
-            SRL::Debug::Print(1, 14, "Roda_4: %d %d %d", centers[4].X.As<int16_t>(), centers[4].Y.As<int16_t>(), centers[4].Z.As<int16_t>());
-        }
-        SRL::Debug::Print(1, 4, "Offset: %d, %d, %d", modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
-        SRL::Debug::Print(1, 5, "Cam: %d, %d, %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
-        SRL::Debug::Print(1, 8, "Yaw:%u Pitch:%u R:%d", cameraState.yaw.RawValue(), cameraState.pitch.RawValue(), cameraState.radius.As<int16_t>());
-        carRenderer.rotY = Angle::FromDegrees(Fxp::Convert(carYawDeg));
-        // roda gira constante (ajuste se necessario)
-        carRenderer.Render();
+        // Logs restritos para pista; removidos logs das rodas/carro
+        // Pista antes do carro
+        // Pista desligada
 
-        // Draw axis lines at the origin for reference
-        Vector2D o2D, x2D, y2D, z2D;
-        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
-        SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
-        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
-        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
-        const SRL::Math::Types::Fxp sort2D = 0;
-        SRL::Scene2D::DrawLine(o2D, x2D, HighColor::Colors::Red, sort2D);
-        SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
-        SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
+        // Render pista (VDP1 via Scene2D)
+        if (renderTrack && hasTrack) {
+            trackRenderer.Render(lightDirection, cameraLocation);
+        }
+
+        // Carro ligado
+        if (carRendererPtr)
+        {
+            carRendererPtr->rotY = Angle::FromDegrees(Fxp::Convert(carYawDeg));
+            carRendererPtr->Render();
+        }
+
+        if (renderAxes)
+        {
+            // Draw axis lines at the origin for reference
+            Vector2D o2D, x2D, y2D, z2D;
+            SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
+            SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
+            SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
+            SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
+            const SRL::Math::Types::Fxp sort2D = 0;
+            SRL::Scene2D::DrawLine(o2D, x2D, HighColor::Colors::Red, sort2D);
+            SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
+            SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
+        }
+        static uint32_t frameCounter = 0;
+        ++frameCounter;
+        if ((frameCounter & 63) == 0)
+        {
+            int32_t hwrFree = SRL::Memory::CartRam::GetFreeSpace();
+            int32_t hwrTotal = 4 * 1024 * 1024;
+            int32_t hwrUsed  = hwrTotal - hwrFree;
+            int32_t vdp1TexCount = SRL::VDP1::GetTextureCount();
+            size_t vdp1Free  = SRL::VDP1::GetAvailableMemory();
+            size_t vdp1Used  = SRL::VDP1::GetUsedMemory();
+            size_t vdp1Total = vdp1Used + vdp1Free;
+            uint32_t vdp1Pct = (vdp1Total > 0) ? static_cast<uint32_t>((vdp1Used * 100) / vdp1Total) : 0;
+            int32_t hwrPct10 = (hwrTotal > 0) ? (hwrUsed * 1000 / hwrTotal) : 0;
+            if (logCar) MLOG(0, 24, "Car faces:%u verts:%u",
+                              (unsigned)faceCount, (unsigned)vertexCount);
+            if (logTrack) MLOG(0, 25, "HWR used:%d free:%d", hwrUsed, hwrFree);
+            if (logTrack) MLOG(0, 26, "HWR pct:%d.%d%%", hwrPct10/10, hwrPct10%10);
+            if (logTrack) MLOG(0, 27, "VDP1 textures:%d", vdp1TexCount);
+            if (logTrack) MLOG(0, 28, "VDP1 mem used:%u free:%u pct:%u%%", (unsigned)vdp1Used, (unsigned)vdp1Free, vdp1Pct);
+        }
         SRL::Core::Synchronize();
 
     }
@@ -354,67 +538,11 @@ int main()
 
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+int main()
+{
+    GameApp app;
+    return app.Run();
+}
 
 
 

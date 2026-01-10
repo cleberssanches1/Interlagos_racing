@@ -1,0 +1,1908 @@
+#include <srl.hpp>
+
+#include "modelObject.hpp"
+
+#include "camera_controller.hpp"
+
+#include "car_renderer.hpp"
+
+#include "sky_background.hpp"
+
+#include "hud_stats.hpp"
+
+#include "sky_environment.hpp"
+
+#include "background_manager.hpp"
+
+#include "sky_background_dome.hpp"
+
+#include "sky_background_rbg.hpp"
+
+#include "sky_background.hpp"
+
+#include "srl_tga.hpp"
+
+#include "srl_tilemap_interfaces.hpp"
+#include "camera_rig.hpp"
+
+#include <vector>
+
+#include <array>
+
+
+
+using namespace SRL::Types;
+
+using namespace SRL::Math::Types;
+
+
+
+// Simple shading table
+
+HighColor shadingTable[32] = {
+
+    HighColor::FromRGB555(0, 0, 0), HighColor::FromRGB555(1, 1, 1),
+
+    HighColor::FromRGB555(2, 2, 2), HighColor::FromRGB555(3, 3, 3),
+
+    HighColor::FromRGB555(4, 4, 4), HighColor::FromRGB555(5, 5, 5),
+
+    HighColor::FromRGB555(6, 6, 6), HighColor::FromRGB555(7, 7, 7),
+
+    HighColor::FromRGB555(8, 8, 8), HighColor::FromRGB555(9, 9, 9),
+
+    HighColor::FromRGB555(10, 10, 10), HighColor::FromRGB555(11, 11, 11),
+
+    HighColor::FromRGB555(12, 12, 12), HighColor::FromRGB555(13, 13, 13),
+
+    HighColor::FromRGB555(14, 14, 14), HighColor::FromRGB555(15, 15, 15),
+
+    HighColor::FromRGB555(16, 16, 16), HighColor::FromRGB555(17, 17, 17),
+
+    HighColor::FromRGB555(18, 18, 18), HighColor::FromRGB555(19, 19, 19),
+
+    HighColor::FromRGB555(20, 20, 20), HighColor::FromRGB555(21, 21, 21),
+
+    HighColor::FromRGB555(22, 22, 22), HighColor::FromRGB555(23, 23, 23),
+
+    HighColor::FromRGB555(24, 24, 24), HighColor::FromRGB555(25, 25, 25),
+
+    HighColor::FromRGB555(26, 26, 26), HighColor::FromRGB555(27, 27, 27),
+
+    HighColor::FromRGB555(28, 28, 28), HighColor::FromRGB555(29, 29, 29),
+
+    HighColor::FromRGB555(30, 30, 30), HighColor::FromRGB555(31, 31, 31)
+
+};
+
+
+
+int main()
+
+{
+
+    SRL::Core::Initialize(HighColor(0x10, 0x20, 0x18));
+
+    SRL::Debug::Print(1, 1, "CAR1.NYA viewer");
+
+
+
+    ModelObject car("CAR1.NYA", 0);
+
+    bool isSmoothMesh = car.IsSmooth();
+
+    uint32_t faceCount = car.GetFaceCount();
+
+    uint32_t vertexCount = car.GetVertexCount();
+
+    uint32_t meshCount = car.GetMeshCount();
+
+    SRL::Debug::Print(1, 2, "Faces:%u Verts:%u Meshes:%u Smooth:%d", faceCount, vertexCount, meshCount, isSmoothMesh ? 1 : 0);
+
+
+
+    // Simple frustum
+
+    SRL::Scene3D::SetPerspective(Angle::FromDegrees(60.0f));
+
+
+
+    // Sky via VDP2 (componente reutiliz�vel)
+
+    SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 0, 31)); // fallback azul
+
+
+
+            BackgroundManager bgManager;    const char* skyPaths[] = {"cd/data/skybox_1.tga","data/skybox_1.tga","skybox_1.tga","cd/data/SKYBOX_1.TGA","data/SKYBOX_1.TGA","SKYBOX_1.TGA"};    bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+
+
+
+    // Camera base (Saturn: Y+ para baixo; Y- acima)
+
+    Camera::State cameraState{
+
+        .yawDeg = 180,          // atras do carro
+
+        .pitchDeg = -21,        // pitch que resulta em raw ~61714
+
+        .viewYawDeg = 0,        // yaw de olhar (Z + esquerda/direita)
+
+        .viewPitchDeg = 0,      // pitch de olhar (Z + cima/baixo)
+
+        .radius = Fxp(46.0f),   // raio padrao solicitado
+
+        .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-4), Fxp::Convert(-2)),
+
+        .location = Vector3D(0.0, 0.0, -50.0f), // sera recalculada no loop
+
+        .yaw = Angle::FromDegrees(Fxp::Convert(180)),
+
+        .pitch = Angle::FromDegrees(Fxp::Convert(-21)),
+
+        .viewYaw = Angle::FromDegrees(Fxp::Convert(0)),
+
+        .viewPitch = Angle::FromDegrees(Fxp::Convert(0)),
+
+    };
+
+    Camera::Tuning cameraTuning{};
+
+    Camera::RefreshAngles(cameraState);
+
+    cameraState.location = Camera::OrbitPosition(cameraState.yaw, cameraState.pitch, cameraState.radius) + cameraState.strafe;
+
+
+
+    Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
+
+    SRL::Scene3D::SetDirectionalLight(lightDirection);
+
+
+
+    // Prepare Gouraud/light tables if smooth
+
+    std::vector<HighColor> workTable;
+
+    std::vector<uint8_t> vertWork;
+
+    if (isSmoothMesh)
+
+    {
+
+        workTable.resize(faceCount << 2);
+
+        vertWork.resize(vertexCount);
+
+        SRL::Scene3D::LightInitGouraudTable(0, vertWork.data(), workTable.data(), faceCount);
+
+        SRL::Scene3D::LightSetGouraudTable(shadingTable);
+
+        SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
+
+    }
+
+
+
+    // Center of model from bounds (approx) to bring into view
+
+    Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
+
+    Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
+
+    SRL::Debug::Print(1, 3, "Center: %d, %d, %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
+
+
+
+    // Draw order: wheels first (1..4), then body (0)
+
+    std::array<size_t, 5> drawOrder = {1, 2, 3, 4, 0};
+
+    size_t orderCount = (meshCount < 5) ? meshCount : 5;
+
+    CarRenderer::Config carConfig{modelCenter, lightDirection, drawOrder, orderCount};
+
+    CarRenderer carRenderer(car, isSmoothMesh, carConfig);    carRenderer.SetWheel1Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));    carRenderer.SetWheel2Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));    carRenderer.SetWheel3Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));    carRenderer.SetWheel4Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+
+
+
+    // Input e calculo de camera orbitando o modelo
+
+    SRL::Input::Digital pad(0);
+
+    int32_t carYawDeg = 0;
+
+
+
+    // Compute bounds for debugging
+
+    SRL::Math::Types::Vector3D minV = Vector3D(32767, 32767, 32767);
+
+    SRL::Math::Types::Vector3D maxV = Vector3D(-32768, -32768, -32768);
+
+    for (size_t m = 0; m < meshCount; ++m)
+
+    {
+
+        auto* mesh = car.GetMesh<SRL::Types::SmoothMesh>(m);
+
+        for (size_t v = 0; v < mesh->VertexCount; ++v)
+
+        {
+
+            const auto& p = mesh->Vertices[v];
+
+            minV.X = SRL::Math::Min(minV.X, p.X);
+
+            minV.Y = SRL::Math::Min(minV.Y, p.Y);
+
+            minV.Z = SRL::Math::Min(minV.Z, p.Z);
+
+            maxV.X = SRL::Math::Max(maxV.X, p.X);
+
+            maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
+
+            maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
+
+        }
+
+    }
+
+    SRL::Debug::Print(1, 6, "Min: %d %d %d", minV.X.As<int16_t>(), minV.Y.As<int16_t>(), minV.Z.As<int16_t>());
+
+    SRL::Debug::Print(1, 7, "Max: %d %d %d", maxV.X.As<int16_t>(), maxV.Y.As<int16_t>(), maxV.Z.As<int16_t>());
+
+    SRL::Debug::Print(1, 9, "Model pos: %d %d %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
+
+
+
+    HudStats hudStats;
+
+    hudStats.Init(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
+
+    CameraRig::OrbitState xOrbitState{};
+
+    while (1)
+
+    {
+
+        Camera::UpdateInput(cameraState, cameraTuning, pad);
+
+        const bool aHeld = pad.IsHeld(SRL::Input::Digital::Button::A);
+
+        const bool bHeld = pad.IsHeld(SRL::Input::Digital::Button::B);
+        const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
+        const bool cHeld = pad.IsHeld(SRL::Input::Digital::Button::C);
+
+        const bool lHeld = pad.IsHeld(SRL::Input::Digital::Button::L);
+
+        const bool rHeld = pad.IsHeld(SRL::Input::Digital::Button::R);
+
+        const int16_t carYawStepDeg = cameraTuning.yawStepDeg;
+
+
+
+        // Rotaciona apenas o carro com L/R (plano horizontal)
+
+        if (!aHeld && !bHeld && !cHeld)
+
+        {
+
+            if (lHeld) carYawDeg -= carYawStepDeg;
+
+            if (rHeld) carYawDeg += carYawStepDeg;
+
+            if (carYawDeg < 0) carYawDeg += 360;
+
+            if (carYawDeg >= 360) carYawDeg -= 360;
+
+        }
+
+
+
+        // Rotaciona carro e camera (modo X) usando CameraRig utilit?rio
+        CameraRig::HandleOrbitAroundCar(cameraState, carYawStepDeg, xHeld, lHeld, rHeld, carYawDeg, xOrbitState, true);
+
+        // Controles de rodas: C inicia/resume, B para
+        if (cHeld) { carRenderer.StartAllWheels(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15))); carRenderer.ResumeAllWheels(); }
+        if (bHeld) { carRenderer.StopAllWheels(); }
+
+// Atualiza skybox VDP2
+        bgManager.Update(cameraState);
+
+        Vector3D cameraLocation = cameraState.location;
+        Vector3D lookTarget = Camera::ComputeLookTarget(cameraState, cameraTuning, pad, modelCenter);
+        // lookTarget padrao segue o alvo calculado (b livre)
+        hudStats.Update(cameraState, modelOffset, cameraLocation, modelCenter);
+
+        SRL::Scene3D::LoadIdentity();
+        SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
+        // Debug: posicoes das rodas
+                const auto& centers = carRenderer.MeshCenters();
+        if (centers.size() > 4)
+        {
+            SRL::Debug::Print(1, 10, "Roda_1: %d %d %d", centers[1].X.As<int16_t>(), centers[1].Y.As<int16_t>(), centers[1].Z.As<int16_t>());
+            SRL::Debug::Print(1, 11, "Roda_2: %d %d %d", centers[2].X.As<int16_t>(), centers[2].Y.As<int16_t>(), centers[2].Z.As<int16_t>());
+            auto r3pivot = centers[3] - modelCenter;
+            SRL::Debug::Print(1, 12, "Roda_3: %d %d %d", centers[3].X.As<int16_t>(), centers[3].Y.As<int16_t>(), centers[3].Z.As<int16_t>());
+            SRL::Debug::Print(1, 13, "R3 piv: %d %d %d", r3pivot.X.As<int16_t>(), r3pivot.Y.As<int16_t>(), r3pivot.Z.As<int16_t>());
+            SRL::Debug::Print(1, 14, "Roda_4: %d %d %d", centers[4].X.As<int16_t>(), centers[4].Y.As<int16_t>(), centers[4].Z.As<int16_t>());
+        }
+        SRL::Debug::Print(1, 4, "Offset: %d, %d, %d", modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
+        SRL::Debug::Print(1, 5, "Cam: %d, %d, %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
+        SRL::Debug::Print(1, 8, "Yaw:%u Pitch:%u R:%d", cameraState.yaw.RawValue(), cameraState.pitch.RawValue(), cameraState.radius.As<int16_t>());
+        carRenderer.rotY = Angle::FromDegrees(Fxp::Convert(carYawDeg));
+        // roda gira constante (ajuste se necessario)
+        carRenderer.Render();
+
+        // Draw axis lines at the origin for reference
+        Vector2D o2D, x2D, y2D, z2D;
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
+        const SRL::Math::Types::Fxp sort2D = 0;
+        SRL::Scene2D::DrawLine(o2D, x2D, HighColor::Colors::Red, sort2D);
+        SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
+        SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
+        SRL::Core::Synchronize();
+
+    }
+
+
+
+    return 0;
+
+}
+
+
+
+#pragma once
+
+#include "sky_environment.hpp"
+#include "camera_controller.hpp"
+
+// Respons?vel por carregar e atualizar o background (VDP2)
+struct BackgroundManager
+{
+    SkyEnvironment env;
+    bool loaded = false;
+
+    void Configure()
+    {
+        env.useDome = false;
+        env.useHorizon = true;
+        env.Configure();
+    }
+
+    bool Init(const char* const* paths, size_t count)
+    {
+        Configure();
+        env.Load(paths, count);
+        loaded = true;
+        return true;
+    }
+
+    void Update(const Camera::State& camera)
+    {
+        if (!loaded) return;
+        env.Update(camera.yawDeg, camera.viewYawDeg, camera.viewPitchDeg);
+    }
+};
+
+#pragma once
+
+#include <srl.hpp>
+
+namespace Camera
+{
+using SRL::Input::Digital;
+using SRL::Math::Types::Angle;
+using SRL::Math::Types::Vector3D;
+using SRL::Math::Types::Fxp;
+
+struct State
+{
+    int32_t yawDeg;
+    int32_t pitchDeg;
+    int32_t viewYawDeg;
+    int32_t viewPitchDeg;
+    Fxp radius;
+    Vector3D strafe;
+    Vector3D location;
+    Angle yaw;
+    Angle pitch;
+    Angle viewYaw;
+    Angle viewPitch;
+};
+
+struct Tuning
+{
+    int32_t yawStepDeg{2};
+    int32_t pitchStepDeg{2};
+    Fxp moveStep{Fxp(0.5f)};
+    Fxp strafeStep{Fxp(0.5f)};
+    int32_t yawMinDeg{0};
+    int32_t yawMaxDeg{360};
+    int32_t pitchMinDeg{-80};
+    int32_t pitchMaxDeg{80};
+    int32_t viewYawMinDeg{-90};
+    int32_t viewYawMaxDeg{90};
+    int32_t viewPitchMinDeg{-80};
+    int32_t viewPitchMaxDeg{80};
+    Fxp targetDistance{Fxp(120.0f)};
+};
+
+inline void Clamp(int32_t& v, int32_t min, int32_t max)
+{
+    if (v < min) v = min;
+    if (v > max) v = max;
+}
+
+inline Vector3D OrbitPosition(Angle yaw, Angle pitch, Fxp radius)
+{
+    Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
+    Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
+    Fxp sinPitch = SRL::Math::Trigonometry::Sin(pitch);
+    Fxp cosPitch = SRL::Math::Trigonometry::Cos(pitch);
+    return Vector3D(radius * sinYaw * cosPitch,
+                    radius * sinPitch,
+                    radius * cosYaw * cosPitch);
+}
+
+inline void RefreshAngles(State& state)
+{
+    state.yaw = Angle::FromDegrees(Fxp::Convert(state.yawDeg));
+    state.pitch = Angle::FromDegrees(Fxp::Convert(state.pitchDeg));
+    state.viewYaw = Angle::FromDegrees(Fxp::Convert(state.viewYawDeg));
+    state.viewPitch = Angle::FromDegrees(Fxp::Convert(state.viewPitchDeg));
+}
+
+inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
+{
+    bool zHeld = pad.IsHeld(Digital::Button::Z);
+    bool yHeld = pad.IsHeld(Digital::Button::Y);
+    bool xHeld = pad.IsHeld(Digital::Button::X);
+
+    // Salva posição inicial e restaura quando X não estiver pressionado
+    static bool homeSet = false;
+    static int32_t homeYawDeg = 0, homePitchDeg = 0, homeViewYawDeg = 0, homeViewPitchDeg = 0;
+    static Vector3D homeStrafe;
+    static bool wasXHeld = false;
+
+    if (!homeSet)
+    {
+        homeYawDeg = state.yawDeg;
+        homePitchDeg = state.pitchDeg;
+        homeViewYawDeg = state.viewYawDeg;
+        homeViewPitchDeg = state.viewPitchDeg;
+        homeStrafe = state.strafe;
+        homeSet = true;
+    }
+
+    if (zHeld)
+    {
+        if (pad.IsHeld(Digital::Button::Up))    state.viewPitchDeg -= tuning.pitchStepDeg;
+        if (pad.IsHeld(Digital::Button::Down))  state.viewPitchDeg += tuning.pitchStepDeg;
+        if (pad.IsHeld(Digital::Button::Left))  state.viewYawDeg   -= tuning.yawStepDeg;
+        if (pad.IsHeld(Digital::Button::Right)) state.viewYawDeg   += tuning.yawStepDeg;
+    }
+
+    if (xHeld)
+    {
+        // Orbita ao redor do modelo
+        if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= tuning.yawStepDeg;
+        if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += tuning.yawStepDeg;
+    }
+    // Se X foi solto neste frame, restaurar posição inicial uma única vez
+    if (wasXHeld && !xHeld)
+    {
+        state.yawDeg = homeYawDeg;
+        state.pitchDeg = homePitchDeg;
+        state.viewYawDeg = homeViewYawDeg;
+        state.viewPitchDeg = homeViewPitchDeg;
+        state.strafe = homeStrafe;
+    }
+
+    wasXHeld = xHeld;
+
+    if (yHeld)
+    {
+        Vector3D moveDelta = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
+        // Frente/tras invertidos conforme pedido anterior
+        if (pad.IsHeld(Digital::Button::Up))    moveDelta += Vector3D(Fxp::Convert(0), Fxp::Convert(0),  tuning.moveStep);
+        if (pad.IsHeld(Digital::Button::Down))  moveDelta += Vector3D(Fxp::Convert(0), Fxp::Convert(0), -tuning.moveStep);
+        // Laterais ajustadas
+        if (pad.IsHeld(Digital::Button::Left))  moveDelta += Vector3D( tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
+        if (pad.IsHeld(Digital::Button::Right)) moveDelta += Vector3D(-tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
+        state.strafe += moveDelta;
+    }
+
+    Clamp(state.yawDeg, tuning.yawMinDeg, tuning.yawMaxDeg);
+    Clamp(state.pitchDeg, tuning.pitchMinDeg, tuning.pitchMaxDeg);
+
+    // Yaw de olhar: sempre livre 360°, apenas normaliza
+    if (state.viewYawDeg >= 360 || state.viewYawDeg < 0)
+    {
+        state.viewYawDeg %= 360;
+        if (state.viewYawDeg < 0) state.viewYawDeg += 360;
+    }
+    // Pitch de olhar continua limitado para evitar virar de ponta-cabeça
+    Clamp(state.viewPitchDeg, tuning.viewPitchMinDeg, tuning.viewPitchMaxDeg);
+
+    RefreshAngles(state);
+    state.location = OrbitPosition(state.yaw, state.pitch, state.radius) + state.strafe;
+}
+
+inline Vector3D ComputeLookTarget(const State& state,
+                                  const Tuning& tuning,
+                                  Digital& pad,
+                                  const Vector3D& modelTarget = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)))
+{
+    if (pad.IsHeld(Digital::Button::X))
+    {
+        return modelTarget; // orbita olhando para o centro do modelo
+    }
+    return state.strafe + OrbitPosition(state.viewYaw, state.viewPitch, tuning.targetDistance);
+}
+} // namespace Camera
+
+
+#pragma once
+
+#include "camera_controller.hpp"
+
+namespace CameraRig
+{
+    inline void RecalcPosition(Camera::State& cam);
+
+    struct Snapshot
+    {
+        Camera::State state{};
+        bool hasValue{ false };
+    };
+
+    inline void Save(const Camera::State& current, Snapshot& snap)
+    {
+        snap.state = current;
+        snap.hasValue = true;
+    }
+
+    inline void Restore(Camera::State& current, const Snapshot& snap)
+    {
+        if (!snap.hasValue) return;
+        current = snap.state;
+    }
+
+    struct OrbitState
+    {
+        bool wasHeld{ false };
+        Snapshot snap{};
+    };
+
+    inline void HandleOrbitAroundCar(Camera::State& cam,
+                                     int32_t carYawStepDeg,
+                                     bool held, bool leftHeld, bool rightHeld,
+                                     int32_t& carYawDeg,
+                                     OrbitState& state,
+                                     bool invertCamera = true)
+    {
+        if (held)
+        {
+            if (!state.wasHeld)
+            {
+                Save(cam, state.snap);
+            }
+
+            int delta = 0;
+            if (leftHeld) delta -= carYawStepDeg;
+            if (rightHeld) delta += carYawStepDeg;
+
+            if (delta != 0)
+            {
+                carYawDeg = (carYawDeg + delta + 360) % 360;
+                int32_t camDelta = invertCamera ? -delta : delta;
+                cam.yawDeg = (cam.yawDeg + camDelta + 360) % 360;
+                Camera::RefreshAngles(cam);
+                CameraRig::RecalcPosition(cam);
+            }
+        }
+        else if (state.wasHeld && state.snap.hasValue)
+        {
+            Restore(cam, state.snap);
+        }
+
+        state.wasHeld = held;
+    }
+
+    inline void SetBehind(Camera::State& cam, int32_t carYawDeg)
+    {
+        cam.yawDeg = (carYawDeg + 180) % 360;
+        cam.viewYawDeg = 0;
+        cam.viewPitchDeg = 0;
+        Camera::RefreshAngles(cam);
+    }
+
+    inline void ApplyDelta(Camera::State& cam, int32_t deltaYaw)
+    {
+        cam.yawDeg = (cam.yawDeg + deltaYaw + 360) % 360;
+        Camera::RefreshAngles(cam);
+    }
+
+    inline void RecalcPosition(Camera::State& cam)
+    {
+        cam.location = Camera::OrbitPosition(cam.yaw, cam.pitch, cam.radius) + cam.strafe;
+    }
+} // namespace CameraRig
+
+#pragma once
+
+#include <srl.hpp>
+#include "modelObject.hpp"
+#include <array>
+#include <vector>
+
+class CarRenderer
+{
+public:
+    struct Config
+    {
+        SRL::Math::Types::Vector3D modelCenter;
+        SRL::Math::Types::Vector3D lightDirection;
+        std::array<size_t, 5> drawOrder;
+        size_t drawOrderCount;
+    };
+
+    CarRenderer(ModelObject& car, bool isSmoothMesh, const Config& cfg)
+        : car_(car), isSmooth_(isSmoothMesh), config_(cfg),
+          rotY(SRL::Math::Types::Angle::FromDegrees(0)),
+          rotStep(SRL::Math::Types::Angle::FromDegrees(0.0f)),
+          wheel1Rot(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel1Step(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel2Rot(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel2Step(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel3Rot(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel3Step(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel4Rot(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel4Step(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel1StepSaved(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel2StepSaved(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel3StepSaved(SRL::Math::Types::Angle::FromDegrees(0)),
+          wheel4StepSaved(SRL::Math::Types::Angle::FromDegrees(0))
+    {
+        ComputeMeshCenters();
+    }
+
+    void SetWheel1Step(const SRL::Math::Types::Angle& step) { wheel1Step = step; }
+    void ResetWheel1() { wheel1Rot = SRL::Math::Types::Angle::FromDegrees(0); }
+
+    void SetWheel2Step(const SRL::Math::Types::Angle& step) { wheel2Step = step; }
+    void ResetWheel2() { wheel2Rot = SRL::Math::Types::Angle::FromDegrees(0); }
+
+    void SetWheel3Step(const SRL::Math::Types::Angle& step) { wheel3Step = step; }
+    void ResetWheel3() { wheel3Rot = SRL::Math::Types::Angle::FromDegrees(0); }
+
+    void SetWheel4Step(const SRL::Math::Types::Angle& step) { wheel4Step = step; }
+    void ResetWheel4() { wheel4Rot = SRL::Math::Types::Angle::FromDegrees(0); }
+
+    void ReverseAllWheels() {
+        wheel1Step = -wheel1Step; wheel2Step = -wheel2Step;
+        wheel3Step = -wheel3Step; wheel4Step = -wheel4Step;
+    }
+
+    void StartAllWheels(const SRL::Math::Types::Angle& step) {
+        wheel1Step = wheel2Step = wheel3Step = wheel4Step = step;
+        wheel1StepSaved = wheel2StepSaved = wheel3StepSaved = wheel4StepSaved = step;
+    }
+
+    void StopAllWheels() {
+        wheel1StepSaved = wheel1Step; wheel1Step = SRL::Math::Types::Angle::FromDegrees(0);
+        wheel2StepSaved = wheel2Step; wheel2Step = SRL::Math::Types::Angle::FromDegrees(0);
+        wheel3StepSaved = wheel3Step; wheel3Step = SRL::Math::Types::Angle::FromDegrees(0);
+        wheel4StepSaved = wheel4Step; wheel4Step = SRL::Math::Types::Angle::FromDegrees(0);
+    }
+
+    void ResumeAllWheels() {
+        if (wheel1Step.RawValue() == 0) wheel1Step = (wheel1StepSaved.RawValue()!=0 ? wheel1StepSaved : wheel1StepSavedDefault);
+        if (wheel2Step.RawValue() == 0) wheel2Step = (wheel2StepSaved.RawValue()!=0 ? wheel2StepSaved : wheel1StepSavedDefault);
+        if (wheel3Step.RawValue() == 0) wheel3Step = (wheel3StepSaved.RawValue()!=0 ? wheel3StepSaved : wheel1StepSavedDefault);
+        if (wheel4Step.RawValue() == 0) wheel4Step = (wheel4StepSaved.RawValue()!=0 ? wheel4StepSaved : wheel1StepSavedDefault);
+    }
+
+    void Render()
+    {
+        SRL::Scene3D::PushMatrix();
+        // Move model center to origin and flip X
+        SRL::Math::Types::Vector3D modelOffset(-config_.modelCenter.X, -config_.modelCenter.Y, -config_.modelCenter.Z);
+        SRL::Scene3D::Translate(modelOffset);
+        SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
+        SRL::Scene3D::RotateY(rotY);
+
+        for (size_t idx = 0; idx < config_.drawOrderCount; ++idx)
+        {
+            size_t meshId = config_.drawOrder[idx];
+            if (meshId >= car_.GetMeshCount())
+            {
+                continue;
+            }
+
+            SRL::Scene3D::PushMatrix();
+            // Roda_1 (mesh 1)
+            if (meshId == 1 && meshId < meshCenters_.size())
+            {
+                const auto& c = meshCenters_[meshId];
+                SRL::Scene3D::Translate(c);
+                SRL::Scene3D::RotateX(-wheel1Rot);
+                SRL::Scene3D::Translate(-c);
+            }
+            // Roda_2 (mesh 2)
+            if (meshId == 2 && meshId < meshCenters_.size())
+            {
+                const auto& c = meshCenters_[meshId];
+                SRL::Scene3D::Translate(c);
+                SRL::Scene3D::RotateX(-wheel2Rot);
+                SRL::Scene3D::Translate(-c);
+            }
+            // Roda_3 (mesh 3) piv? ajustado subtraindo 32760 e mais 8 no eixo Z
+            if (meshId == 3 && meshId < meshCenters_.size())
+            {
+                SRL::Math::Types::Vector3D c = meshCenters_[meshId];
+                c.Z = c.Z - SRL::Math::Types::Fxp::Convert(32760) - SRL::Math::Types::Fxp::Convert(8);
+                SRL::Scene3D::Translate(c);
+                SRL::Scene3D::RotateX(-wheel3Rot);
+                SRL::Scene3D::Translate(-c);
+            }
+            // Roda_4 (mesh 4) mesma l?gica de piv?
+            if (meshId == 4 && meshId < meshCenters_.size())
+            {
+                SRL::Math::Types::Vector3D c = meshCenters_[meshId];
+                c.Z = c.Z - SRL::Math::Types::Fxp::Convert(32760) - SRL::Math::Types::Fxp::Convert(8);
+                SRL::Scene3D::Translate(c);
+                SRL::Scene3D::RotateX(-wheel4Rot);
+                SRL::Scene3D::Translate(-c);
+            }
+
+            if (isSmooth_)
+                car_.Draw(meshId, config_.lightDirection);
+            else
+                car_.Draw(meshId);
+
+            SRL::Scene3D::PopMatrix();
+        }
+
+        SRL::Scene3D::PopMatrix();
+        rotY += rotStep;
+        wheel1Rot -= wheel1Step;
+        wheel2Rot -= wheel2Step;
+        wheel3Rot -= wheel3Step;
+        wheel4Rot -= wheel4Step;
+    }
+
+    SRL::Math::Types::Angle rotY;
+    SRL::Math::Types::Angle rotStep;
+    const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
+
+private:
+    SRL::Math::Types::Angle wheel1Rot, wheel1Step;
+    SRL::Math::Types::Angle wheel2Rot, wheel2Step;
+    SRL::Math::Types::Angle wheel3Rot, wheel3Step;
+    SRL::Math::Types::Angle wheel4Rot, wheel4Step;
+    SRL::Math::Types::Angle wheel1StepSaved, wheel2StepSaved, wheel3StepSaved, wheel4StepSaved;
+    SRL::Math::Types::Angle wheel1StepSavedDefault = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15));
+    void ComputeMeshCenters()
+    {
+        size_t count = car_.GetMeshCount();
+        meshCenters_.assign(count, SRL::Math::Types::Vector3D(0.0f, 0.0f, 0.0f));
+
+        auto computeCenter = [&](auto* mesh, size_t idx)
+        {
+            if (!mesh || mesh->VertexCount == 0) return;
+            SRL::Math::Types::Vector3D minV(32767, 32767, 32767);
+            SRL::Math::Types::Vector3D maxV(-32768, -32768, -32768);
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
+            {
+                const auto& p = mesh->Vertices[v];
+                minV.X = SRL::Math::Min(minV.X, p.X);
+                minV.Y = SRL::Math::Min(minV.Y, p.Y);
+                minV.Z = SRL::Math::Min(minV.Z, p.Z);
+                maxV.X = SRL::Math::Max(maxV.X, p.X);
+                maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
+                maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
+            }
+            meshCenters_[idx] = (minV + maxV) / SRL::Math::Types::Fxp::Convert(2);
+        };
+
+        if (isSmooth_)
+        {
+            for (size_t i = 0; i < count; ++i)
+            {
+                computeCenter(car_.GetMesh<SRL::Types::SmoothMesh>(i), i);
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < count; ++i)
+            {
+                computeCenter(car_.GetMesh<SRL::Types::Mesh>(i), i);
+            }
+        }
+    }
+
+    bool IsWheel(size_t meshId) const
+    {
+        return meshId == 1 || meshId == 2 || meshId == 3 || meshId == 4;
+    }
+
+    ModelObject& car_;
+    bool isSmooth_;
+    Config config_;
+    std::vector<SRL::Math::Types::Vector3D> meshCenters_;
+};
+
+
+
+
+#pragma once
+
+#include <srl.hpp>
+#include "camera_controller.hpp"
+
+struct HudStats
+{
+    void Init(uint32_t faceCount,
+              uint32_t vertexCount,
+              uint32_t meshCount,
+              bool isSmooth,
+              const SRL::Math::Types::Vector3D& modelCenter,
+              const SRL::Math::Types::Vector3D& minV,
+              const SRL::Math::Types::Vector3D& maxV)
+    {
+        SRL::Debug::Print(1, 1, "CAR1.NYA viewer");
+        SRL::Debug::Print(1, 2, "Faces:%u Verts:%u Meshes:%u Smooth:%d", faceCount, vertexCount, meshCount, isSmooth ? 1 : 0);
+        SRL::Debug::Print(1, 3, "Center: %d, %d, %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
+        SRL::Debug::Print(1, 6, "Min: %d %d %d", minV.X.As<int16_t>(), minV.Y.As<int16_t>(), minV.Z.As<int16_t>());
+        SRL::Debug::Print(1, 7, "Max: %d %d %d", maxV.X.As<int16_t>(), maxV.Y.As<int16_t>(), maxV.Z.As<int16_t>());
+        SRL::Debug::Print(1, 9, "Model pos: %d %d %d", modelCenter.X.As<int16_t>(), modelCenter.Y.As<int16_t>(), modelCenter.Z.As<int16_t>());
+    }
+
+    void Update(const Camera::State& cameraState,
+                const SRL::Math::Types::Vector3D& modelOffset,
+                const SRL::Math::Types::Vector3D& cameraLocation,
+                const SRL::Math::Types::Vector3D& modelCenter)
+    {
+        SRL::Debug::Print(1, 4, "Offset: %d, %d, %d", modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
+        SRL::Debug::Print(1, 5, "Cam: %d, %d, %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
+        SRL::Debug::Print(1, 8, "Yaw:%u Pitch:%u R:%d", cameraState.yaw.RawValue(), cameraState.pitch.RawValue(), cameraState.radius.As<int16_t>());
+
+        // VDP usage (live)
+        auto bankFree = [&](int bank)->int32_t { return (int32_t)SRL::VDP2::VRAM::GetAvailable((SRL::VDP2::VramBank)bank); };
+        SRL::Debug::Print(28, 20, "VDP2 A0:%5dK", (int)(bankFree(0) / 1024));
+        SRL::Debug::Print(28, 21, "VDP2 A1:%5dK", (int)(bankFree(1) / 1024));
+        SRL::Debug::Print(28, 22, "VDP2 B0:%5dK", (int)(bankFree(2) / 1024));
+        SRL::Debug::Print(28, 23, "VDP2 B1:%5dK", (int)(bankFree(3) / 1024));
+        SRL::Debug::Print(28, 24, "VDP1 VRAM:%4dK", (int)(SRL::VDP1::GetAvailableMemory() / 1024));
+    }
+};
+
+
+
+
+
+#pragma once
+
+#include <srl.hpp>
+
+/** @brief Detect whether object has size function
+ * @tparam T Object type
+ */
+template<typename T>
+concept HasLoadSizeFunction = requires {
+    { std::declval<T>().LoadSize() } -> std::same_as<size_t>;
+};
+
+/** @brief Get object pointer from stream buffer
+ * @tparam T Object type
+ * @param iterator Stream buffer
+ * @param count Number of objects
+ * @return T* Object pointer
+ */
+template<typename T>
+T* GetAndIterate(char*& iterator, size_t count = 1)
+{
+    T* ptr = reinterpret_cast<T*>(iterator);
+
+    if constexpr (HasLoadSizeFunction<T>)
+    {
+        iterator += ptr->LoadSize() * count;
+    }
+    else
+    {
+        iterator += (sizeof(T) * count);
+    }
+
+    return ptr;
+}
+    
+/** @brief Model object
+ */
+class ModelObject
+{
+private:
+
+    /** @brief Model file header
+     */
+    struct ModelHeader
+    {
+        /** @brief Mesh type, 0 = PDATA, 1 = XPDATA 
+         */
+        size_t Type;
+
+        /** @brief Number of meshes inside the model file
+         */
+        size_t MeshCount;
+
+        /** @brief Number of textures inside the mesh file
+         */
+        size_t TextureCount;
+    };
+
+    /** @brief Texture header, textures are always RGB1555
+     */
+    struct TextureHeader
+    {
+        /** @brief Width of the texture
+         */
+        uint16_t Width;
+
+        /** @brief Height of the texture
+         */
+        uint16_t Height;
+
+        /** @brief Object size
+         * @return Object size
+         */
+        size_t LoadSize() const
+        {
+            return sizeof(TextureHeader) + (sizeof(SRL::Types::HighColor) * (Width * Height));
+        }
+
+        /** @brief Object data
+         * @return The data pointer
+         */
+        SRL::Types::HighColor* Data() const
+        {
+            return (SRL::Types::HighColor*)(((char*)this) + sizeof(TextureHeader));
+        }
+    };
+
+    /** @brief Mesh data header
+     */
+    struct MeshHeader
+    {
+        /** @brief Number of points in the mesh
+         */
+        size_t PointCount;
+
+        /** @brief Number of polygons in the mesh
+         */
+        size_t PolygonCount;
+    };
+
+    /** @brief Face attributes
+     */
+    struct Attribute
+    {
+        /** @brief Indicates whether a texture is applied to this polygon
+         */
+        uint8_t HasTexture : 1;
+
+        /** @brief Indicates whether this polygon has a mesh effect applied to it
+         */
+        uint8_t HasMeshEffect : 1;
+
+        /** @brief Indicates whether this polygon has a mesh effect applied to it
+         */
+        uint8_t IsDoubleSided : 1;
+        
+        /** @brief Half transparency effect
+         */
+        uint8_t HasTransparency: 1;
+
+        /** @brief Face does not use gouraud shading
+         */
+        uint8_t HasFlatShading : 1;
+
+        /** @brief Render face using half the brightness
+         */
+        uint8_t HasHalfBrightness : 1;
+
+        /** @brief Sort mode for face (0 = center)
+         */
+        uint8_t SortMode : 2;
+
+        /** @brief Render faces as wireframe
+         */
+        uint8_t IsWireframe : 1;
+
+        /** @brief Reserved for future use
+         */
+        uint8_t Reserved : 7;
+
+        /** @brief This field is set if HasTexture field is false
+         */
+        SRL::Types::HighColor BaseColor;
+
+        /** @brief Index of a texture to use if HasTexture field is true
+         */
+        int32_t Texture;
+    };
+
+    /** @brief Loaded mesh data
+     */
+    void* meshes;
+
+    /** @brief Number of loaded meshes
+     */
+    size_t meshCount;
+
+    /** @brief Index of first loaded texture
+     */
+    int32_t startTextureIndex;
+
+    /** @brief Number of loaded textures
+     */
+    size_t textureCount;
+
+    /** @brief Mesh type
+     */
+    uint32_t type;
+
+    /** @brief Offset in gouraud table
+     */
+    size_t gouraudOffset;
+
+    /** @brief Load flat mesh entry
+     * @param iterator Stream buffer
+     * @param entryId Entry index
+     * @param header File header
+     */
+    void LoadFlatMesh(char** iterator, size_t entryId, ModelHeader* header)
+    {
+        // Get mesh header
+        MeshHeader* meshHeader = GetAndIterate<MeshHeader>(*iterator);
+        uint16_t lastTextureIndex = SRL::VDP1::GetTextureCount();
+
+        SRL::Types::Mesh mesh = SRL::Types::Mesh(meshHeader->PointCount, meshHeader->PolygonCount);
+        
+        SRL::Math::Types::Vector3D* points = GetAndIterate<SRL::Math::Types::Vector3D>(*iterator, meshHeader->PointCount);
+        slDMACopy(points, mesh.Vertices, sizeof(SRL::Math::Types::Vector3D) * meshHeader->PointCount);
+
+        SRL::Types::Polygon* faces = GetAndIterate<SRL::Types::Polygon>(*iterator, meshHeader->PolygonCount);
+        slDMACopy(faces, mesh.Faces, sizeof(SRL::Types::Polygon) * meshHeader->PolygonCount);
+
+        for (size_t attributeIndex = 0; attributeIndex < meshHeader->PolygonCount; attributeIndex++)
+        {
+            // Read mesh attributes
+            Attribute* attributeHeader = GetAndIterate<Attribute>(*iterator);
+
+            // Set attributes
+            uint16_t textureIndex = No_Texture;
+            uint16_t color = attributeHeader->BaseColor;
+
+            if (attributeHeader->HasTexture)
+            {
+                textureIndex = lastTextureIndex + attributeHeader->Texture;
+                color = No_Palet;
+            }
+
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wnarrowing"
+            mesh.Attributes[attributeIndex] = SRL::Types::Attribute(
+                attributeHeader->IsDoubleSided != 0 ? SRL::Types::Attribute::FaceVisibility::DoubleSided : SRL::Types::Attribute::FaceVisibility::SingleSided,
+                (SRL::Types::Attribute::SortMode)(SRL::Types::Attribute::SortMode::Center - attributeHeader->SortMode),
+                textureIndex,
+                color,
+                CL32KRGB,
+                    CL32KRGB |
+                    (attributeHeader->HasMeshEffect != 0 ? MESHon : MESHoff) |
+                    (attributeHeader->HasTransparency != 0 ? CL_Trans : 0) |
+                    (attributeHeader->HasHalfBrightness != 0 ? CL_Half : 0),
+                (attributeHeader->IsWireframe != 0 ? sprPolyLine : (attributeHeader->HasTexture != 0 ? sprNoflip : sprPolygon)),
+                UseLight);
+            #pragma GCC diagnostic pop
+        }
+
+        ((SRL::Types::Mesh*)this->meshes)[entryId] = std::move(mesh);
+    }
+
+    /** @brief Load smooth mesh entry
+     * @param iterator Stream buffer
+     * @param entryId Entry index
+     * @param header File header
+     */
+    void LoadSmoothMesh(char** iterator, size_t* gouraudIterator, size_t entryId, ModelHeader* header)
+    {
+        // Get mesh header
+        MeshHeader* meshHeader = GetAndIterate<MeshHeader>(*iterator);
+        uint16_t lastTextureIndex = SRL::VDP1::GetTextureCount();
+
+        SRL::Types::SmoothMesh mesh = SRL::Types::SmoothMesh(meshHeader->PointCount, meshHeader->PolygonCount);
+        
+        SRL::Math::Types::Vector3D* points = GetAndIterate<SRL::Math::Types::Vector3D>(*iterator, meshHeader->PointCount);
+        slDMACopy(points, mesh.Vertices, sizeof(SRL::Math::Types::Vector3D) * meshHeader->PointCount);
+
+        SRL::Types::Polygon* faces = GetAndIterate<SRL::Types::Polygon>(*iterator, meshHeader->PolygonCount);
+        slDMACopy(faces, mesh.Faces, sizeof(SRL::Types::Polygon) * meshHeader->PolygonCount);
+
+        for (size_t attributeIndex = 0; attributeIndex < meshHeader->PolygonCount; attributeIndex++)
+        {
+            // Read mesh attributes
+            Attribute* attributeHeader = GetAndIterate<Attribute>(*iterator);
+
+            // Set attributes
+            uint16_t textureIndex = No_Texture;
+            uint16_t color = attributeHeader->BaseColor;
+
+            if (attributeHeader->HasTexture)
+            {
+                textureIndex = lastTextureIndex + attributeHeader->Texture;
+                color = No_Palet;
+            }
+
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wnarrowing"
+            mesh.Attributes[attributeIndex] = SRL::Types::Attribute(
+                attributeHeader->IsDoubleSided != 0 ? SRL::Types::Attribute::FaceVisibility::DoubleSided : SRL::Types::Attribute::FaceVisibility::SingleSided,
+                (SRL::Types::Attribute::SortMode)(SRL::Types::Attribute::SortMode::Center - attributeHeader->SortMode),
+                textureIndex,
+                color,
+                (attributeHeader->HasFlatShading != 0 ? CL32KRGB : *gouraudIterator),
+                    CL32KRGB |
+                    (attributeHeader->HasMeshEffect != 0 ? MESHon : MESHoff) |
+                    (attributeHeader->HasFlatShading != 0 ? 0 : CL_Gouraud) |
+                    (attributeHeader->HasTransparency != 0 ? CL_Trans : 0) |
+                    (attributeHeader->HasHalfBrightness != 0 ? CL_Half : 0),
+                (attributeHeader->IsWireframe != 0 ? sprPolyLine : (attributeHeader->HasTexture != 0 ? sprNoflip : sprPolygon)),
+                (attributeHeader->HasFlatShading != 0 ? UseLight : UseGouraud));
+            #pragma GCC diagnostic pop
+
+            *gouraudIterator += 1;
+        }
+
+        // Mesh contains XPDATA normals
+        SRL::Math::Types::Vector3D* vertexNormals = GetAndIterate<SRL::Math::Types::Vector3D>(*iterator, meshHeader->PointCount);
+        slDMACopy(vertexNormals, mesh.Normals, sizeof(SRL::Math::Types::Vector3D) * meshHeader->PointCount);
+
+        ((SRL::Types::SmoothMesh*)this->meshes)[entryId] = std::move(mesh);
+    }
+
+public:
+
+    /** @brief Initializes a new model object from a file
+     * @param modelFile Model file
+     * @param gouraudTableStart Offset in gouraud table (used only with smooth meshes)
+     */
+    ModelObject(const char* modelFile, size_t gouraudTableStart = 0)
+    {
+        SRL::Cd::File file = SRL::Cd::File(modelFile);
+
+        if (!file.Exists() || file.Size.Bytes <= 0)
+        {
+            SRL::Debug::Print(1, 6, "NYA not found: %s", modelFile);
+            this->meshes = nullptr;
+            this->meshCount = 0;
+            this->textureCount = 0;
+            this->type = 0;
+            this->gouraudOffset = 0;
+            this->startTextureIndex = -1;
+            return;
+        }
+
+        char* fileBuffer = new char[file.Size.Bytes];
+        if (file.LoadBytes(0, file.Size.Bytes, fileBuffer) <= 0)
+        {
+            SRL::Debug::Print(1, 6, "NYA read fail: %s", modelFile);
+            delete[] fileBuffer;
+            this->meshes = nullptr;
+            this->meshCount = 0;
+            this->textureCount = 0;
+            this->type = 0;
+            this->gouraudOffset = 0;
+            this->startTextureIndex = -1;
+            return;
+        }
+
+        char* iterator = fileBuffer;
+        
+        ModelHeader* header = GetAndIterate<ModelHeader>(iterator);
+
+        // Set defaults
+        this->startTextureIndex = -1;
+        this->textureCount = header->TextureCount;
+        this->meshCount = header->MeshCount;
+        this->type = header->Type;
+        this->gouraudOffset = gouraudTableStart;
+        size_t gouraudIterator = 0xe000 + this->gouraudOffset;
+
+        this->meshes = header->Type == 1 ? (void*)new SRL::Types::SmoothMesh[this->meshCount] : (void*)new SRL::Types::Mesh[this->meshCount];
+
+        if (header->Type == 1)
+        {
+            for (size_t meshIndex = 0; meshIndex < this->meshCount; meshIndex++)
+            {
+                this->LoadSmoothMesh(&iterator, &gouraudIterator, meshIndex, header);
+            }
+        }
+        else
+        {
+            for (size_t meshIndex = 0; meshIndex < this->meshCount; meshIndex++)
+            {
+                this->LoadFlatMesh(&iterator, meshIndex, header);
+            }
+        }
+
+        // Load textures
+        for (size_t textureIndex = 0; textureIndex < this->textureCount; textureIndex++)
+        {
+            // Get header
+            TextureHeader* textureHeader = GetAndIterate<TextureHeader>(iterator);
+
+            // Get texture data
+            int32_t spriteIndex = SRL::VDP1::TryLoadTexture(textureHeader->Width, textureHeader->Height, SRL::CRAM::TextureColorMode::RGB555, 0, textureHeader->Data());
+        }
+
+        // Free the read file
+        delete[] fileBuffer;
+    }
+
+    /** @brief Destroy the Model object and free its resources, textures must be freed separately
+     */
+    ~ModelObject()
+    {
+        if (this->type == 0)
+        {
+            delete[] (SRL::Types::Mesh*)this->meshes;
+        }
+        else
+        {
+            delete[] (SRL::Types::SmoothMesh*)this->meshes;
+        }
+
+        this->meshCount = 0;
+    }
+
+    /** @brief Draw specified mesh
+     * @note Used only with flat type mesh data
+     * @param mesh Mesh index
+     */
+    void Draw(size_t mesh)
+    {
+        if (mesh < this->meshCount && this->type == 0)
+        {
+            SRL::Scene3D::DrawMesh(((SRL::Types::Mesh*)this->meshes)[mesh]);
+        }
+    }
+
+    /** @brief Draw specified mesh
+     * @note Used only with smooth type mesh data
+     * @param mesh Mesh index
+     * @param light Light direction, used only with smooth type mesh data
+     */
+    void Draw(size_t mesh, SRL::Math::Types::Vector3D& light)
+    {
+        if (mesh < this->meshCount && this->type == 1)
+        {
+            SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], light);
+        }
+    }
+
+    /** @brief Draw all loaded meshes
+     * @note Used only with flat type mesh data
+     */
+    void Draw()
+    {
+        if (this->type == 0)
+        {
+            for (size_t mesh = 0; mesh < this->meshCount; mesh++)
+            {
+                SRL::Scene3D::DrawMesh(((SRL::Types::Mesh*)this->meshes)[mesh]);
+            }
+        }
+    }
+
+    /** @brief Draw all loaded meshes
+     * @note Used only with smooth type mesh data
+     * @param light Light direction
+     */
+    void Draw(SRL::Math::Types::Vector3D& light)
+    {
+        if (this->type == 1)
+        {
+            for (size_t mesh = 0; mesh < this->meshCount; mesh++)
+            {
+                SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], light);
+            }
+        }
+    }
+
+    /** @brief Gets number of loaded mesh faces
+     * @return Number of loaded mesh faces
+     */
+    size_t GetFaceCount()
+    {
+        size_t result = 0;
+
+        if (this->type == 1)
+        {
+            for (size_t mesh = 0; mesh < this->meshCount; mesh++)
+            {
+                result += ((SRL::Types::SmoothMesh*)this->meshes)[mesh].FaceCount;
+            }
+        }
+
+        return result;
+    }
+    
+    /** @brief Get index of the first texture loaded
+     * @return Index of first texture or -1 if model has no textures
+     */
+    constexpr int32_t GetFirstTextureIndex()
+    {
+        return this->startTextureIndex;
+    }
+
+    /** @brief Get the mesh data
+     * @tparam ReturnValue SRL::Types::Mesh or SRL::Types::SmoothMesh
+     * @param id Mesh id
+     * @return Pointer to mesh data in specified type
+     */
+    template<typename ReturnValue>
+    ReturnValue* GetMesh(size_t id)
+    {
+        static_assert(std::is_base_of<SRL::Types::SmoothMesh, ReturnValue>::value || std::is_base_of<SRL::Types::Mesh, ReturnValue>::value, "ReturnValue must inherit from SmoothMesh or Mesh");
+        return &((ReturnValue*)this->meshes)[id];
+    }
+
+    /** @brief Gets number of loaded meshes
+     * @return Number of loaded meshes
+     */
+    constexpr size_t GetMeshCount()
+    {
+        return this->meshCount;
+    }
+    
+    /** @brief Gets number of loaded mesh vertices
+     * @return Number of loaded mesh vertices
+     */
+    size_t GetVertexCount()
+    {
+        size_t result = 0;
+
+        if (this->type == 1)
+        {
+            for (size_t mesh = 0; mesh < this->meshCount; mesh++)
+            {
+                result += ((SRL::Types::SmoothMesh*)this->meshes)[mesh].VertexCount;
+            }
+        }
+
+        return result;
+    }
+
+    /** @brief Get a value indicating whether we are dealing with smooth mesh
+     * @return true if its a smooth mesh
+     */
+    bool IsSmooth()
+    {
+        return this->type == 1;
+    }
+};
+
+#pragma once
+
+#include <srl.hpp>
+#include "srl_tga.hpp"
+#include "srl_tilemap_interfaces.hpp"
+
+struct SkyBackground
+{
+    SRL::Tilemap::Interfaces::Bmp2Tile* tile = nullptr;
+    SRL::Math::Types::Vector2D scroll = SRL::Math::Types::Vector2D(SRL::Math::Types::Fxp::Convert(0), SRL::Math::Types::Fxp::Convert(0));
+    SRL::Math::Types::Fxp mapWidth = SRL::Math::Types::Fxp::Convert(512);
+    SRL::Math::Types::Fxp mapHeight = SRL::Math::Types::Fxp::Convert(256);
+    SRL::Math::Types::Fxp yawFactor = SRL::Math::Types::Fxp(0.10f);
+    SRL::Math::Types::Fxp pitchFactor = SRL::Math::Types::Fxp(0.08f);
+    SRL::Math::Types::Fxp drift = SRL::Math::Types::Fxp::Convert(0);
+    SRL::Math::Types::Fxp driftStep = SRL::Math::Types::Fxp(0.02f);
+    bool loaded = false;
+
+    ~SkyBackground()
+    {
+        delete tile;
+    }
+
+    bool Load(const char* const* paths, size_t count)
+    {
+        delete tile;
+        tile = nullptr;
+        loaded = false;
+
+        for (size_t i = 0; i < count; ++i)
+        {
+            SRL::Cd::File skyFile(paths[i]);
+            if (!skyFile.Exists())
+            {
+                continue;
+            }
+
+            SRL::Debug::Print(1, 10, "Sky load: %s", paths[i]);
+            SRL::Bitmap::TGA skyBmp(&skyFile);
+            auto skyInfo = skyBmp.GetInfo();
+            SRL::Debug::Print(1, 11, "Sky info: %u x %u mode %d pal %p",
+                              skyInfo.Width, skyInfo.Height,
+                              (int)skyInfo.ColorMode, skyInfo.Palette);
+
+            tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
+            auto tileInfo = tile->GetInfo();
+            SRL::Debug::Print(1, 12, "Sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
+                              tileInfo.MapWidth, tileInfo.MapHeight,
+                              tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
+
+            mapWidth = SRL::Math::Types::Fxp::Convert(tileInfo.MapWidth * (tileInfo.CharSize ? 16 : 8));
+            mapHeight = SRL::Math::Types::Fxp::Convert(tileInfo.MapHeight * (tileInfo.CharSize ? 16 : 8));
+
+            SRL::VDP2::NBG0::LoadTilemap(*tile);
+            SRL::VDP2::NBG0::SetPriority(SRL::VDP2::Priority::Layer6); // acima do backcolor
+            SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(SRL::Math::Types::Fxp(1.0f), SRL::Math::Types::Fxp(1.0f));
+            SRL::VDP2::NBG0::SetScale(skyScale);
+            SRL::VDP2::NBG0::ScrollEnable();
+
+            loaded = true;
+            return true;
+        }
+
+        SRL::Debug::Print(1, 10, "Sky missing: skybox_1.tga");
+        return false;
+    }
+
+    void Update(int32_t yawDeg, int32_t pitchDeg)
+    {
+        if (!loaded || mapWidth.RawValue() == 0)
+        {
+            return;
+        }
+
+        drift += driftStep;
+        if (drift.RawValue() > mapWidth.RawValue())
+        {
+            drift -= mapWidth;
+        }
+
+        SRL::Math::Types::Fxp yawOffset = yawFactor * SRL::Math::Types::Fxp::Convert(yawDeg);
+        SRL::Math::Types::Fxp scrollX = drift + yawOffset;
+        while (scrollX.RawValue() >= mapWidth.RawValue()) scrollX -= mapWidth;
+        while (scrollX.RawValue() < 0) scrollX += mapWidth;
+
+        scroll.X = scrollX;
+        SRL::Math::Types::Fxp pitchOffset = pitchFactor * SRL::Math::Types::Fxp::Convert(pitchDeg);
+        SRL::Math::Types::Fxp scrollY = pitchOffset;
+        while (scrollY.RawValue() >= mapHeight.RawValue()) scrollY -= mapHeight;
+        while (scrollY.RawValue() < 0) scrollY += mapHeight;
+        scroll.Y = scrollY;
+        SRL::VDP2::NBG0::SetPosition(scroll);
+    }
+};
+
+
+
+#pragma once
+
+#include <srl.hpp>
+#include "srl_tga.hpp"
+#include "srl_tilemap_interfaces.hpp"
+
+// C??u em RBG0 com rota????o simples (tilemap), seguindo o yaw da c??mera
+struct SkyBackgroundDome
+{
+    SRL::Tilemap::Interfaces::Bmp2Tile* tile = nullptr;
+    SRL::Math::Types::Fxp yawFactor = SRL::Math::Types::Fxp(1.0f);
+    SRL::Math::Types::Fxp pitchFactor = SRL::Math::Types::Fxp(1.0f);
+    SRL::Math::Types::Fxp pitchOffsetFactor = SRL::Math::Types::Fxp(0.5f);
+    SRL::Math::Types::Fxp viewYawFactor = SRL::Math::Types::Fxp(1.0f);
+    SRL::Math::Types::Fxp lateralOffsetFactor = SRL::Math::Types::Fxp(0.0f);
+    SRL::Math::Types::Fxp baseOffsetX = SRL::Math::Types::Fxp::Convert(0);
+    SRL::Math::Types::Fxp baseOffsetY = SRL::Math::Types::Fxp::Convert(-128);
+    bool loaded = false;
+
+    ~SkyBackgroundDome()
+    {
+        delete tile;
+    }
+
+    void Configure(const SRL::Math::Types::Fxp& newYawFactor,
+                   const SRL::Math::Types::Fxp& offsetX,
+                   const SRL::Math::Types::Fxp& offsetY,
+                   const SRL::Math::Types::Fxp& newPitchFactor,
+                   const SRL::Math::Types::Fxp& newPitchOffsetFactor,
+                   const SRL::Math::Types::Fxp& newViewYawFactor,
+                   const SRL::Math::Types::Fxp& newLateralOffsetFactor)
+    {
+        yawFactor = newYawFactor;
+        baseOffsetX = offsetX;
+        baseOffsetY = offsetY;
+        pitchFactor = newPitchFactor;
+        pitchOffsetFactor = newPitchOffsetFactor;
+        viewYawFactor = newViewYawFactor;
+        lateralOffsetFactor = newLateralOffsetFactor;
+    }
+
+    bool Load(const char* const* paths, size_t count)
+    {
+        delete tile;
+        tile = nullptr;
+        loaded = false;
+
+        SRL::VDP2::RBG0::SetRotationMode(SRL::VDP2::RotationMode::OneAxis);
+
+        for (size_t i = 0; i < count; ++i)
+        {
+            SRL::Cd::File skyFile(paths[i]);
+            if (!skyFile.Exists()) continue;
+            SRL::Debug::Print(1, 10, "RBG sky load: %s", paths[i]);
+            SRL::Bitmap::TGA skyBmp(&skyFile);
+            auto skyInfo = skyBmp.GetInfo();
+            SRL::Debug::Print(1, 11, "RBG sky info: %u x %u mode %d", skyInfo.Width, skyInfo.Height, (int)skyInfo.ColorMode);
+
+            tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
+            auto tileInfo = tile->GetInfo();
+            SRL::Debug::Print(1, 12, "RBG sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
+                              tileInfo.MapWidth, tileInfo.MapHeight,
+                              tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
+
+            SRL::VDP2::RBG0::LoadTilemap(*tile);
+            SRL::VDP2::RBG0::SetPriority(SRL::VDP2::Priority::Layer6);
+            SRL::VDP2::RBG0::ScrollEnable();
+            loaded = true;
+            return true;
+        }
+        SRL::Debug::Print(1, 10, "RBG sky missing");
+        return false;
+    }
+
+    void Update(int32_t yawDeg, int32_t viewYawDeg, int32_t viewPitchDeg)
+    {
+        if (!loaded) return;
+
+        slPushMatrix();
+        slUnitMatrix(nullptr);
+        SRL::Math::Types::Fxp vOffset = pitchOffsetFactor * SRL::Math::Types::Fxp::Convert(viewPitchDeg);
+        SRL::Math::Types::Fxp hOffset = lateralOffsetFactor * SRL::Math::Types::Fxp::Convert(viewYawDeg);
+        slTranslate((baseOffsetX + hOffset).RawValue(), (baseOffsetY + vOffset).RawValue(), 0);
+        auto rotY = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(yawDeg) * yawFactor + SRL::Math::Types::Fxp::Convert(viewYawDeg) * viewYawFactor);
+        auto rotX = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(viewPitchDeg) * pitchFactor);
+        slRotY(rotY.RawValue());
+        slRotX(rotX.RawValue());
+        SRL::VDP2::RBG0::SetCurrentTransform();
+        slPopMatrix();
+    }
+};
+
+
+
+
+#pragma once
+
+#include <srl.hpp>
+#include "srl_tga.hpp"
+#include "srl_tilemap_interfaces.hpp"
+
+struct SkyBackgroundRbg
+{
+    SRL::Tilemap::Interfaces::Bmp2Tile* tile = nullptr;
+    SRL::Math::Types::Vector2D scroll = SRL::Math::Types::Vector2D(SRL::Math::Types::Fxp::Convert(0), SRL::Math::Types::Fxp::Convert(0));
+    SRL::Math::Types::Fxp yawFactor = SRL::Math::Types::Fxp(0.25f); // sensibilidade do roll em relacao ao yaw
+    SRL::Math::Types::Fxp drift = SRL::Math::Types::Fxp::Convert(0);
+    SRL::Math::Types::Fxp driftStep = SRL::Math::Types::Fxp(0.02f);
+    SRL::Math::Types::Fxp baseOffsetX = SRL::Math::Types::Fxp::Convert(0);
+    SRL::Math::Types::Fxp baseOffsetY = SRL::Math::Types::Fxp::Convert(-128);
+    bool loaded = false;
+
+    ~SkyBackgroundRbg()
+    {
+        delete tile;
+    }
+
+    void Configure(const SRL::Math::Types::Fxp& newYawFactor,
+                     const SRL::Math::Types::Fxp& newDriftStep,
+                     const SRL::Math::Types::Fxp& offsetX,
+                     const SRL::Math::Types::Fxp& offsetY)
+    {
+        yawFactor = newYawFactor;
+        driftStep = newDriftStep;
+        baseOffsetX = offsetX;
+        baseOffsetY = offsetY;
+    }
+
+    void SetOffsets(const SRL::Math::Types::Fxp& offsetX, const SRL::Math::Types::Fxp& offsetY)
+    {
+        baseOffsetX = offsetX;
+        baseOffsetY = offsetY;
+    }
+
+    bool Load(const char* const* paths, size_t count)
+    {
+        delete tile;
+        tile = nullptr;
+        loaded = false;
+
+        // RBG0 deve ser configurado antes das demais camadas
+        SRL::VDP2::RBG0::SetRotationMode(SRL::VDP2::RotationMode::OneAxis); // sem VRAM extra
+
+        for (size_t i = 0; i < count; ++i)
+        {
+            SRL::Cd::File skyFile(paths[i]);
+            if (!skyFile.Exists())
+            {
+                continue;
+            }
+
+            SRL::Debug::Print(1, 10, "RBG sky load: %s", paths[i]);
+            SRL::Bitmap::TGA skyBmp(&skyFile);
+            auto skyInfo = skyBmp.GetInfo();
+            SRL::Debug::Print(1, 11, "RBG sky info: %u x %u mode %d pal %p",
+                              skyInfo.Width, skyInfo.Height,
+                              (int)skyInfo.ColorMode, skyInfo.Palette);
+
+            tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
+            auto tileInfo = tile->GetInfo();
+            SRL::Debug::Print(1, 12, "RBG sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
+                              tileInfo.MapWidth, tileInfo.MapHeight,
+                              tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
+
+            SRL::VDP2::RBG0::LoadTilemap(*tile);
+            SRL::VDP2::RBG0::SetPriority(SRL::VDP2::Priority::Layer6); // abaixo de sprites, acima do backcolor
+            SRL::VDP2::RBG0::ScrollEnable();
+            loaded = true;
+            return true;
+        }
+
+        SRL::Debug::Print(1, 10, "RBG sky missing");
+        return false;
+    }
+
+    void Update(int32_t yawDeg)
+    {
+        if (!loaded)
+        {
+            return;
+        }
+
+        // drift base
+        drift += driftStep;
+        if (drift.RawValue() > SRL::Math::Types::Fxp::Convert(1024).RawValue()) // valor arbitrario
+        {
+            drift = SRL::Math::Types::Fxp::Convert(0);
+        }
+
+        // Apply simple yaw rotation and slight drift
+        slPushMatrix();
+        slUnitMatrix(nullptr);
+
+        // small parallax scroll before rotation
+        scroll.X = baseOffsetX + drift;
+        scroll.Y = baseOffsetY;
+        slTranslate(scroll.X.RawValue(), scroll.Y.RawValue(), 0);
+
+        auto rotAngle = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(yawDeg) * yawFactor);
+        slRotY(rotAngle.RawValue());
+
+        SRL::VDP2::RBG0::SetCurrentTransform();
+        slPopMatrix();
+    }
+};
+
+
+
+#pragma once
+
+#include <srl.hpp>
+#include "srl_tga.hpp"
+
+// Bitmap em RBG0 (512x256 8bpp) para eliminar tiling
+struct SkyBackgroundRbgBitmap
+{
+    SRL::Bitmap::TGA* bmp = nullptr;
+    SRL::CRAM::Palette palette;
+    bool loaded = false;
+
+    ~SkyBackgroundRbgBitmap()
+    {
+        delete bmp;
+    }
+
+    bool Load(const char* const* paths, size_t count)
+    {
+        delete bmp;
+        bmp = nullptr;
+        loaded = false;
+
+        // Seleciona arquivo
+        for (size_t i = 0; i < count; ++i)
+        {
+            SRL::Cd::File skyFile(paths[i]);
+            if (!skyFile.Exists()) continue;
+
+            bmp = new SRL::Bitmap::TGA(&skyFile);
+            auto info = bmp->GetInfo();
+            if (info.Width != 512 || info.Height != 256 || info.ColorMode != SRL::CRAM::TextureColorMode::Paletted256)
+            {
+                SRL::Debug::Print(1, 10, "RBG bmp invalido %ux%u mode %d", info.Width, info.Height, (int)info.ColorMode);
+                delete bmp; bmp = nullptr; continue;
+            }
+
+            // aloca paleta 256 cores
+            int palId = SRL::CRAM::GetFreeBank(SRL::CRAM::TextureColorMode::Paletted256);
+            if (palId < 0)
+            {
+                SRL::Debug::Print(1, 10, "Sem CRAM para sky bmp");
+                delete bmp; bmp = nullptr; return false;
+            }
+            SRL::CRAM::SetBankUsedState(palId, SRL::CRAM::TextureColorMode::Paletted256, true);
+            palette = SRL::CRAM::Palette(SRL::CRAM::TextureColorMode::Paletted256, palId);
+            palette.Load((SRL::Types::HighColor*)info.Palette, 256);
+
+            // endere?o de VRAM (usar A0 base)
+            uint8_t* vram = (uint8_t*)VDP2_VRAM_A0;
+            // copia bitmap (512*256 bytes)
+            slDMACopy((void*)bmp->GetData(), vram, info.Width * info.Height);
+
+            // inicializa bitmap RBG0
+            slInitBitMapRbg0(BM_512x256, vram);
+            slBitMapRbg0(COL_TYPE_256, palId, vram);
+            slPriorityRbg0(6);
+            slScrPosRbg0(0,0);
+            loaded = true;
+            return true;
+        }
+
+        SRL::Debug::Print(1, 10, "RBG bmp missing");
+        return false;
+    }
+
+    void Update(int32_t /*yawDeg*/, int32_t /*viewYawDeg*/, int32_t /*viewPitchDeg*/)
+    {
+        if (!loaded) return;
+        // Mantém transformações zeradas (identidade) para evitar distorção
+        SRL::VDP2::RBG0::SetCurrentTransform();
+    }
+};
+
+
+#pragma once
+
+#include <srl.hpp>
+#include "sky_background.hpp"
+#include "sky_background_dome.hpp"
+
+// Gerencia m?ltiplas camadas VDP2 para liberar VDP1: horizonte (NBG0) + domo (RBG0)
+struct SkyEnvironment
+{
+    bool useDome = false; // dome off
+    bool useHorizon = true; // NBG0 on
+
+    SkyBackground horizon;     // NBG0
+    SkyBackgroundDome dome;    // RBG0 (desligado)
+
+    // Configura fatores padr?es
+    void Configure()
+    {
+        // NBG0 scroll control
+        horizon.yawFactor = SRL::Math::Types::Fxp(0.5f);
+        horizon.driftStep = SRL::Math::Types::Fxp(0.0015f); // +50% de velocidade, ainda suave
+    }
+
+    void Load(const char* const* paths, size_t count)
+    {
+        if (useHorizon)
+            horizon.Load(paths, count);
+        if (useDome)
+            dome.Load(paths, count);
+    }
+
+    void Update(int32_t yawDeg, int32_t viewYawDeg, int32_t viewPitchDeg)
+    {
+        if (useHorizon)
+            horizon.Update(yawDeg + viewYawDeg, viewPitchDeg); // aplica yaw+pitch ao scroll (mais rápido no look)
+        if (useDome)
+            dome.Update(yawDeg, viewYawDeg, viewPitchDeg);
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,140 @@
+        "cd/data/INTLAGOS.NYA",
+        "cd/data/INTLAGOS.NYA;1",
+        "CD/DATA/INTLAGOS.NYA",
+        "CD/DATA/INTLAGOS.NYA;1",
+        "INTLAGOS.NYA",
+        "INTLAGOS.NYA;1"
+    };
+    // Usa valor alto para carregar todos os meshes, mas sem texturas (maxMeshes>0 zera texturas no loader)
+    const size_t maxTrackMeshes = 8; // poucos para pista_seg.001
+    if (enableTrack)
+    {
+        TrackLoadResult trRes = LoadTrackToCart(trackPaths, sizeof(trackPaths)/sizeof(trackPaths[0]), maxTrackMeshes);
+        hasTrack = trRes.loaded;
+        isTrackSmooth = trRes.isSmooth;
+        trackFaceCount = trRes.faceCount;
+        trackVertexCount = trRes.vertexCount;
+        trackMeshCount = trRes.meshCount;
+        trackBounds = trRes.renderer.Bounds();
+        trackRenderer = std::move(trRes.renderer);
+        trackRenderer.SetStartMesh(0); // testar pista_seg.000
+        trackRenderer.SetOffset(Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0))); // força origem
+        if (hasTrack && logTrack)
+        {
+            MLOG(1,8, "Track start mesh:%u meshes:%u off:%d,%d,%d carOff:%d,%d,%d",
+                 (unsigned)trackRenderer.StartMesh(), (unsigned)trackMeshCount,
+                 trackRenderer.Offset().X.As<int16_t>(), trackRenderer.Offset().Y.As<int16_t>(), trackRenderer.Offset().Z.As<int16_t>(),
+                 modelOffset.X.As<int16_t>(), modelOffset.Y.As<int16_t>(), modelOffset.Z.As<int16_t>());
+        }
+    }
+
+    while (1)
+
+    {
+        if (!cartOkFlag)
+        {
+            MLOG(1, 3, "ERRO: Cartucho 4MB ausente");
+            MLOG(1, 4, "Insira cart DRAM e reinicie");
+            continue;
+        }
+
+        // Força câmera fixa olhando para origem (debug pista)
+        Camera::UpdateInput(cameraState, cameraTuning, pad);
+        cameraState.location = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(-30));
+        Vector3D lookTarget = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
+
+        const bool aHeld = pad.IsHeld(SRL::Input::Digital::Button::A);
+
+        const bool bHeld = pad.IsHeld(SRL::Input::Digital::Button::B);
+        const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
+        const bool cHeld = pad.IsHeld(SRL::Input::Digital::Button::C);
+
+        const bool lHeld = pad.IsHeld(SRL::Input::Digital::Button::L);
+
+        const bool rHeld = pad.IsHeld(SRL::Input::Digital::Button::R);
+
+        const int16_t carYawStepDeg = cameraTuning.yawStepDeg;
+
+
+
+        // Rotaciona apenas o carro com L/R (plano horizontal)
+        if (!aHeld && !bHeld && !cHeld)
+        {
+            if (lHeld) carYawDeg -= carYawStepDeg;
+            if (rHeld) carYawDeg += carYawStepDeg;
+            if (carYawDeg < 0) carYawDeg += 360;
+            if (carYawDeg >= 360) carYawDeg -= 360;
+        }
+
+        // Rotaciona carro e camera (modo X) usando CameraRig utilitario
+        CameraRig::HandleOrbitAroundCar(cameraState, carYawStepDeg, xHeld, lHeld, rHeld, carYawDeg, xOrbitState, true);
+
+        // Controles de rodas: C inicia/resume, B para
+        if (carRendererPtr)
+        {
+            if (cHeld) { carRendererPtr->StartAllWheels(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15))); carRendererPtr->ResumeAllWheels(); }
+            if (bHeld) { carRendererPtr->StopAllWheels(); }
+        }
+
+// Atualiza skybox VDP2
+        if (enableBg) bgManager.Update(cameraState); // mantém VDP2 background ativo
+
+        Vector3D cameraLocation = cameraState.location;
+        // lookTarget fixo na origem (debug pista)
+        // lookTarget padrao segue o alvo calculado (b livre)
+        hudStats.Update(cameraState, modelOffset, cameraLocation, modelCenter);
+
+        SRL::Scene3D::LoadIdentity();
+        SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
+        // Debug: posicoes das rodas
+        // Logs restritos para pista; removidos logs das rodas/carro
+        // Pista antes do carro
+        // Pista desligada
+
+        // Carro ligado
+        if (carRendererPtr)
+        {
+            carRendererPtr->rotY = Angle::FromDegrees(Fxp::Convert(carYawDeg));
+            carRendererPtr->Render();
+        }
+
+        if (renderAxes)
+        {
+            // Draw axis lines at the origin for reference
+            Vector2D o2D, x2D, y2D, z2D;
+            SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
+            SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
+            SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
+            SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
+            const SRL::Math::Types::Fxp sort2D = 0;
+            SRL::Scene2D::DrawLine(o2D, x2D, HighColor::Colors::Red, sort2D);
+            SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
+            SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
+        }
+        static uint32_t frameCounter = 0;
+        ++frameCounter;
+        if ((frameCounter & 63) == 0)
+        {
+            int32_t hwrFree = SRL::Memory::CartRam::GetFreeSpace();
+            int32_t hwrTotal = 4 * 1024 * 1024;
+            int32_t hwrUsed  = hwrTotal - hwrFree;
+            int32_t vdp1TexCount = SRL::VDP1::GetTextureCount();
+            int32_t hwrPct10 = (hwrTotal > 0) ? (hwrUsed * 1000 / hwrTotal) : 0;
+            if (logCar) MLOG(0, 24, "Car faces:%u verts:%u",
+                              (unsigned)faceCount, (unsigned)vertexCount);
+            if (logTrack) MLOG(0, 25, "HWR used:%d free:%d", hwrUsed, hwrFree);
+            if (logTrack) MLOG(0, 26, "HWR pct:%d.%d%%", hwrPct10/10, hwrPct10%10);
+            if (logTrack) MLOG(0, 27, "VDP1 textures:%d", vdp1TexCount);
+        }
+        SRL::Core::Synchronize();
+
+    }
+
+
+
+    return 0;
+
+}
+
+
+

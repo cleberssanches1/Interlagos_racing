@@ -54,18 +54,18 @@ struct SkyBackgroundRbg
                 continue;
             }
 
-            SRL::Debug::Print(1, 10, "RBG sky load: %s", paths[i]);
+            // SRL::Debug::Print(1, 10, "RBG sky load: %s", paths[i]);
             SRL::Bitmap::TGA skyBmp(&skyFile);
             auto skyInfo = skyBmp.GetInfo();
-            SRL::Debug::Print(1, 11, "RBG sky info: %u x %u mode %d pal %p",
-                              skyInfo.Width, skyInfo.Height,
-                              (int)skyInfo.ColorMode, skyInfo.Palette);
+            // SRL::Debug::Print(1, 11, "RBG sky info: %u x %u mode %d pal %p",
+            //                   skyInfo.Width, skyInfo.Height,
+            //                   (int)skyInfo.ColorMode, skyInfo.Palette);
 
             tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
             auto tileInfo = tile->GetInfo();
-            SRL::Debug::Print(1, 12, "RBG sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
-                              tileInfo.MapWidth, tileInfo.MapHeight,
-                              tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
+            // SRL::Debug::Print(1, 12, "RBG sky tilemap: %ux%u char:%u map:%u cellBytes:%d",
+            //                   tileInfo.MapWidth, tileInfo.MapHeight,
+            //                   tileInfo.CharSize, tileInfo.MapMode, tileInfo.CellByteSize);
 
             SRL::VDP2::RBG0::LoadTilemap(*tile);
             SRL::VDP2::RBG0::SetPriority(SRL::VDP2::Priority::Layer6); // abaixo de sprites, acima do backcolor
@@ -74,7 +74,7 @@ struct SkyBackgroundRbg
             return true;
         }
 
-        SRL::Debug::Print(1, 10, "RBG sky missing");
+        // SRL::Debug::Print(1, 10, "RBG sky missing");
         return false;
     }
 
