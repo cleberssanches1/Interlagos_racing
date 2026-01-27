@@ -150,7 +150,6 @@ public:
         if (!hasTrack_ || !trackObj_ || meshCount_ == 0) return;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
 
-        SRL::Scene3D::LightSetColor(SRL::Types::HighColor::FromRGB555(31, 31, 0));
         SRL::Debug::Print(1, 10, "Track render begin m:%u start:%u off:%d,%d,%d",
                           (unsigned)meshCount_, (unsigned)startMeshIdx_,
                           trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>());

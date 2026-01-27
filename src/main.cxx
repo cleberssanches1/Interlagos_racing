@@ -95,16 +95,16 @@ HighColor shadingTable[32] = {
 
 };
 
-// Representa o pipeline de carga do carro: cart (DRAM 4MB) e cópia opcional na WRAM.
+// Representa o pipeline de carga do carro: cart (DRAM 4MB) e c├│pia opcional na WRAM.
 struct CarPipeline
 {
-    CarLoadResult cart;                     // Resultado da carga obrigatória no cart.
-    std::unique_ptr<ModelObject> wramCopy;  // Cópia independente na work RAM.
+    CarLoadResult cart;                     // Resultado da carga obrigat├│ria no cart.
+    std::unique_ptr<ModelObject> wramCopy;  // C├│pia independente na work RAM.
 
-    // Retorna o modelo ativo (cópia em WRAM se existir, senão o do cart).
+    // Retorna o modelo ativo (c├│pia em WRAM se existir, sen├úo o do cart).
     ModelObject* ActiveModel() const { return wramCopy ? wramCopy.get() : cart.car; }
 
-    // Indica se há um modelo utilizável.
+    // Indica se h├í um modelo utiliz├ível.
     bool Loaded() const { return cart.loaded && ActiveModel(); }
 };
 
@@ -117,7 +117,7 @@ static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, b
     // 1) Carga principal no cart (forceCart = true garante DRAM 4MB).
     pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true);
 
-    // 2) Cópia independente em WRAM para evitar compartilhar ponteiros do cart.
+    // 2) C├│pia independente em WRAM para evitar compartilhar ponteiros do cart.
     if (makeWramCopy && chosenPath)
     {
         pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, 0, false, 0, false, false, false);
@@ -256,8 +256,10 @@ int GameApp::Run()
 
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
+    SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
 
     SRL::Scene3D::SetDirectionalLight(lightDirection);
+    SRL::Scene3D::LightSetColor(lightColor);
 
 
 
