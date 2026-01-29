@@ -68,6 +68,14 @@ inline void RefreshAngles(State& state)
 
 inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 {
+    if (tuning.yawMinDeg > tuning.yawMaxDeg || tuning.pitchMinDeg > tuning.pitchMaxDeg ||
+        tuning.viewYawMinDeg > tuning.viewYawMaxDeg || tuning.viewPitchMinDeg > tuning.viewPitchMaxDeg)
+    {
+        return;
+    }
+
+    const int32_t yawStep = tuning.yawStepDeg != 0 ? tuning.yawStepDeg : 1;
+    const int32_t pitchStep = tuning.pitchStepDeg != 0 ? tuning.pitchStepDeg : 1;
     bool zHeld = pad.IsHeld(Digital::Button::Z);
     bool yHeld = pad.IsHeld(Digital::Button::Y);
     bool xHeld = pad.IsHeld(Digital::Button::X);
@@ -90,17 +98,15 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 
     if (zHeld)
     {
-        if (pad.IsHeld(Digital::Button::Up))    state.viewPitchDeg -= tuning.pitchStepDeg;
-        if (pad.IsHeld(Digital::Button::Down))  state.viewPitchDeg += tuning.pitchStepDeg;
-        if (pad.IsHeld(Digital::Button::Left))  state.viewYawDeg   -= tuning.yawStepDeg;
-        if (pad.IsHeld(Digital::Button::Right)) state.viewYawDeg   += tuning.yawStepDeg;
+        if (pad.IsHeld(Digital::Button::Left))  state.viewYawDeg   -= yawStep;
+        if (pad.IsHeld(Digital::Button::Right)) state.viewYawDeg   += yawStep;
     }
 
     if (xHeld)
     {
         // Orbita ao redor do modelo
-        if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= tuning.yawStepDeg;
-        if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += tuning.yawStepDeg;
+        if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= yawStep;
+        if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += yawStep;
     }
     // Se X foi solto neste frame, restaurar posição inicial uma única vez
     if (wasXHeld && !xHeld)
@@ -125,6 +131,16 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
         if (pad.IsHeld(Digital::Button::Right)) moveDelta += Vector3D(-tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
         state.strafe += moveDelta;
     }
+
+    constexpr Fxp kStrafeLimit = Fxp::Convert(20);
+    auto clamp = [&](Fxp& value)
+    {
+        if (value > kStrafeLimit) value = kStrafeLimit;
+        if (value < -kStrafeLimit) value = -kStrafeLimit;
+    };
+    clamp(state.strafe.X);
+    clamp(state.strafe.Y);
+    clamp(state.strafe.Z);
 
     Clamp(state.yawDeg, tuning.yawMinDeg, tuning.yawMaxDeg);
     Clamp(state.pitchDeg, tuning.pitchMinDeg, tuning.pitchMaxDeg);

@@ -27,9 +27,9 @@
 #include "camera_rig.hpp"
 
 #include <vector>
-
 #include <array>
 #include <memory>
+#include <cstddef>
 
 extern "C" void __throw_bad_array_new_length() {}
 extern "C" void __throw_bad_alloc() {}
@@ -44,7 +44,30 @@ using namespace SRL::Math::Types;
 
 // Logs essenciais na tela (reduzido)
 constexpr bool kLog = true;
+constexpr bool kCarLogs = false;
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
+
+enum class TrackPipelineStage
+{
+    Idle,
+    Serializing,
+    Buffering,
+    Ready,
+    Failed
+};
+
+static const char* TrackPipelineStageToString(TrackPipelineStage stage)
+{
+    switch (stage)
+    {
+        case TrackPipelineStage::Idle:         return "Idle";
+        case TrackPipelineStage::Serializing:  return "Serializando";
+        case TrackPipelineStage::Buffering:    return "Bufferizando";
+        case TrackPipelineStage::Ready:        return "Pronto";
+        case TrackPipelineStage::Failed:       return "Falhou";
+    }
+    return "Desconhecido";
+}
 
 // Procura o primeiro caminho existente em disco.
 static const char* FindExistingPath(const char* const* paths, size_t count)
@@ -139,7 +162,7 @@ int GameApp::Run()
 
     SRL::Core::Initialize(HighColor(0x10, 0x20, 0x18));
 
-    const bool logCar = true;
+    const bool logCar = kCarLogs;
     const bool logTrack = true;
     // Log inicial simples do Cart e HWR
     auto crep = SRL::Memory::CartRam::GetReport();
@@ -181,11 +204,6 @@ int GameApp::Run()
 
 // Se faltar cart, travamos o loop exibindo a mensagem
     bool cartOkFlag = cartOk;
-    // Carrega pista (INTLAGOS.NYA) na mesma pasta
-    TrackRenderer trackRenderer;
-    trackRenderer.SetDirect2D(true);
-    trackRenderer.SetSglDirect(false);
-    const bool hasTrackSegment = false;
     SRL::Math::Types::Vector3D trackSegOffset(0, 0, 0);
     const bool enableTrack = true; // ativa carga da pista na DRAM (sem render)
     bool hasTrack = false;
@@ -196,7 +214,7 @@ int GameApp::Run()
     ModelBounds trackBounds{};
     uint32_t trackDrawnFaces = 0;
     uint32_t trackDrawnMeshes = 0;
-    const bool renderTrack = false; // pista desligada para focar no comparativo do carro
+    const bool renderTrack = true; // agora renderizamos a pista
     const bool renderCar = true; // carro ligado
     const bool renderAxes = false; // desliga eixos de debug
 
@@ -209,6 +227,85 @@ int GameApp::Run()
     uint32_t vertexCount = carPtr ? carPtr->GetVertexCount() : 0;
 
     uint32_t meshCount = carPtr ? carPtr->GetMeshCount() : 0;
+
+    if constexpr (kCarLogs)
+    {
+        MLOG(1, 10, "CarPipeline OK ptr:%08lx faces:%u verts:%u meshes:%u smooth:%d",
+             (unsigned long)carPtr,
+             faceCount,
+             vertexCount,
+             meshCount,
+             isSmoothMesh ? 1 : 0);
+    }
+
+        if (carPtr)
+    {
+        int32_t firstTexture = carPtr->GetFirstTextureIndex();
+        size_t texCount = carPtr->GetTextureCount();
+        if (firstTexture >= 0 && texCount > 0)
+        {
+            bool textureSlotError = false;
+            for (size_t mi = 0; mi < meshCount && !textureSlotError; ++mi)
+            {
+                if (isSmoothMesh)
+                {
+                    auto* mesh = carPtr->GetMesh<SRL::Types::SmoothMesh>(mi);
+                    if (!mesh || mesh->Attributes == nullptr) continue;
+                    for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
+                    {
+                        const auto& attr = mesh->Attributes[fi];
+                        if (attr.Texture != No_Texture)
+                        {
+                            if (attr.Texture < firstTexture || attr.Texture >= firstTexture + static_cast<int32_t>(texCount))
+                            {
+                                if constexpr (kCarLogs)
+                                {
+                                    MLOG(1, 16, "Car texture slot inválido mesh:%zu face:%zu tex:%u outside [%d,%zu)", mi, fi, (unsigned)attr.Texture, firstTexture, texCount);
+                                }
+                                textureSlotError = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    auto* mesh = carPtr->GetMesh<SRL::Types::Mesh>(mi);
+                    if (!mesh || mesh->Attributes == nullptr) continue;
+                    for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
+                    {
+                        const auto& attr = mesh->Attributes[fi];
+                        if (attr.Texture != No_Texture)
+                        {
+                            if (attr.Texture < firstTexture || attr.Texture >= firstTexture + static_cast<int32_t>(texCount))
+                            {
+                                if constexpr (kCarLogs)
+                                {
+                                    MLOG(1, 16, "Car texture slot inválido mesh:%zu face:%zu tex:%u outside [%d,%zu)", mi, fi, (unsigned)attr.Texture, firstTexture, texCount);
+                                }
+                                textureSlotError = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if constexpr (kCarLogs)
+            {
+                if (!textureSlotError)
+                {
+                    MLOG(1, 17, "Car texture slots OK first:%d count:%zu", firstTexture, texCount);
+                }
+            }
+        }
+        else
+        {
+            if constexpr (kCarLogs)
+            {
+                MLOG(1, 17, "Car texture slots indisponíveis primeiro:%d count:%zu", firstTexture, texCount);
+            }
+        }
+    }
 
     // Simple frustum
 
@@ -236,11 +333,11 @@ int GameApp::Run()
 
     Camera::State cameraState{
         .yawDeg = 180,
-        .pitchDeg = -21,
+        .pitchDeg = -10,
         .viewYawDeg = 0,
         .viewPitchDeg = 0,
-        .radius = Fxp(46.0f),
-        .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-4), Fxp::Convert(-2)),
+        .radius = Fxp(55.2f),
+        .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-13.6), Fxp::Convert(-2)),
         .location = Vector3D(0.0, 0.0, -50.0f),
         .yaw = Angle::FromDegrees(Fxp::Convert(180)),
         .pitch = Angle::FromDegrees(Fxp::Convert(-21)),
@@ -293,6 +390,7 @@ int GameApp::Run()
 
     Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
+    Vector3D carWorldPosition(0.0, 0.0, 0.0);
 
     // Draw order: wheels first (1..4), then body (0)
 
@@ -300,15 +398,24 @@ int GameApp::Run()
 
     size_t orderCount = (meshCount < 5) ? meshCount : 5;
 
+    constexpr size_t kCrashSkipMeshId = SIZE_MAX;
     CarRenderer::Config carConfig{modelCenter, lightDirection, drawOrder, orderCount};
+    carConfig.wireframeOnly = false;
     std::unique_ptr<CarRenderer> carRendererPtr;
     if (carValid && carPtr)
     {
         carRendererPtr = std::make_unique<CarRenderer>(*carPtr, isSmoothMesh, carConfig);
+        carRendererPtr->SetSkipMesh(kCrashSkipMeshId);
         carRendererPtr->SetWheel1Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
         carRendererPtr->SetWheel2Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
         carRendererPtr->SetWheel3Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
         carRendererPtr->SetWheel4Step(Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(15)));
+        if constexpr (kCarLogs)
+        {
+            MLOG(1, 12, "CarRenderer criado ptr:%08lx meshCenters:%zu",
+                 (unsigned long)carRendererPtr.get(),
+                 carRendererPtr->MeshCenters().size());
+        }
     }
 
 
@@ -396,6 +503,25 @@ int GameApp::Run()
     hudStats.Init(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
 
     CameraRig::OrbitState xOrbitState{};
+    constexpr size_t kTrackBufferMeshes = 40;
+    constexpr size_t kTrackDrawSegments = 20;
+    TrackRenderer trackRenderer;
+    bool trackReady = false;
+    size_t trackSegmentIndex = 0;
+    bool trackUpLatch = false;
+    bool trackDownLatch = false;
+    TrackPipelineStage trackStage = TrackPipelineStage::Idle;
+    const char* trackStageMessage = "aguardando iniciar";
+    const char* trackStageError = nullptr;
+    bool trackErrorLogged = false;
+    auto LogTrackStage = [&](TrackPipelineStage stage, const char* message, const char* error = nullptr)
+    {
+        trackStage = stage;
+        trackStageMessage = message;
+        trackStageError = error ? error : message;
+        trackErrorLogged = false;
+        MLOG(1, 5, "Track stage: %s - %s", TrackPipelineStageToString(stage), message);
+    };
 
     // Pista INTLAGOS: caminhos em cd/data (nome sem variacoes)
     static const char* trackPaths[] = {
@@ -406,26 +532,68 @@ int GameApp::Run()
         "INTLAGOS.NYA",
         "INTLAGOS.NYA;1"
     };
+    const size_t trackPathCount = sizeof(trackPaths)/sizeof(trackPaths[0]);
+    const char* trackSource = FindExistingPath(trackPaths, trackPathCount);
+    TrackSerializedCopy trackSerial;
+    if (trackSource)
+    {
+        LogTrackStage(TrackPipelineStage::Serializing, "Serializando INTLAGOS.NYA no cart");
+        trackSerial = SerializeTrackToCart(trackSource);
+        if (trackSerial.Valid())
+        {
+            MLOG(1, 9, "Track serialized (passo ok) cart:%08lx sz:%u", (unsigned long)trackSerial.cartPtr, (unsigned)trackSerial.size);
+            LogTrackStage(TrackPipelineStage::Buffering, "Preparando buffer de segmentos a partir do cart");
+            trackReady = trackRenderer.LoadFromSerialized(trackSerial, kTrackBufferMeshes);
+            if (trackReady)
+            {
+                trackRenderer.SetDrawLimit(kTrackDrawSegments);
+                trackRenderer.SetSglDirect(true);
+                trackRenderer.SetUseOriginal(false);
+                trackRenderer.SetDirect2D(false);
+                LogTrackStage(TrackPipelineStage::Ready, "Buffer pronto para renderizar segmentos");
+                auto firstCenter = trackRenderer.StartMeshCenter();
+                carWorldPosition = firstCenter;
+                if (carRendererPtr)
+                {
+                    carRendererPtr->SetWorldPosition(carWorldPosition);
+                }
+                const int16_t trackX = firstCenter.X.As<int16_t>();
+                const int16_t trackY = firstCenter.Y.As<int16_t>();
+                const int16_t trackZ = firstCenter.Z.As<int16_t>();
+                const int16_t carX = carWorldPosition.X.As<int16_t>();
+                const int16_t carY = carWorldPosition.Y.As<int16_t>();
+                const int16_t carZ = carWorldPosition.Z.As<int16_t>();
+                MLOG(1, 6, "Track seg 0 ct: %d %d %d", trackX, trackY, trackZ);
+                MLOG(1, 7, "Car World pos: %d %d %d", carX, carY, carZ);
+                MLOG(1, 5, "Track buffer pronto meshes:%zu faces:%u draw:%zu",
+                     trackRenderer.MeshCount(), trackRenderer.FaceCount(), trackRenderer.DrawLimit());
+            }
+            else
+            {
+                LogTrackStage(TrackPipelineStage::Failed, "Falha ao preparar buffer de track", "trackRenderer.Load falhou");
+            }
+        }
+        else
+        {
+            LogTrackStage(TrackPipelineStage::Failed, "Falha ao serializar track", "SerializeTrackToCart falhou");
+            MLOG(1, 9, "Falha ao serializar track %s", trackSource);
+        }
+    }
+    else
+    {
+        LogTrackStage(TrackPipelineStage::Failed, "INTLAGOS.NYA nao encontrado", "arquivo nao localizado");
+    }
     // Usa valor alto para carregar todos os meshes, mas sem texturas (maxMeshes>0 zera texturas no loader)
     const size_t maxTrackMeshes = 65535;
-    if (enableTrack)
+    if (trackSerial.Valid())
     {
-        TrackLoadResult trRes = LoadTrackToCart(trackPaths, sizeof(trackPaths)/sizeof(trackPaths[0]), maxTrackMeshes);
-        hasTrack = trRes.loaded;
-        isTrackSmooth = trRes.isSmooth;
-        trackFaceCount = trRes.faceCount;
-        trackVertexCount = trRes.vertexCount;
-        trackMeshCount = trRes.meshCount;
-        trackBounds = trRes.renderer.Bounds();
-        trackRenderer = std::move(trRes.renderer);
-        trackRenderer.SetStartMesh(0);
-        trackRenderer.SetScale(Fxp::Convert(1));
-        auto segCenter = trackRenderer.StartMeshCenter() + trackRenderer.Offset();
-        MLOG(1, 2, "Track center:%d %d %d", segCenter.X.As<int16_t>(), segCenter.Y.As<int16_t>(), segCenter.Z.As<int16_t>());
+        MLOG(1, 2, "Track serialized, mantendo pipeline de meshes pausada");
+        // Não instanciamos meshes nem renderizamos o track; apenas mantemos o .NYA copiado.
     }
 
-    while (1)
+    static uint32_t frameCounter = 0;
 
+    while (1)
     {
         if (!cartOkFlag)
         {
@@ -434,21 +602,25 @@ int GameApp::Run()
             continue;
         }
 
+        if (trackStage == TrackPipelineStage::Failed && !trackErrorLogged)
+        {
+            MLOG(1, 21, "Track pipeline falhou: %s", trackStageError ? trackStageError : trackStageMessage);
+            trackErrorLogged = true;
+        }
         Camera::UpdateInput(cameraState, cameraTuning, pad);
 
         const bool aHeld = pad.IsHeld(SRL::Input::Digital::Button::A);
-
         const bool bHeld = pad.IsHeld(SRL::Input::Digital::Button::B);
-        const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
         const bool cHeld = pad.IsHeld(SRL::Input::Digital::Button::C);
-
+        const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
         const bool lHeld = pad.IsHeld(SRL::Input::Digital::Button::L);
-
         const bool rHeld = pad.IsHeld(SRL::Input::Digital::Button::R);
+        const bool upHeld = pad.IsHeld(SRL::Input::Digital::Button::Up);
+        const bool downHeld = pad.IsHeld(SRL::Input::Digital::Button::Down);
+        const bool zHeld = pad.IsHeld(SRL::Input::Digital::Button::Z);
+
 
         const int16_t carYawStepDeg = cameraTuning.yawStepDeg;
-
-
 
         // Rotaciona apenas o carro com L/R (plano horizontal)
         if (!aHeld && !bHeld && !cHeld)
@@ -469,29 +641,57 @@ int GameApp::Run()
             if (bHeld) { carRendererPtr->StopAllWheels(); }
         }
 
+        if (trackReady && trackRenderer.MeshCount() > 0)
+        {
+            const size_t segmentCount = trackRenderer.MeshCount();
+            if (upHeld && !trackUpLatch)
+            {
+                trackSegmentIndex = (trackSegmentIndex + segmentCount - 1) % segmentCount;
+            }
+            trackUpLatch = upHeld;
+
+            if (downHeld && !trackDownLatch)
+            {
+                trackSegmentIndex = (trackSegmentIndex + 1) % segmentCount;
+            }
+            trackDownLatch = downHeld;
+        }
+
 // Atualiza skybox VDP2
         if (enableBg) bgManager.Update(cameraState); // mant'm VDP2 background ativo
 
-        Vector3D cameraLocation = cameraState.location;
-        Vector3D lookTarget = Camera::ComputeLookTarget(cameraState, cameraTuning, pad, modelCenter);
+        Vector3D orbitOffset = cameraState.location;
+        Vector3D cameraLocation = orbitOffset + carWorldPosition;
+        const Fxp kLookDownOffset = Fxp::Convert(6.0f);
+        Vector3D lookTarget = carWorldPosition + Vector3D(Fxp::Convert(0), -kLookDownOffset, Fxp::Convert(0));
+        if (zHeld)
+        {
+            Vector3D viewOffset = Camera::OrbitPosition(cameraState.viewYaw, cameraState.viewPitch, cameraTuning.targetDistance);
+            lookTarget = cameraLocation + viewOffset;
+        }
+        if (frameCounter == 0 || (frameCounter & 63) == 0)
+        {
+            MLOG(1, 9, "Car mesh center %u: %d %d %d",
+                 carRendererPtr ? carRendererPtr->LastMeshDrawn() : 0,
+                 carWorldPosition.X.As<int16_t>(), carWorldPosition.Y.As<int16_t>(), carWorldPosition.Z.As<int16_t>());
+        }
         MLOG(0, 18, "Cam pos: %d %d %d", cameraLocation.X.As<int16_t>(), cameraLocation.Y.As<int16_t>(), cameraLocation.Z.As<int16_t>());
         // lookTarget padrao segue o alvo calculado (b livre)
-        hudStats.Update(cameraState, modelOffset, cameraLocation, modelCenter);
+        hudStats.Update(cameraState, modelOffset, cameraLocation, carWorldPosition);
 
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
         // Debug: posicoes das rodas
         // Logs restritos para pista; removidos logs das rodas/carro
         // Pista antes do carro
-        // Pista desligada
-
-        // Render pista (VDP1 via Scene2D)
-        if (renderTrack && hasTrack) {
+        if (renderTrack && trackReady && trackRenderer.MeshCount() > 0)
+        {
+            trackRenderer.SetStartMesh(trackSegmentIndex);
             trackRenderer.Render(lightDirection, cameraLocation);
         }
 
         // Carro ligado
-        if (carRendererPtr)
+        if (renderCar && carRendererPtr)
         {
             carRendererPtr->rotY = Angle::FromDegrees(Fxp::Convert(carYawDeg));
             carRendererPtr->Render();
@@ -510,7 +710,6 @@ int GameApp::Run()
             SRL::Scene2D::DrawLine(o2D, y2D, HighColor::Colors::Green, sort2D);
             SRL::Scene2D::DrawLine(o2D, z2D, HighColor::Colors::Blue, sort2D);
         }
-        static uint32_t frameCounter = 0;
         ++frameCounter;
         if ((frameCounter & 63) == 0)
         {
@@ -523,13 +722,17 @@ int GameApp::Run()
             size_t vdp1Total = vdp1Used + vdp1Free;
             uint32_t vdp1Pct = (vdp1Total > 0) ? static_cast<uint32_t>((vdp1Used * 100) / vdp1Total) : 0;
             int32_t hwrPct10 = (hwrTotal > 0) ? (hwrUsed * 1000 / hwrTotal) : 0;
-            if (logCar) MLOG(0, 24, "Car faces:%u verts:%u",
-                              (unsigned)faceCount, (unsigned)vertexCount);
+            if constexpr (kCarLogs)
+            {
+                if (logCar) MLOG(0, 24, "Car faces:%u verts:%u",
+                                  (unsigned)faceCount, (unsigned)vertexCount);
+            }
             if (logTrack) MLOG(0, 25, "HWR used:%d free:%d", hwrUsed, hwrFree);
             if (logTrack) MLOG(0, 26, "HWR pct:%d.%d%%", hwrPct10/10, hwrPct10%10);
             if (logTrack) MLOG(0, 27, "VDP1 textures:%d", vdp1TexCount);
             if (logTrack) MLOG(0, 28, "VDP1 mem used:%u free:%u pct:%u%%", (unsigned)vdp1Used, (unsigned)vdp1Free, vdp1Pct);
         }
+        MLOG(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter);
         SRL::Core::Synchronize();
 
     }

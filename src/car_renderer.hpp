@@ -4,6 +4,7 @@
 #include "modelObject.hpp"
 #include <array>
 #include <vector>
+#include <cstddef>
 
 // Responsável por desenhar um ModelObject de carro com ordem de meshes e luz configuradas.
 class CarRenderer
@@ -16,6 +17,8 @@ public:
         SRL::Math::Types::Vector3D lightDirection;
         std::array<size_t, 5> drawOrder;
         size_t drawOrderCount;
+        bool wireframeOnly = false;
+        SRL::Math::Types::Vector3D worldPosition = SRL::Math::Types::Vector3D(0.0f, 0.0f, 0.0f);
     };
 
     // Mantém referência para o ModelObject (não assume propriedade).
@@ -51,7 +54,9 @@ public:
     // Desenha o carro na matriz corrente respeitando a ordem de meshes.
     void Render()
     {
+        // Minimal logging to avoid flood; keep VDP1 logs in main
         SRL::Scene3D::PushMatrix();
+        SRL::Scene3D::Translate(config_.worldPosition);
         // Escala reduzida para evitar overflow em rota??es
         // SRL::Scene3D::Scale(carScale_); // desativado para evitar overflow/artefatos
         // Move model center to origin and flip X
@@ -81,12 +86,40 @@ public:
             if (!okMesh)
                 continue;
 
-            SRL::Scene3D::PushMatrix();
-            // Renderiza com iluminacao (lightDirection)
+            if (meshId == skipMeshId_)
+            {
+            // skip logging for minimal output
+                continue;
+            }
+
+            lastMeshId_ = meshId;
+
+            auto meshType = isSmooth_ ? "smooth" : "flat";
+            size_t faceCount = 0;
+            size_t vertCount = 0;
             if (isSmooth_)
-                car_.Draw(meshId, config_.lightDirection);
+            {
+                auto* m = car_.GetMesh<SRL::Types::SmoothMesh>(meshId);
+                if (m) { faceCount = m->FaceCount; vertCount = m->VertexCount; }
+            }
             else
-                car_.Draw(meshId);
+            {
+                auto* m = car_.GetMesh<SRL::Types::Mesh>(meshId);
+                if (m) { faceCount = m->FaceCount; vertCount = m->VertexCount; }
+            }
+
+            SRL::Scene3D::PushMatrix();
+            if (config_.wireframeOnly)
+            {
+                DrawWireframeMesh(meshId, faceCount, vertCount);
+            }
+            else
+            {
+                if (isSmooth_)
+                    car_.Draw(meshId, config_.lightDirection);
+                else
+                    car_.Draw(meshId);
+            }
             SRL::Scene3D::PopMatrix();
         }
 
@@ -94,6 +127,10 @@ public:
         // rotY fixo (rotStep desativado)
         wheel1Rot = wheel2Rot = wheel3Rot = wheel4Rot = SRL::Math::Types::Angle::FromDegrees(0);
     }
+
+    void SetSkipMesh(size_t meshId) { skipMeshId_ = meshId; }
+    size_t LastMeshDrawn() const { return lastMeshId_; }
+    void SetWorldPosition(const SRL::Math::Types::Vector3D& pos) { config_.worldPosition = pos; }
 
     SRL::Math::Types::Angle rotY;
     SRL::Math::Types::Angle rotStep;
@@ -147,6 +184,43 @@ private:
     SRL::Math::Types::Angle wheel4Rot, wheel4Step;
     SRL::Math::Types::Angle wheel1StepSaved, wheel2StepSaved, wheel3StepSaved, wheel4StepSaved;
     SRL::Math::Types::Angle wheel1StepSavedDefault = SRL::Math::Types::Angle::FromDegrees(0);
+    size_t skipMeshId_ = SIZE_MAX;
+    size_t lastMeshId_ = SIZE_MAX;
+
+    void DrawWireframeMesh(size_t meshId, size_t faceCount, size_t vertCount)
+    {
+        if (isSmooth_)
+        {
+            auto* mesh = car_.GetMesh<SRL::Types::SmoothMesh>(meshId);
+            if (!mesh) return;
+            DrawWireframePolygons(mesh->Faces, faceCount, mesh->Vertices, vertCount);
+        }
+        else
+        {
+            auto* mesh = car_.GetMesh<SRL::Types::Mesh>(meshId);
+            if (!mesh) return;
+            DrawWireframePolygons(mesh->Faces, faceCount, mesh->Vertices, vertCount);
+        }
+    }
+
+    void DrawWireframePolygons(const SRL::Types::Polygon* faces, size_t faceCount, const SRL::Math::Types::Vector3D* verts, size_t vertCount)
+    {
+        for (size_t f = 0; f < faceCount; ++f)
+        {
+            const auto& face = faces[f];
+            for (int e = 0; e < 4; ++e)
+            {
+                uint16_t a = face.Vertices[e];
+                uint16_t b = face.Vertices[(e + 1) & 3];
+                if (a >= vertCount || b >= vertCount) continue;
+                SRL::Math::Types::Vector2D p0, p1;
+                SRL::Scene3D::ProjectToScreen(verts[a], &p0);
+                SRL::Scene3D::ProjectToScreen(verts[b], &p1);
+                static const SRL::Types::HighColor kWireColor = SRL::Types::HighColor::Colors::White;
+                SRL::Scene2D::DrawLine(p0, p1, kWireColor, 0);
+            }
+        }
+    }
 };
 
 

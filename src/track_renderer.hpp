@@ -3,6 +3,7 @@
 #include <srl.hpp>
 #include "modelObject.hpp"
 #include "sgl_poly_renderer.hpp"
+#include "track_serialized.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
@@ -29,7 +30,7 @@ public:
 
     static constexpr size_t kVDP1FaceCostBytes = 64;
     static constexpr size_t kVDP1BudgetBytes   = 512 * 1024;
-    static constexpr size_t kMaxDrawMeshes     = 4;  // renderiza poucos segmentos
+    static constexpr size_t kMaxDrawMeshes     = 4;  // renderiza poucos segmentos por padrão
 
     // Load track file from a list of candidate paths into cart RAM and prepare caches.
     bool Load(const char* const* candidates, size_t count, size_t maxMeshes, bool /*loadAllSegments*/ = false)
@@ -55,11 +56,43 @@ public:
         }
 
         if (!hasTrack_ || !trackObj_) return false;
+        return InitializeFromModelObject(trackObj_, maxMeshes);
+    }
 
+    bool LoadFromSerialized(const TrackSerializedCopy& serialized, size_t maxMeshes)
+    {
+        Reset();
+        if (!serialized.Valid()) return false;
+        auto* obj = new ModelObject();
+        if (!obj->LoadFromMemory(serialized.cartPtr, serialized.size, 0, false, maxMeshes, false, true))
+        {
+            delete obj;
+            return false;
+        }
+        if (!InitializeFromModelObject(obj, maxMeshes))
+        {
+            delete obj;
+            trackObj_ = nullptr;
+            return false;
+        }
+        return true;
+    }
+
+    bool InitializeFromModelObject(ModelObject* obj, size_t maxMeshes)
+    {
+        if (!obj) return false;
+        trackObj_ = obj;
         isSmooth_ = trackObj_->IsSmooth();
         size_t loadedMeshes = trackObj_->GetMeshCount();
         meshCount_ = (maxMeshes > 0 && maxMeshes < loadedMeshes) ? maxMeshes : loadedMeshes;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
+        if (meshCount_ == 0)
+        {
+            delete trackObj_;
+            trackObj_ = nullptr;
+            hasTrack_ = false;
+            return false;
+        }
         faceCount_ = trackObj_->GetFaceCount();
         vertexCount_ = trackObj_->GetVertexCount();
         bounds_ = ComputeBounds(*trackObj_, isSmooth_);
@@ -119,7 +152,6 @@ public:
             meshCenters_[m] = (minv + maxv) / SRL::Math::Types::Fxp::Convert(2);
         }
 
-        // Pré-aloca caches (vão ser preenchidos sob demanda)
         if (isSmooth_)
         {
             smoothCache_.assign(meshCount_, {});
@@ -129,7 +161,6 @@ public:
             flatCache_.assign(meshCount_, {});
         }
 
-        // Recentra pista no start mesh
         if (!meshCenters_.empty())
         {
             size_t idx = startMeshIdx_ < meshCenters_.size() ? startMeshIdx_ : 0;
@@ -141,6 +172,7 @@ public:
             trackOffset_ = {};
         }
 
+        hasTrack_ = true;
         return true;
     }
 
@@ -150,9 +182,10 @@ public:
         if (!hasTrack_ || !trackObj_ || meshCount_ == 0) return;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
 
-        SRL::Debug::Print(1, 10, "Track render begin m:%u start:%u off:%d,%d,%d",
-                          (unsigned)meshCount_, (unsigned)startMeshIdx_,
-                          trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>());
+        SRL::Debug::Print(1, 10, "Track render begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
+                          (unsigned)meshCount_, (unsigned)startMeshIdx_, (unsigned)drawLimit_,
+                          trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),
+                          useSglDirect_ ? 1 : 0, useOriginal_ ? 1 : 0, useDirect2D_ ? 1 : 0);
 
         size_t drawn = 0;
         uint32_t drawnFaces = 0;
@@ -170,7 +203,7 @@ public:
             SRL::Scene2D::DrawPolygon(ptsTest, true, SRL::Types::HighColor::FromRGB555(31,31,0), 0);
         }
 
-        for (size_t i = startMeshIdx_; i < meshCount_ && drawn < kMaxDrawMeshes; ++i)
+        for (size_t i = startMeshIdx_; i < meshCount_ && drawn < drawLimit_; ++i)
         {
             EnsureCached(i);
 
@@ -212,15 +245,16 @@ public:
             if (useSglDirect_)
             {
                 // Usa caminho SGL puro (slDispPolygon)
-                if (isSmooth_)
+            if (isSmooth_)
+            {
+                if (i >= smoothCache_.size() || !smoothCache_[i].valid) continue;
+                const auto& cache = smoothCache_[i];
+                if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
+                SRL::Debug::Print(1, 52, "Track SGL draw mesh%u smooth v:%zu f:%zu", (unsigned)i, cache.verts.size(), cache.faces.size());
+                if (drawn == 0 && !cache.verts.empty())
                 {
-                    if (i >= smoothCache_.size() || !smoothCache_[i].valid) continue;
-                    const auto& cache = smoothCache_[i];
-                    if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
-                    if (drawn == 0 && !cache.verts.empty())
-                    {
-                        // Log de projeção do primeiro face (mesmo no modo SGL) para debug
-                        SRL::Math::Types::Vector2D p2d[3];
+                    // Log de projeção do primeiro face (mesmo no modo SGL) para debug
+                    SRL::Math::Types::Vector2D p2d[3];
                         for (int vi = 0; vi < 3; ++vi)
                         {
                             uint16_t idx = cache.faces[0].Vertices[vi];
@@ -237,12 +271,13 @@ public:
                                       0x83FF, trackOffset_, trackScale_);
                     drawnFaces += (uint32_t)cache.faces.size();
                 }
-                else
-                {
-                    if (i >= flatCache_.size() || !flatCache_[i].valid) continue;
-                    const auto& cache = flatCache_[i];
-                    if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
-                    if (drawn == 0 && !cache.verts.empty())
+            else
+            {
+                if (i >= flatCache_.size() || !flatCache_[i].valid) continue;
+                const auto& cache = flatCache_[i];
+                if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
+                SRL::Debug::Print(1, 53, "Track SGL draw mesh%u flat v:%zu f:%zu", (unsigned)i, cache.verts.size(), cache.faces.size());
+                if (drawn == 0 && !cache.verts.empty())
                     {
                         SRL::Math::Types::Vector2D p2d[3];
                         for (int vi = 0; vi < 3; ++vi)
@@ -485,6 +520,13 @@ public:
         lastDrawnFaces_ = drawnFaces;
     }
 
+    void SetDrawLimit(size_t limit)
+    {
+        drawLimit_ = (limit == 0) ? 1 : limit;
+    }
+
+    size_t DrawLimit() const { return drawLimit_; }
+
     // Accessors for loaded model information.
     bool HasTrack() const { return hasTrack_; }
     bool IsSmooth() const { return isSmooth_; }
@@ -512,6 +554,7 @@ public:
     void SetDirect2D(bool v) { useDirect2D_ = v; }
     void SetSglDirect(bool v) { useSglDirect_ = v; }
     void SetUseOriginal(bool v) { useOriginal_ = v; }
+    const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
     bool GetMeshStats(size_t idx, uint32_t& faces, uint32_t& verts) const
     {
         if (!trackObj_ || idx >= meshCount_) return false;
@@ -622,6 +665,7 @@ private:
                     sprPolygon,
                     UseLight);
             }
+            SRL::Debug::Print(1, 50, "Track cache ready smooth mesh%zu verts:%zu faces:%zu lastDrawn:%u", idx, c.verts.size(), c.faces.size(), (unsigned)lastDrawnFaces_);
         }
         else
         {
@@ -646,6 +690,7 @@ private:
                     sprPolygon,
                     UseLight);
             }
+            SRL::Debug::Print(1, 51, "Track cache ready flat mesh%zu verts:%zu faces:%zu lastDrawn:%u", idx, c.verts.size(), c.faces.size(), (unsigned)lastDrawnFaces_);
         }
     }
 
@@ -665,6 +710,7 @@ private:
     uint32_t lastDrawnFaces_ = 0;
     uint32_t lastDrawnMeshes_ = 0;
     SRL::Math::Types::Fxp trackScale_{ SRL::Math::Types::Fxp::Convert(1.0f) };
+    size_t drawLimit_ = kMaxDrawMeshes;
 
     ModelObject* trackObj_ = nullptr;
     size_t startMeshIdx_ = 0;

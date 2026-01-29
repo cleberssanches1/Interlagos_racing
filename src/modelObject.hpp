@@ -175,6 +175,21 @@ public:
     ModelObject(const ModelObject&) = delete;
     ModelObject& operator=(const ModelObject&) = delete;
 
+    /** @brief Default constructor */
+    ModelObject() noexcept
+        : meshes(nullptr),
+          meshCount(0),
+          startTextureIndex(-1),
+          textureCount(0),
+          type(0),
+          firstMeshOnly(false),
+          forceBigEndian(false),
+          maxMeshesToLoad(0),
+          forceHwrAlloc(false),
+          streamOnly(false),
+          gouraudOffset(0)
+    {}
+
     /** @brief Move constructor */
     ModelObject(ModelObject&& other) noexcept
     {
@@ -686,6 +701,25 @@ public:
             this->startTextureIndex = -1;
             this->LoadBuffer(modelFile, gouraudTableStart);
         }
+
+    }
+
+    bool LoadFromMemory(const void* buffer, size_t size, size_t gouraudTableStart = 0, bool firstMeshOnly = false, size_t maxMeshes = 0, bool forceBE = false, bool forceHwrAlloc = false)
+    {
+        if (!buffer || size == 0) return false;
+        this->firstMeshOnly = firstMeshOnly;
+        this->forceBigEndian = forceBE;
+        this->maxMeshesToLoad = maxMeshes;
+        this->forceHwrAlloc = forceHwrAlloc;
+        this->streamOnly = false;
+        this->meshes = nullptr;
+        this->meshCount = 0;
+        this->textureCount = 0;
+        this->type = 0;
+        this->gouraudOffset = 0;
+        this->startTextureIndex = -1;
+
+        return this->ParseBuffer(static_cast<const char*>(buffer), size, gouraudTableStart);
     }
 
 private:
@@ -730,120 +764,11 @@ private:
             else delete[] buf;
             return false;
         }
-        char* it = buf;
-        auto ReadBE32 = [](const uint8_t* p) -> uint32_t { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]); };
-        ModelHeader* header = GetAndIterate<ModelHeader>(it);
-        if (this->firstMeshOnly || this->forceBigEndian)
-        {
-            // pista (diagnóstico): converte para big-endian
-            header->Type = ReadBE32((uint8_t*)buf + 0);
-            header->MeshCount = ReadBE32((uint8_t*)buf + 4);
-            header->TextureCount = ReadBE32((uint8_t*)buf + 8);
-        }
-        if (header->Type > 1 || header->MeshCount == 0 || header->MeshCount > 400 || header->TextureCount > 1200)
-        {
-            // tenta interpretar cabeçalho em big-endian (caso arquivo tenha sido gravado LE)
-            uint32_t beType = ReadBE32((uint8_t*)buf + 0);
-            uint32_t beMesh = ReadBE32((uint8_t*)buf + 4);
-            uint32_t beTex  = ReadBE32((uint8_t*)buf + 8);
-            bool beValid = (beType <= 1) && (beMesh > 0 && beMesh <= 400) && (beTex <= 1200);
-            if (beValid)
-            {
-                header->Type = beType;
-                header->MeshCount = beMesh;
-                header->TextureCount = beTex;
-            }
-            else
-            {
-                if (bufInHwr) SRL::Memory::HighWorkRam::Free(buf);
-                else if (bufInCart) SRL::Memory::CartRam::Free(buf);
-                else delete[] buf;
-                return false;
-            }
-        }
 
-        this->startTextureIndex = -1;
-        this->textureCount = (this->firstMeshOnly || this->maxMeshesToLoad>0) ? 0 : header->TextureCount;
-        size_t originalMeshCount = header->MeshCount;
-        size_t targetMeshCount = originalMeshCount;
-        if (this->firstMeshOnly && targetMeshCount > 1) targetMeshCount = 1;
-        if (this->maxMeshesToLoad > 0 && targetMeshCount > this->maxMeshesToLoad) targetMeshCount = this->maxMeshesToLoad;
-        this->meshCount = targetMeshCount;
-        this->type = header->Type;
-        this->gouraudOffset = gouraudTableStart;
-        size_t gouraudIterator = 0xe000 + this->gouraudOffset;
-
-        if (this->meshCount == 0)
-        {
-            if (bufInHwr) SRL::Memory::HighWorkRam::Free(buf);
-            else if (bufInCart) SRL::Memory::CartRam::Free(buf);
-            else delete[] buf;
-            return false;
-        }
-
-        // Em modo pista (firstMeshOnly ou maxMeshesToLoad > 0 ou forceHwrAlloc), forca alocacao no cart (4MB)
-        const bool forceCart = this->forceHwrAlloc || this->firstMeshOnly || this->maxMeshesToLoad > 0;
-        if (forceCart)
-        {
-            auto crep = SRL::Memory::CartRam::GetReport();
-            size_t need = this->meshCount * (header->Type == 1 ? sizeof(SRL::Types::SmoothMesh) : sizeof(SRL::Types::Mesh));
-            MO_LOG(1, 6, "NYA cart alloc m:%lu need:%lu free:%lu total:%lu",
-                              (unsigned long)this->meshCount, (unsigned long)need, (unsigned long)crep.FreeSize, (unsigned long)crep.TotalSize);
-            this->meshes = header->Type == 1
-                ? (void*)cartnew SRL::Types::SmoothMesh[this->meshCount]
-                : (void*)cartnew SRL::Types::Mesh[this->meshCount];
-            if (!this->meshes)
-            {
-                MO_LOG(1, 6, "NYA cart alloc fail m:%lu bytes:%lu free:%lu total:%lu",
-                                  (unsigned long)this->meshCount, (unsigned long)need,
-                                  (unsigned long)SRL::Memory::CartRam::GetFreeSpace(),
-                                  (unsigned long)crep.TotalSize);
-                if (bufInHwr) SRL::Memory::HighWorkRam::Free(buf);
-                else delete[] buf;
-                return false;
-            }
-            else
-            {
-                MO_LOG(1, 6, "NYA cart alloc ptr:%08lx", (unsigned long)this->meshes);
-            }
-        }
-        else
-        {
-            this->meshes = header->Type == 1
-                ? (void*)new SRL::Types::SmoothMesh[this->meshCount]
-                : (void*)new SRL::Types::Mesh[this->meshCount];
-        }
-
-        bool ok = true;
-        if (header->Type == 1)
-        {
-            for (size_t mi = 0; mi < originalMeshCount && ok; ++mi)
-            {
-                if (mi < this->meshCount)
-                    this->LoadSmoothMeshBuffer(&it, &gouraudIterator, mi);
-                else
-                    this->SkipSmoothMeshBuffer(&it, &gouraudIterator);
-            }
-        }
-        else
-        {
-            for (size_t mi = 0; mi < originalMeshCount && ok; ++mi)
-            {
-                if (mi < this->meshCount)
-                    this->LoadFlatMeshBuffer(&it, mi);
-                else
-                    this->SkipFlatMeshBuffer(&it);
-            }
-        }
-
-        for (size_t ti = 0; ok && ti < this->textureCount; ++ti)
-        {
-            TextureHeader* texHeader = GetAndIterate<TextureHeader>(it);
-            SRL::VDP1::TryLoadTexture(texHeader->Width, texHeader->Height, SRL::CRAM::TextureColorMode::RGB555, 0, texHeader->Data());
-        }
-
+        bool ok = this->ParseBuffer(buf, f.Size.Bytes, gouraudTableStart);
         if (bufInHwr) SRL::Memory::HighWorkRam::Free(buf);
-        else if (!bufInCart) delete[] buf; // mant?m buffer no cart
+        else if (!bufInCart) delete[] buf; // mantém buffer no cart
+
         if (ok)
         {
             MO_LOG(1, 6, "NYA buffer ok: %s meshes:%lu tex:%lu type:%lu", modelFile,
@@ -1057,6 +982,122 @@ private:
             MO_LOG(1, 6, "NYA fallback buffer load: %s", modelFile);
             this->LoadBuffer(modelFile, gouraudTableStart);
         }
+    }
+
+    bool ParseBuffer(const char* buf, size_t bufSize, size_t gouraudTableStart = 0)
+    {
+        if (!buf || bufSize == 0)
+        {
+            MO_LOG(1, 6, "NYA parse fail buffer: tamanho nulo");
+            return false;
+        }
+        auto logFailure = [&](const char* reason)
+        {
+            MO_LOG(1, 6, "NYA parse fail buffer: %s", reason);
+        };
+        char* it = const_cast<char*>(buf);
+        auto ReadBE32 = [](const uint8_t* p) -> uint32_t { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]); };
+        ModelHeader* header = GetAndIterate<ModelHeader>(it);
+        if (this->firstMeshOnly || this->forceBigEndian)
+        {
+            header->Type = ReadBE32((const uint8_t*)buf + 0);
+            header->MeshCount = ReadBE32((const uint8_t*)buf + 4);
+            header->TextureCount = ReadBE32((const uint8_t*)buf + 8);
+        }
+        const uint32_t texLimit = this->firstMeshOnly ? 200u : 5000u;
+        if (header->Type > 1 || header->MeshCount == 0 || header->MeshCount > 400 || header->TextureCount > texLimit)
+        {
+            uint32_t beType = ReadBE32((const uint8_t*)buf + 0);
+            uint32_t beMesh = ReadBE32((const uint8_t*)buf + 4);
+            uint32_t beTex  = ReadBE32((const uint8_t*)buf + 8);
+            bool beValid = (beType <= 1) && (beMesh > 0 && beMesh <= 400) && (beTex <= texLimit);
+            if (beValid)
+            {
+                header->Type = beType;
+                header->MeshCount = beMesh;
+                header->TextureCount = beTex;
+            }
+            else
+            {
+                logFailure("cabecalho invalidado (meshes/texturas fora do esperado)");
+                return false;
+            }
+        }
+
+        this->startTextureIndex = -1;
+        this->textureCount = (this->firstMeshOnly || this->maxMeshesToLoad > 0) ? 0 : header->TextureCount;
+        size_t originalMeshCount = header->MeshCount;
+        size_t targetMeshCount = originalMeshCount;
+        if (this->firstMeshOnly && targetMeshCount > 1) targetMeshCount = 1;
+        if (this->maxMeshesToLoad > 0 && targetMeshCount > this->maxMeshesToLoad) targetMeshCount = this->maxMeshesToLoad;
+        this->meshCount = targetMeshCount;
+        this->type = header->Type;
+        this->gouraudOffset = gouraudTableStart;
+        size_t gouraudIterator = 0xe000 + this->gouraudOffset;
+
+        if (this->meshCount == 0)
+        {
+            logFailure("modelo nao possui meshes apos aplicacao de limite");
+            return false;
+        }
+
+        const bool forceCart = this->forceHwrAlloc || this->firstMeshOnly || this->maxMeshesToLoad > 0;
+        if (forceCart)
+        {
+            auto crep = SRL::Memory::CartRam::GetReport();
+            size_t need = this->meshCount * (header->Type == 1 ? sizeof(SRL::Types::SmoothMesh) : sizeof(SRL::Types::Mesh));
+            MO_LOG(1, 6, "NYA cart alloc m:%lu need:%lu free:%lu total:%lu",
+                              (unsigned long)this->meshCount, (unsigned long)need, (unsigned long)crep.FreeSize, (unsigned long)crep.TotalSize);
+            this->meshes = header->Type == 1
+                ? (void*)cartnew SRL::Types::SmoothMesh[this->meshCount]
+                : (void*)cartnew SRL::Types::Mesh[this->meshCount];
+            if (!this->meshes)
+            {
+                logFailure("allocacao no cart 4MB falhou");
+                return false;
+            }
+            MO_LOG(1, 6, "NYA cart alloc ptr:%08lx", (unsigned long)this->meshes);
+        }
+        else
+        {
+            this->meshes = header->Type == 1
+                ? (void*)new SRL::Types::SmoothMesh[this->meshCount]
+                : (void*)new SRL::Types::Mesh[this->meshCount];
+        }
+
+        bool ok = true;
+        if (header->Type == 1)
+        {
+            for (size_t mi = 0; mi < originalMeshCount && ok; ++mi)
+            {
+                if (mi < this->meshCount)
+                    this->LoadSmoothMeshBuffer(&it, &gouraudIterator, mi);
+                else
+                    this->SkipSmoothMeshBuffer(&it, &gouraudIterator);
+            }
+        }
+        else
+        {
+            for (size_t mi = 0; mi < originalMeshCount && ok; ++mi)
+            {
+                if (mi < this->meshCount)
+                    this->LoadFlatMeshBuffer(&it, mi);
+                else
+                    this->SkipFlatMeshBuffer(&it);
+            }
+        }
+
+        size_t textureBase = SRL::VDP1::GetTextureCount();
+        if (this->textureCount > 0)
+        {
+            this->startTextureIndex = static_cast<int32_t>(textureBase);
+        }
+        for (size_t ti = 0; ok && ti < this->textureCount; ++ti)
+        {
+            TextureHeader* texHeader = GetAndIterate<TextureHeader>(it);
+            SRL::VDP1::TryLoadTexture(texHeader->Width, texHeader->Height, SRL::CRAM::TextureColorMode::RGB555, 0, texHeader->Data());
+        }
+        return ok;
     }
 
 public:

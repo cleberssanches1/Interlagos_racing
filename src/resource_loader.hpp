@@ -1,8 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <vector>
 #include <srl.hpp>
 #include "modelObject.hpp"
 #include "track_renderer.hpp"
+#include "track_serialized.hpp"
 
 struct CarLoadResult
 {
@@ -36,6 +39,8 @@ struct TrackLoadResult
 CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, bool forceCart = false);
 // Load a track NYA into cart RAM and build a TrackRenderer with the requested mesh cap.
 TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCount, size_t maxMeshes);
+// Serialize track data into Cart RAM for fast segment buffering.
+TrackSerializedCopy SerializeTrackToCart(const char* path, size_t chunkSize = 0x4000);
 
 // Inline implementations to keep single translation unit usage (avoid duplicate std throw stubs)
 inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, bool forceCart)
@@ -129,4 +134,85 @@ inline TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCoun
     }
 
     return res;
+}
+
+inline TrackSerializedCopy SerializeTrackToCart(const char* path, size_t chunkSize)
+{
+    TrackSerializedCopy result{};
+    SRL::Cd::File file(path);
+    if (!file.Exists())
+    {
+        SRL::Debug::Print(1, 3, "Track serialize fail (missing): %s", path);
+        return result;
+    }
+
+    if (!file.Open())
+    {
+        SRL::Debug::Print(1, 3, "Track serialize fail (open): %s", path);
+        return result;
+    }
+
+    size_t desiredSize = static_cast<size_t>(std::max<int32_t>(0, file.Size.Bytes));
+    size_t freeBefore = SRL::Memory::CartRam::GetFreeSpace();
+    size_t maxCartSize = SRL::Memory::CartRam::GetSize();
+    size_t allocSize = std::min({desiredSize > 0 ? desiredSize : maxCartSize, freeBefore, maxCartSize});
+    if (allocSize == 0)
+    {
+        SRL::Debug::Print(1, 3, "Track serialize fail (no cart space) %s desired:%u free:%u", path, (unsigned)desiredSize, (unsigned)freeBefore);
+        return result;
+    }
+
+    void* cartBuffer = SRL::Memory::CartRam::Malloc(allocSize);
+    if (!cartBuffer)
+    {
+        SRL::Debug::Print(1, 3, "Track serialize fail (malloc): %s sz:%u", path, (unsigned)allocSize);
+        return result;
+    }
+
+    std::vector<uint8_t> tempBuffer(std::min(chunkSize, allocSize));
+    size_t written = 0;
+    bool overflow = false;
+    while (written < allocSize)
+    {
+        int32_t toRead = static_cast<int32_t>(std::min(tempBuffer.size(), allocSize - written));
+        if (toRead <= 0) break;
+
+        int32_t read = file.Read(toRead, tempBuffer.data());
+        if (read < 0)
+        {
+            SRL::Memory::CartRam::Free(cartBuffer);
+            SRL::Debug::Print(1, 3, "Track serialize fail (read error): %s", path);
+            return result;
+        }
+        if (read == 0)
+        {
+            break;
+        }
+
+        slDMACopy(tempBuffer.data(), reinterpret_cast<uint8_t*>(cartBuffer) + written, static_cast<size_t>(read));
+        written += static_cast<size_t>(read);
+    }
+
+    if (written == allocSize)
+    {
+        int32_t extra = file.Read(1, tempBuffer.data());
+        if (extra > 0)
+        {
+            overflow = true;
+        }
+    }
+
+    if (overflow)
+    {
+        SRL::Memory::CartRam::Free(cartBuffer);
+        SRL::Debug::Print(1, 3, "Track serialize fail (overflow): %s desired:%u alloc:%u", path, (unsigned)desiredSize, (unsigned)allocSize);
+        return result;
+    }
+
+    int32_t hwrAfter = SRL::Memory::CartRam::GetFreeSpace();
+    result.cartPtr = cartBuffer;
+    result.size = written;
+    result.hwrDelta = static_cast<int32_t>(freeBefore - hwrAfter);
+    SRL::Debug::Print(1, 4, "Track serialized OK: %s cart:%08lx copied:%u delta:%d", path, (unsigned long)cartBuffer, (unsigned)written, result.hwrDelta);
+    return result;
 }
