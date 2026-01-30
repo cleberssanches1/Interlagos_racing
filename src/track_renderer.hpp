@@ -182,6 +182,10 @@ public:
         if (!hasTrack_ || !trackObj_ || meshCount_ == 0) return;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
 
+        SRL::Debug::Print(1, 17, "TrackRenderer Render offset:%d %d %d start:%u drawLimit:%u",
+                          trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),
+                          (unsigned)startMeshIdx_, (unsigned)drawLimit_);
+
         SRL::Debug::Print(1, 10, "Track render begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
                           (unsigned)meshCount_, (unsigned)startMeshIdx_, (unsigned)drawLimit_,
                           trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),

@@ -118,16 +118,16 @@ HighColor shadingTable[32] = {
 
 };
 
-// Representa o pipeline de carga do carro: cart (DRAM 4MB) e c├│pia opcional na WRAM.
+// Representa o pipeline de carga do carro: cart (DRAM 4MB) e c??????pia opcional na WRAM.
 struct CarPipeline
 {
-    CarLoadResult cart;                     // Resultado da carga obrigat├│ria no cart.
-    std::unique_ptr<ModelObject> wramCopy;  // C├│pia independente na work RAM.
+    CarLoadResult cart;                     // Resultado da carga obrigat??????ria no cart.
+    std::unique_ptr<ModelObject> wramCopy;  // C??????pia independente na work RAM.
 
-    // Retorna o modelo ativo (c├│pia em WRAM se existir, sen├úo o do cart).
+    // Retorna o modelo ativo (c??????pia em WRAM se existir, sen?????o o do cart).
     ModelObject* ActiveModel() const { return wramCopy ? wramCopy.get() : cart.car; }
 
-    // Indica se h├í um modelo utiliz├ível.
+    // Indica se h????? um modelo utiliz?????vel.
     bool Loaded() const { return cart.loaded && ActiveModel(); }
 };
 
@@ -140,7 +140,7 @@ static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, b
     // 1) Carga principal no cart (forceCart = true garante DRAM 4MB).
     pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true);
 
-    // 2) C├│pia independente em WRAM para evitar compartilhar ponteiros do cart.
+    // 2) C??????pia independente em WRAM para evitar compartilhar ponteiros do cart.
     if (makeWramCopy && chosenPath)
     {
         pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, 0, false, 0, false, false, false);
@@ -260,7 +260,7 @@ int GameApp::Run()
                             {
                                 if constexpr (kCarLogs)
                                 {
-                                    MLOG(1, 16, "Car texture slot inválido mesh:%zu face:%zu tex:%u outside [%d,%zu)", mi, fi, (unsigned)attr.Texture, firstTexture, texCount);
+                                    MLOG(1, 16, "Car texture slot inv??lido mesh:%zu face:%zu tex:%u outside [%d,%zu)", mi, fi, (unsigned)attr.Texture, firstTexture, texCount);
                                 }
                                 textureSlotError = true;
                                 break;
@@ -281,7 +281,7 @@ int GameApp::Run()
                             {
                                 if constexpr (kCarLogs)
                                 {
-                                    MLOG(1, 16, "Car texture slot inválido mesh:%zu face:%zu tex:%u outside [%d,%zu)", mi, fi, (unsigned)attr.Texture, firstTexture, texCount);
+                                    MLOG(1, 16, "Car texture slot inv??lido mesh:%zu face:%zu tex:%u outside [%d,%zu)", mi, fi, (unsigned)attr.Texture, firstTexture, texCount);
                                 }
                                 textureSlotError = true;
                                 break;
@@ -302,7 +302,7 @@ int GameApp::Run()
         {
             if constexpr (kCarLogs)
             {
-                MLOG(1, 17, "Car texture slots indisponíveis primeiro:%d count:%zu", firstTexture, texCount);
+                MLOG(1, 17, "Car texture slots indispon??veis primeiro:%d count:%zu", firstTexture, texCount);
             }
         }
     }
@@ -588,7 +588,7 @@ int GameApp::Run()
     if (trackSerial.Valid())
     {
         MLOG(1, 2, "Track serialized, mantendo pipeline de meshes pausada");
-        // Não instanciamos meshes nem renderizamos o track; apenas mantemos o .NYA copiado.
+        // N??o instanciamos meshes nem renderizamos o track; apenas mantemos o .NYA copiado.
     }
 
     static uint32_t frameCounter = 0;

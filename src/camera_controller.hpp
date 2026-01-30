@@ -98,6 +98,8 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 
     if (zHeld)
     {
+        if (pad.IsHeld(Digital::Button::Up))    state.viewPitchDeg -= pitchStep;
+        if (pad.IsHeld(Digital::Button::Down))  state.viewPitchDeg += pitchStep;
         if (pad.IsHeld(Digital::Button::Left))  state.viewYawDeg   -= yawStep;
         if (pad.IsHeld(Digital::Button::Right)) state.viewYawDeg   += yawStep;
     }
