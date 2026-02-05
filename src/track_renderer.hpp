@@ -3,6 +3,7 @@
 #include <srl.hpp>
 #include "modelObject.hpp"
 #include "sgl_poly_renderer.hpp"
+#include "track_sgl_renderer.hpp"
 #include "track_serialized.hpp"
 #include <vector>
 #include <cstdint>
@@ -161,16 +162,7 @@ public:
             flatCache_.assign(meshCount_, {});
         }
 
-        if (!meshCenters_.empty())
-        {
-            size_t idx = startMeshIdx_ < meshCenters_.size() ? startMeshIdx_ : 0;
-            auto c = meshCenters_[idx];
-            trackOffset_ = SRL::Math::Types::Vector3D(-c.X, -c.Y, -c.Z);
-        }
-        else
-        {
-            trackOffset_ = {};
-        }
+        trackOffset_ = {};
 
         hasTrack_ = true;
         return true;
@@ -182,11 +174,11 @@ public:
         if (!hasTrack_ || !trackObj_ || meshCount_ == 0) return;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
 
-        SRL::Debug::Print(1, 17, "TrackRenderer Render offset:%d %d %d start:%u drawLimit:%u",
+        SRL::Debug::Print(1, 17, "TR ren offset:%d %d %d start:%u drawLimit:%u",
                           trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),
                           (unsigned)startMeshIdx_, (unsigned)drawLimit_);
 
-        SRL::Debug::Print(1, 10, "Track render begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
+        SRL::Debug::Print(1, 10, "TR ren begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
                           (unsigned)meshCount_, (unsigned)startMeshIdx_, (unsigned)drawLimit_,
                           trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),
                           useSglDirect_ ? 1 : 0, useOriginal_ ? 1 : 0, useDirect2D_ ? 1 : 0);
@@ -246,6 +238,36 @@ public:
                 }
             }
 
+            auto ValidateCache = [&](const auto& cache) {
+                if (cache.verts.empty() || cache.faces.empty())
+                {
+                    SRL::Debug::Print(1, 61, "Track cache empty mesh%zu verts:%zu faces:%zu", (unsigned)i, cache.verts.size(), cache.faces.size());
+                    return false;
+                }
+                for (const auto& face : cache.faces)
+                {
+                    for (int vi = 0; vi < 4; ++vi)
+                    {
+                        if (face.Vertices[vi] >= cache.verts.size())
+                        {
+                            SRL::Debug::Print(1, 60, "Track cache invalid mesh%zu face idx%u vert%u/%zu",
+                                              (unsigned)i, (unsigned)&face - (unsigned)cache.faces.data(), (unsigned)face.Vertices[vi], (unsigned)cache.verts.size());
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            };
+
+            auto ValidateModelMesh = [&](const SRL::Types::Mesh* mesh) {
+                if (!mesh) return false;
+                return mesh->VertexCount > 0 && mesh->FaceCount > 0 && mesh->Vertices != nullptr && mesh->Faces != nullptr;
+            };
+            auto ValidateModelMeshSmooth = [&](const SRL::Types::SmoothMesh* mesh) {
+                if (!mesh) return false;
+                return mesh->VertexCount > 0 && mesh->FaceCount > 0 && mesh->Vertices != nullptr && mesh->Faces != nullptr;
+            };
+
             if (useSglDirect_)
             {
                 // Usa caminho SGL puro (slDispPolygon)
@@ -253,34 +275,33 @@ public:
             {
                 if (i >= smoothCache_.size() || !smoothCache_[i].valid) continue;
                 const auto& cache = smoothCache_[i];
+                if (!ValidateCache(cache)) continue;
                 if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
-                SRL::Debug::Print(1, 52, "Track SGL draw mesh%u smooth v:%zu f:%zu", (unsigned)i, cache.verts.size(), cache.faces.size());
                 if (drawn == 0 && !cache.verts.empty())
                 {
-                    // Log de projeção do primeiro face (mesmo no modo SGL) para debug
                     SRL::Math::Types::Vector2D p2d[3];
-                        for (int vi = 0; vi < 3; ++vi)
-                        {
-                            uint16_t idx = cache.faces[0].Vertices[vi];
-                            auto v = cache.verts[idx] * trackScale_ + trackOffset_;
-                            SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
-                        }
-                        SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
-                            p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
-                            p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
-                            p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
+                    for (int vi = 0; vi < 3; ++vi)
+                    {
+                        uint16_t idx = cache.faces[0].Vertices[vi];
+                        auto v = cache.verts[idx] * trackScale_ + trackOffset_;
+                        SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                     }
-                    SglPoly::DrawMesh(cache.verts.data(), cache.verts.size(),
-                                      cache.faces.data(), cache.faces.size(),
-                                      0x83FF, trackOffset_, trackScale_);
-                    drawnFaces += (uint32_t)cache.faces.size();
+                    SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                                      p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
+                                      p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
+                                      p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
                 }
-            else
+                    TrackSglRenderer::DrawMesh(cache.verts.data(), cache.verts.size(),
+                                                cache.faces.data(), cache.faces.size(),
+                                                0x83FF, trackOffset_, trackScale_, drawn == 0);
+                drawnFaces += (uint32_t)cache.faces.size();
+            }
+        else
             {
                 if (i >= flatCache_.size() || !flatCache_[i].valid) continue;
                 const auto& cache = flatCache_[i];
+                if (!ValidateCache(cache)) continue;
                 if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
-                SRL::Debug::Print(1, 53, "Track SGL draw mesh%u flat v:%zu f:%zu", (unsigned)i, cache.verts.size(), cache.faces.size());
                 if (drawn == 0 && !cache.verts.empty())
                     {
                         SRL::Math::Types::Vector2D p2d[3];
@@ -295,9 +316,9 @@ public:
                             p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                             p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
                     }
-                    SglPoly::DrawMesh(cache.verts.data(), cache.verts.size(),
-                                      cache.faces.data(), cache.faces.size(),
-                                      0x83FF, trackOffset_, trackScale_);
+                    TrackSglRenderer::DrawMesh(cache.verts.data(), cache.verts.size(),
+                                                cache.faces.data(), cache.faces.size(),
+                                                0x83FF, trackOffset_, trackScale_, drawn == 0);
                     drawnFaces += (uint32_t)cache.faces.size();
                 }
                 ++drawn;
@@ -374,7 +395,7 @@ public:
                     if (isSmooth_)
                     {
                         auto* mesh = trackObj_->GetMesh<SRL::Types::SmoothMesh>(i);
-                        if (!mesh) { SRL::Scene3D::PopMatrix(); continue; }
+                        if (!ValidateModelMeshSmooth(mesh)) { SRL::Scene3D::PopMatrix(); continue; }
                         if (drawn == 0)
                         {
                             SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",
@@ -408,7 +429,7 @@ public:
                     else
                     {
                         auto* mesh = trackObj_->GetMesh<SRL::Types::Mesh>(i);
-                        if (!mesh) { SRL::Scene3D::PopMatrix(); continue; }
+                        if (!ValidateModelMesh(mesh)) { SRL::Scene3D::PopMatrix(); continue; }
                         if (drawn == 0)
                         {
                             SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",

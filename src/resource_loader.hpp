@@ -23,8 +23,6 @@ struct CarLoadResult
 
 struct TrackLoadResult
 {
-    // Track renderer prepared from cart RAM assets.
-    TrackRenderer renderer;
     bool loaded = false;
     int32_t hwrDelta = 0;
     uint32_t estBytes = 0;
@@ -101,11 +99,12 @@ inline TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCoun
 {
     TrackLoadResult res{};
     int32_t hwrBefore = SRL::Memory::CartRam::GetFreeSpace();
+    TrackRenderer renderer;
     for (size_t i = 0; i < pathCount; ++i)
     {
         SRL::Cd::File f(paths[i]);
         if (!f.Exists() || f.Size.Bytes <= 0) continue;
-        if (res.renderer.Load(paths, pathCount, maxMeshes, false))
+        if (renderer.Load(paths, pathCount, maxMeshes, false))
         {
             res.loaded = true;
             break;
@@ -113,17 +112,15 @@ inline TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCoun
     }
     int32_t hwrAfter = SRL::Memory::CartRam::GetFreeSpace();
     res.hwrDelta = hwrBefore - hwrAfter;
-    res.faceCount = res.renderer.FaceCount();
-    res.vertexCount = res.renderer.VertexCount();
-    res.meshCount = res.renderer.MeshCount();
-    res.isSmooth = res.renderer.IsSmooth();
-    res.estBytes = res.renderer.MemStats().bytes;
+    res.faceCount = renderer.FaceCount();
+    res.vertexCount = renderer.VertexCount();
+    res.meshCount = renderer.MeshCount();
+    res.isSmooth = renderer.IsSmooth();
+    res.estBytes = renderer.MemStats().bytes;
     res.freeAfter = hwrAfter;
 
     if (res.loaded)
     {
-        auto center = (res.renderer.Bounds().min + res.renderer.Bounds().max) / SRL::Math::Types::Fxp::Convert(2);
-        SRL::Debug::Print(1, 4, "Track center: %d %d %d", center.X.As<int16_t>(), center.Y.As<int16_t>(), center.Z.As<int16_t>());
         SRL::Debug::Print(1, 5, "Track counts m:%u f:%u v:%u smooth:%d", (unsigned)res.meshCount, (unsigned)res.faceCount, (unsigned)res.vertexCount, res.isSmooth ? 1 : 0);
         SRL::Debug::Print(1, 6, "Track HWR delta:%d bytes:%u", res.hwrDelta, (unsigned)res.estBytes);
         SRL::Debug::Print(1, 7, "Track cart ok free:%d", (int)res.freeAfter);

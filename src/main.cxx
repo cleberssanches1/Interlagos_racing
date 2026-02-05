@@ -214,7 +214,7 @@ int GameApp::Run()
     ModelBounds trackBounds{};
     uint32_t trackDrawnFaces = 0;
     uint32_t trackDrawnMeshes = 0;
-    const bool renderTrack = true; // agora renderizamos a pista
+    const bool renderTrack = false; // deixa pipeline intacta, mas não desenha os segmentos
     const bool renderCar = true; // carro ligado
     const bool renderAxes = false; // desliga eixos de debug
 

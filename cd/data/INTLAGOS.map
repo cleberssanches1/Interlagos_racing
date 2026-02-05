@@ -47,6 +47,8 @@ teto_64
 predio_kobro_64
 predio_kobro_64
 predio_kobro_64
+predio_kobro_64
+predio_kobro_64
 faixa_amarela_64
 faixa_amarela_64
 patrocinio_heineken_3_64
@@ -61,7 +63,6 @@ cerca_64
 cerca_64
 teto_64
 teto_64
-predio_kobro_64
 predio_kobro_64
 asfalto_64
 asfalto_64
@@ -131,6 +132,7 @@ Muro_reta_oposta_64
 Muro_reta_oposta_64
 cerca_64
 cerca_64
+teto_64
 asfalto_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
@@ -154,16 +156,6 @@ Muro_reta_oposta_64
 Muro_reta_oposta_64
 cerca_64
 cerca_64
-asfalto_64
-patrocinio_heineken_3_64
-patrocinio_heineken_3_64
-patrocinio_heineken_3_64
-torcida_64
-Muro_reta_oposta_64
-Muro_reta_oposta_64
-cerca_64
-cerca_64
-entrada_box_64
 teto_64
 asfalto_64
 patrocinio_heineken_3_64
@@ -173,9 +165,17 @@ torcida_64
 Muro_reta_oposta_64
 Muro_reta_oposta_64
 cerca_64
-entrada_box_64
-frente_box_predio_64
+cerca_64
 teto_64
+asfalto_64
+patrocinio_heineken_3_64
+patrocinio_heineken_3_64
+patrocinio_heineken_3_64
+torcida_64
+Muro_reta_oposta_64
+Muro_reta_oposta_64
+cerca_64
+frente_box_predio_64
 teto_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
@@ -184,6 +184,7 @@ torcida_64
 Muro_reta_oposta_64
 cerca_64
 frente_box_predio_64
+teto_64
 teto_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
@@ -242,7 +243,6 @@ teto_64
 asfalto_64
 asfalto_64
 asfalto_64
-patrocinioheineken_64
 patrocinioheineken_64
 patrocinioheineken_64
 Guard_rail_64
@@ -251,18 +251,17 @@ grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 asfalto_64
-faixa_amarela_64
 patrocinioheineken_64
 patrocinioheineken_64
 patrocinioheineken_64
 patrocinioheineken_64
 Guard_rail_64
+grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 santander_64
 asfalto_64
-patrocinioheineken_64
 patrocinioheineken_64
 patrocinioheineken_64
 Guard_rail_64
@@ -272,27 +271,12 @@ Muro_reta_oposta_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
+grama-verde-foto_64
 teto_64
 teto_64
 asfalto_64
 asfalto_64
-patrocinioheineken_64
 patrocinio_heineken_3_64
-Guard_rail_64
-Guard_rail_64
-Zebra_64
-torcida_64
-grama-verde-foto_64
-grama-verde-foto_64
-grama-verde-foto_64
-grama-verde-foto_64
-teto_64
-teto_64
-santander_64
-asfalto_64
-asfalto_64
-patrocinioheineken_64
-patrocinioheineken_64
 Guard_rail_64
 Guard_rail_64
 Zebra_64
@@ -305,7 +289,22 @@ teto_64
 teto_64
 santander_64
 asfalto_64
+asfalto_64
 patrocinioheineken_64
+patrocinioheineken_64
+Guard_rail_64
+Guard_rail_64
+Zebra_64
+torcida_64
+grama-verde-foto_64
+grama-verde-foto_64
+grama-verde-foto_64
+grama-verde-foto_64
+teto_64
+teto_64
+santander_64
+asfalto_64
+Guard_rail_64
 Guard_rail_64
 Zebra_64
 grama-verde-foto_64
@@ -317,8 +316,6 @@ santander_64
 asfalto_64
 asfalto_64
 patrocinioheineken_64
-patrocinioheineken_64
-Guard_rail_64
 Guard_rail_64
 Zebra_64
 torcida_64
@@ -364,7 +361,6 @@ grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 rolex_verde_64
-frente_box_predio_64
 teto_64
 teto_64
 teto_64
@@ -373,6 +369,7 @@ asfalto_64
 asfalto_64
 patrocinioheineken_64
 patrocinio_heineken_3_64
+Guard_rail_64
 Zebra_64
 torcida_64
 Muro_reta_oposta_64
@@ -511,6 +508,7 @@ grama-verde-foto_64
 mato_3_64
 teto_64
 asfalto_64
+Guard_rail_64
 Zebra_64
 grama_lugar_alto_64
 grama_lugar_alto_64
@@ -614,13 +612,13 @@ grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 crypto_64
 arvore_3_64
 teto_64
 asfalto_64
 asfalto_64
 patrocinio_heineken_3_64
+Guard_rail_64
 Zebra_64
 grama_lugar_alto_64
 torcida_64
@@ -681,7 +679,6 @@ Guard_rail_64
 Zebra_64
 grama_lugar_alto_64
 torcida_64
-grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -694,7 +691,6 @@ teto_64
 teto_64
 patrocinio_heineken_3_64
 Guard_rail_64
-Guard_rail_64
 Zebra_64
 grama_lugar_alto_64
 torcida_64
@@ -730,7 +726,6 @@ grama-verde-foto_64
 patrocinio_heineken_4_64
 arvores_reta_1_64
 asfalto_64
-patrocinioheineken_64
 Zebra_64
 Zebra_64
 grama_lugar_alto_64
@@ -742,19 +737,15 @@ grama-verde-foto_64
 grama-verde-foto_64
 patrocinio_heineken_4_64
 arvores_reta_1_64
-patrocinioheineken_64
 Zebra_64
 Zebra_64
 grama_lugar_alto_64
 torcida_64
-grama-verde-foto_64
-grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 patrocinio_heineken_4_64
 arvores_reta_1_64
 asfalto_64
-patrocinioheineken_64
 Guard_rail_64
 Guard_rail_64
 Zebra_64
@@ -800,7 +791,6 @@ cerca_64
 cerca_64
 arvores_reta_2_64
 asfalto_64
-patrocinioheineken_64
 Zebra_64
 grama_lugar_alto_64
 torcida_64
@@ -811,7 +801,6 @@ cerca_64
 cerca_64
 arvores_reta_2_64
 asfalto_64
-patrocinioheineken_64
 grama_lugar_alto_64
 torcida_64
 grama-verde-foto_64
@@ -828,7 +817,6 @@ torcida_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 cerca_64
 cerca_64
 arvores_reta_1_64
@@ -846,8 +834,6 @@ grama-verde-foto_64
 grama-verde-foto_64
 cerca_64
 asfalto_64
-patrocinioheineken_64
-patrocinioheineken_64
 grama_lugar_alto_64
 torcida_64
 grama-verde-foto_64
@@ -857,6 +843,7 @@ cerca_64
 arvores_reta_2_64
 asfalto_64
 patrocinioheineken_64
+Guard_rail_64
 grama_lugar_alto_64
 torcida_64
 grama-verde-foto_64
@@ -979,7 +966,6 @@ arvores_reta_2_64
 Guard_rail_64
 grama_lugar_alto_64
 Muro_reta_oposta_64
-grama-verde-foto_64
 grama-verde-foto_64
 cerca_64
 cerca_64
@@ -999,7 +985,6 @@ Guincho_1_64
 asfalto_64
 torcida_64
 grama-verde-foto_64
-grama-verde-foto_64
 cerca_64
 cerca_64
 cerca_64
@@ -1072,7 +1057,6 @@ cerca_64
 arvores_reta_1_64
 asfalto_64
 grama-verde-foto_64
-grama-verde-foto_64
 cerca_64
 cerca_64
 cerca_64
@@ -1341,7 +1325,6 @@ asfalto_64
 Zebra_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 DHL_PROPAGANDA_64
 asfalto_64
 asfalto_64
@@ -1375,6 +1358,7 @@ grama-verde-foto_64
 grama-verde-foto_64
 DHL_PROPAGANDA_64
 asfalto_64
+grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -1388,6 +1372,7 @@ DHL_PROPAGANDA_64
 Lenovo_64
 asfalto_64
 grama_lateral_64
+grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -1439,7 +1424,6 @@ grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 Lenovo_64
 teto_64
 grama_lateral_64
@@ -1451,8 +1435,8 @@ Lenovo_64
 Guard_rail_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 Lenovo_64
+teto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -1498,7 +1482,6 @@ teto_64
 Zebra_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 teto_64
 predio_podio_64
 asfalto_64
@@ -1537,7 +1520,6 @@ patrocinio_heineken_4_64
 Lenovo_64
 teto_64
 teto_64
-predio_podio_64
 Zebra_64
 Zebra_64
 torcida_64
@@ -1573,8 +1555,6 @@ patrocinio_heineken_4_64
 teto_64
 frente_predio_kobra_64
 frente_predio_kobra_64
-frente_predio_kobra_64
-frente_predio_kobra_64
 Zebra_64
 Zebra_64
 torcida_64
@@ -1585,7 +1565,6 @@ grama-verde-foto_64
 patrocinio_heineken_4_64
 patrocinio_heineken_4_64
 teto_64
-frente_predio_kobra_64
 frente_predio_kobra_64
 frente_predio_kobra_64
 asfalto_64
@@ -1596,7 +1575,6 @@ grama-verde-foto_64
 patrocinio_heineken_4_64
 Lenovo_64
 teto_64
-frente_predio_kobra_64
 frente_predio_kobra_64
 frente_predio_kobra_64
 frente_predio_kobra_64
@@ -1619,8 +1597,6 @@ Muro_reta_oposta_64
 grama-verde-foto_64
 patrocinio_heineken_4_64
 Lenovo_64
-predio_kobro_64
-predio_kobro_64
 asfalto_64
 Zebra_64
 Muro_reta_oposta_64
@@ -1724,7 +1700,6 @@ grama_lugar_alto_64
 grama_lugar_alto_64
 grama_lugar_alto_64
 grama_lugar_alto_64
-grama_lugar_alto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -1895,8 +1870,6 @@ asfalto_64
 Guard_rail_64
 Guard_rail_64
 grama_lugar_alto_64
-grama_lugar_alto_64
-grama_lugar_alto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -1918,7 +1891,6 @@ grama-verde-foto_64
 cerca_64
 Guard_rail_64
 Zebra_64
-grama_lugar_alto_64
 grama_lugar_alto_64
 grama_lugar_alto_64
 grama_lugar_alto_64
@@ -2039,7 +2011,6 @@ grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 cerca_64
 aws_64
 Guard_rail_64
@@ -2057,11 +2028,11 @@ grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
-grama-verde-foto_64
 cerca_64
 aws_64
 asfalto_64
 Guard_rail_64
+grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -2071,6 +2042,7 @@ cerca_64
 Guard_rail_64
 Guard_rail_64
 Zebra_64
+grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -2231,16 +2203,13 @@ cerca_64
 aws_64
 grama-verde-foto_64
 rolex_verde_64
-rolex_verde_64
 asfalto_64
 torcida_64
 grama-verde-foto_64
 aws_64
 grama-verde-foto_64
 rolex_verde_64
-rolex_verde_64
 torcida_64
-grama-verde-foto_64
 grama-verde-foto_64
 aws_64
 grama-verde-foto_64
@@ -2252,7 +2221,6 @@ grama-verde-foto_64
 rolex_verde_64
 asfalto_64
 torcida_64
-grama-verde-foto_64
 aws_64
 asfalto_64
 grama-verde-foto_64
@@ -2369,7 +2337,6 @@ cerca_64
 cerca_64
 arvores_reta_1_64
 grama_lugar_alto_64
-rolex_verde_64
 cerca_64
 cerca_64
 arvores_reta_2_64
@@ -2493,7 +2460,6 @@ arvores_reta_1_64
 msc_64
 asfalto_64
 patrocinio_heineken_3_64
-torcida_64
 Muro_reta_oposta_64
 arvores_reta_2_64
 msc_64
@@ -2514,7 +2480,6 @@ cerca_64
 arvores_reta_2_64
 msc_64
 patrocinio_heineken_3_64
-torcida_64
 Muro_reta_oposta_64
 forte_sec_patrocinio_64
 cerca_64
@@ -2649,6 +2614,7 @@ cerca_64
 cerca_64
 arvores_reta_1_64
 msc_64
+faixa_amarela_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
 Muro_reta_oposta_64
@@ -2705,7 +2671,6 @@ Muro_reta_oposta_64
 Muro_reta_oposta_64
 cerca_64
 asfalto_64
-faixa_amarela_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
 torcida_64
@@ -2717,7 +2682,6 @@ forte_sec_patrocinio_64
 cerca_64
 cerca_64
 teto_64
-predio_kobro_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
 patrocinio_heineken_3_64
@@ -2749,7 +2713,6 @@ Lenovo_64
 bandeira_imperio_64
 faixa_amarela_64
 faixa_amarela_64
-faixa_amarela_64
 patrocinio_heineken_3_64
 torcida_64
 Muro_reta_oposta_64
@@ -2778,7 +2741,6 @@ grama_lugar_alto_64
 grama_lugar_alto_64
 grama_lugar_alto_64
 grama_lugar_alto_64
-grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
 grama-verde-foto_64
@@ -2797,4 +2759,3 @@ Muro_reta_oposta_64
 Muro_reta_oposta_64
 cerca_64
 entrada_box_64
-teto_64

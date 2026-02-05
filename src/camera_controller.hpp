@@ -96,19 +96,16 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
         homeSet = true;
     }
 
-    if (zHeld)
-    {
-        if (pad.IsHeld(Digital::Button::Up))    state.viewPitchDeg -= pitchStep;
-        if (pad.IsHeld(Digital::Button::Down))  state.viewPitchDeg += pitchStep;
-        if (pad.IsHeld(Digital::Button::Left))  state.viewYawDeg   -= yawStep;
-        if (pad.IsHeld(Digital::Button::Right)) state.viewYawDeg   += yawStep;
-    }
-
     if (xHeld)
     {
         // Orbita ao redor do modelo
         if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= yawStep;
         if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += yawStep;
+        if (state.yawDeg >= 360 || state.yawDeg < 0)
+        {
+            state.yawDeg %= 360;
+            if (state.yawDeg < 0) state.yawDeg += 360;
+        }
     }
     // Se X foi solto neste frame, restaurar posição inicial uma única vez
     if (wasXHeld && !xHeld)
@@ -131,6 +128,13 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
         // Laterais ajustadas
         if (pad.IsHeld(Digital::Button::Left))  moveDelta += Vector3D( tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
         if (pad.IsHeld(Digital::Button::Right)) moveDelta += Vector3D(-tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
+        // Y+R e Y+L movem a camara no eixo vertical
+        const Fxp verticalLimit = Fxp::Convert(19); // leave margin before hitting kStrafeLimit
+        const Fxp currentY = state.strafe.Y;
+        if (pad.IsHeld(Digital::Button::R) && currentY < verticalLimit)
+            moveDelta += Vector3D(Fxp::Convert(0),  tuning.strafeStep, Fxp::Convert(0));
+        if (pad.IsHeld(Digital::Button::L) && currentY > -verticalLimit)
+            moveDelta += Vector3D(Fxp::Convert(0), -tuning.strafeStep, Fxp::Convert(0));
         state.strafe += moveDelta;
     }
 

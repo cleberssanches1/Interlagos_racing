@@ -833,7 +833,7 @@ private:
 
         // Ajusta contagem conforme modo (pista ou carro)
         this->startTextureIndex = -1;
-        this->textureCount = (this->firstMeshOnly || this->maxMeshesToLoad>0) ? 0 : header.TextureCount;   // pista: ignora texturas
+        this->textureCount = this->firstMeshOnly ? 0 : header.TextureCount;
         size_t targetMeshes = header.MeshCount;
         if (this->firstMeshOnly && targetMeshes > 1) targetMeshes = 1;
         if (this->maxMeshesToLoad > 0 && targetMeshes > this->maxMeshesToLoad) targetMeshes = this->maxMeshesToLoad;
@@ -1025,7 +1025,7 @@ private:
         }
 
         this->startTextureIndex = -1;
-        this->textureCount = (this->firstMeshOnly || this->maxMeshesToLoad > 0) ? 0 : header->TextureCount;
+        this->textureCount = this->firstMeshOnly ? 0 : header->TextureCount;
         size_t originalMeshCount = header->MeshCount;
         size_t targetMeshCount = originalMeshCount;
         if (this->firstMeshOnly && targetMeshCount > 1) targetMeshCount = 1;
