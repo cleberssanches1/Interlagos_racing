@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <srl.hpp>
 
 #include "modelObject.hpp"
@@ -333,24 +334,27 @@ int GameApp::Run()
 
     Camera::State cameraState{
         .yawDeg = 180,
-        .pitchDeg = -10,
+        .pitchDeg = -30,
         .viewYawDeg = 0,
-        .viewPitchDeg = 0,
-        .radius = Fxp(55.2f),
-        .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-13.6), Fxp::Convert(-2)),
+        .viewPitchDeg = 24,
+        .radius = Fxp(67.74f),
+        .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)),
         .location = Vector3D(0.0, 0.0, -50.0f),
         .yaw = Angle::FromDegrees(Fxp::Convert(180)),
         .pitch = Angle::FromDegrees(Fxp::Convert(-21)),
         .viewYaw = Angle::FromDegrees(Fxp::Convert(0)),
-        .viewPitch = Angle::FromDegrees(Fxp::Convert(0)),
+        .viewPitch = Angle::FromDegrees(Fxp::Convert(20)),
     };
 
     Camera::Tuning cameraTuning{};
+    cameraTuning.targetDistance = Fxp::Convert(1174.0f);
+    cameraTuning.yawStepDeg = 4;
+
+    const int16_t orbitYawStepDeg = 4;
+    const int16_t orbitPitchStepDeg = 2;
+    const int16_t orbitPitchLimitDeg = 40;
 
     Camera::RefreshAngles(cameraState);
-    cameraState.location = Camera::OrbitPosition(cameraState.yaw, cameraState.pitch, cameraState.radius) + cameraState.strafe;
-
-
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
     SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
@@ -391,6 +395,7 @@ int GameApp::Run()
     Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     Vector3D carWorldPosition(0.0, 0.0, 0.0);
+    Vector3D manualXOffset(Fxp::Convert(0), Fxp::Convert(-6.263f), Fxp::Convert(0));
 
     // Draw order: wheels first (1..4), then body (0)
 
@@ -618,12 +623,15 @@ int GameApp::Run()
         const bool upHeld = pad.IsHeld(SRL::Input::Digital::Button::Up);
         const bool downHeld = pad.IsHeld(SRL::Input::Digital::Button::Down);
         const bool zHeld = pad.IsHeld(SRL::Input::Digital::Button::Z);
+        const bool leftArrowHeld = pad.IsHeld(SRL::Input::Digital::Button::Left);
+        const bool rightArrowHeld = pad.IsHeld(SRL::Input::Digital::Button::Right);
+        const bool orbitControlActive = zHeld && (lHeld || rHeld || upHeld || downHeld);
 
 
         const int16_t carYawStepDeg = cameraTuning.yawStepDeg;
 
         // Rotaciona apenas o carro com L/R (plano horizontal)
-        if (!aHeld && !bHeld && !cHeld)
+        if (!aHeld && !bHeld && !cHeld && !orbitControlActive && !xHeld)
         {
             if (lHeld) carYawDeg -= carYawStepDeg;
             if (rHeld) carYawDeg += carYawStepDeg;
@@ -632,7 +640,10 @@ int GameApp::Run()
         }
 
         // Rotaciona carro e camera (modo X) usando CameraRig utilitario
-        CameraRig::HandleOrbitAroundCar(cameraState, carYawStepDeg, xHeld, lHeld, rHeld, carYawDeg, xOrbitState, true);
+        if (!xHeld)
+        {
+            CameraRig::HandleOrbitAroundCar(cameraState, carYawStepDeg, xHeld, lHeld, rHeld, carYawDeg, xOrbitState, true);
+        }
 
         // Controles de rodas: C inicia/resume, B para
         if (carRendererPtr)
@@ -641,7 +652,7 @@ int GameApp::Run()
             if (bHeld) { carRendererPtr->StopAllWheels(); }
         }
 
-        if (trackReady && trackRenderer.MeshCount() > 0)
+        if (trackReady && trackRenderer.MeshCount() > 0 && !xHeld)
         {
             const size_t segmentCount = trackRenderer.MeshCount();
             if (upHeld && !trackUpLatch)
@@ -657,17 +668,46 @@ int GameApp::Run()
             trackDownLatch = downHeld;
         }
 
-// Atualiza skybox VDP2
+        // Atualiza skybox VDP2
         if (enableBg) bgManager.Update(cameraState); // mant'm VDP2 background ativo
+
+        if (zHeld)
+        {
+            int16_t newPitch = cameraState.viewPitchDeg;
+            if (upHeld) newPitch -= orbitPitchStepDeg;
+            if (downHeld) newPitch += orbitPitchStepDeg;
+            newPitch = std::clamp<int16_t>(newPitch,
+                                           static_cast<int16_t>(-orbitPitchLimitDeg),
+                                           static_cast<int16_t>(orbitPitchLimitDeg));
+            cameraState.viewPitchDeg = newPitch;
+            if (lHeld) cameraState.viewYawDeg -= orbitYawStepDeg;
+            if (rHeld) cameraState.viewYawDeg += orbitYawStepDeg;
+            cameraState.viewYawDeg = static_cast<int16_t>((cameraState.viewYawDeg + 360) % 360);
+            cameraState.viewPitch = Angle::FromDegrees(Fxp::Convert(cameraState.viewPitchDeg));
+            cameraState.viewYaw = Angle::FromDegrees(Fxp::Convert(cameraState.viewYawDeg));
+        }
+
+        if (xHeld)
+        {
+            const Fxp cameraMoveStep = Fxp::Convert(4.0f);
+            if (upHeld) manualXOffset.Y -= cameraMoveStep;
+            if (downHeld) manualXOffset.Y += cameraMoveStep;
+            if (leftArrowHeld) manualXOffset.X -= cameraMoveStep;
+            if (rightArrowHeld) manualXOffset.X += cameraMoveStep;
+        }
 
         Vector3D orbitOffset = cameraState.location;
         Vector3D cameraLocation = orbitOffset + carWorldPosition;
-        const Fxp kLookDownOffset = Fxp::Convert(6.0f);
-        Vector3D lookTarget = carWorldPosition + Vector3D(Fxp::Convert(0), -kLookDownOffset, Fxp::Convert(0));
-        if (zHeld)
+        cameraLocation += manualXOffset;
+        Vector3D viewDirection = Camera::OrbitPosition(cameraState.viewYaw, cameraState.viewPitch, cameraTuning.targetDistance);
+        Vector3D lookTarget = cameraLocation + viewDirection;
+        if (zHeld && ((frameCounter & 31) == 0))
         {
-            Vector3D viewOffset = Camera::OrbitPosition(cameraState.viewYaw, cameraState.viewPitch, cameraTuning.targetDistance);
-            lookTarget = cameraLocation + viewOffset;
+            const int16_t orbitOffsetX = viewDirection.X.As<int16_t>();
+            const int16_t orbitOffsetY = viewDirection.Y.As<int16_t>();
+            const int16_t orbitOffsetZ = viewDirection.Z.As<int16_t>();
+            MLOG(1, 14, "Orbit offset: %d %d %d", orbitOffsetX, orbitOffsetY, orbitOffsetZ);
+            MLOG(1, 15, "View angles yaw:%d pitch:%d", cameraState.viewYawDeg, cameraState.viewPitchDeg);
         }
         if (frameCounter == 0 || (frameCounter & 63) == 0)
         {
