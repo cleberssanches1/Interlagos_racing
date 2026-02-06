@@ -769,8 +769,13 @@ int GameApp::Run()
             }
             if (logTrack) MLOG(0, 25, "HWR used:%d free:%d", hwrUsed, hwrFree);
             if (logTrack) MLOG(0, 26, "HWR pct:%d.%d%%", hwrPct10/10, hwrPct10%10);
-            if (logTrack) MLOG(0, 27, "VDP1 textures:%d", vdp1TexCount);
-            if (logTrack) MLOG(0, 28, "VDP1 mem used:%u free:%u pct:%u%%", (unsigned)vdp1Used, (unsigned)vdp1Free, vdp1Pct);
+            if (logTrack)
+            {
+                MLOG(0, 27, "VDP1 textures:%d", vdp1TexCount);
+                MLOG(0, 28, "VDP1 mem used:%u free:%u pct:%u%%", (unsigned)vdp1Used, (unsigned)vdp1Free, vdp1Pct);
+            }
+            SRL::Debug::Print(2, 26, "VDP1 mem used:%u free:%u pct:%u%%",
+                               (unsigned)vdp1Used, (unsigned)vdp1Free, vdp1Pct);
         }
         MLOG(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter);
         SRL::Core::Synchronize();
