@@ -28,8 +28,9 @@ namespace TrackSglRenderer
             points[i][2] = (FIXED)v.Z.RawValue();
         }
 
-        std::vector<POLYGON> poly(faceCount);
-        std::vector<ATTR>   attrs(faceCount);
+        const size_t totalFaces = faceCount * 2;
+        std::vector<POLYGON> poly(totalFaces);
+        std::vector<ATTR>   attrs(totalFaces);
 
         for (size_t f = 0; f < faceCount; ++f)
         {
@@ -50,6 +51,13 @@ namespace TrackSglRenderer
             a.dir   = UseLight;
             attrs[f] = a;
 
+            auto& rev = poly[f + faceCount];
+            rev.Vertices[0] = src.Vertices[0];
+            rev.Vertices[1] = src.Vertices[3];
+            rev.Vertices[2] = src.Vertices[2];
+            rev.Vertices[3] = src.Vertices[1];
+            attrs[f + faceCount] = a;
+
             if (logAttrs && f == 0)
             {
                 DebugAttr(a, (unsigned)f);
@@ -60,7 +68,7 @@ namespace TrackSglRenderer
             points.data(),
             static_cast<uint32_t>(vertCount),
             poly.data(),
-            static_cast<uint32_t>(faceCount),
+            static_cast<uint32_t>(totalFaces),
             attrs.data()
         };
 

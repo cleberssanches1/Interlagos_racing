@@ -27,10 +27,13 @@
 #include "srl_tilemap_interfaces.hpp"
 #include "camera_rig.hpp"
 
-#include <vector>
 #include <array>
 #include <memory>
 #include <cstddef>
+#include <vector>
+#include <cstdio>
+#include <string>
+#include "srl_string.hpp"
 
 extern "C" void __throw_bad_array_new_length() {}
 extern "C" void __throw_bad_alloc() {}
@@ -48,26 +51,77 @@ constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
-enum class TrackPipelineStage
-{
-    Idle,
-    Serializing,
-    Buffering,
-    Ready,
-    Failed
+constexpr size_t kTrackSegmentLimit = 10;
+
+static const char* FindExistingPath(const char* const* paths, size_t count);
+static char lastSegmentPath[128] = {};
+
+static const char* kSegmentPathTemplates[] = {
+    "CD/DATA/SEG_%03u.NYA",
+    "CD/DATA/SEG_%03u.NYA;1",
+    "cd/data/SEG_%03u.NYA",
+    "cd/data/SEG_%03u.NYA;1",
+    "SEG_%03u.NYA",
+    "SEG_%03u.NYA;1",
+    "SEG/SEG_%03u.NYA",
+    "SEG/SEG_%03u.NYA;1",
+    "BuildDrop/Interlagos_racing/SEG_%03u.NYA",
+    "BuildDrop/Interlagos_racing/SEG_%03u.NYA;1",
+    "CD/SEG_%03u.NYA",
+    "cd/seg_%03u.nya"
 };
 
-static const char* TrackPipelineStageToString(TrackPipelineStage stage)
+static const char* ResolveSegmentPath(size_t id)
 {
-    switch (stage)
+    constexpr size_t variantCount = sizeof(kSegmentPathTemplates) / sizeof(kSegmentPathTemplates[0]);
+    std::array<std::array<char, 64>, variantCount> buffers{};
+    const char* candidates[variantCount];
+
+    for (size_t i = 0; i < variantCount; ++i)
     {
-        case TrackPipelineStage::Idle:         return "Idle";
-        case TrackPipelineStage::Serializing:  return "Serializando";
-        case TrackPipelineStage::Buffering:    return "Bufferizando";
-        case TrackPipelineStage::Ready:        return "Pronto";
-        case TrackPipelineStage::Failed:       return "Falhou";
+        std::snprintf(buffers[i].data(), buffers[i].size(), kSegmentPathTemplates[i], unsigned(id));
+        candidates[i] = buffers[i].data();
     }
-    return "Desconhecido";
+    return FindExistingPath(candidates, variantCount);
+}
+
+struct TrackSegmentEntry
+{
+    int id = 0;
+    TrackSegmentCopy copy;
+};
+
+static std::vector<TrackSegmentEntry> CopyAllTrackSegments()
+{
+    std::vector<TrackSegmentEntry> segments;
+    segments.reserve(kTrackSegmentLimit);
+    for (size_t i = 1; i <= kTrackSegmentLimit; ++i)
+    {
+        const char* existingPath = ResolveSegmentPath(i);
+        if (!existingPath)
+        {
+            MLOG(1, 12, "Segment %03u path missing (%u variants)", unsigned(i), unsigned(sizeof(kSegmentPathTemplates) / sizeof(kSegmentPathTemplates[0])));
+            break;
+        }
+        TrackSegmentCopy copy = CopyTrackSegmentToCart(existingPath);
+        segments.push_back({ static_cast<int>(i), copy });
+        if (copy.cartPtr)
+        {
+            MLOG(1, 11, "Segment %03u copied (%u bytes)", unsigned(i), unsigned(copy.size));
+        }
+        else
+        {
+            MLOG(1, 12, "Segment %03u failed to copy (missing?)", unsigned(i));
+            break;
+        }
+    }
+    size_t valid = 0;
+    for (const auto& segment : segments)
+    {
+        if (segment.copy.cartPtr && segment.copy.size > 0) ++valid;
+    }
+    MLOG(1, 13, "Track segments copied %u/%u", unsigned(valid), unsigned(segments.size()));
+    return segments;
 }
 
 // Procura o primeiro caminho existente em disco.
@@ -76,7 +130,11 @@ static const char* FindExistingPath(const char* const* paths, size_t count)
     for (size_t i = 0; i < count; ++i)
     {
         SRL::Cd::File f(paths[i]);
-        if (f.Exists() && f.Size.Bytes > 0) return paths[i];
+        bool exists = f.Exists() && f.Size.Bytes > 0;
+        ::strncpy(lastSegmentPath, paths[i], sizeof(lastSegmentPath));
+        lastSegmentPath[sizeof(lastSegmentPath) - 1] = '\0';
+        MLOG(1, 6, "Check cd path: %s -> %d", paths[i], exists ? 1 : 0);
+        if (exists) return paths[i];
     }
     return nullptr;
 }
@@ -131,6 +189,83 @@ struct CarPipeline
     // Indica se h????? um modelo utiliz?????vel.
     bool Loaded() const { return cart.loaded && ActiveModel(); }
 };
+
+constexpr size_t kNearestTrackSegmentCount = 10;
+
+struct SegmentRenderEntry
+{
+    int id = 0;
+    std::unique_ptr<TrackRenderer> renderer;
+    SRL::Math::Types::Vector3D center{};
+};
+
+static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer)
+{
+    return renderer.StartMeshCenter() + renderer.Offset();
+}
+
+static std::vector<SegmentRenderEntry> BuildSegmentRenderers(std::vector<TrackSegmentEntry>& entries)
+{
+    std::vector<SegmentRenderEntry> renderers;
+    renderers.reserve(entries.size());
+    for (auto& entry : entries)
+    {
+        if (!entry.copy.cartPtr || entry.copy.size == 0) continue;
+        auto model = std::make_unique<ModelObject>();
+        if (!model->LoadFromMemory(entry.copy.cartPtr, entry.copy.size, 0, false, 0, false, true))
+        {
+            MLOG(1, 14, "Segment load fail %03d", entry.id);
+            SRL::Memory::CartRam::Free(entry.copy.cartPtr);
+            entry.copy.cartPtr = nullptr;
+            continue;
+        }
+        auto renderer = std::make_unique<TrackRenderer>();
+        ModelObject* rawModel = model.release();
+        if (!renderer->InitializeFromModelObject(rawModel, 0))
+        {
+            MLOG(1, 15, "Renderer init fail %03d", entry.id);
+            delete rawModel;
+            SRL::Memory::CartRam::Free(entry.copy.cartPtr);
+            entry.copy.cartPtr = nullptr;
+            continue;
+        }
+        renderer->SetDrawLimit(renderer->MeshCount());
+        SegmentRenderEntry item{};
+        item.id = entry.id;
+        item.center = ComputeRendererCenter(*renderer);
+        item.renderer = std::move(renderer);
+        renderers.push_back(std::move(item));
+        SRL::Memory::CartRam::Free(entry.copy.cartPtr);
+        entry.copy.cartPtr = nullptr;
+    }
+    return renderers;
+}
+
+static std::vector<SegmentRenderEntry*> SelectNearestSegmentRenderers(std::vector<SegmentRenderEntry>& entries, const SRL::Math::Types::Vector3D& reference, size_t limit)
+{
+    struct DistanceEntry { float distSq; SegmentRenderEntry* entry; };
+    std::vector<DistanceEntry> distances;
+    distances.reserve(entries.size());
+    for (auto& entry : entries)
+    {
+        auto delta = entry.center - reference;
+        float dx = static_cast<float>(delta.X.As<int32_t>()) / 65536.0f;
+        float dy = static_cast<float>(delta.Y.As<int32_t>()) / 65536.0f;
+        float dz = static_cast<float>(delta.Z.As<int32_t>()) / 65536.0f;
+        distances.push_back({ dx*dx + dy*dy + dz*dz, &entry });
+    }
+    std::sort(distances.begin(), distances.end(), [](const DistanceEntry& a, const DistanceEntry& b)
+    {
+        return a.distSq < b.distSq;
+    });
+    std::vector<SegmentRenderEntry*> nearest;
+    nearest.reserve(std::min(limit, distances.size()));
+    for (size_t i = 0; i < std::min(limit, distances.size()); ++i)
+    {
+        nearest.push_back(distances[i].entry);
+    }
+    return nearest;
+}
 
 // Executa a carga CD -> cart (4MB) e opcionalmente cart -> WRAM.
 static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, bool makeWramCopy)
@@ -203,6 +338,10 @@ int GameApp::Run()
         MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
     }
 
+    const bool loadTrackSegments = false; // desabilita carregamento da pista
+    auto trackSegmentEntries = loadTrackSegments ? CopyAllTrackSegments() : std::vector<TrackSegmentEntry>{};
+    MLOG(1, 26, "Track segment registry entries:%zu", trackSegmentEntries.size());
+
 // Se faltar cart, travamos o loop exibindo a mensagem
     bool cartOkFlag = cartOk;
     SRL::Math::Types::Vector3D trackSegOffset(0, 0, 0);
@@ -215,8 +354,8 @@ int GameApp::Run()
     ModelBounds trackBounds{};
     uint32_t trackDrawnFaces = 0;
     uint32_t trackDrawnMeshes = 0;
-    const bool renderTrack = false; // deixa pipeline intacta, mas não desenha os segmentos
-    const bool renderCar = true; // carro ligado
+    const bool renderTrack = false; // desativa renderização da pista para teste
+    const bool renderCar = true; // carro ativado
     const bool renderAxes = false; // desliga eixos de debug
 
     const bool carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
@@ -334,16 +473,16 @@ int GameApp::Run()
 
     Camera::State cameraState{
         .yawDeg = 180,
-        .pitchDeg = -30,
+        .pitchDeg = -10,
         .viewYawDeg = 0,
-        .viewPitchDeg = 24,
+        .viewPitchDeg = 13,
         .radius = Fxp(67.74f),
         .strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)),
         .location = Vector3D(0.0, 0.0, -50.0f),
         .yaw = Angle::FromDegrees(Fxp::Convert(180)),
-        .pitch = Angle::FromDegrees(Fxp::Convert(-21)),
+        .pitch = Angle::FromDegrees(Fxp::Convert(-10)),
         .viewYaw = Angle::FromDegrees(Fxp::Convert(0)),
-        .viewPitch = Angle::FromDegrees(Fxp::Convert(20)),
+        .viewPitch = Angle::FromDegrees(Fxp::Convert(13)),
     };
 
     Camera::Tuning cameraTuning{};
@@ -395,7 +534,32 @@ int GameApp::Run()
     Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     Vector3D carWorldPosition(0.0, 0.0, 0.0);
-    Vector3D manualXOffset(Fxp::Convert(0), Fxp::Convert(-6.263f), Fxp::Convert(0));
+    Vector3D manualXOffset(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
+    const Vector3D desiredCamera(0.0, Fxp::Convert(-32.0f), Fxp::Convert(56.0f));
+    Vector3D initialOrbit = Camera::OrbitPosition(cameraState.yaw, cameraState.pitch, cameraState.radius);
+    manualXOffset = desiredCamera - initialOrbit;
+
+    auto trackSegmentRenderers = BuildSegmentRenderers(trackSegmentEntries);
+    const bool trackSegmentsReady = !trackSegmentRenderers.empty();
+    if (!trackSegmentsReady && renderTrack)
+    {
+        MLOG(1, 28, "Track rendering skipped: segments missing");
+        if (lastSegmentPath[0] != '\0')
+        {
+            MLOG(1, 29, "Last segment path tested: %s", lastSegmentPath);
+        }
+    }
+    if (!trackSegmentRenderers.empty())
+    {
+        std::string ids;
+        size_t count = std::min(trackSegmentRenderers.size(), kNearestTrackSegmentCount);
+        for (size_t i = 0; i < count; ++i)
+        {
+            ids += std::to_string(trackSegmentRenderers[i].id);
+            if (i + 1 < count) ids += ",";
+        }
+        MLOG(1, 27, "Nearest segment candidates (%zu): %s", count, ids.c_str());
+    }
 
     // Draw order: wheels first (1..4), then body (0)
 
@@ -508,93 +672,6 @@ int GameApp::Run()
     hudStats.Init(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
 
     CameraRig::OrbitState xOrbitState{};
-    constexpr size_t kTrackBufferMeshes = 40;
-    constexpr size_t kTrackDrawSegments = 20;
-    TrackRenderer trackRenderer;
-    bool trackReady = false;
-    size_t trackSegmentIndex = 0;
-    bool trackUpLatch = false;
-    bool trackDownLatch = false;
-    TrackPipelineStage trackStage = TrackPipelineStage::Idle;
-    const char* trackStageMessage = "aguardando iniciar";
-    const char* trackStageError = nullptr;
-    bool trackErrorLogged = false;
-    auto LogTrackStage = [&](TrackPipelineStage stage, const char* message, const char* error = nullptr)
-    {
-        trackStage = stage;
-        trackStageMessage = message;
-        trackStageError = error ? error : message;
-        trackErrorLogged = false;
-        MLOG(1, 5, "Track stage: %s - %s", TrackPipelineStageToString(stage), message);
-    };
-
-    // Pista INTLAGOS: caminhos em cd/data (nome sem variacoes)
-    static const char* trackPaths[] = {
-        "cd/data/INTLAGOS.NYA",
-        "cd/data/INTLAGOS.NYA;1",
-        "CD/DATA/INTLAGOS.NYA",
-        "CD/DATA/INTLAGOS.NYA;1",
-        "INTLAGOS.NYA",
-        "INTLAGOS.NYA;1"
-    };
-    const size_t trackPathCount = sizeof(trackPaths)/sizeof(trackPaths[0]);
-    const char* trackSource = FindExistingPath(trackPaths, trackPathCount);
-    TrackSerializedCopy trackSerial;
-    if (trackSource)
-    {
-        LogTrackStage(TrackPipelineStage::Serializing, "Serializando INTLAGOS.NYA no cart");
-        trackSerial = SerializeTrackToCart(trackSource);
-        if (trackSerial.Valid())
-        {
-            MLOG(1, 9, "Track serialized (passo ok) cart:%08lx sz:%u", (unsigned long)trackSerial.cartPtr, (unsigned)trackSerial.size);
-            LogTrackStage(TrackPipelineStage::Buffering, "Preparando buffer de segmentos a partir do cart");
-            trackReady = trackRenderer.LoadFromSerialized(trackSerial, kTrackBufferMeshes);
-            if (trackReady)
-            {
-                trackRenderer.SetDrawLimit(kTrackDrawSegments);
-                trackRenderer.SetSglDirect(true);
-                trackRenderer.SetUseOriginal(false);
-                trackRenderer.SetDirect2D(false);
-                LogTrackStage(TrackPipelineStage::Ready, "Buffer pronto para renderizar segmentos");
-                auto firstCenter = trackRenderer.StartMeshCenter();
-                carWorldPosition = firstCenter;
-                if (carRendererPtr)
-                {
-                    carRendererPtr->SetWorldPosition(carWorldPosition);
-                }
-                const int16_t trackX = firstCenter.X.As<int16_t>();
-                const int16_t trackY = firstCenter.Y.As<int16_t>();
-                const int16_t trackZ = firstCenter.Z.As<int16_t>();
-                const int16_t carX = carWorldPosition.X.As<int16_t>();
-                const int16_t carY = carWorldPosition.Y.As<int16_t>();
-                const int16_t carZ = carWorldPosition.Z.As<int16_t>();
-                MLOG(1, 6, "Track seg 0 ct: %d %d %d", trackX, trackY, trackZ);
-                MLOG(1, 7, "Car World pos: %d %d %d", carX, carY, carZ);
-                MLOG(1, 5, "Track buffer pronto meshes:%zu faces:%u draw:%zu",
-                     trackRenderer.MeshCount(), trackRenderer.FaceCount(), trackRenderer.DrawLimit());
-            }
-            else
-            {
-                LogTrackStage(TrackPipelineStage::Failed, "Falha ao preparar buffer de track", "trackRenderer.Load falhou");
-            }
-        }
-        else
-        {
-            LogTrackStage(TrackPipelineStage::Failed, "Falha ao serializar track", "SerializeTrackToCart falhou");
-            MLOG(1, 9, "Falha ao serializar track %s", trackSource);
-        }
-    }
-    else
-    {
-        LogTrackStage(TrackPipelineStage::Failed, "INTLAGOS.NYA nao encontrado", "arquivo nao localizado");
-    }
-    // Usa valor alto para carregar todos os meshes, mas sem texturas (maxMeshes>0 zera texturas no loader)
-    const size_t maxTrackMeshes = 65535;
-    if (trackSerial.Valid())
-    {
-        MLOG(1, 2, "Track serialized, mantendo pipeline de meshes pausada");
-        // N??o instanciamos meshes nem renderizamos o track; apenas mantemos o .NYA copiado.
-    }
 
     static uint32_t frameCounter = 0;
 
@@ -607,11 +684,6 @@ int GameApp::Run()
             continue;
         }
 
-        if (trackStage == TrackPipelineStage::Failed && !trackErrorLogged)
-        {
-            MLOG(1, 21, "Track pipeline falhou: %s", trackStageError ? trackStageError : trackStageMessage);
-            trackErrorLogged = true;
-        }
         Camera::UpdateInput(cameraState, cameraTuning, pad);
 
         const bool aHeld = pad.IsHeld(SRL::Input::Digital::Button::A);
@@ -652,22 +724,6 @@ int GameApp::Run()
             if (bHeld) { carRendererPtr->StopAllWheels(); }
         }
 
-        if (trackReady && trackRenderer.MeshCount() > 0 && !xHeld)
-        {
-            const size_t segmentCount = trackRenderer.MeshCount();
-            if (upHeld && !trackUpLatch)
-            {
-                trackSegmentIndex = (trackSegmentIndex + segmentCount - 1) % segmentCount;
-            }
-            trackUpLatch = upHeld;
-
-            if (downHeld && !trackDownLatch)
-            {
-                trackSegmentIndex = (trackSegmentIndex + 1) % segmentCount;
-            }
-            trackDownLatch = downHeld;
-        }
-
         // Atualiza skybox VDP2
         if (enableBg) bgManager.Update(cameraState); // mant'm VDP2 background ativo
 
@@ -700,7 +756,8 @@ int GameApp::Run()
         Vector3D cameraLocation = orbitOffset + carWorldPosition;
         cameraLocation += manualXOffset;
         Vector3D viewDirection = Camera::OrbitPosition(cameraState.viewYaw, cameraState.viewPitch, cameraTuning.targetDistance);
-        Vector3D lookTarget = cameraLocation + viewDirection;
+        const Vector3D hoodTargetOffset(0.0, Fxp::Convert(-5.0f), 0.0);
+        Vector3D lookTarget = carWorldPosition + modelOffset + hoodTargetOffset;
         if (zHeld && ((frameCounter & 31) == 0))
         {
             const int16_t orbitOffsetX = viewDirection.X.As<int16_t>();
@@ -723,13 +780,24 @@ int GameApp::Run()
         SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
         // Debug: posicoes das rodas
         // Logs restritos para pista; removidos logs das rodas/carro
-        // Pista antes do carro
-        if (renderTrack && trackReady && trackRenderer.MeshCount() > 0)
+        if (renderTrack && trackSegmentsReady)
         {
-            trackRenderer.SetStartMesh(trackSegmentIndex);
-            trackRenderer.Render(lightDirection, cameraLocation);
+            auto nearestTrackRenderers = SelectNearestSegmentRenderers(trackSegmentRenderers, carWorldPosition, kNearestTrackSegmentCount);
+            for (auto entry : nearestTrackRenderers)
+            {
+                if (entry && entry->renderer)
+                {
+                    entry->renderer->SetOffset(trackSegOffset);
+                    entry->renderer->Render(lightDirection, cameraLocation);
+                    auto segmentCenter = entry->renderer->StartMeshCenter() + entry->renderer->Offset();
+                    MLOG(1, 20, "Segment %02d center %d %d %d", entry->id,
+                         segmentCenter.X.As<int16_t>(), segmentCenter.Y.As<int16_t>(), segmentCenter.Z.As<int16_t>());
+                }
+            }
         }
-
+        // Reaplica lookTarget para garantir que a câmera esteja alinhada com o carro
+        SRL::Scene3D::LoadIdentity();
+        SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
         // Carro ligado
         if (renderCar && carRendererPtr)
         {
