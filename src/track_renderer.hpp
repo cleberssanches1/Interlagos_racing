@@ -31,7 +31,7 @@ public:
 
     static constexpr size_t kVDP1FaceCostBytes = 64;
     static constexpr size_t kVDP1BudgetBytes   = 512 * 1024;
-    static constexpr size_t kMaxDrawMeshes     = 4;  // renderiza poucos segmentos por padrão
+    static constexpr size_t kMaxDrawMeshes     = 4;  // renderiza poucos segmentos por padro
 
     // Load track file from a list of candidate paths into cart RAM and prepare caches.
     bool Load(const char* const* candidates, size_t count, size_t maxMeshes, bool /*loadAllSegments*/ = false)
@@ -41,7 +41,7 @@ public:
         path_ = nullptr;
         startMeshIdx_ = 0;
 
-        // Procura e carrega o primeiro arquivo vÃ¡lido direto na DRAM do cartucho
+        // Procura e carrega o primeiro arquivo vlido direto na DRAM do cartucho
         for (size_t i = 0; i < count; ++i)
         {
             SRL::Cd::File f(candidates[i]);
@@ -203,7 +203,7 @@ public:
         {
             EnsureCached(i);
 
-            // Loga projeção do primeiro face do primeiro mesh para saber onde cai na tela
+            // Loga projeo do primeiro face do primeiro mesh para saber onde cai na tela
             if (drawn == 0)
             {
                 if (isSmooth_ && i < smoothCache_.size() && smoothCache_[i].valid && !smoothCache_[i].faces.empty())
@@ -386,7 +386,7 @@ public:
             }
             else
             {
-                // Caminho "original" usando os meshes tal como vieram do ModelObject (sem forçar atributos)
+                // Caminho "original" usando os meshes tal como vieram do ModelObject (sem forar atributos)
                 SRL::Scene3D::PushMatrix();
                 SRL::Scene3D::Translate(trackOffset_);
                 SRL::Scene3D::Scale(trackScale_);
@@ -400,7 +400,7 @@ public:
                         {
                             SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",
                                               (unsigned)i, (unsigned)mesh->FaceCount, (unsigned)mesh->VertexCount);
-                            // Log de projeção do primeiro triângulo
+                            // Log de projeo do primeiro tringulo
                             if (mesh->FaceCount > 0)
                             {
                                 const auto& f0 = mesh->Faces[0];

@@ -80,7 +80,7 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
     bool yHeld = pad.IsHeld(Digital::Button::Y);
     bool xHeld = pad.IsHeld(Digital::Button::X);
 
-    // Salva posição inicial e restaura quando X não estiver pressionado
+    // Salva posio inicial e restaura quando X no estiver pressionado
     static bool homeSet = false;
     static int32_t homeYawDeg = 0, homePitchDeg = 0, homeViewYawDeg = 0, homeViewPitchDeg = 0;
     static Vector3D homeStrafe;
@@ -107,7 +107,7 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
             if (state.yawDeg < 0) state.yawDeg += 360;
         }
     }
-    // Se X foi solto neste frame, restaurar posição inicial uma única vez
+    // Se X foi solto neste frame, restaurar posio inicial uma nica vez
     if (wasXHeld && !xHeld)
     {
         state.yawDeg = homeYawDeg;
@@ -151,13 +151,13 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
     Clamp(state.yawDeg, tuning.yawMinDeg, tuning.yawMaxDeg);
     Clamp(state.pitchDeg, tuning.pitchMinDeg, tuning.pitchMaxDeg);
 
-    // Yaw de olhar: sempre livre 360°, apenas normaliza
+    // Yaw de olhar: sempre livre 360, apenas normaliza
     if (state.viewYawDeg >= 360 || state.viewYawDeg < 0)
     {
         state.viewYawDeg %= 360;
         if (state.viewYawDeg < 0) state.viewYawDeg += 360;
     }
-    // Pitch de olhar continua limitado para evitar virar de ponta-cabeça
+    // Pitch de olhar continua limitado para evitar virar de ponta-cabea
     Clamp(state.viewPitchDeg, tuning.viewPitchMinDeg, tuning.viewPitchMaxDeg);
 
     RefreshAngles(state);

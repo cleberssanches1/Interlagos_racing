@@ -5,7 +5,7 @@
 #include "modelObject.hpp"
 
 // Helper para desenhar um mesh (faces planar) diretamente via SGL/VDP1.
-// Espera verts/faces em RAM (já desserializados) e aplica offset/escala.
+// Espera verts/faces em RAM (ja desserializados) e aplica offset/escala.
 namespace SglPoly
 {
     inline void DrawMesh(const SRL::Math::Types::Vector3D* verts, size_t vertCount,
@@ -15,7 +15,7 @@ namespace SglPoly
     {
         if (!verts || !faces || vertCount == 0 || faceCount == 0) return;
 
-        // Converte vértices (Fxp 16.16) para POINT (FIXED 16.16 do SGL)
+        // Converte vertices (Fxp 16.16) para POINT (FIXED 16.16 do SGL)
         std::vector<POINT> pnt(vertCount);
         for (size_t i = 0; i < vertCount; ++i)
         {
@@ -39,12 +39,12 @@ namespace SglPoly
 
             ATTR a{};
             a.flag  = Dual_Plane;      // dupla face
-            a.sort  = UseLight;        // habilita luz básica
+            a.sort  = UseLight;        // habilita luz basica
             a.texno = No_Texture;      // sem textura
-            a.atrb  = sprPolygon | CL32KRGB; // força modo RGB 15bpp
-            a.colno = color & 0x7FFF;  // cor sólida
+            a.atrb  = sprPolygon | CL32KRGB; // forca modo RGB 15bpp
+            a.colno = color & 0x7FFF;  // cor solida
             a.gstb  = 0;               // sem Gouraud
-            a.dir   = UseLight;        // mantém iluminação
+            a.dir   = UseLight;        // mantem iluminacao
             attrs[f] = a;
         }
 
@@ -56,7 +56,7 @@ namespace SglPoly
             attrs.data()
         };
 
-        // Enfileira polígonos diretamente no VDP1 via SGL
+        // Enfileira poligonos diretamente no VDP1 via SGL
         SRL::Debug::Print(1, 29, "VDP1 put mesh faces:%u verts:%u", (unsigned)faceCount, (unsigned)vertCount);
         slPutPolygon(&pdata);
     }

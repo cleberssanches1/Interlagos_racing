@@ -32,7 +32,7 @@ struct SkyEnvironment
     void Update(int32_t yawDeg, int32_t viewYawDeg, int32_t viewPitchDeg)
     {
         if (useHorizon)
-            horizon.Update(yawDeg + viewYawDeg, viewPitchDeg); // aplica yaw+pitch ao scroll (mais rápido no look)
+            horizon.Update(yawDeg + viewYawDeg, viewPitchDeg); // aplica yaw+pitch ao scroll (mais rapido no look)
         if (useDome)
             dome.Update(yawDeg, viewYawDeg, viewPitchDeg);
     }

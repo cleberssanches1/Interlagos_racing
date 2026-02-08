@@ -6,11 +6,11 @@
 #include <vector>
 #include <cstddef>
 
-// Responsável por desenhar um ModelObject de carro com ordem de meshes e luz configuradas.
+// Responsavel por desenhar um ModelObject de carro com ordem de meshes e luz configuradas.
 class CarRenderer
 {
 public:
-    // Dados de posicionamento, direção de luz e ordem de desenho.
+    // Dados de posicionamento, direcao de luz e ordem de desenho.
     struct Config
     {
         SRL::Math::Types::Vector3D modelCenter;
@@ -21,7 +21,7 @@ public:
         SRL::Math::Types::Vector3D worldPosition = SRL::Math::Types::Vector3D(0.0f, 0.0f, 0.0f);
     };
 
-    // Mantém referência para o ModelObject (não assume propriedade).
+    // Mantem referencia para o ModelObject (nao assume propriedade).
     CarRenderer(ModelObject& car, bool isSmoothMesh, const Config& cfg)
         : car_(car), isSmooth_(isSmoothMesh), config_(cfg),
           rotY(SRL::Math::Types::Angle::FromDegrees(0)),
@@ -37,7 +37,7 @@ public:
         ComputeMeshCenters();
     }
 
-    // Lógica de rotação das rodas desativada
+    // Logica de rotacao das rodas desativada
     void SetWheel1Step(const SRL::Math::Types::Angle&) {}
     void ResetWheel1() {}
     void SetWheel2Step(const SRL::Math::Types::Angle&) {}
@@ -134,7 +134,7 @@ public:
 
     SRL::Math::Types::Angle rotY;
     SRL::Math::Types::Angle rotStep;
-    // Centros pré-calculados (um por mesh) para debug/posicionamento.
+    // Centros pre-calculados (um por mesh) para debug/posicionamento.
     const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
 
 private:

@@ -51,7 +51,7 @@ constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
-constexpr size_t kTrackSegmentLimit = 10;
+constexpr size_t kTrackSegmentLimit = 20;
 
 static const char* FindExistingPath(const char* const* paths, size_t count);
 static char lastSegmentPath[128] = {};
@@ -190,7 +190,7 @@ struct CarPipeline
     bool Loaded() const { return cart.loaded && ActiveModel(); }
 };
 
-constexpr size_t kNearestTrackSegmentCount = 10;
+constexpr size_t kNearestTrackSegmentCount = 3;
 
 struct SegmentRenderEntry
 {
@@ -243,28 +243,14 @@ static std::vector<SegmentRenderEntry> BuildSegmentRenderers(std::vector<TrackSe
 
 static std::vector<SegmentRenderEntry*> SelectNearestSegmentRenderers(std::vector<SegmentRenderEntry>& entries, const SRL::Math::Types::Vector3D& reference, size_t limit)
 {
-    struct DistanceEntry { float distSq; SegmentRenderEntry* entry; };
-    std::vector<DistanceEntry> distances;
-    distances.reserve(entries.size());
-    for (auto& entry : entries)
+    (void)reference;
+    std::vector<SegmentRenderEntry*> firstSegments;
+    firstSegments.reserve(std::min(limit, entries.size()));
+    for (size_t i = 0; i < std::min(limit, entries.size()); ++i)
     {
-        auto delta = entry.center - reference;
-        float dx = static_cast<float>(delta.X.As<int32_t>()) / 65536.0f;
-        float dy = static_cast<float>(delta.Y.As<int32_t>()) / 65536.0f;
-        float dz = static_cast<float>(delta.Z.As<int32_t>()) / 65536.0f;
-        distances.push_back({ dx*dx + dy*dy + dz*dz, &entry });
+        firstSegments.push_back(&entries[i]);
     }
-    std::sort(distances.begin(), distances.end(), [](const DistanceEntry& a, const DistanceEntry& b)
-    {
-        return a.distSq < b.distSq;
-    });
-    std::vector<SegmentRenderEntry*> nearest;
-    nearest.reserve(std::min(limit, distances.size()));
-    for (size_t i = 0; i < std::min(limit, distances.size()); ++i)
-    {
-        nearest.push_back(distances[i].entry);
-    }
-    return nearest;
+    return firstSegments;
 }
 
 // Executa a carga CD -> cart (4MB) e opcionalmente cart -> WRAM.
@@ -338,7 +324,7 @@ int GameApp::Run()
         MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
     }
 
-    const bool loadTrackSegments = false; // desabilita carregamento da pista
+    const bool loadTrackSegments = true; // habilita carregamento da pista
     auto trackSegmentEntries = loadTrackSegments ? CopyAllTrackSegments() : std::vector<TrackSegmentEntry>{};
     MLOG(1, 26, "Track segment registry entries:%zu", trackSegmentEntries.size());
 
@@ -354,7 +340,7 @@ int GameApp::Run()
     ModelBounds trackBounds{};
     uint32_t trackDrawnFaces = 0;
     uint32_t trackDrawnMeshes = 0;
-    const bool renderTrack = false; // desativa renderização da pista para teste
+    const bool renderTrack = true; // habilita renderização da pista
     const bool renderCar = true; // carro ativado
     const bool renderAxes = false; // desliga eixos de debug
 
@@ -780,6 +766,14 @@ int GameApp::Run()
         SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
         // Debug: posicoes das rodas
         // Logs restritos para pista; removidos logs das rodas/carro
+        if (!trackSegmentRenderers.empty() && trackSegmentRenderers[0].renderer)
+        {
+            auto firstSegmentCenter = trackSegmentRenderers[0].renderer->StartMeshCenter() + trackSegOffset;
+            MLOG(1, 19, "Seg01 center %d %d %d",
+                 firstSegmentCenter.X.As<int16_t>(),
+                 firstSegmentCenter.Y.As<int16_t>(),
+                 firstSegmentCenter.Z.As<int16_t>());
+        }
         if (renderTrack && trackSegmentsReady)
         {
             auto nearestTrackRenderers = SelectNearestSegmentRenderers(trackSegmentRenderers, carWorldPosition, kNearestTrackSegmentCount);
@@ -789,9 +783,6 @@ int GameApp::Run()
                 {
                     entry->renderer->SetOffset(trackSegOffset);
                     entry->renderer->Render(lightDirection, cameraLocation);
-                    auto segmentCenter = entry->renderer->StartMeshCenter() + entry->renderer->Offset();
-                    MLOG(1, 20, "Segment %02d center %d %d %d", entry->id,
-                         segmentCenter.X.As<int16_t>(), segmentCenter.Y.As<int16_t>(), segmentCenter.Z.As<int16_t>());
                 }
             }
         }

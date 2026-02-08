@@ -155,7 +155,7 @@ private:
      */
     uint32_t type;
 
-    /** @brief Carregar somente primeiro mesh (diagnóstico) */
+    /** @brief Carregar somente primeiro mesh (diagnstico) */
     bool firstMeshOnly = false;
     bool forceBigEndian = false;
     /** @brief Limitador opcional de meshes carregados (0 = todos) */
@@ -341,7 +341,7 @@ private:
         GetAndIterate<FaceFlagsDisk>(*iterator, meshHeader->PolygonCount);
     }
 
-    /** @brief Load flat mesh entry usando buffer na memória */
+    /** @brief Load flat mesh entry usando buffer na memria */
     void LoadFlatMeshBuffer(char** iterator, size_t entryId)
     {
         MeshHeader* meshHeader = GetAndIterate<MeshHeader>(*iterator);
@@ -523,7 +523,7 @@ private:
         return true;
     }
 
-    /** @brief Load smooth mesh entry usando buffer na memória */
+    /** @brief Load smooth mesh entry usando buffer na memria */
     void LoadSmoothMeshBuffer(char** iterator, size_t* gouraudIterator, size_t entryId)
     {
         MeshHeader* meshHeader = GetAndIterate<MeshHeader>(*iterator);
@@ -689,10 +689,10 @@ public:
 
         MO_LOG(1, 6, "NYA load strm: %s sz:%lu", modelFile, (unsigned long)file.Size.Bytes);
         this->LoadStreaming(modelFile, gouraudTableStart);
-        // Se streaming falhou ou não produziu faces, tenta buffer (ainda alocando no cart se forceHwrAlloc)
+        // Se streaming falhou ou no produziu faces, tenta buffer (ainda alocando no cart se forceHwrAlloc)
         if (this->meshes == nullptr || this->meshCount == 0 || this->GetFaceCount() == 0)
         {
-            // limpa estado mínimo
+            // limpa estado mnimo
             this->meshes = nullptr;
             this->meshCount = 0;
             this->textureCount = 0;
@@ -724,7 +724,7 @@ public:
 
 private:
 
-    /** @brief Carregamento compatível (buffer completo) para modelos completos */
+    /** @brief Carregamento compatvel (buffer completo) para modelos completos */
     bool LoadBuffer(const char* modelFile, size_t gouraudTableStart)
     {
         SRL::Cd::File f(modelFile);
@@ -767,7 +767,7 @@ private:
 
         bool ok = this->ParseBuffer(buf, f.Size.Bytes, gouraudTableStart);
         if (bufInHwr) SRL::Memory::HighWorkRam::Free(buf);
-        else if (!bufInCart) delete[] buf; // mantém buffer no cart
+        else if (!bufInCart) delete[] buf; // mantm buffer no cart
 
         if (ok)
         {
@@ -815,7 +815,7 @@ private:
 
         auto ReadBE32 = [](const uint8_t* p) -> uint32_t { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]); };
         uint8_t rawHdr[12];
-        // Rewind and read raw header bytes for diagnóstico
+        // Rewind and read raw header bytes for diagnstico
         file.Seek(0);
         file.Read(sizeof(rawHdr), rawHdr);
         uint32_t dbgTypeBE = ReadBE32(rawHdr + 0);
@@ -844,7 +844,7 @@ private:
                           (unsigned long)this->type,
                           (unsigned long)this->meshCount,
                           (unsigned long)this->textureCount);
-        // Validação para evitar crash com headers inválidos
+        // Validao para evitar crash com headers invlidos
         const uint32_t texLimit = this->firstMeshOnly ? 200u : 1200u;
         if (this->firstMeshOnly)
         {
@@ -976,7 +976,7 @@ private:
                               (unsigned long)this->meshCount, (unsigned long)this->textureCount, (unsigned long)this->type);
         }
 
-        // Fallback: se não é modo firstMeshOnly e nada carregou, tenta leitura via buffer (compatível com CAR1)
+        // Fallback: se no  modo firstMeshOnly e nada carregou, tenta leitura via buffer (compatvel com CAR1)
         if (!this->firstMeshOnly && (this->meshCount == 0 || this->meshes == nullptr))
         {
             MO_LOG(1, 6, "NYA fallback buffer load: %s", modelFile);
@@ -1204,7 +1204,7 @@ public:
         return this->startTextureIndex;
     }
 
-    /** @brief Ponteiro bruto para o bloco de meshes (para depuraÇõÇœo/diagnСstico) */
+    /** @brief Ponteiro bruto para o bloco de meshes (para depuraSo/diagn!stico) */
     void* RawMeshesPtr() const { return this->meshes; }
 
     /** @brief Get the mesh data
@@ -1262,7 +1262,7 @@ public:
         return this->type == 1;
     }
 
-    /** @brief Força todas as faces a usarem uma cor sólida (sem textura)
+    /** @brief Fora todas as faces a usarem uma cor slida (sem textura)
      * @param color Cor desejada
      */
     void ForceSolidColor(const SRL::Types::HighColor& color)
@@ -1273,12 +1273,12 @@ public:
         {
             attr.Texture = No_Texture;
             attr.ColorMode = color;
-            // Usa cor sólida, sem gouraud
+            // Usa cor slida, sem gouraud
             attr.Gouraud = CL32KRGB;
-            // Mantém somente flags de transparência/meia-luz/mesh, remove gouraud
+            // Mantm somente flags de transparncia/meia-luz/mesh, remove gouraud
             uint16_t keep = attr.Display & (CL_Trans | CL_Half | MESHon | MESHoff);
             attr.Display = CL32KRGB | keep;
-            // Direção: força cálculo de luz simples
+            // Direo: fora clculo de luz simples
             attr.Direction = UseLight;
         };
 

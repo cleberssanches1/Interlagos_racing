@@ -67,7 +67,7 @@ struct SkyBackgroundRbgBitmap
     void Update(int32_t /*yawDeg*/, int32_t /*viewYawDeg*/, int32_t /*viewPitchDeg*/)
     {
         if (!loaded) return;
-        // Mantém transformações zeradas (identidade) para evitar distorção
+        // Mantem transformacoes zeradas (identidade) para evitar distorcao
         SRL::VDP2::RBG0::SetCurrentTransform();
     }
 };
