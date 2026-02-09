@@ -41,7 +41,8 @@ namespace SglPoly
             a.flag  = Dual_Plane;      // dupla face
             a.sort  = UseLight;        // habilita luz basica
             a.texno = No_Texture;      // sem textura
-            a.atrb  = sprPolygon | CL32KRGB; // forca modo RGB 15bpp
+            a.atrb  = static_cast<uint16_t>(static_cast<uint16_t>(sprPolygon) |
+                                            static_cast<uint16_t>(CL32KRGB)); // forca modo RGB 15bpp
             a.colno = color & 0x7FFF;  // cor solida
             a.gstb  = 0;               // sem Gouraud
             a.dir   = UseLight;        // mantem iluminacao
@@ -61,4 +62,3 @@ namespace SglPoly
         slPutPolygon(&pdata);
     }
 }
-

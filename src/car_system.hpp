@@ -35,7 +35,11 @@ public:
 
     bool Valid() const { return renderer_ != nullptr; }
 
+    // Update wheel spin state from external start/stop events.
     void UpdateWheels(bool start, bool stop);
+
+    // Advance one frame of command state smoothing.
+    void TickCommandState();
 
     void Render(int32_t yawDeg);
     void SubmitRender(class RenderPipeline& pipeline, bool logStats = false);
@@ -46,10 +50,21 @@ public:
 
     Game::ICarCommand* Command() { return &command_; }
 
+    struct CommandSnapshot
+    {
+        int16_t throttle = 0;
+        int16_t steering = 0;
+        bool braking = false;
+        bool wheelsSpinning = false;
+        uint32_t wheelSpinTicks = 0;
+    };
+
+    const CommandSnapshot& Commands() const { return commandState_; }
+
     // IRenderInstance
     MeshRenderer* Renderer() override { return renderer_.get(); }
     Vector3D Position() const override { return worldPosition_; }
-    Angle Yaw() const override { return Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(yawDeg_)); }
+    Angle Yaw() const override { return Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(yawDeg_ << 16)); }
     const char* Name() const override { return name_; }
 
     void SetYawDegrees(int32_t yawDeg) { yawDeg_ = yawDeg; }
@@ -58,20 +73,35 @@ private:
     struct CarCommandAdapter : Game::ICarCommand
     {
         Vector3D* position;
-        explicit CarCommandAdapter(Vector3D* pos) : position(pos) {}
-        void Accelerate() override {}
-        void Brake() override {}
-        void SteerLeft() override {}
-        void SteerRight() override {}
+        CommandSnapshot* state;
+        explicit CarCommandAdapter(Vector3D* pos, CommandSnapshot* cmdState)
+            : position(pos), state(cmdState) {}
+        // Apply a discrete acceleration request.
+        void Accelerate() override;
+        // Apply a discrete brake request.
+        void Brake() override;
+        // Apply a discrete steering request to the left.
+        void SteerLeft() override;
+        // Apply a discrete steering request to the right.
+        void SteerRight() override;
         Vector3D WorldPosition() const override
         {
-            return position ? *position : Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
+            return position ? *position : Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
         }
     };
 
-    CarCommandAdapter command_{&worldPosition_};
+    static constexpr int16_t kThrottleStep = 12;
+    static constexpr int16_t kThrottleMax = 100;
+    static constexpr int16_t kSteeringStep = 8;
+    static constexpr int16_t kSteeringMax = 100;
+    static constexpr int16_t kSteeringDecay = 6;
+    static constexpr int16_t kThrottleDecay = 4;
+    static constexpr int16_t kBrakeReleaseDecay = 10;
+
+    CommandSnapshot commandState_{};
+    CarCommandAdapter command_{&worldPosition_, &commandState_};
     std::unique_ptr<MeshRenderer> renderer_;
-    Vector3D worldPosition_{Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0))};
+    Vector3D worldPosition_{Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0))};
     Config config_;
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};

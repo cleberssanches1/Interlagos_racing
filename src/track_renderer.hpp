@@ -11,12 +11,12 @@
 
 struct ModelBounds
 {
-    SRL::Math::Types::Vector3D min{SRL::Math::Types::Fxp::Convert(32767),
-                                   SRL::Math::Types::Fxp::Convert(32767),
-                                   SRL::Math::Types::Fxp::Convert(32767)};
-    SRL::Math::Types::Vector3D max{SRL::Math::Types::Fxp::Convert(-32768),
-                                   SRL::Math::Types::Fxp::Convert(-32768),
-                                   SRL::Math::Types::Fxp::Convert(-32768)};
+    SRL::Math::Types::Vector3D min{SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
+                                   SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
+                                   SRL::Math::Types::Fxp::BuildRaw(32767 << 16)};
+    SRL::Math::Types::Vector3D max{SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
+                                   SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
+                                   SRL::Math::Types::Fxp::BuildRaw(-32768 << 16)};
 };
 
 class TrackRenderer
@@ -150,7 +150,7 @@ public:
                 }
             }
 
-            meshCenters_[m] = (minv + maxv) / SRL::Math::Types::Fxp::Convert(2);
+            meshCenters_[m] = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
         }
 
         if (isSmooth_)
@@ -241,7 +241,10 @@ public:
             auto ValidateCache = [&](const auto& cache) {
                 if (cache.verts.empty() || cache.faces.empty())
                 {
-                    SRL::Debug::Print(1, 61, "Track cache empty mesh%zu verts:%zu faces:%zu", (unsigned)i, cache.verts.size(), cache.faces.size());
+                    SRL::Debug::Print(1, 61, "Track cache empty mesh%lu verts:%lu faces:%lu",
+                                      (unsigned long)i,
+                                      (unsigned long)cache.verts.size(),
+                                      (unsigned long)cache.faces.size());
                     return false;
                 }
                 for (const auto& face : cache.faces)
@@ -250,8 +253,11 @@ public:
                     {
                         if (face.Vertices[vi] >= cache.verts.size())
                         {
-                            SRL::Debug::Print(1, 60, "Track cache invalid mesh%zu face idx%u vert%u/%zu",
-                                              (unsigned)i, (unsigned)&face - (unsigned)cache.faces.data(), (unsigned)face.Vertices[vi], (unsigned)cache.verts.size());
+                            SRL::Debug::Print(1, 60, "Track cache invalid mesh%lu face idx%u vert%u/%lu",
+                                              (unsigned long)i,
+                                              (unsigned)&face - (unsigned)cache.faces.data(),
+                                              (unsigned)face.Vertices[vi],
+                                              (unsigned long)cache.verts.size());
                             return false;
                         }
                     }
@@ -566,9 +572,9 @@ public:
     uint32_t LastDrawnMeshes() const { return lastDrawnMeshes_; }
     SRL::Math::Types::Vector3D StartMeshCenter() const
     {
-        if (meshCenters_.empty()) return SRL::Math::Types::Vector3D(SRL::Math::Types::Fxp::Convert(0),
-                                                                    SRL::Math::Types::Fxp::Convert(0),
-                                                                    SRL::Math::Types::Fxp::Convert(0));
+        if (meshCenters_.empty()) return SRL::Math::Types::Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
+                                                                    SRL::Math::Types::Fxp::BuildRaw(0),
+                                                                    SRL::Math::Types::Fxp::BuildRaw(0));
         size_t idx = startMeshIdx_ < meshCenters_.size() ? startMeshIdx_ : 0;
         return meshCenters_[idx];
     }
@@ -690,7 +696,11 @@ private:
                     sprPolygon,
                     UseLight);
             }
-            SRL::Debug::Print(1, 50, "Track cache ready smooth mesh%zu verts:%zu faces:%zu lastDrawn:%u", idx, c.verts.size(), c.faces.size(), (unsigned)lastDrawnFaces_);
+            SRL::Debug::Print(1, 50, "Track cache ready smooth mesh%lu verts:%lu faces:%lu lastDrawn:%u",
+                              (unsigned long)idx,
+                              (unsigned long)c.verts.size(),
+                              (unsigned long)c.faces.size(),
+                              (unsigned)lastDrawnFaces_);
         }
         else
         {
@@ -715,7 +725,11 @@ private:
                     sprPolygon,
                     UseLight);
             }
-            SRL::Debug::Print(1, 51, "Track cache ready flat mesh%zu verts:%zu faces:%zu lastDrawn:%u", idx, c.verts.size(), c.faces.size(), (unsigned)lastDrawnFaces_);
+            SRL::Debug::Print(1, 51, "Track cache ready flat mesh%lu verts:%lu faces:%lu lastDrawn:%u",
+                              (unsigned long)idx,
+                              (unsigned long)c.verts.size(),
+                              (unsigned long)c.faces.size(),
+                              (unsigned)lastDrawnFaces_);
         }
     }
 
@@ -734,7 +748,7 @@ private:
     bool devMode_ = true;
     uint32_t lastDrawnFaces_ = 0;
     uint32_t lastDrawnMeshes_ = 0;
-    SRL::Math::Types::Fxp trackScale_{ SRL::Math::Types::Fxp::Convert(1.0f) };
+    SRL::Math::Types::Fxp trackScale_{ SRL::Math::Types::Fxp::BuildRaw(1 << 16) };
     size_t drawLimit_ = kMaxDrawMeshes;
 
     ModelObject* trackObj_ = nullptr;

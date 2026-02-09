@@ -44,7 +44,8 @@ namespace TrackSglRenderer
             a.flag  = Dual_Plane;
             a.sort  = UseLight;
             a.texno = No_Texture;
-            a.atrb  = sprPolygon | CL32KRGB;
+            a.atrb  = static_cast<uint16_t>(static_cast<uint16_t>(sprPolygon) |
+                                            static_cast<uint16_t>(CL32KRGB));
             a.colno = color & 0x7FFF;
             a.gstb  = 0;
             a.dir   = UseLight;

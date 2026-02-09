@@ -2,64 +2,107 @@
 #include "camera_system.hpp"
 #undef DOXYGEN
 
-const Fxp CameraSystem::kLookDownOffset = Fxp::Convert(6.0f);
+#include <algorithm>
 
 CameraSystem::CameraSystem()
 {
     state_.yawDeg = 180;
     state_.pitchDeg = -10;
     state_.viewYawDeg = 0;
-    state_.viewPitchDeg = 0;
-    state_.radius = Fxp(55.2f);
-    state_.strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(-13.6), Fxp::Convert(-2));
+    state_.viewPitchDeg = 13;
+    state_.radius = Fxp::BuildRaw(0x0043BD70); // ~67.74
+    state_.strafe = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
     state_.location = Vector3D(0.0, 0.0, -50.0f);
-    state_.yaw = Angle::FromDegrees(Fxp::Convert(180));
-    state_.pitch = Angle::FromDegrees(Fxp::Convert(-21));
-    state_.viewYaw = Angle::FromDegrees(Fxp::Convert(0));
-    state_.viewPitch = Angle::FromDegrees(Fxp::Convert(0));
+    state_.yaw = Angle::FromDegrees(Fxp::BuildRaw(180 << 16));
+    state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-10 << 16));
+    state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
+    state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
+    tuning_.targetDistance = Fxp::BuildRaw(1174 << 16);
+    tuning_.yawStepDeg = 4;
     Camera::RefreshAngles(state_);
-    state_.location = Camera::OrbitPosition(state_.yaw, state_.pitch, state_.radius) + state_.strafe;
+    InitializeManualOffset();
 }
 
-void CameraSystem::UpdateInput(SRL::Input::Digital& pad)
+void CameraSystem::InitializeManualOffset()
+{
+    const Vector3D desiredCamera(0.0, Fxp::BuildRaw(-32 << 16), Fxp::BuildRaw(56 << 16));
+    Vector3D initialOrbit = Camera::OrbitPosition(state_.yaw, state_.pitch, state_.radius);
+    manualOffset_ = desiredCamera - initialOrbit;
+}
+
+void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, CameraRig::OrbitState& orbitState)
 {
     Camera::UpdateInput(state_, tuning_, pad);
-}
 
-void CameraSystem::OrbitAroundCar(int32_t& carYawDeg, CameraRig::OrbitState& orbitState, bool xHeld, bool lHeld, bool rHeld)
-{
-    CameraRig::HandleOrbitAroundCar(state_, tuning_.yawStepDeg, xHeld, lHeld, rHeld, carYawDeg, orbitState, true);
-}
+    const bool aHeld = pad.IsHeld(SRL::Input::Digital::Button::A);
+    const bool bHeld = pad.IsHeld(SRL::Input::Digital::Button::B);
+    const bool cHeld = pad.IsHeld(SRL::Input::Digital::Button::C);
+    const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
+    const bool lHeld = pad.IsHeld(SRL::Input::Digital::Button::L);
+    const bool rHeld = pad.IsHeld(SRL::Input::Digital::Button::R);
+    const bool upHeld = pad.IsHeld(SRL::Input::Digital::Button::Up);
+    const bool downHeld = pad.IsHeld(SRL::Input::Digital::Button::Down);
+    const bool leftArrowHeld = pad.IsHeld(SRL::Input::Digital::Button::Left);
+    const bool rightArrowHeld = pad.IsHeld(SRL::Input::Digital::Button::Right);
+    zHeld_ = pad.IsHeld(SRL::Input::Digital::Button::Z);
+    const bool orbitControlActive = zHeld_ && (lHeld || rHeld || upHeld || downHeld);
 
-void CameraSystem::ResetStrafe()
-{
-    state_.strafe = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
-}
-
-void CameraSystem::RefreshOrbit()
-{
-    Camera::RefreshAngles(state_);
-    state_.location = Camera::OrbitPosition(state_.yaw, state_.pitch, state_.radius) + state_.strafe;
-}
-
-Vector3D CameraSystem::OrbitOffset() const
-{
-    return state_.location;
-}
-
-Vector3D CameraSystem::LookTarget(const Vector3D& focusPosition, bool zHeld) const
-{
-    Vector3D cameraLocation = focusPosition + state_.location;
-    Vector3D lookTarget = focusPosition + Vector3D(Fxp::Convert(0), -kLookDownOffset, Fxp::Convert(0));
-    if (zHeld)
+    if (!aHeld && !bHeld && !cHeld && !orbitControlActive && !xHeld)
     {
-        Vector3D viewOffset = Camera::OrbitPosition(state_.viewYaw, state_.viewPitch, tuning_.targetDistance);
-        lookTarget = cameraLocation + viewOffset;
+        if (lHeld) carYawDeg -= tuning_.yawStepDeg;
+        if (rHeld) carYawDeg += tuning_.yawStepDeg;
+        if (carYawDeg < 0) carYawDeg += 360;
+        if (carYawDeg >= 360) carYawDeg -= 360;
     }
-    return lookTarget;
+
+    if (!xHeld)
+    {
+        CameraRig::HandleOrbitAroundCar(state_, tuning_.yawStepDeg, xHeld, lHeld, rHeld, carYawDeg, orbitState, true);
+    }
+
+    if (zHeld_)
+    {
+        int16_t newPitch = state_.viewPitchDeg;
+        if (upHeld) newPitch -= orbitPitchStepDeg_;
+        if (downHeld) newPitch += orbitPitchStepDeg_;
+        newPitch = std::clamp<int16_t>(newPitch,
+                                       static_cast<int16_t>(-orbitPitchLimitDeg_),
+                                       static_cast<int16_t>(orbitPitchLimitDeg_));
+        state_.viewPitchDeg = newPitch;
+        if (lHeld) state_.viewYawDeg -= orbitYawStepDeg_;
+        if (rHeld) state_.viewYawDeg += orbitYawStepDeg_;
+        state_.viewYawDeg = static_cast<int16_t>((state_.viewYawDeg + 360) % 360);
+        state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(state_.viewPitchDeg << 16));
+        state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(state_.viewYawDeg << 16));
+    }
+
+    if (xHeld)
+    {
+        const Fxp cameraMoveStep = Fxp::BuildRaw(4 << 16);
+        if (upHeld) manualOffset_.Y -= cameraMoveStep;
+        if (downHeld) manualOffset_.Y += cameraMoveStep;
+        if (leftArrowHeld) manualOffset_.X -= cameraMoveStep;
+        if (rightArrowHeld) manualOffset_.X += cameraMoveStep;
+    }
+}
+
+Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
+{
+    return state_.location + carWorldPosition + manualOffset_;
+}
+
+Vector3D CameraSystem::ViewDirection() const
+{
+    return Camera::OrbitPosition(state_.viewYaw, state_.viewPitch, tuning_.targetDistance);
+}
+
+Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const
+{
+    const Vector3D hoodTargetOffset(0.0, Fxp::BuildRaw(-5 << 16), 0.0);
+    return carWorldPosition + modelOffset + hoodTargetOffset;
 }
 
 CameraSystem::Snapshot CameraSystem::CreateSnapshot() const
 {
-    return Snapshot{state_, state_.location};
+    return Snapshot{state_, manualOffset_};
 }

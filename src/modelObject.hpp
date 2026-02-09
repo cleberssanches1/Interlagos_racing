@@ -267,6 +267,15 @@ private:
             mesh.Attributes = new SRL::Types::Attribute[meshHeader.PolygonCount];
         }
 
+        if (!mesh.Vertices || !mesh.Faces || !mesh.Attributes)
+        {
+            MO_LOG(1, 6, "NYA alloc fail flat stream mesh:%lu v:%lu f:%lu",
+                   (unsigned long)entryId,
+                   (unsigned long)meshHeader.PointCount,
+                   (unsigned long)meshHeader.PolygonCount);
+            return false;
+        }
+
         if (file.Read(sizeof(SRL::Math::Types::Vector3D) * meshHeader.PointCount, mesh.Vertices) <= 0) return false;
         if (this->firstMeshOnly || this->forceBigEndian)
         {
@@ -342,7 +351,7 @@ private:
     }
 
     /** @brief Load flat mesh entry usando buffer na memria */
-    void LoadFlatMeshBuffer(char** iterator, size_t entryId)
+    bool LoadFlatMeshBuffer(char** iterator, size_t entryId)
     {
         MeshHeader* meshHeader = GetAndIterate<MeshHeader>(*iterator);
         auto ReadBE32 = [](const uint8_t* p) -> uint32_t { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]); };
@@ -369,6 +378,15 @@ private:
             mesh.Attributes = new SRL::Types::Attribute[meshHeader->PolygonCount];
         }
         
+        if (!mesh.Vertices || !mesh.Faces || !mesh.Attributes)
+        {
+            MO_LOG(1, 6, "NYA alloc fail flat buffer mesh:%lu v:%lu f:%lu",
+                   (unsigned long)entryId,
+                   (unsigned long)meshHeader->PointCount,
+                   (unsigned long)meshHeader->PolygonCount);
+            return false;
+        }
+
         SRL::Math::Types::Vector3D* points = GetAndIterate<SRL::Math::Types::Vector3D>(*iterator, meshHeader->PointCount);
         slDMACopy(points, mesh.Vertices, sizeof(SRL::Math::Types::Vector3D) * meshHeader->PointCount);
         if (this->firstMeshOnly || this->forceBigEndian)
@@ -412,6 +430,7 @@ private:
         }
 
         ((SRL::Types::Mesh*)this->meshes)[entryId] = std::move(mesh);
+        return true;
     }
 
     /** @brief Load smooth mesh entry (stream) */
@@ -444,6 +463,15 @@ private:
             mesh.Faces      = new SRL::Types::Polygon[meshHeader.PolygonCount];
             mesh.Attributes = new SRL::Types::Attribute[meshHeader.PolygonCount];
             mesh.Normals    = new SRL::Math::Types::Vector3D[meshHeader.PointCount];
+        }
+
+        if (!mesh.Vertices || !mesh.Faces || !mesh.Attributes || !mesh.Normals)
+        {
+            MO_LOG(1, 6, "NYA alloc fail smooth stream mesh:%lu v:%lu f:%lu",
+                   (unsigned long)entryId,
+                   (unsigned long)meshHeader.PointCount,
+                   (unsigned long)meshHeader.PolygonCount);
+            return false;
         }
         
         if (file.Read(sizeof(SRL::Math::Types::Vector3D) * meshHeader.PointCount, mesh.Vertices) <= 0) return false;
@@ -524,7 +552,7 @@ private:
     }
 
     /** @brief Load smooth mesh entry usando buffer na memria */
-    void LoadSmoothMeshBuffer(char** iterator, size_t* gouraudIterator, size_t entryId)
+    bool LoadSmoothMeshBuffer(char** iterator, size_t* gouraudIterator, size_t entryId)
     {
         MeshHeader* meshHeader = GetAndIterate<MeshHeader>(*iterator);
         auto ReadBE32 = [](const uint8_t* p) -> uint32_t { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]); };
@@ -554,6 +582,15 @@ private:
             mesh.Normals    = new SRL::Math::Types::Vector3D[meshHeader->PointCount];
         }
         
+        if (!mesh.Vertices || !mesh.Faces || !mesh.Attributes || !mesh.Normals)
+        {
+            MO_LOG(1, 6, "NYA alloc fail smooth buffer mesh:%lu v:%lu f:%lu",
+                   (unsigned long)entryId,
+                   (unsigned long)meshHeader->PointCount,
+                   (unsigned long)meshHeader->PolygonCount);
+            return false;
+        }
+
         SRL::Math::Types::Vector3D* points = GetAndIterate<SRL::Math::Types::Vector3D>(*iterator, meshHeader->PointCount);
         slDMACopy(points, mesh.Vertices, sizeof(SRL::Math::Types::Vector3D) * meshHeader->PointCount);
         if (this->firstMeshOnly || this->forceBigEndian)
@@ -633,6 +670,7 @@ private:
         }
 
         ((SRL::Types::SmoothMesh*)this->meshes)[entryId] = std::move(mesh);
+        return true;
     }
 
     void SkipSmoothMeshBuffer(char** iterator, size_t* gouraudIterator)
@@ -1071,7 +1109,7 @@ private:
             for (size_t mi = 0; mi < originalMeshCount && ok; ++mi)
             {
                 if (mi < this->meshCount)
-                    this->LoadSmoothMeshBuffer(&it, &gouraudIterator, mi);
+                    ok = this->LoadSmoothMeshBuffer(&it, &gouraudIterator, mi);
                 else
                     this->SkipSmoothMeshBuffer(&it, &gouraudIterator);
             }
@@ -1081,7 +1119,7 @@ private:
             for (size_t mi = 0; mi < originalMeshCount && ok; ++mi)
             {
                 if (mi < this->meshCount)
-                    this->LoadFlatMeshBuffer(&it, mi);
+                    ok = this->LoadFlatMeshBuffer(&it, mi);
                 else
                     this->SkipFlatMeshBuffer(&it);
             }
@@ -1344,9 +1382,6 @@ public:
         }
     }
 };
-
-
-
 
 
 

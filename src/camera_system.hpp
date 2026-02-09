@@ -14,33 +14,38 @@ class CameraSystem
 public:
     CameraSystem();
 
-    void UpdateInput(SRL::Input::Digital& pad);
+    // Update camera and car yaw controls from the current controller state.
+    void UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, CameraRig::OrbitState& orbitState);
 
-    void OrbitAroundCar(int32_t& carYawDeg, CameraRig::OrbitState& orbitState, bool xHeld, bool lHeld, bool rHeld);
-
-    void ResetStrafe();
-
-    void RefreshOrbit();
-
-    Vector3D OrbitOffset() const;
-
-    Vector3D LookTarget(const Vector3D& focusPosition, bool zHeld) const;
+    // Build world camera location using car world position plus manual camera offset.
+    Vector3D CameraLocation(const Vector3D& carWorldPosition) const;
+    // Return orbit view direction based on view yaw and pitch.
+    Vector3D ViewDirection() const;
+    // Return camera look target used by the scene look-at call.
+    Vector3D LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const;
 
     const Camera::State& State() const { return state_; }
-
-    int16_t YawStepDeg() const { return tuning_.yawStepDeg; }
+    bool IsZHeld() const { return zHeld_; }
+    int16_t ViewYawDeg() const { return state_.viewYawDeg; }
+    int16_t ViewPitchDeg() const { return state_.viewPitchDeg; }
 
     struct Snapshot
     {
         Camera::State state;
-        Vector3D orbitOffset;
+        Vector3D manualOffset;
     };
 
     Snapshot CreateSnapshot() const;
 
-    static const Fxp kLookDownOffset;
-
 private:
+    // Initialize manual camera offset so initial framing matches expected setup.
+    void InitializeManualOffset();
+
     Camera::State state_;
     Camera::Tuning tuning_;
+    Vector3D manualOffset_{};
+    bool zHeld_ = false;
+    int16_t orbitYawStepDeg_ = 4;
+    int16_t orbitPitchStepDeg_ = 2;
+    int16_t orbitPitchLimitDeg_ = 40;
 };

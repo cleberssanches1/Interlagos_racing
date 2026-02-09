@@ -28,8 +28,8 @@ struct Tuning
 {
     int32_t yawStepDeg{2};
     int32_t pitchStepDeg{2};
-    Fxp moveStep{Fxp(0.5f)};
-    Fxp strafeStep{Fxp(0.5f)};
+    Fxp moveStep{Fxp::BuildRaw(0x00008000)};    // 0.5
+    Fxp strafeStep{Fxp::BuildRaw(0x00008000)};  // 0.5
     int32_t yawMinDeg{0};
     int32_t yawMaxDeg{360};
     int32_t pitchMinDeg{-80};
@@ -38,7 +38,7 @@ struct Tuning
     int32_t viewYawMaxDeg{90};
     int32_t viewPitchMinDeg{-80};
     int32_t viewPitchMaxDeg{80};
-    Fxp targetDistance{Fxp(120.0f)};
+    Fxp targetDistance{Fxp::BuildRaw(0x00780000)}; // 120
 };
 
 inline void Clamp(int32_t& v, int32_t min, int32_t max)
@@ -60,10 +60,10 @@ inline Vector3D OrbitPosition(Angle yaw, Angle pitch, Fxp radius)
 
 inline void RefreshAngles(State& state)
 {
-    state.yaw = Angle::FromDegrees(Fxp::Convert(state.yawDeg));
-    state.pitch = Angle::FromDegrees(Fxp::Convert(state.pitchDeg));
-    state.viewYaw = Angle::FromDegrees(Fxp::Convert(state.viewYawDeg));
-    state.viewPitch = Angle::FromDegrees(Fxp::Convert(state.viewPitchDeg));
+    state.yaw = Angle::FromDegrees(Fxp::BuildRaw(state.yawDeg << 16));
+    state.pitch = Angle::FromDegrees(Fxp::BuildRaw(state.pitchDeg << 16));
+    state.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(state.viewYawDeg << 16));
+    state.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(state.viewPitchDeg << 16));
 }
 
 inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
@@ -121,24 +121,24 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 
     if (yHeld)
     {
-        Vector3D moveDelta = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0));
+        Vector3D moveDelta = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
         // Frente/tras invertidos conforme pedido anterior
-        if (pad.IsHeld(Digital::Button::Up))    moveDelta += Vector3D(Fxp::Convert(0), Fxp::Convert(0),  tuning.moveStep);
-        if (pad.IsHeld(Digital::Button::Down))  moveDelta += Vector3D(Fxp::Convert(0), Fxp::Convert(0), -tuning.moveStep);
+        if (pad.IsHeld(Digital::Button::Up))    moveDelta += Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0),  tuning.moveStep);
+        if (pad.IsHeld(Digital::Button::Down))  moveDelta += Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), -tuning.moveStep);
         // Laterais ajustadas
-        if (pad.IsHeld(Digital::Button::Left))  moveDelta += Vector3D( tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
-        if (pad.IsHeld(Digital::Button::Right)) moveDelta += Vector3D(-tuning.strafeStep, Fxp::Convert(0), Fxp::Convert(0));
+        if (pad.IsHeld(Digital::Button::Left))  moveDelta += Vector3D( tuning.strafeStep, Fxp::BuildRaw(0), Fxp::BuildRaw(0));
+        if (pad.IsHeld(Digital::Button::Right)) moveDelta += Vector3D(-tuning.strafeStep, Fxp::BuildRaw(0), Fxp::BuildRaw(0));
         // Y+R e Y+L movem a camara no eixo vertical
-        const Fxp verticalLimit = Fxp::Convert(19); // leave margin before hitting kStrafeLimit
+        const Fxp verticalLimit = Fxp::BuildRaw(19 << 16); // leave margin before hitting kStrafeLimit
         const Fxp currentY = state.strafe.Y;
         if (pad.IsHeld(Digital::Button::R) && currentY < verticalLimit)
-            moveDelta += Vector3D(Fxp::Convert(0),  tuning.strafeStep, Fxp::Convert(0));
+            moveDelta += Vector3D(Fxp::BuildRaw(0),  tuning.strafeStep, Fxp::BuildRaw(0));
         if (pad.IsHeld(Digital::Button::L) && currentY > -verticalLimit)
-            moveDelta += Vector3D(Fxp::Convert(0), -tuning.strafeStep, Fxp::Convert(0));
+            moveDelta += Vector3D(Fxp::BuildRaw(0), -tuning.strafeStep, Fxp::BuildRaw(0));
         state.strafe += moveDelta;
     }
 
-    constexpr Fxp kStrafeLimit = Fxp::Convert(20);
+    constexpr Fxp kStrafeLimit = Fxp::BuildRaw(20 << 16);
     auto clamp = [&](Fxp& value)
     {
         if (value > kStrafeLimit) value = kStrafeLimit;
@@ -167,7 +167,7 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
 inline Vector3D ComputeLookTarget(const State& state,
                                   const Tuning& tuning,
                                   Digital& pad,
-                                  const Vector3D& modelTarget = Vector3D(Fxp::Convert(0), Fxp::Convert(0), Fxp::Convert(0)))
+                                  const Vector3D& modelTarget = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0)))
 {
     if (pad.IsHeld(Digital::Button::X))
     {
