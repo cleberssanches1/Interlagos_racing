@@ -1,0 +1,17 @@
+# Build output directory
+BuildDrop/
+
+# Generated CD data artifacts
+cd/data/0.bin
+cd/data/3BANDANA.EXB
+cd/data/BOOTSND.MAP
+cd/data/SDDRVS.DAT
+cd/data/SDDRVS.TSK
+
+# Generated object files
+src/camera_system.o
+src/car_system.o
+src/exception_stubs.o
+src/main.o
+src/mesh_renderer.o
+src/track_system.o
