@@ -22,7 +22,7 @@
 class TrackSystem
 {
 public:
-    static constexpr size_t kTrackSegmentLimit = 20;
+    static constexpr size_t kTrackSegmentLimit = 30;
 
     struct Config
     {
@@ -58,6 +58,9 @@ public:
     bool Ready() const { return ready_; }
     const char* LastResolvedPath() const { return lastSegmentPath_; }
     const FrameTelemetry& Telemetry() const { return coordinator_.Telemetry(); }
+    bool HasSmoothSegments() const;
+    uint32_t MaxSegmentFaceCount() const;
+    uint32_t MaxSegmentVertexCount() const;
 
 private:
     struct TrackSegmentEntry
@@ -79,7 +82,7 @@ private:
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);
-    std::vector<TrackSegmentEntry> CopyAllTrackSegments();
+    std::vector<TrackSegmentEntry> CopyAllTrackSegments(size_t maxSegments);
     std::vector<SegmentRenderEntry> BuildSegmentRenderers(std::vector<TrackSegmentEntry>& entries);
     std::vector<SegmentHandle> BuildSegmentHandleTable();
 

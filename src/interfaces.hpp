@@ -66,7 +66,7 @@ struct ITrackLoader
 struct ITrackCollisionQuery
 {
     virtual ~ITrackCollisionQuery() = default;
-    virtual bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) = 0;
+    virtual bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) const = 0;
 };
 
 // Car physics contract executed each frame.

@@ -37,7 +37,7 @@ public:
         }
 
         // Safety respawn when car drifts too far from track center area.
-        const SRL::Math::Types::Fxp maxDrift = SRL::Math::Types::Fxp::BuildRaw(0x001E0000); // 30
+        const SRL::Math::Types::Fxp maxDrift = SRL::Math::Types::Fxp::BuildRaw(0x012C0000); // 300
         if (ioFrameState.carWorldPosition.X.Abs() > maxDrift || ioFrameState.carWorldPosition.Z.Abs() > maxDrift)
         {
             ioFrameState.resetRequested = true;

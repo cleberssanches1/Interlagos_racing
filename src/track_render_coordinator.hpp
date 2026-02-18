@@ -20,6 +20,7 @@ public:
     {
         Handle handle{};
         int32_t segmentId = -1;
+        uint16_t drawOrder = 0;
         SRL::Math::Types::Vector3D center{};
         uint32_t estimatedMeshes = 0;
         uint32_t estimatedFaces = 0;
@@ -92,6 +93,7 @@ public:
             const RenderResult estimate = estimateCost(*entry);
             PreparedChunk chunk{};
             chunk.handle = drawList.items[i];
+            chunk.drawOrder = static_cast<uint16_t>(preparedCount);
             chunk.estimatedMeshes = estimate.meshes;
             chunk.estimatedFaces = estimate.faces;
             extractMetadata(*entry, chunk);

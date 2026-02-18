@@ -15,6 +15,7 @@
 
 #include "hud_system.hpp"
 
+#include "application_state.hpp"
 #include "background_manager.hpp"
 #include "game_loop_system.hpp"
 #include "track_system.hpp"
@@ -134,16 +135,18 @@ public:
 int GameApp::Run()
 
 {
+    AppState::Set(AppState::Stage::CoreInit, 0);
 
     SRL::Core::Initialize(HighColor(0x10, 0x20, 0x18));
+    AppState::PresentOverlay(2);
 
     const bool logCar = kCarLogs;
     const bool logTrack = true;
     // Log inicial simples do Cart e HWR
     auto crep = SRL::Memory::CartRam::GetReport();
-    SRL::Debug::Print(0, 0, "CRT ok:%d free:%d total:%d", crep.TotalSize > 0 ? 1 : 0, (int)crep.FreeSize, (int)crep.TotalSize);
+    // SRL::Debug::Print(0, 0, "CRT ok:%d free:%d total:%d", crep.TotalSize > 0 ? 1 : 0, (int)crep.FreeSize, (int)crep.TotalSize);
     auto rep = SRL::Memory::HighWorkRam::GetReport();
-    SRL::Debug::Print(0, 1, "HWR free:%d total:%d", (int)rep.FreeSize, (int)rep.TotalSize);
+    // SRL::Debug::Print(0, 1, "HWR free:%d total:%d", (int)rep.FreeSize, (int)rep.TotalSize);
     const bool cartOk = crep.TotalSize > 0;
 
     // Teste simples: escreve string na HWR e l^ de volta (VDP2 debug)
@@ -155,20 +158,29 @@ int GameApp::Run()
     {
         for (size_t i = 0; i < testLen; ++i) hwrStr[i] = testMsg[i];
         int32_t hwrAfterStr = SRL::Memory::CartRam::GetFreeSpace();
-        MLOG(0, 6, "CRT addr:%08lx", (unsigned long)hwrStr);
-        MLOG(0, 7, "CRT free b:%d", hwrBeforeStr);
-        MLOG(0, 8, "CRT free a:%d", hwrAfterStr);
-        MLOG(0, 9, "CRT txt:%s", hwrStr);
+        // MLOG(0, 6, "CRT addr:%08lx", (unsigned long)hwrStr);
+        // MLOG(0, 7, "CRT free b:%d", hwrBeforeStr);
+        // MLOG(0, 8, "CRT free a:%d", hwrAfterStr);
+        // MLOG(0, 9, "CRT txt:%s", hwrStr);
     }
     else
     {
     // silencia logs do teste HWR
     }
 
-        // Carrega carro na DRAM do cart (sem usar WRAM)
+    const bool renderTrack = true; // pista reativada
+    const bool renderCar = false; // carro desativado
+    const bool renderAxes = false; // desliga eixos de debug
+
+        // Carrega carro na DRAM do cart (somente se renderCar estiver ativo)
     const char* carPaths[] = { "CD/DATA/CAR1.NYA", "CD/DATA/CAR1.NYA;1", "cd/data/car1.nya", "cd/data/car1.nya;1", "CAR1.NYA", "CAR1.NYA;1", "car1.nya", "car1.nya;1" };
     const bool useCartCopyPipeline = true; // cart -> WRAM -> VDP1
-    CarPipeline carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline);
+    AppState::Set(AppState::Stage::CarLoad, 0);
+    CarPipeline carPipe{};
+    if (renderCar)
+    {
+        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline);
+    }
 
     ModelObject* carPtr = carPipe.ActiveModel();
     bool carValid = carPipe.Loaded();
@@ -179,13 +191,10 @@ int GameApp::Run()
 // Se faltar cart, travamos o loop exibindo a mensagem
     bool cartOkFlag = cartOk;
     SRL::Math::Types::Vector3D trackSegOffset(0, 0, 0);
-    const bool renderTrack = true; // habilita renderização da pista
-    const bool renderCar = true; // carro ativado
-    const bool renderAxes = false; // desliga eixos de debug
 
     const bool carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
     const bool isSmoothMesh = carWasSmooth; // restaura carregamento smooth
-    MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
+    // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
     uint32_t faceCount = carPtr ? carPtr->GetFaceCount() : 0;
 
@@ -287,11 +296,29 @@ int GameApp::Run()
 
 
     const bool enableBg = true; // desativa background para liberar HWR
+    AppState::Set(AppState::Stage::BackgroundInit, 0);
     BackgroundManager bgManager;
+    bool bgReady = false;
+    const char* skyPaths[] = {
+        "CD/SKYBOX_1.TGA",
+        "CD/SKYBOX_1.TGA;1",
+        "CD/DATA/SKYBOX_1.TGA",
+        "CD/DATA/SKYBOX_1.TGA;1",
+        "cd/skybox_1.tga",
+        "cd/skybox_1.tga;1",
+        "cd/data/skybox_1.tga",
+        "cd/data/skybox_1.tga;1",
+        "DATA/SKYBOX_1.TGA",
+        "DATA/SKYBOX_1.TGA;1",
+        "SKYBOX_1.TGA",
+        "SKYBOX_1.TGA;1",
+        "skybox_1.tga",
+        "skybox_1.tga;1"
+    };
     if (enableBg)
     {
-        const char* skyPaths[] = {"cd/data/skybox_1.tga","data/skybox_1.tga","skybox_1.tga","cd/data/SKYBOX_1.TGA","data/SKYBOX_1.TGA","SKYBOX_1.TGA"};
-        bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+        bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+        MLOG(1, 10, "Sky init: %s", bgReady ? "OK" : "FAIL");
     }
 
     // Camera system owns camera state, tuning and input workflow.
@@ -305,29 +332,11 @@ int GameApp::Run()
 
 
 
-    // Prepare Gouraud/light tables if smooth
-
+    // Prepare Gouraud/light tables after track init, so track-only mode still gets lighting.
     std::vector<HighColor> workTable;
-
     std::vector<uint8_t> vertWork;
     std::vector<HighColor> trackWorkTable;
     std::vector<uint8_t> trackVertWork;
-
-    if (isSmoothMesh)
-
-    {
-
-        workTable.resize(faceCount << 2);
-
-        vertWork.resize(vertexCount);
-
-        SRL::Scene3D::LightInitGouraudTable(0, vertWork.data(), workTable.data(), faceCount);
-
-        SRL::Scene3D::LightSetGouraudTable(shadingTable);
-
-        SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
-
-    }
 
 
 
@@ -335,16 +344,49 @@ int GameApp::Run()
 
     Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
-    Vector3D carWorldPosition(0.0, 0.0, 0.0);
+    Vector3D carWorldPosition(0.0, -2.0, 0.0);
 
+    AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 20;
-    trackConfig.minSegments = 20;
-    trackConfig.initialMeshes = 128;
-    trackConfig.initialFaces = 32000;
+    trackConfig.initialSegments = 3;
+    trackConfig.minSegments = 3;
+    trackConfig.initialMeshes = 2048;
+    // Safe runtime profile for stability while preserving car/HUD budget.
+    trackConfig.initialFaces = 10000;
     trackConfig.useSlave = true;
-    const bool trackSystemReady = trackSystem.Initialize(trackConfig);
+    const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
+    if (enableBg && !bgReady)
+    {
+        bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
+        MLOG(1, 10, "Sky retry after track init: %s", bgReady ? "OK" : "FAIL");
+    }
+    // Track auto alignment disabled for raw NYA validation.
+    // Keep offset at zero while testing exported segments.
+    (void)trackSystemReady;
+    AppState::PresentOverlay(2);
+
+    uint32_t gouraudFaceCapacity = 0;
+    uint32_t gouraudVertexCapacity = 0;
+    if (carPtr && carWasSmooth)
+    {
+        gouraudFaceCapacity = std::max(gouraudFaceCapacity, faceCount);
+        gouraudVertexCapacity = std::max(gouraudVertexCapacity, vertexCount);
+    }
+    if (renderTrack && trackSystemReady && trackSystem.HasSmoothSegments())
+    {
+        gouraudFaceCapacity = std::max(gouraudFaceCapacity, trackSystem.MaxSegmentFaceCount());
+        gouraudVertexCapacity = std::max(gouraudVertexCapacity, trackSystem.MaxSegmentVertexCount());
+    }
+    const bool enableSmoothLighting = (gouraudFaceCapacity > 0) && (gouraudVertexCapacity > 0);
+    if (enableSmoothLighting)
+    {
+        workTable.resize(static_cast<size_t>(gouraudFaceCapacity) << 2);
+        vertWork.resize(static_cast<size_t>(gouraudVertexCapacity));
+        SRL::Scene3D::LightInitGouraudTable(0, vertWork.data(), workTable.data(), gouraudFaceCapacity);
+        SRL::Scene3D::LightSetGouraudTable(shadingTable);
+        SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
+    }
 
     // Draw order: wheels first (1..4), then body (0)
 
@@ -476,6 +518,7 @@ int GameApp::Run()
     loopContext.audioEvents = &audioEvents;
 
     GameLoopSystem gameLoop(loopContext);
+    AppState::Set(AppState::Stage::LoopStart, 0);
     return gameLoop.RunForever();
 
 }

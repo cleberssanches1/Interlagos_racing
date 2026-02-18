@@ -53,8 +53,8 @@ public:
         ioCarWorldPosition.X += sinYaw * speed_;
         ioCarWorldPosition.Z += cosYaw * speed_;
 
-        // Keep car on a stable Y baseline while collision query is still simple.
-        ioCarWorldPosition.Y = SRL::Math::Types::Fxp::BuildRaw(0);
+        // Keep car slightly above track plane to avoid z-fighting and depth flicker.
+        ioCarWorldPosition.Y = kRideHeightY;
         if (trackQuery)
         {
             Vector3D surfaceNormal{};
@@ -112,5 +112,6 @@ private:
     static constexpr SRL::Math::Types::Fxp kMinSteerSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00000A3D);      // ~0.04
     static constexpr SRL::Math::Types::Fxp kSteerDegreesPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00011EB8);// ~1.12
     static constexpr SRL::Math::Types::Fxp kSteerSpeedGain = SRL::Math::Types::Fxp::BuildRaw(0x000070A4);     // ~0.44
+    static constexpr SRL::Math::Types::Fxp kRideHeightY = SRL::Math::Types::Fxp::BuildRaw(-2 << 16);
 };
 } // namespace Game

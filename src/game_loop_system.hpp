@@ -6,6 +6,7 @@
 #include <srl.hpp>
 
 #include "background_manager.hpp"
+#include "application_state.hpp"
 #include "camera_system.hpp"
 #include "car_system.hpp"
 #include "hud_system.hpp"
@@ -59,8 +60,11 @@ public:
 
         while (1)
         {
+            AppState::Set(AppState::Stage::LoopFrameBegin, frameCounter_);
+            AppState::PresentOverlay(2);
             if (!context_.cartOkFlag || !(*context_.cartOkFlag))
             {
+                AppState::Set(AppState::Stage::Fault, frameCounter_);
                 SRL::Debug::Print(1, 3, "ERRO: Cartucho 4MB ausente");
                 SRL::Debug::Print(1, 4, "Insira cart DRAM e reinicie");
                 continue;
@@ -68,6 +72,7 @@ public:
 
             if (!context_.cameraSystem || !context_.trackSystem || !context_.hudSystem || !context_.renderPipeline)
             {
+                AppState::Set(AppState::Stage::Fault, frameCounter_);
                 SRL::Debug::Print(1, 3, "ERRO: subsistemas nao inicializados");
                 continue;
             }
@@ -117,45 +122,17 @@ public:
             }
             context_.carWorldPosition = frameState.carWorldPosition;
             carYawDeg_ = frameState.carYawDeg;
-            SRL::Debug::Print(2, 16, "GP ph:%d seg:%ld cp:%lu spd:%d",
-                              static_cast<int>(frameState.phase),
-                              static_cast<long>(frameState.activeSegmentId),
-                              static_cast<unsigned long>(frameState.checkpointsPassed),
-                              static_cast<int>(frameState.speedProxy));
-            SRL::Debug::Print(2, 17, "CMD th:%d st:%d br:%d wh:%d",
-                              static_cast<int>(frameState.throttle),
-                              static_cast<int>(frameState.steering),
-                              frameState.braking ? 1 : 0,
-                              frameState.wheelsSpinning ? 1 : 0);
 
             if (context_.enableBg && context_.bgManager)
             {
+                AppState::Set(AppState::Stage::LoopBackground, frameCounter_);
                 context_.bgManager->Update(context_.cameraSystem->State());
             }
 
             const Vector3D cameraLocation = context_.cameraSystem->CameraLocation(context_.carWorldPosition);
             const Vector3D viewDirection = context_.cameraSystem->ViewDirection();
             const Vector3D lookTarget = context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
-            if (context_.cameraSystem->IsZHeld() && ((frameCounter_ & 31) == 0))
-            {
-                SRL::Debug::Print(1, 14, "Orbit offset: %d %d %d",
-                                  viewDirection.X.As<int16_t>(),
-                                  viewDirection.Y.As<int16_t>(),
-                                  viewDirection.Z.As<int16_t>());
-                SRL::Debug::Print(1, 15, "View angles yaw:%d pitch:%d",
-                                  context_.cameraSystem->ViewYawDeg(),
-                                  context_.cameraSystem->ViewPitchDeg());
-            }
-            if (frameCounter_ == 0 || (frameCounter_ & 63) == 0)
-            {
-                SRL::Debug::Print(1, 9, "Car mesh center %u: %d %d %d",
-                                  (context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Renderer())
-                                      ? static_cast<unsigned>(context_.carSystem->get()->Renderer()->LastMeshDrawn())
-                                      : 0,
-                                  context_.carWorldPosition.X.As<int16_t>(),
-                                  context_.carWorldPosition.Y.As<int16_t>(),
-                                  context_.carWorldPosition.Z.As<int16_t>());
-            }
+            (void)viewDirection;
             if (context_.verboseFrameLogs)
             {
                 SRL::Debug::Print(0, 18, "Cam pos: %d %d %d",
@@ -175,6 +152,7 @@ public:
             context_.trackSystem->BeginFrame(frameCounter_);
             if (context_.trackSystemReady && context_.renderTrack)
             {
+                AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
                 context_.trackSystem->RenderFrame(true, context_.trackSegOffset, context_.lightDirection, cameraLocation);
                 context_.trackSystem->EndFrame();
             }
@@ -184,6 +162,7 @@ public:
 
             if (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
             {
+                AppState::Set(AppState::Stage::LoopCar, frameCounter_);
                 context_.carSystem->get()->SetWorldPosition(context_.carWorldPosition);
                 context_.carSystem->get()->Render(carYawDeg_);
                 context_.renderPipeline->Reset();
@@ -210,16 +189,29 @@ public:
                 SRL::Scene2D::DrawLine(o2D, z2D, SRL::Types::HighColor::Colors::Blue, sort2D);
             }
 
+            uint32_t submittedTrackFaces = 0;
+            if (context_.trackSystemReady && context_.renderTrack && context_.trackSystem)
+            {
+                submittedTrackFaces = context_.trackSystem->Telemetry().submittedTrackFaces;
+            }
+            const uint32_t submittedCarFaces =
+                (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
+                    ? context_.faceCount
+                    : 0;
+
             ++frameCounter_;
             context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
                                                           context_.logTrack,
                                                           context_.logCar,
                                                           context_.faceCount,
-                                                          context_.vertexCount);
+                                                          context_.vertexCount,
+                                                          submittedTrackFaces,
+                                                          submittedCarFaces);
             if (context_.verboseFrameLogs)
             {
                 SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);
             }
+            AppState::Set(AppState::Stage::LoopSync, frameCounter_);
             SRL::Core::Synchronize();
         }
     }

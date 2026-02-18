@@ -186,6 +186,8 @@ public:
         size_t drawn = 0;
         uint32_t drawnFaces = 0;
         auto lightCopy = light;
+        // Cache is only required for custom direct paths.
+        const bool needsCache = useSglDirect_ || useDirect2D_ || !useOriginal_;
 
         // Se modo direto estiver ativo, desenha um quad de teste 2D para validar VDP1
         if (useDirect2D_)
@@ -201,7 +203,10 @@ public:
 
         for (size_t i = startMeshIdx_; i < meshCount_ && drawn < drawLimit_; ++i)
         {
-            EnsureCached(i);
+            if (needsCache)
+            {
+                EnsureCached(i);
+            }
 
             // Loga projeo do primeiro face do primeiro mesh para saber onde cai na tela
             if (drawn == 0)
@@ -430,7 +435,31 @@ public:
                             }
                         }
                         drawnFaces += (uint32_t)mesh->FaceCount;
-                        SRL::Scene3D::DrawSmoothMesh(*mesh, lightCopy);
+                        if (forceDoubleSided_ && mesh->Attributes)
+                        {
+                            std::vector<SRL::Types::Attribute> attrs(mesh->Attributes, mesh->Attributes + mesh->FaceCount);
+                            for (auto& attr : attrs)
+                            {
+                                attr.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
+                            }
+                            SRL::Types::SmoothMesh tmp;
+                            tmp.Vertices = mesh->Vertices;
+                            tmp.VertexCount = mesh->VertexCount;
+                            tmp.Faces = mesh->Faces;
+                            tmp.FaceCount = mesh->FaceCount;
+                            tmp.Attributes = attrs.data();
+                            tmp.Normals = mesh->Normals;
+                            SRL::Scene3D::DrawSmoothMesh(tmp, lightCopy);
+                            // Prevent temporary wrapper from freeing foreign pointers.
+                            tmp.Vertices = nullptr;
+                            tmp.Faces = nullptr;
+                            tmp.Attributes = nullptr;
+                            tmp.Normals = nullptr;
+                        }
+                        else
+                        {
+                            SRL::Scene3D::DrawSmoothMesh(*mesh, lightCopy);
+                        }
                     }
                     else
                     {
@@ -462,7 +491,29 @@ public:
                             }
                         }
                         drawnFaces += (uint32_t)mesh->FaceCount;
-                        SRL::Scene3D::DrawMesh(*mesh);
+                        if (forceDoubleSided_ && mesh->Attributes)
+                        {
+                            std::vector<SRL::Types::Attribute> attrs(mesh->Attributes, mesh->Attributes + mesh->FaceCount);
+                            for (auto& attr : attrs)
+                            {
+                                attr.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
+                            }
+                            SRL::Types::Mesh tmp;
+                            tmp.Vertices = mesh->Vertices;
+                            tmp.VertexCount = mesh->VertexCount;
+                            tmp.Faces = mesh->Faces;
+                            tmp.FaceCount = mesh->FaceCount;
+                            tmp.Attributes = attrs.data();
+                            SRL::Scene3D::DrawMesh(tmp);
+                            // Prevent temporary wrapper from freeing foreign pointers.
+                            tmp.Vertices = nullptr;
+                            tmp.Faces = nullptr;
+                            tmp.Attributes = nullptr;
+                        }
+                        else
+                        {
+                            SRL::Scene3D::DrawMesh(*mesh);
+                        }
                     }
                 }
                 else
@@ -495,6 +546,11 @@ public:
                     }
                     drawnFaces += (uint32_t)tmp.FaceCount;
                     SRL::Scene3D::DrawSmoothMesh(tmp, lightCopy);
+                    // Prevent temporary wrapper from freeing vector-owned pointers.
+                    tmp.Vertices = nullptr;
+                    tmp.Faces = nullptr;
+                    tmp.Attributes = nullptr;
+                    tmp.Normals = nullptr;
                 }
                 else
                     {
@@ -523,6 +579,10 @@ public:
                     }
                     drawnFaces += (uint32_t)tmp.FaceCount;
                     SRL::Scene3D::DrawMesh(tmp);
+                    // Prevent temporary wrapper from freeing vector-owned pointers.
+                    tmp.Vertices = nullptr;
+                    tmp.Faces = nullptr;
+                    tmp.Attributes = nullptr;
                 }
                 }
                 SRL::Scene3D::PopMatrix();
@@ -532,8 +592,8 @@ public:
 
         if (drawn > 0)
         {
-            SRL::Debug::Print(1, 22, "Track drawn meshes:%u faces:%u freeHWR:%d",
-                              (unsigned)drawn, (unsigned)drawnFaces, SRL::Memory::HighWorkRam::GetFreeSpace());
+            // Keep line 22 reserved for frame telemetry ("TRK seg...").
+            // Avoid writing another status string there to prevent alternating debug text.
         }
         else if (useDirect2D_ && drawnFaces == 0)
         {
@@ -545,7 +605,7 @@ public:
                 SRL::Math::Types::Vector2D(-10,  10)
             };
             SRL::Scene2D::DrawPolygon(pts, true, SRL::Types::HighColor::FromRGB555(31,31,0), 0);
-            SRL::Debug::Print(1, 22, "Track direct2D fallback quad drawn");
+            SRL::Debug::Print(1, 23, "Track direct2D fallback quad drawn");
         }
         lastDrawnMeshes_ = (uint32_t)drawn;
         lastDrawnFaces_ = drawnFaces;
@@ -585,6 +645,7 @@ public:
     void SetDirect2D(bool v) { useDirect2D_ = v; }
     void SetSglDirect(bool v) { useSglDirect_ = v; }
     void SetUseOriginal(bool v) { useOriginal_ = v; }
+    void SetForceDoubleSided(bool v) { forceDoubleSided_ = v; }
     const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
     bool GetMeshStats(size_t idx, uint32_t& faces, uint32_t& verts) const
     {
@@ -756,6 +817,7 @@ private:
     bool useDirect2D_ = false;
     bool useSglDirect_ = false;
     bool useOriginal_ = true;
+    bool forceDoubleSided_ = false;
 
     struct SmoothCache {
         bool valid = false;

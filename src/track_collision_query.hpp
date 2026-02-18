@@ -15,7 +15,7 @@ public:
 
     bool Sample(const SRL::Math::Types::Vector3D& worldPosition,
                 SRL::Math::Types::Vector3D& outSurfaceNormal,
-                int32_t& outSegmentId) override
+                int32_t& outSegmentId) const override
     {
         // Saturn world axis uses negative Y as up in current camera setup.
         outSurfaceNormal = SRL::Math::Types::Vector3D(0.0, -1.0, 0.0);

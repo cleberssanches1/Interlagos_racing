@@ -21,12 +21,14 @@ struct SkyEnvironment
         horizon.driftStep = SRL::Math::Types::Fxp(0.0015f); // +50% de velocidade, ainda suave
     }
 
-    void Load(const char* const* paths, size_t count)
+    bool Load(const char* const* paths, size_t count)
     {
+        bool anyLoaded = false;
         if (useHorizon)
-            horizon.Load(paths, count);
+            anyLoaded = horizon.Load(paths, count) || anyLoaded;
         if (useDome)
-            dome.Load(paths, count);
+            anyLoaded = dome.Load(paths, count) || anyLoaded;
+        return anyLoaded;
     }
 
     void Update(int32_t yawDeg, int32_t viewYawDeg, int32_t viewPitchDeg)

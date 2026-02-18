@@ -8,7 +8,7 @@ namespace Game
 class NullTrackCollisionQuery final : public ITrackCollisionQuery
 {
 public:
-    bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) override
+    bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) const override
     {
         (void)worldPosition;
         outSurfaceNormal = Vector3D(0.0, -1.0, 0.0);

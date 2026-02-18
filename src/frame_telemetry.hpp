@@ -56,6 +56,10 @@ struct FrameTelemetry
         SRL::Debug::Print(2, 23, "TRK face:%lu/%lu",
                           (unsigned long)usage.drawnTrackFaces,
                           (unsigned long)budget.maxTrackFaces);
+        if (usage.drawnTrackFaces + 1000 >= budget.maxTrackFaces)
+        {
+            SRL::Debug::Print(2, 29, "TRK face near cap, reserving for car");
+        }
         SRL::Debug::Print(2, 24, "PRD sub:%lu done:%lu reu:%lu fly:%d",
                           (unsigned long)producer.jobsSubmitted,
                           (unsigned long)producer.jobsCompleted,
