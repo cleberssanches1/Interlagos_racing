@@ -44,6 +44,7 @@ constexpr bool kVerboseFrameLogs = false;
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
 static const char* FindExistingPath(const char* const* paths, size_t count);
+static constexpr size_t kCarGouraudOffset = 4096;
 
 // Procura o primeiro caminho existente em disco.
 static const char* FindExistingPath(const char* const* paths, size_t count)
@@ -108,18 +109,18 @@ struct CarPipeline
 };
 
 // Executa a carga CD -> cart (4MB) e opcionalmente cart -> WRAM.
-static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, bool makeWramCopy)
+static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, bool makeWramCopy, size_t gouraudOffset)
 {
     CarPipeline pipe{};
     const char* chosenPath = FindExistingPath(paths, pathCount);
 
     // 1) Carga principal no cart (forceCart = true garante DRAM 4MB).
-    pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true);
+    pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true, gouraudOffset);
 
     // 2) C??????pia independente em WRAM para evitar compartilhar ponteiros do cart.
     if (makeWramCopy && chosenPath)
     {
-        pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, 0, false, 0, false, false, false);
+        pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, gouraudOffset, false, 0, false, false, false);
     }
     return pipe;
 }
@@ -181,7 +182,7 @@ int GameApp::Run()
     CarPipeline carPipe{};
     if (renderCar && !loadCarAfterTrack)
     {
-        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline);
+        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
     }
 
     ModelObject* carPtr = carPipe.ActiveModel();
@@ -422,7 +423,7 @@ int GameApp::Run()
     if (renderCar && loadCarAfterTrack)
     {
         AppState::Set(AppState::Stage::CarLoad, 1);
-        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline);
+        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
         carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
@@ -495,7 +496,8 @@ int GameApp::Run()
     uint32_t gouraudVertexCapacity = 0;
     if (carPtr && carWasSmooth)
     {
-        gouraudFaceCapacity = std::max(gouraudFaceCapacity, faceCount);
+        // Car uses a dedicated gouraud offset range to avoid lighting aliasing with track.
+        gouraudFaceCapacity = std::max(gouraudFaceCapacity, static_cast<uint32_t>(kCarGouraudOffset + faceCount + 64));
         gouraudVertexCapacity = std::max(gouraudVertexCapacity, vertexCount);
     }
     if (renderTrack && trackSystemReady && trackSystem.HasSmoothSegments())

@@ -1773,7 +1773,10 @@ public:
     {
         if (mesh < this->meshCount && this->type == 1)
         {
-            SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], light);
+            // slPutPolygonX may mutate the light vector argument; use a local copy
+            // so one model render cannot alter global/environment lighting.
+            auto lightCopy = light;
+            SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], lightCopy);
         }
     }
 
@@ -1801,7 +1804,8 @@ public:
         {
             for (size_t mesh = 0; mesh < this->meshCount; mesh++)
             {
-                SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], light);
+                auto lightCopy = light;
+                SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], lightCopy);
             }
         }
     }

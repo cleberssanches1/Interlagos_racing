@@ -34,14 +34,14 @@ struct TrackLoadResult
 };
 
 // Load a car NYA into cart RAM (optionally forcing cart) and return stats/pointers.
-CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, bool forceCart = false);
+CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, bool forceCart = false, size_t gouraudOffset = 0);
 // Load a track NYA into cart RAM and build a TrackRenderer with the requested mesh cap.
 TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCount, size_t maxMeshes);
 // Serialize track data into Cart RAM for fast segment buffering.
 TrackSerializedCopy SerializeTrackToCart(const char* path, size_t chunkSize = 0x4000);
 
 // Inline implementations to keep single translation unit usage (avoid duplicate std throw stubs)
-inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, bool forceCart)
+inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, bool forceCart, size_t gouraudOffset)
 {
     CarLoadResult res{};
     int32_t hwrBefore = SRL::Memory::CartRam::GetFreeSpace();
@@ -51,11 +51,11 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
         SRL::Cd::File f(paths[i]);
         SRL::Debug::Print(0, 2, "CAR path:%s ex:%d sz:%ld", paths[i], f.Exists() ? 1 : 0, (long)f.Size.Bytes);
 
-        ModelObject candidate(paths[i], 0, false, 0, false, forceCart, false);
+        ModelObject candidate(paths[i], gouraudOffset, false, 0, false, forceCart, false);
         if (candidate.GetMeshCount() == 0 || candidate.GetFaceCount() == 0)
         {
             SRL::Debug::Print(0, 3, "Car stream fail %s -> buffer", paths[i]);
-            ModelObject bufLoad(paths[i], 0, false, 0, false, forceCart, false);
+            ModelObject bufLoad(paths[i], gouraudOffset, false, 0, false, forceCart, false);
             candidate = std::move(bufLoad);
         }
         if (candidate.GetMeshCount() > 0 && candidate.GetFaceCount() > 0)
