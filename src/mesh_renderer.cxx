@@ -38,6 +38,7 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
     SRL::Scene3D::PushMatrix();
     SRL::Scene3D::Translate(position + offset_);
     SRL::Scene3D::RotateY(yaw);
+    SRL::Scene3D::Scale(scale_);
     SRL::Scene3D::Translate(-config_.modelCenter);
     size_t drawnMesh = SIZE_MAX;
 

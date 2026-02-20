@@ -54,6 +54,9 @@ public:
                             const SRL::Math::Types::Vector3D& trackOffset,
                             int32_t& outSegmentId,
                             SRL::Math::Types::Vector3D& outSegmentCenter) const;
+    bool FindSegmentCenterById(int32_t segmentId,
+                               const SRL::Math::Types::Vector3D& trackOffset,
+                               SRL::Math::Types::Vector3D& outSegmentCenter) const;
 
     bool Ready() const { return ready_; }
     const char* LastResolvedPath() const { return lastSegmentPath_; }

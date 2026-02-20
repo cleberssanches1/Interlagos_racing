@@ -114,7 +114,7 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
 
         // Keep original model path for stable segment placement.
         renderer->SetUseOriginal(true);
-        // Re-enable double-sided faces only for track segment rendering.
+        // Keep original face visibility from model to avoid front/back overdraw artifacts.
         renderer->SetForceDoubleSided(false);
         renderer->SetDrawLimit(renderer->MeshCount());
         SegmentRenderEntry item{};
@@ -444,6 +444,25 @@ bool TrackSystem::FindNearestSegment(const Vector3D& worldPosition,
         outSegmentCenter = Vector3D(0.0, 0.0, 0.0);
     }
     return hasCandidate;
+}
+
+bool TrackSystem::FindSegmentCenterById(const int32_t segmentId,
+                                        const Vector3D& trackOffset,
+                                        Vector3D& outSegmentCenter) const
+{
+    for (const auto& segment : segmentRenderers_)
+    {
+        if (segment.id != segmentId)
+        {
+            continue;
+        }
+
+        outSegmentCenter = segment.center + trackOffset;
+        return true;
+    }
+
+    outSegmentCenter = Vector3D(0.0, 0.0, 0.0);
+    return false;
 }
 
 bool TrackSystem::HasSmoothSegments() const

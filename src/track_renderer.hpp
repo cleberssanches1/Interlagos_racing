@@ -31,7 +31,7 @@ public:
 
     static constexpr size_t kVDP1FaceCostBytes = 64;
     static constexpr size_t kVDP1BudgetBytes   = 512 * 1024;
-    static constexpr size_t kMaxDrawMeshes     = 4;  // renderiza poucos segmentos por padro
+    static constexpr size_t kMaxDrawMeshes     = 2;  // conservative limit to protect VDP1 command list
 
     // Load track file from a list of candidate paths into cart RAM and prepare caches.
     bool Load(const char* const* candidates, size_t count, size_t maxMeshes, bool /*loadAllSegments*/ = false)

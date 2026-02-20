@@ -11,7 +11,8 @@ CameraSystem::CameraSystem()
     state_.viewYawDeg = 0;
     state_.viewPitchDeg = 13;
     state_.radius = Fxp::BuildRaw(0x0043BD70); // ~67.74
-    state_.strafe = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
+    // Start already at the same max distance reached by Y + Up (kStrafeLimit on Z).
+    state_.strafe = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(20 << 16));
     state_.location = Vector3D(0.0, 0.0, -50.0f);
     state_.yaw = Angle::FromDegrees(Fxp::BuildRaw(180 << 16));
     state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-10 << 16));
@@ -25,7 +26,8 @@ CameraSystem::CameraSystem()
 
 void CameraSystem::InitializeManualOffset()
 {
-    const Vector3D desiredCamera(0.0, Fxp::BuildRaw(-32 << 16), Fxp::BuildRaw(56 << 16));
+    // Chase camera framing tuned for ~30deg vertical look angle.
+    const Vector3D desiredCamera(0.0, Fxp::BuildRaw(-44 << 16), Fxp::BuildRaw(70 << 16));
     Vector3D initialOrbit = Camera::OrbitPosition(state_.yaw, state_.pitch, state_.radius);
     manualOffset_ = desiredCamera - initialOrbit;
 }
@@ -98,8 +100,10 @@ Vector3D CameraSystem::ViewDirection() const
 
 Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const
 {
-    const Vector3D hoodTargetOffset(0.0, Fxp::BuildRaw(-5 << 16), 0.0);
-    return carWorldPosition + modelOffset + hoodTargetOffset;
+    (void)modelOffset;
+    // Tilt camera up by ~20deg equivalent framing by raising the look target.
+    const Vector3D hoodTargetOffset(0.0, Fxp::BuildRaw(-20 << 16), 0.0);
+    return carWorldPosition + hoodTargetOffset;
 }
 
 CameraSystem::Snapshot CameraSystem::CreateSnapshot() const

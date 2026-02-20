@@ -168,8 +168,10 @@ int GameApp::Run()
     // silencia logs do teste HWR
     }
 
-    const bool renderTrack = true; // pista reativada
-    const bool renderCar = false; // carro desativado
+    const bool renderTrack = true; // pista ativa
+    const bool renderCar = true; // pista + carro
+    const bool loadCarAfterTrack = true; // prioridade de textura para pista
+    const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
 
         // Carrega carro na DRAM do cart (somente se renderCar estiver ativo)
@@ -177,7 +179,7 @@ int GameApp::Run()
     const bool useCartCopyPipeline = true; // cart -> WRAM -> VDP1
     AppState::Set(AppState::Stage::CarLoad, 0);
     CarPipeline carPipe{};
-    if (renderCar)
+    if (renderCar && !loadCarAfterTrack)
     {
         carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline);
     }
@@ -192,8 +194,8 @@ int GameApp::Run()
     bool cartOkFlag = cartOk;
     SRL::Math::Types::Vector3D trackSegOffset(0, 0, 0);
 
-    const bool carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
-    const bool isSmoothMesh = carWasSmooth; // restaura carregamento smooth
+    bool carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
+    bool isSmoothMesh = carWasSmooth; // restaura carregamento smooth
     // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
     uint32_t faceCount = carPtr ? carPtr->GetFaceCount() : 0;
@@ -340,26 +342,149 @@ int GameApp::Run()
 
 
 
-    // Center of model from bounds (approx) to bring into view
-
-    Vector3D modelCenter = Vector3D(0.0, 3.607f, -0.398f);
+    // Center of model from bounds to keep imported cars in camera view.
+    Vector3D modelCenter = Vector3D(0.0, 0.0, 0.0);
+    if (carPtr && meshCount > 0)
+    {
+        SRL::Math::Types::Vector3D minCar = Vector3D(32767, 32767, 32767);
+        SRL::Math::Types::Vector3D maxCar = Vector3D(-32768, -32768, -32768);
+        for (size_t m = 0; m < meshCount; ++m)
+        {
+            if (isSmoothMesh)
+            {
+                auto* mesh = carPtr->template GetMesh<SRL::Types::SmoothMesh>(m);
+                if (!mesh) continue;
+                for (size_t v = 0; v < mesh->VertexCount; ++v)
+                {
+                    const auto& p = mesh->Vertices[v];
+                    minCar.X = SRL::Math::Min(minCar.X, p.X);
+                    minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
+                    minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
+                    maxCar.X = SRL::Math::Max(maxCar.X, p.X);
+                    maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
+                    maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
+                }
+            }
+            else
+            {
+                auto* mesh = carPtr->template GetMesh<SRL::Types::Mesh>(m);
+                if (!mesh) continue;
+                for (size_t v = 0; v < mesh->VertexCount; ++v)
+                {
+                    const auto& p = mesh->Vertices[v];
+                    minCar.X = SRL::Math::Min(minCar.X, p.X);
+                    minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
+                    minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
+                    maxCar.X = SRL::Math::Max(maxCar.X, p.X);
+                    maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
+                    maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
+                }
+            }
+        }
+        modelCenter = Vector3D(
+            (minCar.X + maxCar.X) / 2,
+            (minCar.Y + maxCar.Y) / 2,
+            (minCar.Z + maxCar.Z) / 2);
+    }
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
-    Vector3D carWorldPosition(0.0, -2.0, 0.0);
+    Vector3D carWorldPosition(0.0, 0.0, 0.0);
 
     AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 3;
-    trackConfig.minSegments = 3;
-    trackConfig.initialMeshes = 2048;
-    // Safe runtime profile for stability while preserving car/HUD budget.
-    trackConfig.initialFaces = 10000;
-    trackConfig.useSlave = true;
+    trackConfig.initialSegments = 2;
+    trackConfig.minSegments = 2;
+    // Conservative track budget to keep VDP1 command list stable with car rendering enabled.
+    trackConfig.initialMeshes = 256;
+    trackConfig.initialFaces = 1200;
+    trackConfig.useSlave = false;
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
     if (enableBg && !bgReady)
     {
         bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
         MLOG(1, 10, "Sky retry after track init: %s", bgReady ? "OK" : "FAIL");
+    }
+    if (renderTrack && trackSystemReady)
+    {
+        Vector3D seg01Center(0.0, 0.0, 0.0);
+        if (trackSystem.FindSegmentCenterById(1, trackSegOffset, seg01Center))
+        {
+            // Segment center is an AABB center; keep car spawn Y stable to avoid starting inside geometry.
+            carWorldPosition.X = seg01Center.X;
+            carWorldPosition.Z = seg01Center.Z;
+            carWorldPosition.Y = SRL::Math::Types::Fxp::BuildRaw(0);
+            MLOG(1, 18, "Car spawn seg01 %d %d %d",
+                 carWorldPosition.X.As<int16_t>(),
+                 carWorldPosition.Y.As<int16_t>(),
+                 carWorldPosition.Z.As<int16_t>());
+        }
+    }
+    if (renderCar && loadCarAfterTrack)
+    {
+        AppState::Set(AppState::Stage::CarLoad, 1);
+        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline);
+        carPtr = carPipe.ActiveModel();
+        carValid = carPipe.Loaded();
+        carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
+        isSmoothMesh = carWasSmooth;
+        faceCount = carPtr ? carPtr->GetFaceCount() : 0;
+        vertexCount = carPtr ? carPtr->GetVertexCount() : 0;
+        meshCount = carPtr ? carPtr->GetMeshCount() : 0;
+        if (!carValid && logCar)
+        {
+            MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
+        }
+
+        // Recompute model center now that car was loaded after track textures.
+        modelCenter = Vector3D(0.0, 0.0, 0.0);
+        if (carPtr && meshCount > 0)
+        {
+            SRL::Math::Types::Vector3D minCar = Vector3D(32767, 32767, 32767);
+            SRL::Math::Types::Vector3D maxCar = Vector3D(-32768, -32768, -32768);
+            for (size_t m = 0; m < meshCount; ++m)
+            {
+                if (isSmoothMesh)
+                {
+                    auto* mesh = carPtr->template GetMesh<SRL::Types::SmoothMesh>(m);
+                    if (!mesh) continue;
+                    for (size_t v = 0; v < mesh->VertexCount; ++v)
+                    {
+                        const auto& p = mesh->Vertices[v];
+                        minCar.X = SRL::Math::Min(minCar.X, p.X);
+                        minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
+                        minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
+                        maxCar.X = SRL::Math::Max(maxCar.X, p.X);
+                        maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
+                        maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
+                    }
+                }
+                else
+                {
+                    auto* mesh = carPtr->template GetMesh<SRL::Types::Mesh>(m);
+                    if (!mesh) continue;
+                    for (size_t v = 0; v < mesh->VertexCount; ++v)
+                    {
+                        const auto& p = mesh->Vertices[v];
+                        minCar.X = SRL::Math::Min(minCar.X, p.X);
+                        minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
+                        minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
+                        maxCar.X = SRL::Math::Max(maxCar.X, p.X);
+                        maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
+                        maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
+                    }
+                }
+            }
+            modelCenter = Vector3D(
+                (minCar.X + maxCar.X) / 2,
+                (minCar.Y + maxCar.Y) / 2,
+                (minCar.Z + maxCar.Z) / 2);
+        }
+        modelOffset = Vector3D(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
+    }
+    if (renderTrack && renderCar && forceSolidCarWhenTrack && carValid && carPtr)
+    {
+        carPtr->ForceSolidColorPreserveDisplay(SRL::Types::HighColor::FromRGB555(20, 20, 20));
+        MLOG(1, 18, "Car force solid ON");
     }
     // Track auto alignment disabled for raw NYA validation.
     // Keep offset at zero while testing exported segments.

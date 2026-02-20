@@ -46,6 +46,16 @@ public:
         const size_t vdp1HeapFree = SRL::VDP1::GetAvailableMemory();
         const size_t vdp1HeapTotal = vdp1HeapUsed + vdp1HeapFree;
         const uint32_t vdp1HeapPct = (vdp1HeapTotal > 0) ? static_cast<uint32_t>((vdp1HeapUsed * 100u) / vdp1HeapTotal) : 0;
+        if (!heapPctFilterInit_)
+        {
+            heapPctFiltered_ = vdp1HeapPct;
+            heapPctFilterInit_ = true;
+        }
+        else
+        {
+            // Smooth heap usage display so HP% remains stable during camera/clip changes.
+            heapPctFiltered_ = static_cast<uint32_t>((heapPctFiltered_ * 7u + vdp1HeapPct) / 8u);
+        }
         constexpr uint32_t kVdp1FaceCostBytes = 64;
         constexpr uint32_t kVdp1FrameBudgetBytes = 512u * 1024u;
         const uint32_t submittedFacesNow = submittedTrackFaces + submittedCarFaces;
@@ -57,8 +67,8 @@ public:
         if (vdp1ClampedNow > peakVdp1Used_) peakVdp1Used_ = vdp1ClampedNow;
 
         // Always show a compact VDP1 usage line every frame on multiple debug layers.
-        SRL::Debug::Print(0, 23, "VDP1 FR%%:%u HP%%:%u F:%u", (unsigned)vdp1PctNow, (unsigned)vdp1HeapPct, (unsigned)submittedFacesNow);
-        SRL::Debug::Print(1, 1,  "VDP1 FR%%:%u HP%%:%u F:%u", (unsigned)vdp1PctNow, (unsigned)vdp1HeapPct, (unsigned)submittedFacesNow);
+        SRL::Debug::Print(0, 23, "VDP1 FR%%:%u HP%%:%u F:%u", (unsigned)vdp1PctNow, (unsigned)heapPctFiltered_, (unsigned)submittedFacesNow);
+        SRL::Debug::Print(1, 1,  "VDP1 FR%%:%u HP%%:%u F:%u", (unsigned)vdp1PctNow, (unsigned)heapPctFiltered_, (unsigned)submittedFacesNow);
 
         if ((frameCounter & 63) != 0) return;
 
@@ -94,4 +104,6 @@ private:
     uint64_t accumSubmittedFaces_ = 0;
     uint32_t accumSamples_ = 0;
     uint32_t peakVdp1Used_ = 0;
+    uint32_t heapPctFiltered_ = 0;
+    bool heapPctFilterInit_ = false;
 };
