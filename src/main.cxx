@@ -176,6 +176,7 @@ int GameApp::Run()
     const bool renderTrack = true; // teste combinado: pista + carro
     const bool renderCar = true; // teste combinado
     const bool loadCarAfterTrack = true; // pista primeiro, depois carro
+    const bool enableTrackSlaveProducer = true; // ativa produtor de draw-list na Slave SH2
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
 
@@ -403,12 +404,12 @@ int GameApp::Run()
     AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 2;
-    trackConfig.minSegments = 2;
+    trackConfig.initialSegments = 3;
+    trackConfig.minSegments = 3;
     // Conservative track budget to keep VDP1 command list stable with car rendering enabled.
-    trackConfig.initialMeshes = 256;
-    trackConfig.initialFaces = 1200;
-    trackConfig.useSlave = false;
+    trackConfig.initialMeshes = 320;
+    trackConfig.initialFaces = 1800;
+    trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
     if (enableBg && !bgReady)
@@ -640,6 +641,8 @@ int GameApp::Run()
     loopContext.verboseFrameLogs = kVerboseFrameLogs;
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
+    loopContext.enableSlaveForCarPrepare = enableTrackSlaveProducer;
+    loopContext.enableSlaveForSimulation = enableTrackSlaveProducer;
     loopContext.faceCount = faceCount;
     loopContext.vertexCount = vertexCount;
     loopContext.trackSegOffset = trackSegOffset;

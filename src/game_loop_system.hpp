@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <srl.hpp>
+#include <srl_slave.hpp>
 
 #include "background_manager.hpp"
 #include "application_state.hpp"
@@ -28,6 +29,8 @@ public:
         bool verboseFrameLogs = false;
         bool logTrack = true;
         bool logCar = false;
+        bool enableSlaveForCarPrepare = false;
+        bool enableSlaveForSimulation = false;
         uint32_t faceCount = 0;
         uint32_t vertexCount = 0;
         SRL::Math::Types::Vector3D trackSegOffset{};
@@ -83,6 +86,26 @@ public:
             const bool rightHeld = pad_.IsHeld(SRL::Input::Digital::Button::Right);
             context_.cameraSystem->UpdateFromPad(pad_, carYawDeg_, orbitState_);
 
+            // Consume last completed slave simulation (double-buffered, one-frame latency).
+            if (simJobInFlight_ && simulationTask_.IsDone())
+            {
+                simJobInFlight_ = false;
+                simHasCompleted_ = true;
+                simCompletedIdx_ = simInFlightIdx_;
+            }
+            if (simHasCompleted_)
+            {
+                const auto& simOut = simOutput_[simCompletedIdx_];
+                context_.carWorldPosition = simOut.outWorldPosition;
+                carYawDeg_ = simOut.outYawDeg;
+            }
+            if (carPrepareJobInFlight_ && carPrepareTask_.IsDone())
+            {
+                carPrepareJobInFlight_ = false;
+                carPrepareHasCompleted_ = true;
+                carPrepareCompletedIdx_ = carPrepareInFlightIdx_;
+            }
+
             Game::GameplayFrameState frameState{};
             frameState.frameId = frameCounter_;
             frameState.carWorldPosition = context_.carWorldPosition;
@@ -103,25 +126,71 @@ public:
                 frameState.wheelsSpinning = commands.wheelsSpinning;
             }
 
-            if (context_.gameplayTick)
+            const bool useSlaveSim =
+                context_.enableSlaveForSimulation &&
+                (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
+            if (useSlaveSim)
             {
-                context_.gameplayTick->Tick(frameState, context_.trackCollision);
+                SimulationTask::Payload simPayload{};
+                simPayload.gameplayTick = context_.gameplayTick;
+                simPayload.carPhysics = context_.carPhysics;
+                simPayload.audioEvents = context_.audioEvents;
+                simPayload.trackCollision = context_.trackCollision;
+                simPayload.frameState = frameState;
+                simPayload.outWorldPosition = frameState.carWorldPosition;
+                simPayload.outYawDeg = frameState.carYawDeg;
+                if (!simJobInFlight_)
+                {
+                    const uint8_t slot = simWriteIdx_;
+                    simInput_[slot] = simPayload;
+                    simulationTask_.Configure(&simInput_[slot], &simOutput_[slot]);
+                    SRL::Slave::ExecuteOnSlave(simulationTask_);
+                    simJobInFlight_ = true;
+                    simInFlightIdx_ = slot;
+                    simWriteIdx_ ^= 1u;
+                }
             }
-            if (context_.carPhysics)
+            else
             {
-                context_.carPhysics->Step(frameState,
-                                          context_.trackCollision,
-                                          frameState.carWorldPosition,
-                                          frameState.carYawDeg);
+                if (context_.gameplayTick)
+                {
+                    context_.gameplayTick->Tick(frameState, context_.trackCollision);
+                }
+                if (context_.carPhysics)
+                {
+                    context_.carPhysics->Step(frameState,
+                                              context_.trackCollision,
+                                              frameState.carWorldPosition,
+                                              frameState.carYawDeg);
+                }
+                if (frameState.resetRequested)
+                {
+                    frameState.carWorldPosition = frameState.respawnPosition;
+                    frameState.carYawDeg = frameState.respawnYawDeg;
+                    frameState.resetRequested = false;
+                }
+                if (context_.audioEvents)
+                {
+                    context_.audioEvents->OnFrame(frameState);
+                }
+                context_.carWorldPosition = frameState.carWorldPosition;
+                carYawDeg_ = frameState.carYawDeg;
             }
-            if (frameState.resetRequested)
+
+            if (context_.renderCar && context_.carSystem && context_.carSystem->get() &&
+                context_.carSystem->get()->Valid() && context_.enableSlaveForCarPrepare)
             {
-                frameState.carWorldPosition = frameState.respawnPosition;
-                frameState.carYawDeg = frameState.respawnYawDeg;
-                frameState.resetRequested = false;
+                if (!carPrepareJobInFlight_)
+                {
+                    const uint8_t slot = carPrepareWriteIdx_;
+                    carPrepareInputYaw_[slot] = carYawDeg_;
+                    carPrepareTask_.Configure(&carPrepareInputYaw_[slot], &carPrepareOutputYaw_[slot]);
+                    SRL::Slave::ExecuteOnSlave(carPrepareTask_);
+                    carPrepareJobInFlight_ = true;
+                    carPrepareInFlightIdx_ = slot;
+                    carPrepareWriteIdx_ ^= 1u;
+                }
             }
-            context_.carWorldPosition = frameState.carWorldPosition;
-            carYawDeg_ = frameState.carYawDeg;
 
             if (context_.enableBg && context_.bgManager)
             {
@@ -133,6 +202,7 @@ public:
             const Vector3D viewDirection = context_.cameraSystem->ViewDirection();
             const Vector3D lookTarget = context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
             (void)viewDirection;
+
             if (context_.verboseFrameLogs)
             {
                 SRL::Debug::Print(0, 18, "Cam pos: %d %d %d",
@@ -163,19 +233,20 @@ public:
             if (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
             {
                 AppState::Set(AppState::Stage::LoopCar, frameCounter_);
+                if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
+                {
+                    context_.carSystem->get()->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
+                    context_.carSystem->get()->TickCommandState();
+                }
+                else
+                {
+                    context_.carSystem->get()->Render(carYawDeg_);
+                }
                 context_.carSystem->get()->SetWorldPosition(context_.carWorldPosition);
-                context_.carSystem->get()->Render(carYawDeg_);
                 context_.renderPipeline->Reset();
                 context_.carSystem->get()->SubmitRender(*context_.renderPipeline);
                 context_.renderPipeline->Flush();
             }
-            if (context_.audioEvents)
-            {
-                frameState.carWorldPosition = context_.carWorldPosition;
-                frameState.carYawDeg = carYawDeg_;
-                context_.audioEvents->OnFrame(frameState);
-            }
-
             if (context_.renderAxes)
             {
                 Vector2D o2D, x2D, y2D, z2D;
@@ -217,9 +288,105 @@ public:
     }
 
 private:
+    class SimulationTask final : public SRL::Types::ITask
+    {
+    public:
+        struct Payload
+        {
+            Game::IGameplayTick* gameplayTick = nullptr;
+            Game::ICarPhysics* carPhysics = nullptr;
+            Game::IAudioEvents* audioEvents = nullptr;
+            Game::ITrackCollisionQuery* trackCollision = nullptr;
+            Game::GameplayFrameState frameState{};
+            SRL::Math::Types::Vector3D outWorldPosition{};
+            int32_t outYawDeg = 0;
+        };
+
+        void Configure(const Payload* input, Payload* output)
+        {
+            input_ = input;
+            output_ = output;
+        }
+
+    private:
+        void Do() override
+        {
+            if (!input_ || !output_) return;
+            auto state = input_->frameState;
+            if (input_->gameplayTick)
+            {
+                input_->gameplayTick->Tick(state, input_->trackCollision);
+            }
+            if (input_->carPhysics)
+            {
+                input_->carPhysics->Step(state,
+                                          input_->trackCollision,
+                                          state.carWorldPosition,
+                                          state.carYawDeg);
+            }
+            if (state.resetRequested)
+            {
+                state.carWorldPosition = state.respawnPosition;
+                state.carYawDeg = state.respawnYawDeg;
+                state.resetRequested = false;
+            }
+            if (input_->audioEvents)
+            {
+                input_->audioEvents->OnFrame(state);
+            }
+
+            *output_ = *input_;
+            output_->frameState = state;
+            output_->outWorldPosition = state.carWorldPosition;
+            output_->outYawDeg = state.carYawDeg;
+        }
+
+        const Payload* input_ = nullptr;
+        Payload* output_ = nullptr;
+    };
+
+    class CarRenderPrepareTask final : public SRL::Types::ITask
+    {
+    public:
+        void Configure(const int32_t* inputYawDeg, int32_t* outputYawDeg)
+        {
+            inputYawDeg_ = inputYawDeg;
+            outputYawDeg_ = outputYawDeg;
+        }
+
+    private:
+        void Do() override
+        {
+            if (!inputYawDeg_ || !outputYawDeg_) return;
+            int32_t yaw = *inputYawDeg_;
+            yaw %= 360;
+            if (yaw < 0) yaw += 360;
+            *outputYawDeg_ = yaw;
+        }
+
+        const int32_t* inputYawDeg_ = nullptr;
+        int32_t* outputYawDeg_ = nullptr;
+    };
+
     Context context_{};
     SRL::Input::Digital pad_{0};
     CameraRig::OrbitState orbitState_{};
     int32_t carYawDeg_ = 0;
     uint32_t frameCounter_ = 0;
+    SimulationTask simulationTask_{};
+    SimulationTask::Payload simInput_[2]{};
+    SimulationTask::Payload simOutput_[2]{};
+    bool simJobInFlight_ = false;
+    bool simHasCompleted_ = false;
+    uint8_t simWriteIdx_ = 0;
+    uint8_t simInFlightIdx_ = 0;
+    uint8_t simCompletedIdx_ = 0;
+    CarRenderPrepareTask carPrepareTask_{};
+    int32_t carPrepareInputYaw_[2]{};
+    int32_t carPrepareOutputYaw_[2]{};
+    bool carPrepareJobInFlight_ = false;
+    bool carPrepareHasCompleted_ = false;
+    uint8_t carPrepareWriteIdx_ = 0;
+    uint8_t carPrepareInFlightIdx_ = 0;
+    uint8_t carPrepareCompletedIdx_ = 0;
 };

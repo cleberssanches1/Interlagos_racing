@@ -36,9 +36,6 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, C
 {
     Camera::UpdateInput(state_, tuning_, pad);
 
-    const bool aHeld = pad.IsHeld(SRL::Input::Digital::Button::A);
-    const bool bHeld = pad.IsHeld(SRL::Input::Digital::Button::B);
-    const bool cHeld = pad.IsHeld(SRL::Input::Digital::Button::C);
     const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
     const bool lHeld = pad.IsHeld(SRL::Input::Digital::Button::L);
     const bool rHeld = pad.IsHeld(SRL::Input::Digital::Button::R);
@@ -49,7 +46,8 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, C
     zHeld_ = pad.IsHeld(SRL::Input::Digital::Button::Z);
     const bool orbitControlActive = zHeld_ && (lHeld || rHeld || upHeld || downHeld);
 
-    if (!aHeld && !bHeld && !cHeld && !orbitControlActive && !xHeld)
+    // Allow L/R car yaw while accelerating/braking; only block in explicit orbit/edit modes.
+    if (!orbitControlActive && !xHeld)
     {
         if (lHeld) carYawDeg -= tuning_.yawStepDeg;
         if (rHeld) carYawDeg += tuning_.yawStepDeg;
