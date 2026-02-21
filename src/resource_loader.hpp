@@ -46,23 +46,124 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
     CarLoadResult res{};
     int32_t hwrBefore = SRL::Memory::CartRam::GetFreeSpace();
 
-    for (size_t i = 0; i < pathCount; ++i)
+    auto tryLoadPath = [&](const char* path) -> bool
     {
-        SRL::Cd::File f(paths[i]);
-        SRL::Debug::Print(0, 2, "CAR path:%s ex:%d sz:%ld", paths[i], f.Exists() ? 1 : 0, (long)f.Size.Bytes);
+        SRL::Cd::File f(path);
+        const bool exists = f.Exists() && f.Size.Bytes > 0;
+        SRL::Debug::Print(0, 2, "CAR path:%s ex:%d sz:%ld", path, exists ? 1 : 0, (long)f.Size.Bytes);
+        if (!exists)
+        {
+            return false;
+        }
 
-        ModelObject candidate(paths[i], gouraudOffset, false, 0, false, forceCart, false);
+        ModelObject candidate(path, gouraudOffset, false, 0, false, forceCart, false);
         if (candidate.GetMeshCount() == 0 || candidate.GetFaceCount() == 0)
         {
-            SRL::Debug::Print(0, 3, "Car stream fail %s -> buffer", paths[i]);
-            ModelObject bufLoad(paths[i], gouraudOffset, false, 0, false, forceCart, false);
+            SRL::Debug::Print(0, 3, "Car stream fail %s -> buffer", path);
+            ModelObject bufLoad(path, gouraudOffset, false, 0, false, forceCart, false);
             candidate = std::move(bufLoad);
         }
+
         if (candidate.GetMeshCount() > 0 && candidate.GetFaceCount() > 0)
         {
             res.car = new ModelObject(std::move(candidate));
             res.loaded = true;
-            break;
+            return true;
+        }
+        return false;
+    };
+
+    SRL::Cd::ChangeDir((const char*)0);
+    for (size_t i = 0; i < pathCount; ++i)
+    {
+        if (tryLoadPath(paths[i])) break;
+    }
+
+    // Fallback robusto: usa o mesmo metodo dos segmentos (ChangeDir + nome curto).
+    if (!res.loaded)
+    {
+        const char* names[] = { "CAR1.NYA", "CAR1.NYA;1", "car1.nya", "car1.nya;1" };
+        struct DirChain { const char* a; const char* b; };
+        const DirChain dirChains[] = {
+            { "DATA", nullptr },
+            { "data", nullptr },
+            { "DATA", "MODEL" },
+            { "data", "model" },
+            { "MODEL", nullptr },
+            { "model", nullptr },
+            { nullptr, nullptr }
+        };
+
+        for (const auto& chain : dirChains)
+        {
+            SRL::Cd::ChangeDir((const char*)0);
+            if (chain.a) SRL::Cd::ChangeDir(chain.a);
+            if (chain.b) SRL::Cd::ChangeDir(chain.b);
+
+            for (const char* name : names)
+            {
+                if (tryLoadPath(name))
+                {
+                    SRL::Cd::ChangeDir((const char*)0);
+                    break;
+                }
+            }
+            SRL::Cd::ChangeDir((const char*)0);
+            if (res.loaded) break;
+        }
+    }
+
+    // Fallback final: leitura bruta do arquivo e parse por memoria.
+    if (!res.loaded)
+    {
+        const char* names[] = { "CAR1.NYA", "CAR1.NYA;1", "car1.nya", "car1.nya;1" };
+        struct DirChain { const char* a; const char* b; };
+        const DirChain dirChains[] = {
+            { "DATA", nullptr },
+            { "data", nullptr },
+            { "DATA", "MODEL" },
+            { "data", "model" },
+            { "MODEL", nullptr },
+            { "model", nullptr },
+            { nullptr, nullptr }
+        };
+        for (const auto& chain : dirChains)
+        {
+            SRL::Cd::ChangeDir((const char*)0);
+            if (chain.a) SRL::Cd::ChangeDir(chain.a);
+            if (chain.b) SRL::Cd::ChangeDir(chain.b);
+
+            for (const char* name : names)
+            {
+                SRL::Cd::File f(name);
+                const bool exists = f.Exists() && f.Size.Bytes > 0;
+                SRL::Debug::Print(0, 2, "CAR raw:%s ex:%d sz:%ld", name, exists ? 1 : 0, (long)f.Size.Bytes);
+                if (!exists || !f.Open()) continue;
+
+                const size_t size = static_cast<size_t>(f.Size.Bytes);
+                std::vector<uint8_t> bytes(size);
+                const int32_t read = f.Read(static_cast<int32_t>(size), bytes.data());
+                if (read <= 0 || static_cast<size_t>(read) != size)
+                {
+                    SRL::Debug::Print(0, 3, "CAR raw read fail %s r:%ld", name, (long)read);
+                    continue;
+                }
+
+                ModelObject memCar;
+                if (memCar.LoadFromMemory(bytes.data(), size, gouraudOffset, false, 0, false, forceCart))
+                {
+                    if (memCar.GetMeshCount() > 0 && memCar.GetFaceCount() > 0)
+                    {
+                        res.car = new ModelObject(std::move(memCar));
+                        res.loaded = true;
+                        break;
+                    }
+                }
+                SRL::Debug::Print(0, 3, "CAR raw parse fail %s", name);
+            }
+
+            SRL::Cd::ChangeDir((const char*)0);
+            if (res.loaded) break;
         }
     }
 

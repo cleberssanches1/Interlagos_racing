@@ -23,8 +23,6 @@ struct SkyBackground
 
     bool Load(const char* const* paths, size_t count)
     {
-        (void)paths;
-        (void)count;
         delete tile;
         tile = nullptr;
         loaded = false;
@@ -66,6 +64,91 @@ struct SkyBackground
             return false;
         };
 
+        // Primeiro tenta os caminhos informados pelo chamador (sempre a partir da raiz).
+        SRL::Cd::ChangeDir((const char*)0);
+        for (size_t i = 0; i < count; ++i)
+        {
+            SRL::Cd::ChangeDir((const char*)0);
+            SRL::Cd::File skyFile(paths[i]);
+            const bool exists = skyFile.Exists();
+            const int32_t size = skyFile.Size.Bytes;
+            SRL::Debug::Print(1, 11, "Sky arg[%u] ex:%d sz:%ld", (unsigned)i, exists ? 1 : 0, (long)size);
+            if (!exists || size <= 0)
+            {
+                continue;
+            }
+
+            SRL::Bitmap::TGA skyBmp(&skyFile);
+            tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
+            auto tileInfo = tile->GetInfo();
+
+            mapWidth = SRL::Math::Types::Fxp::Convert(tileInfo.MapWidth * (tileInfo.CharSize ? 16 : 8));
+            mapHeight = SRL::Math::Types::Fxp::Convert(tileInfo.MapHeight * (tileInfo.CharSize ? 16 : 8));
+
+            SRL::VDP2::NBG0::LoadTilemap(*tile);
+            SRL::VDP2::NBG0::SetPriority(SRL::VDP2::Priority::Layer6);
+            SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(SRL::Math::Types::Fxp(1.0f), SRL::Math::Types::Fxp(1.0f));
+            SRL::VDP2::NBG0::SetScale(skyScale);
+            SRL::VDP2::NBG0::ScrollEnable();
+            SRL::VDP2::NBG1::ScrollDisable();
+
+            loaded = true;
+            SRL::Debug::Print(1, 11, "Sky loaded arg[%u]: %s", (unsigned)i, paths[i]);
+            return true;
+        }
+
+        // Fallback robusto por diretorio + nome, independente de path textual completo.
+        struct DirChain { const char* a; const char* b; };
+        const DirChain dirChains[] = {
+            { "DATA", nullptr },
+            { "data", nullptr },
+            { nullptr, nullptr },
+            { "DATA", "ARQ_TGA" },
+            { "data", "arq_tga" },
+            { "ARQ_TGA", nullptr },
+            { "arq_tga", nullptr },
+            { nullptr, nullptr }
+        };
+        const char* names[] = { "SKYBOX_1.TGA", "SKYBOX_1.TGA;1", "skybox_1.tga", "skybox_1.tga;1" };
+        for (const auto& chain : dirChains)
+        {
+            SRL::Cd::ChangeDir((const char*)0);
+            if (chain.a) SRL::Cd::ChangeDir(chain.a);
+            if (chain.b) SRL::Cd::ChangeDir(chain.b);
+            for (size_t i = 0; i < (sizeof(names) / sizeof(names[0])); ++i)
+            {
+                SRL::Cd::File skyFile(names[i]);
+                const bool exists = skyFile.Exists();
+                const int32_t size = skyFile.Size.Bytes;
+                SRL::Debug::Print(1, 11, "Sky dir:%s name:%s ex:%d sz:%ld",
+                                  chain.a ? (chain.b ? "CHAIN" : chain.a) : "ROOT",
+                                  names[i],
+                                  exists ? 1 : 0,
+                                  (long)size);
+                if (!exists || size <= 0) continue;
+
+                SRL::Bitmap::TGA skyBmp(&skyFile);
+                tile = new SRL::Tilemap::Interfaces::Bmp2Tile(skyBmp);
+                auto tileInfo = tile->GetInfo();
+
+                mapWidth = SRL::Math::Types::Fxp::Convert(tileInfo.MapWidth * (tileInfo.CharSize ? 16 : 8));
+                mapHeight = SRL::Math::Types::Fxp::Convert(tileInfo.MapHeight * (tileInfo.CharSize ? 16 : 8));
+
+                SRL::VDP2::NBG0::LoadTilemap(*tile);
+                SRL::VDP2::NBG0::SetPriority(SRL::VDP2::Priority::Layer6);
+                SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(SRL::Math::Types::Fxp(1.0f), SRL::Math::Types::Fxp(1.0f));
+                SRL::VDP2::NBG0::SetScale(skyScale);
+                SRL::VDP2::NBG0::ScrollEnable();
+                SRL::VDP2::NBG1::ScrollDisable();
+
+                loaded = true;
+                SRL::Debug::Print(1, 11, "Sky loaded name:%s", names[i]);
+                SRL::Cd::ChangeDir((const char*)0);
+                return true;
+            }
+        }
+        SRL::Cd::ChangeDir((const char*)0);
+
         SRL::Cd::ChangeDir((const char*)0);
         const char* rootNames[] = {"SKYBOX_1.TGA", "SKYBOX_1.TGA;1", "skybox_1.tga", "skybox_1.tga;1"};
         if (tryLoadNames("ROOT", rootNames, sizeof(rootNames) / sizeof(rootNames[0])))
@@ -74,12 +157,6 @@ struct SkyBackground
         }
 
         SRL::Cd::ChangeDir("DATA");
-        {
-            SRL::Cd::File carProbe("CAR1.NYA");
-            SRL::Cd::File segProbe("SEG_001.NYA");
-            SRL::Debug::Print(1, 11, "Sky probe DATA CAR1 ex:%d sz:%ld", carProbe.Exists() ? 1 : 0, (long)carProbe.Size.Bytes);
-            SRL::Debug::Print(1, 12, "Sky probe DATA SEG1 ex:%d sz:%ld", segProbe.Exists() ? 1 : 0, (long)segProbe.Size.Bytes);
-        }
         const char* dataNames[] = {"SKYBOX_1.TGA", "SKYBOX_1.TGA;1", "skybox_1.tga", "skybox_1.tga;1"};
         if (tryLoadNames("DATA", dataNames, sizeof(dataNames) / sizeof(dataNames[0])))
         {

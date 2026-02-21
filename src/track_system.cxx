@@ -44,6 +44,67 @@ const char* TrackSystem::ResolveSegmentPath(size_t id)
     return FindExistingPath(candidates, variantCount);
 }
 
+TrackSegmentCopy TrackSystem::CopySegmentById(size_t id)
+{
+    TrackSegmentCopy copy{};
+
+    char upperName[32]{};
+    char upperNameV[32]{};
+    char lowerName[32]{};
+    char lowerNameV[32]{};
+    std::snprintf(upperName, sizeof(upperName), "SEG_%03u.NYA", unsigned(id));
+    std::snprintf(upperNameV, sizeof(upperNameV), "SEG_%03u.NYA;1", unsigned(id));
+    std::snprintf(lowerName, sizeof(lowerName), "seg_%03u.nya", unsigned(id));
+    std::snprintf(lowerNameV, sizeof(lowerNameV), "seg_%03u.nya;1", unsigned(id));
+
+    const char* names[] = { upperName, upperNameV, lowerName, lowerNameV };
+    struct DirChain { const char* a; const char* b; };
+    const DirChain dirChains[] = {
+        { "DATA", nullptr },
+        { "data", nullptr },
+        { nullptr, nullptr },
+        { "DATA", "SETORES" },
+        { "data", "setores" },
+        { "SETORES", nullptr },
+        { "setores", nullptr },
+        { nullptr, nullptr }
+    };
+
+    for (const auto& chain : dirChains)
+    {
+        SRL::Cd::ChangeDir((const char*)0);
+        if (chain.a) SRL::Cd::ChangeDir(chain.a);
+        if (chain.b) SRL::Cd::ChangeDir(chain.b);
+
+        for (const char* name : names)
+        {
+            SRL::Cd::File f(name);
+            const bool exists = f.Exists() && f.Size.Bytes > 0;
+            if (!exists) continue;
+
+            if (chain.a && chain.b)
+            {
+                std::snprintf(lastSegmentPath_, sizeof(lastSegmentPath_), "%s/%s/%s", chain.a, chain.b, name);
+            }
+            else if (chain.a)
+            {
+                std::snprintf(lastSegmentPath_, sizeof(lastSegmentPath_), "%s/%s", chain.a, name);
+            }
+            else
+            {
+                std::snprintf(lastSegmentPath_, sizeof(lastSegmentPath_), "%s", name);
+            }
+            copy = CopyTrackSegmentToCart(name);
+            SRL::Cd::ChangeDir((const char*)0);
+            return copy;
+        }
+    }
+
+    SRL::Cd::ChangeDir((const char*)0);
+    std::snprintf(lastSegmentPath_, sizeof(lastSegmentPath_), "SEG_%03u.NYA (not found via ChangeDir)", unsigned(id));
+    return copy;
+}
+
 std::vector<TrackSystem::TrackSegmentEntry> TrackSystem::CopyAllTrackSegments(size_t maxSegments)
 {
     std::vector<TrackSegmentEntry> segments;
@@ -51,13 +112,12 @@ std::vector<TrackSystem::TrackSegmentEntry> TrackSystem::CopyAllTrackSegments(si
     segments.reserve(loadLimit);
     for (size_t i = 1; i <= loadLimit; ++i)
     {
-        const char* existingPath = ResolveSegmentPath(i);
-        if (!existingPath)
+        TrackSegmentCopy copy = CopySegmentById(i);
+        if (!copy.cartPtr || copy.size == 0)
         {
             SRL::Debug::Print(1, 12, "Segment %03u path missing (%u variants)", unsigned(i), unsigned(kSegmentPathTemplates_.size()));
             break;
         }
-        TrackSegmentCopy copy = CopyTrackSegmentToCart(existingPath);
         segments.push_back({ static_cast<int>(i), copy });
         if (copy.cartPtr)
         {
@@ -158,14 +218,7 @@ bool TrackSystem::Initialize(const Config& config)
     size_t copiedCount = 0;
     for (size_t i = 1; i <= loadLimit; ++i)
     {
-        const char* existingPath = ResolveSegmentPath(i);
-        if (!existingPath)
-        {
-            SRL::Debug::Print(1, 12, "Segment %03u path missing (%u variants)", unsigned(i), unsigned(kSegmentPathTemplates_.size()));
-            break;
-        }
-
-        TrackSegmentCopy copy = CopyTrackSegmentToCart(existingPath);
+        TrackSegmentCopy copy = CopySegmentById(i);
         if (!copy.cartPtr || copy.size == 0)
         {
             SRL::Debug::Print(1, 12, "Segment %03u failed to copy (missing?)", unsigned(i));

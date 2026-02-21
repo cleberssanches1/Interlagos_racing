@@ -85,11 +85,28 @@ private:
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);
+    TrackSegmentCopy CopySegmentById(size_t id);
     std::vector<TrackSegmentEntry> CopyAllTrackSegments(size_t maxSegments);
     std::vector<SegmentRenderEntry> BuildSegmentRenderers(std::vector<TrackSegmentEntry>& entries);
     std::vector<SegmentHandle> BuildSegmentHandleTable();
 
-    static constexpr std::array<const char*, 12> kSegmentPathTemplates_ = {{
+    static constexpr std::array<const char*, 28> kSegmentPathTemplates_ = {{
+        "CD/SETORES/SEG_%03u.NYA",
+        "CD/SETORES/SEG_%03u.NYA;1",
+        "/SETORES/SEG_%03u.NYA",
+        "/SETORES/SEG_%03u.NYA;1",
+        "CD/DATA/SETORES/SEG_%03u.NYA",
+        "CD/DATA/SETORES/SEG_%03u.NYA;1",
+        "cd/data/SETORES/SEG_%03u.NYA",
+        "cd/data/SETORES/SEG_%03u.NYA;1",
+        "cd/data/setores/seg_%03u.nya",
+        "cd/data/setores/seg_%03u.nya;1",
+        "cd/setores/SEG_%03u.NYA",
+        "cd/setores/SEG_%03u.NYA;1",
+        "SETORES/SEG_%03u.NYA",
+        "SETORES/SEG_%03u.NYA;1",
+        "setores/seg_%03u.nya",
+        "setores/seg_%03u.nya;1",
         "CD/DATA/SEG_%03u.NYA",
         "CD/DATA/SEG_%03u.NYA;1",
         "cd/data/SEG_%03u.NYA",

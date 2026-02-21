@@ -121,10 +121,14 @@ static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, b
     if (makeWramCopy && chosenPath)
     {
         pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, gouraudOffset, false, 0, false, false, false);
+        if (!pipe.wramCopy || pipe.wramCopy->GetMeshCount() == 0 || pipe.wramCopy->GetFaceCount() == 0)
+        {
+            // Se a copia por caminho falhar, preserva o modelo carregado no cart.
+            pipe.wramCopy.reset();
+        }
     }
     return pipe;
 }
-
 
 class GameApp {
 public:
@@ -169,14 +173,19 @@ int GameApp::Run()
     // silencia logs do teste HWR
     }
 
-    const bool renderTrack = true; // pista ativa
-    const bool renderCar = true; // pista + carro
-    const bool loadCarAfterTrack = true; // prioridade de textura para pista
+    const bool renderTrack = true; // teste combinado: pista + carro
+    const bool renderCar = true; // teste combinado
+    const bool loadCarAfterTrack = true; // pista primeiro, depois carro
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
 
         // Carrega carro na DRAM do cart (somente se renderCar estiver ativo)
-    const char* carPaths[] = { "CD/DATA/CAR1.NYA", "CD/DATA/CAR1.NYA;1", "cd/data/car1.nya", "cd/data/car1.nya;1", "CAR1.NYA", "CAR1.NYA;1", "car1.nya", "car1.nya;1" };
+    const char* carPaths[] = {
+        "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
+        "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
+        "CAR1.NYA;1", "CAR1.NYA",
+        "car1.nya;1", "car1.nya"
+    };
     const bool useCartCopyPipeline = true; // cart -> WRAM -> VDP1
     AppState::Set(AppState::Stage::CarLoad, 0);
     CarPipeline carPipe{};
@@ -320,6 +329,7 @@ int GameApp::Run()
     };
     if (enableBg)
     {
+        SRL::Cd::ChangeDir((const char*)0);
         bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
         MLOG(1, 10, "Sky init: %s", bgReady ? "OK" : "FAIL");
     }
@@ -399,9 +409,11 @@ int GameApp::Run()
     trackConfig.initialMeshes = 256;
     trackConfig.initialFaces = 1200;
     trackConfig.useSlave = false;
+    SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
     if (enableBg && !bgReady)
     {
+        SRL::Cd::ChangeDir((const char*)0);
         bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
         MLOG(1, 10, "Sky retry after track init: %s", bgReady ? "OK" : "FAIL");
     }
@@ -423,6 +435,7 @@ int GameApp::Run()
     if (renderCar && loadCarAfterTrack)
     {
         AppState::Set(AppState::Stage::CarLoad, 1);
+        SRL::Cd::ChangeDir((const char*)0);
         carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
