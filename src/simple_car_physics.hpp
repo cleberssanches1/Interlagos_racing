@@ -112,6 +112,6 @@ private:
     static constexpr SRL::Math::Types::Fxp kMinSteerSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00000A3D);      // ~0.04
     static constexpr SRL::Math::Types::Fxp kSteerDegreesPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00011EB8);// ~1.12
     static constexpr SRL::Math::Types::Fxp kSteerSpeedGain = SRL::Math::Types::Fxp::BuildRaw(0x000070A4);     // ~0.44
-    static constexpr SRL::Math::Types::Fxp kRideHeightY = SRL::Math::Types::Fxp::BuildRaw(-2 << 16);
+    static constexpr SRL::Math::Types::Fxp kRideHeightY = SRL::Math::Types::Fxp::BuildRaw(-3 << 16);
 };
 } // namespace Game

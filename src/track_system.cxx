@@ -246,11 +246,7 @@ bool TrackSystem::Initialize(const Config& config)
     segmentsReady_ = !segmentRenderers_.empty();
     segmentHandles_ = BuildSegmentHandleTable();
 
-    producer_.SetUseSlave(config.useSlave);
-    producer_.SetMaxFramesInFlight(2);
-    producer_.SetRecoveryFrames(120);
-    producer_.SetSafeModeStallThreshold(4);
-    producer_.SetSafeModeCooldownFrames(90);
+    (void)config.useSlave; // stability mode: always use synchronous/double-buffer producer
 
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::Config coordinatorConfig{};
     coordinatorConfig.budget.maxTrackSegments = std::min<uint32_t>(config.initialSegments, static_cast<uint32_t>(kTrackSegmentLimit));
@@ -316,10 +312,17 @@ void TrackSystem::RenderFrame(bool renderTrack,
         return;
     }
 
-    (void)cameraLocation;
     bool segment01Logged = false;
     bool segment01Prepared = false;
     std::vector<SegmentHandle> orderedHandles = segmentHandles_;
+    auto manhattanToCamera = [&](const SegmentRenderEntry* e) -> SRL::Math::Types::Fxp
+    {
+        if (!e) return SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+        const Vector3D c = e->center + trackOffset;
+        return (c.X - cameraLocation.X).Abs() + (c.Z - cameraLocation.Z).Abs();
+    };
+
+    // 1) Budget selection must keep nearest segments first.
     std::sort(orderedHandles.begin(), orderedHandles.end(),
         [&](const SegmentHandle& a, const SegmentHandle& b)
         {
@@ -328,23 +331,31 @@ void TrackSystem::RenderFrame(bool renderTrack,
             if (!ea && !eb) return false;
             if (!ea) return false;
             if (!eb) return true;
-            // Render fixed order from last to first for first 4 segments: 4,3,2,1.
-            return ea->id > eb->id;
+            const auto da = manhattanToCamera(ea);
+            const auto db = manhattanToCamera(eb);
+            if (da == db) return ea->id < eb->id;
+            return da < db;
         });
-    orderedHandles.erase(
-        std::remove_if(orderedHandles.begin(), orderedHandles.end(),
-            [&](const SegmentHandle& h)
-            {
-                const auto* e = segmentPool_.Resolve(h);
-                if (!e) return true;
-                return e->id < 1 || e->id > 4;
-            }),
-        orderedHandles.end());
     if (!orderedHandles.empty())
     {
         const size_t keepCount =
             std::min<size_t>(static_cast<size_t>(coordinator_.Budget().maxTrackSegments), orderedHandles.size());
         orderedHandles.resize(keepCount);
+
+        // 2) Rendering order for VDP1 painter: far -> near.
+        std::sort(orderedHandles.begin(), orderedHandles.end(),
+            [&](const SegmentHandle& a, const SegmentHandle& b)
+            {
+                const auto* ea = segmentPool_.Resolve(a);
+                const auto* eb = segmentPool_.Resolve(b);
+                if (!ea && !eb) return false;
+                if (!ea) return false;
+                if (!eb) return true;
+                const auto da = manhattanToCamera(ea);
+                const auto db = manhattanToCamera(eb);
+                if (da == db) return ea->id > eb->id;
+                return da > db;
+            });
     }
 
     std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};

@@ -242,7 +242,9 @@ public:
                 {
                     context_.carSystem->get()->Render(carYawDeg_);
                 }
-                context_.carSystem->get()->SetWorldPosition(context_.carWorldPosition);
+                // Visual bias: keep car slightly above track draw order/transitions.
+                const Vector3D renderLift(0.0, SRL::Math::Types::Fxp::BuildRaw(-2 << 16), 0.0);
+                context_.carSystem->get()->SetWorldPosition(context_.carWorldPosition + renderLift);
                 context_.renderPipeline->Reset();
                 context_.carSystem->get()->SubmitRender(*context_.renderPipeline);
                 context_.renderPipeline->Flush();
@@ -278,6 +280,8 @@ public:
                                                           context_.vertexCount,
                                                           submittedTrackFaces,
                                                           submittedCarFaces);
+            // Keep gouraud table upload alive even when VBlank Event dispatch is disabled.
+            SRL::Scene3D::LightCopyGouraudTable();
             if (context_.verboseFrameLogs)
             {
                 SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);

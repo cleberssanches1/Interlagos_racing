@@ -46,6 +46,14 @@ constexpr bool kVerboseFrameLogs = false;
 static const char* FindExistingPath(const char* const* paths, size_t count);
 static constexpr size_t kCarGouraudOffset = 4096;
 
+// VBlank handler without Event dispatch to avoid invalid callback jumps in OnVblank.
+static void SafeVblankNoEvent()
+{
+    slGetStatus();
+    SRL::Input::Management::RefreshPeripherals();
+    SRL::Input::Gun::VblankRefresh();
+}
+
 // Procura o primeiro caminho existente em disco.
 static const char* FindExistingPath(const char* const* paths, size_t count)
 {
@@ -143,6 +151,7 @@ int GameApp::Run()
     AppState::Set(AppState::Stage::CoreInit, 0);
 
     SRL::Core::Initialize(HighColor(0x10, 0x20, 0x18));
+    slIntFunction(SafeVblankNoEvent);
     AppState::PresentOverlay(2);
 
     const bool logCar = kCarLogs;
@@ -176,7 +185,7 @@ int GameApp::Run()
     const bool renderTrack = true; // teste combinado: pista + carro
     const bool renderCar = true; // teste combinado
     const bool loadCarAfterTrack = true; // pista primeiro, depois carro
-    const bool enableTrackSlaveProducer = true; // ativa produtor de draw-list na Slave SH2
+    const bool enableTrackSlaveProducer = false; // diagnostico: desativa Slave para estabilizar
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
 
@@ -404,11 +413,11 @@ int GameApp::Run()
     AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 3;
-    trackConfig.minSegments = 3;
+    trackConfig.initialSegments = 6;
+    trackConfig.minSegments = 6;
     // Conservative track budget to keep VDP1 command list stable with car rendering enabled.
-    trackConfig.initialMeshes = 320;
-    trackConfig.initialFaces = 1800;
+    trackConfig.initialMeshes = 512;
+    trackConfig.initialFaces = 5000;
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
@@ -520,13 +529,18 @@ int GameApp::Run()
         gouraudVertexCapacity = std::max(gouraudVertexCapacity, trackSystem.MaxSegmentVertexCount());
     }
     const bool enableSmoothLighting = (gouraudFaceCapacity > 0) && (gouraudVertexCapacity > 0);
+    // Stability guard: disable VBlank gouraud callback until crash root-cause is fully isolated.
+    const bool enableVblankGouraudCopy = false;
     if (enableSmoothLighting)
     {
         workTable.resize(static_cast<size_t>(gouraudFaceCapacity) << 2);
         vertWork.resize(static_cast<size_t>(gouraudVertexCapacity));
         SRL::Scene3D::LightInitGouraudTable(0, vertWork.data(), workTable.data(), gouraudFaceCapacity);
         SRL::Scene3D::LightSetGouraudTable(shadingTable);
-        SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
+        if (enableVblankGouraudCopy)
+        {
+            SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
+        }
     }
 
     // Draw order: wheels first (1..4), then body (0)
@@ -641,8 +655,10 @@ int GameApp::Run()
     loopContext.verboseFrameLogs = kVerboseFrameLogs;
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
-    loopContext.enableSlaveForCarPrepare = enableTrackSlaveProducer;
-    loopContext.enableSlaveForSimulation = enableTrackSlaveProducer;
+    // Estabilidade: manter apenas um pipeline na Slave por frame (pista).
+    // Simulation/car prepare em Slave junto com producer da pista causa conflito de jobs.
+    loopContext.enableSlaveForCarPrepare = false;
+    loopContext.enableSlaveForSimulation = false;
     loopContext.faceCount = faceCount;
     loopContext.vertexCount = vertexCount;
     loopContext.trackSegOffset = trackSegOffset;

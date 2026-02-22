@@ -129,8 +129,8 @@ private:
     std::vector<SegmentRenderEntry> segmentRenderers_{};
     SegmentPool segmentPool_{};
     std::vector<SegmentHandle> segmentHandles_{};
-
-    SlaveTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};
+    std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};
+    DoubleBufferedTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit> coordinator_{producer_};
     AdaptiveTrackBudgetController budgetController_{};
     SoakMonitor soakMonitor_{};
