@@ -78,11 +78,18 @@ private:
         std::unique_ptr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
     };
+    struct RawSegmentEntry
+    {
+        int id = 0;
+        TrackSegmentCopy copy{};
+    };
 
     using SegmentPool = TrackSegmentPool<kTrackSegmentLimit, SegmentRenderEntry>;
     using SegmentHandle = SegmentPool::Handle;
 
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
+    void ReleaseRawSegmentCatalog();
+    const TrackSegmentCopy* FindRawSegmentCopyById(int id) const;
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);
     TrackSegmentCopy CopySegmentById(size_t id);
@@ -126,6 +133,7 @@ private:
     bool segmentsReady_ = false;
 
     std::vector<TrackSegmentEntry> segmentEntries_{};
+    std::vector<RawSegmentEntry> rawSegmentCatalog_{};
     std::vector<SegmentRenderEntry> segmentRenderers_{};
     SegmentPool segmentPool_{};
     std::vector<SegmentHandle> segmentHandles_{};

@@ -99,9 +99,8 @@ Vector3D CameraSystem::ViewDirection() const
 Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const
 {
     (void)modelOffset;
-    // Tilt camera up by ~20deg equivalent framing by raising the look target.
-    const Vector3D hoodTargetOffset(0.0, Fxp::BuildRaw(-20 << 16), 0.0);
-    return carWorldPosition + hoodTargetOffset;
+    // Hard lock: gameplay rule is that car stays as camera center target.
+    return carWorldPosition;
 }
 
 CameraSystem::Snapshot CameraSystem::CreateSnapshot() const

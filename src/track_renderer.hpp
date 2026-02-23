@@ -630,6 +630,89 @@ public:
     MemoryStats MemStats() const { return memStats_; }
     uint32_t LastDrawnFaces() const { return lastDrawnFaces_; }
     uint32_t LastDrawnMeshes() const { return lastDrawnMeshes_; }
+
+    // Export per-face texture slot in global face order (mesh0 face0..N, mesh1...).
+    // Untextured faces are returned as -1.
+    void CollectFaceTextureSlotsGlobal(std::vector<int32_t>& out) const
+    {
+        out.clear();
+        if (!trackObj_) return;
+        out.reserve(faceCount_);
+
+        auto collectMesh = [&](auto* mesh)
+        {
+            if (!mesh) return;
+            if (!mesh->Attributes)
+            {
+                for (size_t fi = 0; fi < mesh->FaceCount; ++fi) out.push_back(-1);
+                return;
+            }
+            for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
+            {
+                const uint16_t tex = mesh->Attributes[fi].Texture;
+                out.push_back((tex == No_Texture) ? -1 : static_cast<int32_t>(tex));
+            }
+        };
+
+        if (isSmooth_)
+        {
+            for (size_t i = 0; i < meshCount_; ++i) collectMesh(trackObj_->GetMesh<SRL::Types::SmoothMesh>(i));
+        }
+        else
+        {
+            for (size_t i = 0; i < meshCount_; ++i) collectMesh(trackObj_->GetMesh<SRL::Types::Mesh>(i));
+        }
+    }
+
+    // Remap textures by global face order (mesh0 face0..N, mesh1 face0..N...).
+    // faceTextureSlots[globalFaceIndex] = VDP1 texture slot to assign.
+    size_t ApplyFaceTextureSlotsGlobal(const std::vector<int32_t>& faceTextureSlots)
+    {
+        if (!trackObj_) return 0;
+        size_t applied = 0;
+        size_t globalFace = 0;
+        constexpr uint16_t kNoTexture = No_Texture;
+        constexpr int32_t kMaxSafeTextureSlot = 4095;
+
+        auto applyMesh = [&](auto* mesh)
+        {
+            if (!mesh || !mesh->Attributes) { globalFace += mesh ? mesh->FaceCount : 0; return; }
+            for (size_t fi = 0; fi < mesh->FaceCount; ++fi, ++globalFace)
+            {
+                if (globalFace >= faceTextureSlots.size()) continue;
+                const int32_t slot = faceTextureSlots[globalFace];
+                if (slot < 0) continue;
+                if (slot > kMaxSafeTextureSlot) continue;
+                // Preserve untextured faces; only remap faces that already had texture assigned.
+                if (mesh->Attributes[fi].Texture == kNoTexture) continue;
+                mesh->Attributes[fi].Texture = static_cast<uint16_t>(slot);
+                ++applied;
+            }
+        };
+
+        if (isSmooth_)
+        {
+            for (size_t i = 0; i < meshCount_; ++i)
+            {
+                applyMesh(trackObj_->GetMesh<SRL::Types::SmoothMesh>(i));
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < meshCount_; ++i)
+            {
+                applyMesh(trackObj_->GetMesh<SRL::Types::Mesh>(i));
+            }
+        }
+
+        // Refresh custom caches if they are used later.
+        smoothCache_.clear();
+        flatCache_.clear();
+        if (isSmooth_) smoothCache_.assign(meshCount_, {});
+        else flatCache_.assign(meshCount_, {});
+
+        return applied;
+    }
     SRL::Math::Types::Vector3D StartMeshCenter() const
     {
         if (meshCenters_.empty()) return SRL::Math::Types::Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
