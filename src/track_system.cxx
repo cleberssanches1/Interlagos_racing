@@ -10,6 +10,7 @@
 
 #include "modelObject.hpp"
 #include "resource_loader.hpp"
+#include "segment_component_loader.hpp"
 #include "srl_tga.hpp"
 
 using SRL::Math::Types::Vector3D;
@@ -557,6 +558,11 @@ bool TrackSystem::Initialize(const Config& config)
 {
     ready_ = false;
     segmentsReady_ = false;
+    seg1ComponentEnabled_ = false;
+    seg1ComponentVerts_.clear();
+    seg1ComponentFaces_.clear();
+    seg1ComponentAttrs_.clear();
+    seg1ComponentCenter_ = Vector3D(0.0, 0.0, 0.0);
     ReleaseRawSegmentCatalog();
     segmentEntries_.clear();
     segmentRenderers_.clear();
@@ -674,6 +680,158 @@ bool TrackSystem::Initialize(const Config& config)
             }
         }
         SRL::Debug::Print(1, 27, "Nearest segment candidates (%lu): %s", (unsigned long)count, ids);
+    }
+
+    // Componentized pipeline probe (phase 1):
+    // Validate and optionally render SEG_001 from GEO/MAT component files.
+    {
+        constexpr bool kUseSeg1ComponentRenderer = true;
+        const char* geoCandidates[] = {
+            "CD/DATA/SEG_001.GEO", "CD/DATA/SEG_001.GEO;1",
+            "DATA/SEG_001.GEO", "DATA/SEG_001.GEO;1",
+            "SEG_001.GEO", "SEG_001.GEO;1",
+            "seg_001.geo", "seg_001.geo;1"
+        };
+        const char* matCandidates[] = {
+            "CD/DATA/SEG_001.MAT", "CD/DATA/SEG_001.MAT;1",
+            "DATA/SEG_001.MAT", "DATA/SEG_001.MAT;1",
+            "SEG_001.MAT", "SEG_001.MAT;1",
+            "seg_001.mat", "seg_001.mat;1"
+        };
+
+        SegmentComponent::Blob geoBlob{};
+        SegmentComponent::Blob matBlob{};
+        const bool geoOk = SegmentComponent::Loader::LoadFirstExistingFromCd(
+            geoCandidates, sizeof(geoCandidates) / sizeof(geoCandidates[0]), geoBlob);
+        const bool matOk = SegmentComponent::Loader::LoadFirstExistingFromCd(
+            matCandidates, sizeof(matCandidates) / sizeof(matCandidates[0]), matBlob);
+        SRL::Debug::Print(1, 24, "CMP SEG001 GEO:%d(%u) MAT:%d(%u)",
+                          geoOk ? 1 : 0, (unsigned)geoBlob.size,
+                          matOk ? 1 : 0, (unsigned)matBlob.size);
+
+        SegmentComponent::Loader::GeoView geoView{};
+        SegmentComponent::Loader::MatView matView{};
+        const bool geoParsed = geoOk && SegmentComponent::Loader::ParseGeo(geoBlob, geoView);
+        const bool matParsed = matOk && SegmentComponent::Loader::ParseMat(matBlob, matView);
+        const bool pairOk = SegmentComponent::Loader::ValidateGeoMatPair(geoView, matView);
+        SRL::Debug::Print(1, 25, "CMP SEG001 parse GEO:%d MAT:%d pair:%d",
+                          geoParsed ? 1 : 0, matParsed ? 1 : 0, pairOk ? 1 : 0);
+        if (geoParsed)
+        {
+            SRL::Debug::Print(1, 26, "CMP GEO sid:%u v:%u f:%u",
+                              (unsigned)geoView.file.segmentId,
+                              (unsigned)geoView.header.vertexCount,
+                              (unsigned)geoView.header.faceCount);
+        }
+        if (matParsed)
+        {
+            SRL::Debug::Print(1, 27, "CMP MAT sid:%u f:%u",
+                              (unsigned)matView.file.segmentId,
+                              (unsigned)matView.header.faceCount);
+        }
+        if (pairOk)
+        {
+            TrackRenderer* seg1Renderer = nullptr;
+            SegmentRenderEntry* seg1Entry = nullptr;
+            for (auto& seg : segmentRenderers_)
+            {
+                if (seg.id == 1 && seg.renderer) { seg1Renderer = seg.renderer.get(); seg1Entry = &seg; break; }
+            }
+            if (seg1Renderer)
+            {
+                const uint32_t rv = seg1Renderer->VertexCount();
+                const uint32_t rf = seg1Renderer->FaceCount();
+                const int vOk = (rv == geoView.header.vertexCount) ? 1 : 0;
+                const int fOk = (rf == geoView.header.faceCount) ? 1 : 0;
+                SRL::Debug::Print(1, 28, "CMP SEG001 vs NYA v:%u/%u(%d) f:%u/%u(%d)",
+                                  (unsigned)geoView.header.vertexCount, (unsigned)rv, vOk,
+                                  (unsigned)geoView.header.faceCount, (unsigned)rf, fOk);
+            }
+
+            if (kUseSeg1ComponentRenderer && seg1Renderer && seg1Entry)
+            {
+                seg1ComponentVerts_.clear();
+                seg1ComponentFaces_.clear();
+                seg1ComponentAttrs_.clear();
+                seg1ComponentVerts_.reserve(static_cast<size_t>(geoView.header.vertexCount));
+                seg1ComponentFaces_.reserve(static_cast<size_t>(geoView.header.faceCount));
+                seg1ComponentAttrs_.reserve(static_cast<size_t>(geoView.header.faceCount));
+
+                SRL::Math::Types::Vector3D minv(32767, 32767, 32767);
+                SRL::Math::Types::Vector3D maxv(-32768, -32768, -32768);
+
+                for (uint32_t vi = 0; vi < geoView.header.vertexCount; ++vi)
+                {
+                    SegmentComponent::GeoVertex gv{};
+                    const size_t off = geoView.vertexOffset + static_cast<size_t>(vi) * sizeof(SegmentComponent::GeoVertex);
+                    if (!SegmentComponent::Loader::ReadPodAt(geoBlob.bytes, off, gv))
+                    {
+                        seg1ComponentVerts_.clear();
+                        break;
+                    }
+                    Vector3D v(
+                        SRL::Math::Types::Fxp::BuildRaw(gv.x),
+                        SRL::Math::Types::Fxp::BuildRaw(gv.y),
+                        SRL::Math::Types::Fxp::BuildRaw(gv.z));
+                    minv.X = SRL::Math::Min(minv.X, v.X);
+                    minv.Y = SRL::Math::Min(minv.Y, v.Y);
+                    minv.Z = SRL::Math::Min(minv.Z, v.Z);
+                    maxv.X = SRL::Math::Max(maxv.X, v.X);
+                    maxv.Y = SRL::Math::Max(maxv.Y, v.Y);
+                    maxv.Z = SRL::Math::Max(maxv.Z, v.Z);
+                    seg1ComponentVerts_.push_back(v);
+                }
+
+                for (uint32_t fi = 0; fi < geoView.header.faceCount && !seg1ComponentVerts_.empty(); ++fi)
+                {
+                    SegmentComponent::GeoFace gf{};
+                    const size_t off = geoView.faceOffset + static_cast<size_t>(fi) * sizeof(SegmentComponent::GeoFace);
+                    if (!SegmentComponent::Loader::ReadPodAt(geoBlob.bytes, off, gf))
+                    {
+                        seg1ComponentFaces_.clear();
+                        seg1ComponentAttrs_.clear();
+                        break;
+                    }
+                    SRL::Types::Polygon p{};
+                    p.Normal = Vector3D(0.0, 0.0, 0.0);
+                    for (size_t c = 0; c < 4; ++c)
+                    {
+                        p.Vertices[c] = gf.vertex[c];
+                    }
+                    if (gf.kind == static_cast<uint8_t>(SegmentComponent::FaceKind::Triangle))
+                    {
+                        p.Vertices[3] = p.Vertices[2];
+                    }
+                    seg1ComponentFaces_.push_back(p);
+                    seg1ComponentAttrs_.push_back(SRL::Types::Attribute(
+                        SRL::Types::Attribute::FaceVisibility::DoubleSided,
+                        SRL::Types::Attribute::SortMode::Center,
+                        No_Texture,
+                        0x83FF,
+                        CL32KRGB,
+                        CL32KRGB,
+                        sprPolygon,
+                        UseLight));
+                }
+
+                if (!seg1ComponentVerts_.empty() &&
+                    seg1ComponentFaces_.size() == static_cast<size_t>(geoView.header.faceCount) &&
+                    seg1ComponentAttrs_.size() == seg1ComponentFaces_.size())
+                {
+                    seg1ComponentEnabled_ = true;
+                    seg1ComponentCenter_ = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
+                    seg1Entry->center = seg1ComponentCenter_;
+                    SRL::Debug::Print(1, 29, "CMP SEG001 renderer: component ON v:%u f:%u",
+                                      (unsigned)seg1ComponentVerts_.size(),
+                                      (unsigned)seg1ComponentFaces_.size());
+                }
+                else
+                {
+                    seg1ComponentEnabled_ = false;
+                    SRL::Debug::Print(1, 29, "CMP SEG001 renderer: component OFF");
+                }
+            }
+        }
     }
 
     // Dynamic texture upgrade test (phase 1): only SEG_001 uses 64x64 textures from JSON map.
@@ -867,6 +1025,13 @@ void TrackSystem::RenderFrame(bool renderTrack,
         [&](SegmentRenderEntry& entry) -> TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::RenderResult
         {
             TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::RenderResult estimate{};
+            if (seg1ComponentEnabled_ && entry.id == 1)
+            {
+                estimate.rendered = true;
+                estimate.meshes = 1;
+                estimate.faces = static_cast<uint32_t>(seg1ComponentFaces_.size());
+                return estimate;
+            }
             auto* renderer = entry.renderer.get();
             if (!renderer)
             {
@@ -902,6 +1067,38 @@ void TrackSystem::RenderFrame(bool renderTrack,
             const TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::PreparedChunk& chunk)
             -> TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::RenderResult
         {
+            if (seg1ComponentEnabled_ && chunk.segmentId == 1 &&
+                !seg1ComponentVerts_.empty() && !seg1ComponentFaces_.empty() &&
+                seg1ComponentAttrs_.size() == seg1ComponentFaces_.size())
+            {
+                SRL::Scene3D::PushMatrix();
+                SRL::Scene3D::Translate(trackOffset);
+                SRL::Types::Mesh mesh{};
+                mesh.Vertices = seg1ComponentVerts_.data();
+                mesh.VertexCount = seg1ComponentVerts_.size();
+                mesh.Faces = seg1ComponentFaces_.data();
+                mesh.FaceCount = seg1ComponentFaces_.size();
+                mesh.Attributes = seg1ComponentAttrs_.data();
+                SRL::Scene3D::DrawMesh(mesh);
+                SRL::Scene3D::PopMatrix();
+
+                if (!segment01Logged)
+                {
+                    const auto firstSegmentCenter = chunk.center + trackOffset;
+                    SRL::Debug::Print(1, 19, "Seg01 center %d %d %d",
+                                      firstSegmentCenter.X.As<int16_t>(),
+                                      firstSegmentCenter.Y.As<int16_t>(),
+                                      firstSegmentCenter.Z.As<int16_t>());
+                    segment01Logged = true;
+                }
+
+                TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::RenderResult result{};
+                result.rendered = true;
+                result.meshes = 1;
+                result.faces = static_cast<uint32_t>(seg1ComponentFaces_.size());
+                return result;
+            }
+
             auto* renderer = entry.renderer.get();
             if (!renderer)
             {

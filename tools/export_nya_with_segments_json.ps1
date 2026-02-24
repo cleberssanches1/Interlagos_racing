@@ -56,25 +56,26 @@ function Parse-TextureFamily([string]$Token) {
     }
 }
 
-function New-Rle([int[]]$Values) {
+function New-Rle([object[]]$Values) {
     $runs = New-Object System.Collections.Generic.List[object]
-    if (-not $Values -or $Values.Count -eq 0) { return @($runs) }
+    if (-not $Values -or $Values.Count -eq 0) { return @() }
 
     $start = 0
-    $curr = $Values[0]
+    $curr = [int]$Values[0]
     $count = 1
     for ($i = 1; $i -lt $Values.Count; $i++) {
-        if ($Values[$i] -eq $curr) {
+        $v = [int]$Values[$i]
+        if ($v -eq $curr) {
             $count++
             continue
         }
         $runs.Add([pscustomobject]@{ start = $start; count = $count; familyId = $curr }) | Out-Null
         $start = $i
-        $curr = $Values[$i]
+        $curr = $v
         $count = 1
     }
     $runs.Add([pscustomobject]@{ start = $start; count = $count; familyId = $curr }) | Out-Null
-    return @($runs)
+    return @($runs.ToArray())
 }
 
 if (-not (Test-Path $ConverterDir)) { throw "ConverterDir nao encontrado: $ConverterDir" }
@@ -211,19 +212,19 @@ foreach ($id in ($generatedSegIds | Sort-Object -Unique)) {
             $meshes.Add([pscustomobject]@{
                 meshId = $meshId
                 name = $meshName
-                textureFamilies = @($meshFamilyIds)
+                textureFamilies = @($meshFamilyIds.ToArray())
             }) | Out-Null
         }
     }
 
-    $faceArray = @($faceFamilies)
+    $faceArray = @($faceFamilies.ToArray())
     $segments.Add([pscustomobject]@{
         id = $id
         nya = $nyaName
         faceCount = $faceArray.Count
         faceTextureFamily = $faceArray
         faceTextureFamilyRle = @(New-Rle $faceArray)
-        meshes = @($meshes)
+        meshes = @($meshes.ToArray())
     }) | Out-Null
 }
 

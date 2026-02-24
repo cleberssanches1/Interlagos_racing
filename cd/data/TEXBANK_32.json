@@ -1,0 +1,440 @@
+﻿{
+    "version":  1,
+    "lod":  32,
+    "count":  54,
+    "bank":  "TEXBANK_32.BIN",
+    "entries":  [
+                    {
+                        "familyId":  1,
+                        "name":  "asfalto",
+                        "file":  "asfalto_32.tga",
+                        "offset":  884,
+                        "size":  1116,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  2,
+                        "name":  "patrocinio_heineken_3",
+                        "file":  "patrocinio_heineken_3_32.tga",
+                        "offset":  2000,
+                        "size":  624,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  3,
+                        "name":  "Muro_reta_oposta",
+                        "file":  "Muro_reta_oposta_32.tga",
+                        "offset":  2624,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  4,
+                        "name":  "forte_sec_patrocinio",
+                        "file":  "forte_sec_patrocinio_32.tga",
+                        "offset":  3716,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  5,
+                        "name":  "msc",
+                        "file":  "msc_32.tga",
+                        "offset":  4808,
+                        "size":  516,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  6,
+                        "name":  "torcida",
+                        "file":  "torcida_32.tga",
+                        "offset":  5324,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  7,
+                        "name":  "cerca",
+                        "file":  "cerca_32.tga",
+                        "offset":  6416,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  8,
+                        "name":  "predio_kobro",
+                        "file":  "predio_kobro_32.tga",
+                        "offset":  7552,
+                        "size":  796,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  9,
+                        "name":  "frente_predio",
+                        "file":  "frente_predio_kobra_32.tga",
+                        "offset":  8348,
+                        "size":  1116,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  10,
+                        "name":  "entrada_box",
+                        "file":  "entrada_box_32.tga",
+                        "offset":  9464,
+                        "size":  460,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  11,
+                        "name":  "Roadpit",
+                        "file":  "Roadpit_32.tga",
+                        "offset":  9924,
+                        "size":  1116,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  12,
+                        "name":  "frente_box_predio",
+                        "file":  "frente_box_predio_32.tga",
+                        "offset":  11040,
+                        "size":  1116,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  13,
+                        "name":  "sinal",
+                        "file":  "sinal_32.tga",
+                        "offset":  12156,
+                        "size":  656,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  14,
+                        "name":  "Road_grid",
+                        "file":  "Road_grid_32.tga",
+                        "offset":  12812,
+                        "size":  1116,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  15,
+                        "name":  "Placa_2",
+                        "file":  "placa_100_32.tga",
+                        "offset":  13928,
+                        "size":  1380,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  16,
+                        "name":  "placa_1",
+                        "file":  "placa_100_32.tga",
+                        "offset":  15308,
+                        "size":  1380,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  17,
+                        "name":  "teto",
+                        "file":  "teto_32.tga",
+                        "offset":  16688,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  18,
+                        "name":  "area_escape.002",
+                        "file":  "area_escape_32.tga",
+                        "offset":  17780,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  19,
+                        "name":  "patrocinioheineken",
+                        "file":  "patrocinioheineken_32.tga",
+                        "offset":  18916,
+                        "size":  964,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  20,
+                        "name":  "Guard_rail",
+                        "file":  "Guard_rail_32.tga",
+                        "offset":  19880,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  21,
+                        "name":  "grama-verde-foto",
+                        "file":  "grama-verde-foto_32.tga",
+                        "offset":  20972,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  22,
+                        "name":  "santander",
+                        "file":  "santander_32.tga",
+                        "offset":  22064,
+                        "size":  680,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  23,
+                        "name":  "area_escape.001",
+                        "file":  "area_escape_32.tga",
+                        "offset":  22744,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  24,
+                        "name":  "faixa_amarela",
+                        "file":  "faixa_amarela_32.tga",
+                        "offset":  23880,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  25,
+                        "name":  "area_escape",
+                        "file":  "area_escape_32.tga",
+                        "offset":  24972,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  26,
+                        "name":  "Zebra",
+                        "file":  "Zebra_32.tga",
+                        "offset":  26108,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  27,
+                        "name":  "area_escape.003",
+                        "file":  "area_escape_32.tga",
+                        "offset":  27200,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  28,
+                        "name":  "area_escape.004",
+                        "file":  "area_escape_32.tga",
+                        "offset":  28336,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  29,
+                        "name":  "rolex_verde",
+                        "file":  "rolex_verde_32.tga",
+                        "offset":  29472,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  30,
+                        "name":  "area_escape.005",
+                        "file":  "area_escape_32.tga",
+                        "offset":  30564,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  31,
+                        "name":  "crypto",
+                        "file":  "crypto_32.tga",
+                        "offset":  31700,
+                        "size":  260,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  32,
+                        "name":  "grama_lugar_alto",
+                        "file":  "grama_lugar_alto_32.tga",
+                        "offset":  31960,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  33,
+                        "name":  "mato_3",
+                        "file":  "mato_3_32.tga",
+                        "offset":  33052,
+                        "size":  1104,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  34,
+                        "name":  "pireli_propaganda",
+                        "file":  "pireli_propaganda_32.tga",
+                        "offset":  34156,
+                        "size":  452,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  35,
+                        "name":  "arvore_3",
+                        "file":  "arvore_3_32.tga",
+                        "offset":  34608,
+                        "size":  4140,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  36,
+                        "name":  "arvore_low_poly",
+                        "file":  "arvore_low_poly_32.tga",
+                        "offset":  38748,
+                        "size":  1104,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  37,
+                        "name":  "Guincho_1",
+                        "file":  "Guincho_1_32.tga",
+                        "offset":  39852,
+                        "size":  1104,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  38,
+                        "name":  "arvores_reta_1",
+                        "file":  "arvores_reta_1_32.tga",
+                        "offset":  40956,
+                        "size":  1104,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  39,
+                        "name":  "arvores_reta_2",
+                        "file":  "arvores_reta_2_32.tga",
+                        "offset":  42060,
+                        "size":  1104,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  40,
+                        "name":  "patrocinio_heineken_4",
+                        "file":  "patrocinio_heineken_4_32.tga",
+                        "offset":  43164,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  41,
+                        "name":  "DHL_PROPAGANDA",
+                        "file":  "DHL_PROPAGANDA_32.tga",
+                        "offset":  44256,
+                        "size":  324,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  42,
+                        "name":  "area_escape.006",
+                        "file":  "area_escape_32.tga",
+                        "offset":  44580,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  43,
+                        "name":  "area_escape.007",
+                        "file":  "area_escape_32.tga",
+                        "offset":  45716,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  44,
+                        "name":  "area_escape.008",
+                        "file":  "area_escape_32.tga",
+                        "offset":  46852,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  45,
+                        "name":  "grama_lateral",
+                        "file":  "grama_lateral_32.tga",
+                        "offset":  47988,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  46,
+                        "name":  "area_escape.009",
+                        "file":  "area_escape_32.tga",
+                        "offset":  49080,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  47,
+                        "name":  "area_escape.010",
+                        "file":  "area_escape_32.tga",
+                        "offset":  50216,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  48,
+                        "name":  "area_escape.011",
+                        "file":  "area_escape_32.tga",
+                        "offset":  51352,
+                        "size":  1136,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  49,
+                        "name":  "Lenovo",
+                        "file":  "Lenovo_32.tga",
+                        "offset":  52488,
+                        "size":  500,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  50,
+                        "name":  "predio_podio",
+                        "file":  "predio_podio_32.tga",
+                        "offset":  52988,
+                        "size":  644,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  51,
+                        "name":  "frente_predio_kobra",
+                        "file":  "frente_predio_kobra_32.tga",
+                        "offset":  53632,
+                        "size":  1116,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  52,
+                        "name":  "bandeira_imperio",
+                        "file":  "bandeira_imperio_32.tga",
+                        "offset":  54748,
+                        "size":  772,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  53,
+                        "name":  "American_Express_logo",
+                        "file":  "American_Express_logo_32.tga",
+                        "offset":  55520,
+                        "size":  1092,
+                        "format":  0
+                    },
+                    {
+                        "familyId":  54,
+                        "name":  "aws",
+                        "file":  "aws_32.tga",
+                        "offset":  56612,
+                        "size":  540,
+                        "format":  0
+                    }
+                ]
+}

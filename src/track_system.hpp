@@ -135,6 +135,11 @@ private:
     std::vector<TrackSegmentEntry> segmentEntries_{};
     std::vector<RawSegmentEntry> rawSegmentCatalog_{};
     std::vector<SegmentRenderEntry> segmentRenderers_{};
+    bool seg1ComponentEnabled_ = false;
+    SRL::Math::Types::Vector3D seg1ComponentCenter_{};
+    std::vector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
+    std::vector<SRL::Types::Polygon> seg1ComponentFaces_{};
+    std::vector<SRL::Types::Attribute> seg1ComponentAttrs_{};
     SegmentPool segmentPool_{};
     std::vector<SegmentHandle> segmentHandles_{};
     std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};
