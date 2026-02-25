@@ -174,9 +174,7 @@ public:
         if (!hasTrack_ || !trackObj_ || meshCount_ == 0) return;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
 
-        SRL::Debug::Print(1, 17, "TR ren offset:%d %d %d start:%u drawLimit:%u",
-                          trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),
-                          (unsigned)startMeshIdx_, (unsigned)drawLimit_);
+        // Debug log disabled to keep overlay clean during texture LOD validation.
 
         SRL::Debug::Print(1, 10, "TR ren begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
                           (unsigned)meshCount_, (unsigned)startMeshIdx_, (unsigned)drawLimit_,
@@ -683,8 +681,6 @@ public:
                 const int32_t slot = faceTextureSlots[globalFace];
                 if (slot < 0) continue;
                 if (slot > kMaxSafeTextureSlot) continue;
-                // Preserve untextured faces; only remap faces that already had texture assigned.
-                if (mesh->Attributes[fi].Texture == kNoTexture) continue;
                 mesh->Attributes[fi].Texture = static_cast<uint16_t>(slot);
                 ++applied;
             }

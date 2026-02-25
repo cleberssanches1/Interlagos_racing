@@ -150,7 +150,7 @@ function Build-TexBank {
         $cursor += [uint32]$e.size
     }
 
-    $bankPath = Join-Path $OutDirectory ("TEXBANK_{0}.BIN" -f $Lod)
+    $bankPath = Join-Path $OutDirectory ("TBK{0}.BIN" -f $Lod)
     $fs = [System.IO.File]::Open($bankPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
     try {
         $bw = New-Object System.IO.BinaryWriter($fs)
@@ -177,7 +177,7 @@ function Build-TexBank {
         $fs.Close()
     }
 
-    $indexPath = Join-Path $OutDirectory ("TEXBANK_{0}.json" -f $Lod)
+    $indexPath = Join-Path $OutDirectory ("TBK{0}.json" -f $Lod)
     $indexObj = [pscustomobject]@{
         version = 1
         lod = $Lod
@@ -223,7 +223,7 @@ $summary = New-Object System.Collections.Generic.List[object]
 foreach ($lod in $lods) {
     $res = Build-TexBank -Families $families -Lod $lod -TextureRootPath $TextureRoot -OutDirectory $OutDir -UseSubfolders:$UseLodSubfolders
     $summary.Add($res) | Out-Null
-    Write-Host ("OK TEXBANK_{0}.BIN entries:{1} bytes:{2}" -f $lod, $res.count, $res.bytes)
+    Write-Host ("OK TBK{0}.BIN entries:{1} bytes:{2}" -f $lod, $res.count, $res.bytes)
 }
 
 $manifestPath = Join-Path $OutDir "texbanks_manifest.json"

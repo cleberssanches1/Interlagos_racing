@@ -59,13 +59,17 @@ public:
     // Display condensed soak health on debug overlay.
     void Present() const
     {
-        SRL::Debug::Print(2, 29, "SOAK ok:%lu warn:%lu tmo:%lu",
-                          (unsigned long)stableFrames_,
-                          (unsigned long)warningFrames_,
-                          (unsigned long)timeoutEvents_);
-        SRL::Debug::Print(2, 30, "SOAK run:%lu max:%lu",
-                          (unsigned long)consecutiveStable_,
-                          (unsigned long)maxConsecutiveStable_);
+        constexpr bool kShowSoakTelemetry = false;
+        if constexpr (kShowSoakTelemetry)
+        {
+            SRL::Debug::Print(2, 29, "SOAK ok:%lu warn:%lu tmo:%lu",
+                              (unsigned long)stableFrames_,
+                              (unsigned long)warningFrames_,
+                              (unsigned long)timeoutEvents_);
+            SRL::Debug::Print(2, 30, "SOAK run:%lu max:%lu",
+                              (unsigned long)consecutiveStable_,
+                              (unsigned long)maxConsecutiveStable_);
+        }
     }
 
 private:

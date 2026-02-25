@@ -83,12 +83,32 @@ private:
         int id = 0;
         TrackSegmentCopy copy{};
     };
+    struct Seg1FamilySlotEntry
+    {
+        uint16_t familyId = 0;
+        std::array<uint16_t, 4> lodSlots{{0, 0, 0, 0}}; // 0:8, 1:16, 2:32, 3:64
+    };
+    struct Seg1TexbankEntry
+    {
+        uint16_t familyId = 0;
+        uint32_t offset = 0;
+        uint32_t size = 0;
+    };
+    struct Seg1TexbankCart
+    {
+        int lod = 8;
+        void* cartPtr = nullptr;
+        uint32_t size = 0;
+        std::vector<Seg1TexbankEntry> entries{};
+    };
 
     using SegmentPool = TrackSegmentPool<kTrackSegmentLimit, SegmentRenderEntry>;
     using SegmentHandle = SegmentPool::Handle;
 
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
     void ReleaseRawSegmentCatalog();
+    void ReleaseSeg1Texbanks();
+    bool LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue);
     const TrackSegmentCopy* FindRawSegmentCopyById(int id) const;
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);
@@ -140,6 +160,22 @@ private:
     std::vector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
     std::vector<SRL::Types::Polygon> seg1ComponentFaces_{};
     std::vector<SRL::Types::Attribute> seg1ComponentAttrs_{};
+    std::vector<uint16_t> seg1FaceFamilyIds_{};
+    std::vector<Seg1FamilySlotEntry> seg1FamilySlots_{};
+    std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
+    std::array<std::vector<int32_t>, 4> seg1RendererFaceSlotsByLod_{};
+    bool seg1RendererLodReady_ = false;
+    bool seg1SingleFaceSwapReady_ = false;
+    bool seg1SingleFaceSwapUseAlt_ = false;
+    uint16_t seg1SingleFaceSwapCounter_ = 0;
+    uint16_t seg1SingleFaceSwapFrames_ = 180; // ~3s @60fps
+    int32_t seg1SingleFaceSwapFace_ = -1;
+    int32_t seg1SingleFaceSwapBaseSlot_ = -1;
+    int32_t seg1SingleFaceSwapAltSlot_ = -1;
+    std::vector<int32_t> seg1SingleFaceSlots_{};
+    uint8_t seg1CurrentLodIndex_ = 0;
+    uint16_t seg1LodFrameCounter_ = 0;
+    uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)
     SegmentPool segmentPool_{};
     std::vector<SegmentHandle> segmentHandles_{};
     std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};

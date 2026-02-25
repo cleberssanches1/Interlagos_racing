@@ -182,8 +182,8 @@ int GameApp::Run()
     // silencia logs do teste HWR
     }
 
-    const bool renderTrack = true; // teste combinado: pista + carro
-    const bool renderCar = true; // teste combinado
+    const bool renderTrack = true; // teste pista
+    const bool renderCar = false; // somente pista
     const bool loadCarAfterTrack = true; // pista primeiro, depois carro
     const bool enableTrackSlaveProducer = false; // diagnostico: desativa Slave para estabilizar
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
@@ -436,10 +436,7 @@ int GameApp::Run()
             carWorldPosition.X = seg01Center.X;
             carWorldPosition.Z = seg01Center.Z;
             carWorldPosition.Y = SRL::Math::Types::Fxp::BuildRaw(0);
-            MLOG(1, 18, "Car spawn seg01 %d %d %d",
-                 carWorldPosition.X.As<int16_t>(),
-                 carWorldPosition.Y.As<int16_t>(),
-                 carWorldPosition.Z.As<int16_t>());
+            // Car spawn debug log disabled to keep on-screen diagnostics concise.
         }
     }
     if (renderCar && loadCarAfterTrack)
