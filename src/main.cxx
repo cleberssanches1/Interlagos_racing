@@ -155,7 +155,7 @@ int GameApp::Run()
     AppState::PresentOverlay(2);
 
     const bool logCar = kCarLogs;
-    const bool logTrack = true;
+    const bool logTrack = false;
     // Log inicial simples do Cart e HWR
     auto crep = SRL::Memory::CartRam::GetReport();
     // SRL::Debug::Print(0, 0, "CRT ok:%d free:%d total:%d", crep.TotalSize > 0 ? 1 : 0, (int)crep.FreeSize, (int)crep.TotalSize);
@@ -341,7 +341,7 @@ int GameApp::Run()
     {
         SRL::Cd::ChangeDir((const char*)0);
         bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
-        MLOG(1, 10, "Sky init: %s", bgReady ? "OK" : "FAIL");
+        // log removido
     }
 
     // Camera system owns camera state, tuning and input workflow.
@@ -425,7 +425,7 @@ int GameApp::Run()
     {
         SRL::Cd::ChangeDir((const char*)0);
         bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
-        MLOG(1, 10, "Sky retry after track init: %s", bgReady ? "OK" : "FAIL");
+        // log removido
     }
     if (renderTrack && trackSystemReady)
     {

@@ -23,23 +23,54 @@ function Resolve-AbsolutePathOrCreate([string]$Path) {
 function Write-U16([System.IO.BinaryWriter]$bw, [uint16]$v) { $bw.Write($v) }
 function Write-U32([System.IO.BinaryWriter]$bw, [uint32]$v) { $bw.Write($v) }
 
+function Get-TgaInfo {
+    param(
+        [byte[]]$Bytes,
+        [string]$PathForError = ""
+    )
+
+    if (-not $Bytes -or $Bytes.Length -lt 18) {
+        return [pscustomobject]@{
+            valid = $false
+            reason = "short"
+            colorMapType = -1
+            imageType = -1
+            pixelDepth = -1
+            width = 0
+            height = 0
+        }
+    }
+
+    return [pscustomobject]@{
+        valid = $true
+        reason = ""
+        colorMapType = [int]$Bytes[1]
+        imageType = [int]$Bytes[2]
+        pixelDepth = [int]$Bytes[16]
+        width = [int]([System.BitConverter]::ToUInt16($Bytes, 12))
+        height = [int]([System.BitConverter]::ToUInt16($Bytes, 14))
+    }
+}
+
 function Resolve-TexturePath {
     param(
         [string]$TextureRootPath,
         [string]$FileName,
         [int]$Lod,
-        [bool]$UseSubfolders
+        [bool]$UseSubfolders,
+        [string]$OutputDir
     )
 
     $candidates = New-Object System.Collections.Generic.List[string]
+    # search inside output dir first
+    $candidates.Add((Join-Path $OutDir $FileName)) | Out-Null
     if ($UseSubfolders) {
         $candidates.Add((Join-Path (Join-Path $TextureRootPath "$Lod") $FileName)) | Out-Null
     }
-    $candidates.Add((Join-Path $TextureRootPath $FileName)) | Out-Null
-    $candidates.Add((Join-Path (Join-Path $TextureRootPath "64") $FileName)) | Out-Null
-    $candidates.Add((Join-Path (Join-Path $TextureRootPath "32") $FileName)) | Out-Null
-    $candidates.Add((Join-Path (Join-Path $TextureRootPath "16") $FileName)) | Out-Null
-    $candidates.Add((Join-Path (Join-Path $TextureRootPath "8") $FileName)) | Out-Null
+        $candidates.Add((Join-Path $TextureRootPath $FileName)) | Out-Null
+    foreach ($lodDir in "64","32","16","8") {
+        $candidates.Add((Join-Path (Join-Path $TextureRootPath $lodDir) $FileName)) | Out-Null
+    }
 
     foreach ($p in $candidates) {
         if (Test-Path -LiteralPath $p) { return $p }
@@ -119,14 +150,17 @@ function Build-TexBank {
             Write-Host ("AVISO: family {0} sem imageFiles[{1}], ignorando." -f $fid, $Lod)
             continue
         }
-
-        $texPath = Resolve-TexturePath -TextureRootPath $TextureRootPath -FileName $fname -Lod $Lod -UseSubfolders:$UseSubfolders
+        $texPath = Resolve-TexturePath -TextureRootPath $TextureRootPath -FileName $fname -Lod $Lod -UseSubfolders:$UseSubfolders -OutputDir $OutDirectory
         if (-not $texPath) {
-            Write-Host ("AVISO: textura nao encontrada family:{0} lod:{1} file:{2}" -f $fid, $Lod, $fname)
+            Write-Host ("AVISO: textura nao encontrada family:{0} lod:{1} file:{2} procurado em {3}" -f $fid, $Lod, $fname, (Join-Path $TextureRootPath $fname))
             continue
         }
 
         $bytes = [System.IO.File]::ReadAllBytes($texPath)
+        $tgaInfo = Get-TgaInfo -Bytes $bytes -PathForError $texPath
+        if (-not $tgaInfo.valid) {
+            Write-Host ("AVISO: TGA invalido family:{0} lod:{1} file:{2} motivo:{3}" -f $fid, $Lod, $fname, $tgaInfo.reason)
+        }
         $entries.Add([pscustomobject]@{
             familyId = $fid
             name = [string]$fam.name
@@ -136,6 +170,11 @@ function Build-TexBank {
             size = [uint32]$bytes.Length
             offset = [uint32]0
             format = [uint32]0 # 0=tga/png raw file payload
+            tgaColorMapType = [int]$tgaInfo.colorMapType
+            tgaImageType = [int]$tgaInfo.imageType
+            tgaPixelDepth = [int]$tgaInfo.pixelDepth
+            tgaWidth = [int]$tgaInfo.width
+            tgaHeight = [int]$tgaInfo.height
         }) | Out-Null
     }
 
@@ -191,6 +230,11 @@ function Build-TexBank {
                 offset = $_.offset
                 size = $_.size
                 format = $_.format
+                tgaColorMapType = $_.tgaColorMapType
+                tgaImageType = $_.tgaImageType
+                tgaPixelDepth = $_.tgaPixelDepth
+                tgaWidth = $_.tgaWidth
+                tgaHeight = $_.tgaHeight
             }
         })
     }
@@ -226,6 +270,34 @@ foreach ($lod in $lods) {
     Write-Host ("OK TBK{0}.BIN entries:{1} bytes:{2}" -f $lod, $res.count, $res.bytes)
 }
 
+$compatEntries = New-Object System.Collections.Generic.List[object]
+foreach ($lod in $lods) {
+    $idxPath = Join-Path $OutDir ("TBK{0}.json" -f $lod)
+    if (-not (Test-Path -LiteralPath $idxPath)) { continue }
+    $idx = Get-Content -LiteralPath $idxPath -Raw | ConvertFrom-Json
+    foreach ($e in @($idx.entries)) {
+        $compatEntries.Add([pscustomobject]@{
+            lod = $lod
+            familyId = [int]$e.familyId
+            file = [string]$e.file
+            colorMapType = [int]$e.tgaColorMapType
+            imageType = [int]$e.tgaImageType
+            pixelDepth = [int]$e.tgaPixelDepth
+            width = [int]$e.tgaWidth
+            height = [int]$e.tgaHeight
+        }) | Out-Null
+    }
+}
+
+$compatPath = Join-Path $OutDir "tga_compat_report.json"
+$compatObj = [pscustomobject]@{
+    version = 1
+    generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    entries = @($compatEntries.ToArray())
+}
+$compatObj | ConvertTo-Json -Depth 8 | Set-Content -Path $compatPath -Encoding UTF8
+Write-Host ("OK TGA compat: {0}" -f $compatPath)
+
 $manifestPath = Join-Path $OutDir "texbanks_manifest.json"
 $manifest = [pscustomobject]@{
     version = 1
@@ -233,6 +305,7 @@ $manifest = [pscustomobject]@{
     sourceJson = $JsonPath
     textureRoot = $TextureRoot
     banks = @($summary.ToArray())
+    tgaCompatReport = $compatPath
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -Path $manifestPath -Encoding UTF8
 Write-Host ("OK Manifest: {0}" -f $manifestPath)

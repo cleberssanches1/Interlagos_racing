@@ -34,7 +34,7 @@ struct SkyBackground
                 SRL::Cd::File skyFile(names[i]);
                 const bool exists = skyFile.Exists();
                 const int32_t size = skyFile.Size.Bytes;
-                SRL::Debug::Print(1, 11, "Sky %s[%u] ex:%d sz:%ld", dirLabel, (unsigned)i, exists ? 1 : 0, (long)size);
+                // log removido
                 if (!exists || size <= 0)
                 {
                     continue;
@@ -58,7 +58,7 @@ struct SkyBackground
                 SRL::VDP2::NBG1::ScrollDisable();
 
                 loaded = true;
-                SRL::Debug::Print(1, 11, "Sky loaded %s[%u]", dirLabel, (unsigned)i);
+                // log removido
                 return true;
             }
             return false;
@@ -72,7 +72,7 @@ struct SkyBackground
             SRL::Cd::File skyFile(paths[i]);
             const bool exists = skyFile.Exists();
             const int32_t size = skyFile.Size.Bytes;
-            SRL::Debug::Print(1, 11, "Sky arg[%u] ex:%d sz:%ld", (unsigned)i, exists ? 1 : 0, (long)size);
+            // log removido
             if (!exists || size <= 0)
             {
                 continue;
@@ -93,7 +93,7 @@ struct SkyBackground
             SRL::VDP2::NBG1::ScrollDisable();
 
             loaded = true;
-            SRL::Debug::Print(1, 11, "Sky loaded arg[%u]: %s", (unsigned)i, paths[i]);
+            // log removido
             return true;
         }
 
@@ -120,11 +120,7 @@ struct SkyBackground
                 SRL::Cd::File skyFile(names[i]);
                 const bool exists = skyFile.Exists();
                 const int32_t size = skyFile.Size.Bytes;
-                SRL::Debug::Print(1, 11, "Sky dir:%s name:%s ex:%d sz:%ld",
-                                  chain.a ? (chain.b ? "CHAIN" : chain.a) : "ROOT",
-                                  names[i],
-                                  exists ? 1 : 0,
-                                  (long)size);
+                // log removido
                 if (!exists || size <= 0) continue;
 
                 SRL::Bitmap::TGA skyBmp(&skyFile);
@@ -142,7 +138,7 @@ struct SkyBackground
                 SRL::VDP2::NBG1::ScrollDisable();
 
                 loaded = true;
-                SRL::Debug::Print(1, 11, "Sky loaded name:%s", names[i]);
+                // log removido
                 SRL::Cd::ChangeDir((const char*)0);
                 return true;
             }
@@ -165,7 +161,7 @@ struct SkyBackground
         }
         SRL::Cd::ChangeDir((const char*)0);
 
-        SRL::Debug::Print(1, 11, "Sky missing on all candidate paths");
+        // log removido
         return false;
     }
 

@@ -46,7 +46,7 @@ struct BackgroundManager
             cachedPaths[i] = cachedPathStorage[i].data();
         }
         loaded = env.Load(paths, count);
-        SRL::Debug::Print(1, 10, "Background load: %s", loaded ? "OK" : "FAIL");
+        // log removido
         retryTicks = 0;
         return loaded;
     }
@@ -59,7 +59,7 @@ struct BackgroundManager
             if ((retryTicks % 30u) == 0u)
             {
                 loaded = env.Load(cachedPaths.data(), cachedPathCount);
-                SRL::Debug::Print(1, 10, "Background retry: %s", loaded ? "OK" : "FAIL");
+                // log removido
             }
         }
         if (!loaded) return;

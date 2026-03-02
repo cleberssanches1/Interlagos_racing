@@ -1,6 +1,6 @@
 param(
     [string]$ConverterDir = "C:\saturn\tools\ModelConverter-linux-main\BuildDrop",
-    [string]$SourceObjDir = "C:\Models\png\sectors\source",
+    [string]$SourceObjDir = "C:\Models\png\sectors\result",
     [string]$ResultDir = "C:\Models\png\sectors\result",
     [string]$CdDataDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
     [string]$Pattern = "seg_*.obj",
@@ -8,7 +8,8 @@ param(
     [string]$Shading = "Smooth",
     [int]$TexWidth = 32,
     [int]$TexHeight = 32,
-    [int]$TexPadWidth = 8
+    [int]$TexPadWidth = 8,
+    [switch]$PreserveSidecars
 )
 
 Set-StrictMode -Version Latest
@@ -87,17 +88,21 @@ Ensure-Dir $CdDataDir
 $converterDll = Join-Path $ConverterDir "ModelConverter.dll"
 if (-not (Test-Path $converterDll)) { throw "ModelConverter.dll nao encontrado em $ConverterDir" }
 
-$ok = 0
-$fail = New-Object System.Collections.Generic.List[string]
-$generatedSegIds = New-Object System.Collections.Generic.List[int]
+    $ok = 0
+    $fail = New-Object System.Collections.Generic.List[string]
+    $generatedSegIds = New-Object System.Collections.Generic.List[int]
+    $convertedSegments = New-Object 'System.Collections.Generic.HashSet[int]'
 
 Push-Location $ConverterDir
 try {
-    $objs = Get-ChildItem -Path $SourceObjDir -Filter $Pattern | Sort-Object Name
+    $objs = Get-ChildItem -Path $SourceObjDir -Recurse -Filter $Pattern -File | Sort-Object Name
     foreach ($obj in $objs) {
         $id = Get-SegmentIdFromFile $obj.BaseName
         if ($null -eq $id) {
             $fail.Add($obj.Name) | Out-Null
+            continue
+        }
+        if ($convertedSegments.Contains($id)) {
             continue
         }
 
@@ -120,6 +125,7 @@ try {
         if ($LASTEXITCODE -eq 0) {
             $ok++
             $generatedSegIds.Add($id) | Out-Null
+            $convertedSegments.Add($id) | Out-Null
         } else {
             $fail.Add($obj.Name) | Out-Null
         }
@@ -257,9 +263,12 @@ Get-ChildItem -Path $ResultDir -File -Filter "SEG_*.NYA" | ForEach-Object {
 Copy-Item -LiteralPath $jsonPath -Destination (Join-Path $CdDataDir "segments_map.json") -Force
 Write-Host "Arquivos copiados para: $CdDataDir"
 
-# =========================
-# 4) Limpa sidecars .map/.meshtex
-# =========================
-Get-ChildItem -Path $ResultDir -File -Filter *.map | Remove-Item -Force -ErrorAction SilentlyContinue
-Get-ChildItem -Path $ResultDir -File -Filter *.meshtex | Remove-Item -Force -ErrorAction SilentlyContinue
-Write-Host "Sidecars removidos (.map/.meshtex) de: $ResultDir"
+  # =========================
+  # 4) Limpa sidecars .map/.meshtex
+  # =========================
+  if (-not $PreserveSidecars)
+  {
+      Get-ChildItem -Path $ResultDir -File -Filter *.map | Remove-Item -Force -ErrorAction SilentlyContinue
+      Get-ChildItem -Path $ResultDir -File -Filter *.meshtex | Remove-Item -Force -ErrorAction SilentlyContinue
+      Write-Host "Sidecars removidos (.map/.meshtex) de: $ResultDir"
+  }

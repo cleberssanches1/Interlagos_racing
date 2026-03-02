@@ -1,0 +1,1953 @@
+﻿{
+    "version":  1,
+    "generated_at_utc":  "2026-03-02T19:45:45Z",
+    "data_dir":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data",
+    "copied":  216,
+    "skipped":  0,
+    "items":  [
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00164.TGA",
+                      "lod":  8,
+                      "target_name":  "F001_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F001_8.TGA",
+                      "family":  "f00164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00264.TGA",
+                      "lod":  8,
+                      "target_name":  "F002_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F002_8.TGA",
+                      "family":  "f00264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00364.TGA",
+                      "lod":  8,
+                      "target_name":  "F003_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F003_8.TGA",
+                      "family":  "f00364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00464.TGA",
+                      "lod":  8,
+                      "target_name":  "F004_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F004_8.TGA",
+                      "family":  "f00464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00564.TGA",
+                      "lod":  8,
+                      "target_name":  "F005_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F005_8.TGA",
+                      "family":  "f00564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00664.TGA",
+                      "lod":  8,
+                      "target_name":  "F006_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F006_8.TGA",
+                      "family":  "f00664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00764.TGA",
+                      "lod":  8,
+                      "target_name":  "F007_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F007_8.TGA",
+                      "family":  "f00764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00864.TGA",
+                      "lod":  8,
+                      "target_name":  "F008_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F008_8.TGA",
+                      "family":  "f00864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F00964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F00964.TGA",
+                      "lod":  8,
+                      "target_name":  "F009_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F009_8.TGA",
+                      "family":  "f00964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01064.TGA",
+                      "lod":  8,
+                      "target_name":  "F010_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F010_8.TGA",
+                      "family":  "f01064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01164.TGA",
+                      "lod":  8,
+                      "target_name":  "F011_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F011_8.TGA",
+                      "family":  "f01164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01264.TGA",
+                      "lod":  8,
+                      "target_name":  "F012_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F012_8.TGA",
+                      "family":  "f01264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01364.TGA",
+                      "lod":  8,
+                      "target_name":  "F013_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F013_8.TGA",
+                      "family":  "f01364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01464.TGA",
+                      "lod":  8,
+                      "target_name":  "F014_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F014_8.TGA",
+                      "family":  "f01464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01564.TGA",
+                      "lod":  8,
+                      "target_name":  "F015_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F015_8.TGA",
+                      "family":  "f01564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01664.TGA",
+                      "lod":  8,
+                      "target_name":  "F016_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F016_8.TGA",
+                      "family":  "f01664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01764.TGA",
+                      "lod":  8,
+                      "target_name":  "F017_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F017_8.TGA",
+                      "family":  "f01764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01864.TGA",
+                      "lod":  8,
+                      "target_name":  "F018_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F018_8.TGA",
+                      "family":  "f01864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F01964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F01964.TGA",
+                      "lod":  8,
+                      "target_name":  "F019_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F019_8.TGA",
+                      "family":  "f01964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02064.TGA",
+                      "lod":  8,
+                      "target_name":  "F020_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F020_8.TGA",
+                      "family":  "f02064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02164.TGA",
+                      "lod":  8,
+                      "target_name":  "F021_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F021_8.TGA",
+                      "family":  "f02164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02264.TGA",
+                      "lod":  8,
+                      "target_name":  "F022_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F022_8.TGA",
+                      "family":  "f02264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02364.TGA",
+                      "lod":  8,
+                      "target_name":  "F023_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F023_8.TGA",
+                      "family":  "f02364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02464.TGA",
+                      "lod":  8,
+                      "target_name":  "F024_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F024_8.TGA",
+                      "family":  "f02464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02564.TGA",
+                      "lod":  8,
+                      "target_name":  "F025_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F025_8.TGA",
+                      "family":  "f02564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02664.TGA",
+                      "lod":  8,
+                      "target_name":  "F026_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F026_8.TGA",
+                      "family":  "f02664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02764.TGA",
+                      "lod":  8,
+                      "target_name":  "F027_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F027_8.TGA",
+                      "family":  "f02764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02864.TGA",
+                      "lod":  8,
+                      "target_name":  "F028_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F028_8.TGA",
+                      "family":  "f02864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F02964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F02964.TGA",
+                      "lod":  8,
+                      "target_name":  "F029_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F029_8.TGA",
+                      "family":  "f02964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03064.TGA",
+                      "lod":  8,
+                      "target_name":  "F030_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F030_8.TGA",
+                      "family":  "f03064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03164.TGA",
+                      "lod":  8,
+                      "target_name":  "F031_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F031_8.TGA",
+                      "family":  "f03164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03264.TGA",
+                      "lod":  8,
+                      "target_name":  "F032_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F032_8.TGA",
+                      "family":  "f03264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03364.TGA",
+                      "lod":  8,
+                      "target_name":  "F033_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F033_8.TGA",
+                      "family":  "f03364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03464.TGA",
+                      "lod":  8,
+                      "target_name":  "F034_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F034_8.TGA",
+                      "family":  "f03464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03564.TGA",
+                      "lod":  8,
+                      "target_name":  "F035_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F035_8.TGA",
+                      "family":  "f03564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03664.TGA",
+                      "lod":  8,
+                      "target_name":  "F036_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F036_8.TGA",
+                      "family":  "f03664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03764.TGA",
+                      "lod":  8,
+                      "target_name":  "F037_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F037_8.TGA",
+                      "family":  "f03764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03864.TGA",
+                      "lod":  8,
+                      "target_name":  "F038_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F038_8.TGA",
+                      "family":  "f03864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F03964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F03964.TGA",
+                      "lod":  8,
+                      "target_name":  "F039_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F039_8.TGA",
+                      "family":  "f03964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04064.TGA",
+                      "lod":  8,
+                      "target_name":  "F040_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F040_8.TGA",
+                      "family":  "f04064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04164.TGA",
+                      "lod":  8,
+                      "target_name":  "F041_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F041_8.TGA",
+                      "family":  "f04164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04264.TGA",
+                      "lod":  8,
+                      "target_name":  "F042_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F042_8.TGA",
+                      "family":  "f04264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04364.TGA",
+                      "lod":  8,
+                      "target_name":  "F043_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F043_8.TGA",
+                      "family":  "f04364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04464.TGA",
+                      "lod":  8,
+                      "target_name":  "F044_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F044_8.TGA",
+                      "family":  "f04464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04564.TGA",
+                      "lod":  8,
+                      "target_name":  "F045_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F045_8.TGA",
+                      "family":  "f04564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04664.TGA",
+                      "lod":  8,
+                      "target_name":  "F046_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F046_8.TGA",
+                      "family":  "f04664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04764.TGA",
+                      "lod":  8,
+                      "target_name":  "F047_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F047_8.TGA",
+                      "family":  "f04764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04864.TGA",
+                      "lod":  8,
+                      "target_name":  "F048_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F048_8.TGA",
+                      "family":  "f04864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F04964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F04964.TGA",
+                      "lod":  8,
+                      "target_name":  "F049_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F049_8.TGA",
+                      "family":  "f04964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F05064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F05064.TGA",
+                      "lod":  8,
+                      "target_name":  "F050_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F050_8.TGA",
+                      "family":  "f05064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F05164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F05164.TGA",
+                      "lod":  8,
+                      "target_name":  "F051_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F051_8.TGA",
+                      "family":  "f05164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F05264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F05264.TGA",
+                      "lod":  8,
+                      "target_name":  "F052_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F052_8.TGA",
+                      "family":  "f05264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F05364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F05364.TGA",
+                      "lod":  8,
+                      "target_name":  "F053_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F053_8.TGA",
+                      "family":  "f05364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren",
+                      "source_name":  "F05464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\8_ren\\F05464.TGA",
+                      "lod":  8,
+                      "target_name":  "F054_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F054_8.TGA",
+                      "family":  "f05464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00164.TGA",
+                      "lod":  16,
+                      "target_name":  "F001_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F001_16.TGA",
+                      "family":  "f00164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00264.TGA",
+                      "lod":  16,
+                      "target_name":  "F002_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F002_16.TGA",
+                      "family":  "f00264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00364.TGA",
+                      "lod":  16,
+                      "target_name":  "F003_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F003_16.TGA",
+                      "family":  "f00364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00464.TGA",
+                      "lod":  16,
+                      "target_name":  "F004_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F004_16.TGA",
+                      "family":  "f00464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00564.TGA",
+                      "lod":  16,
+                      "target_name":  "F005_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F005_16.TGA",
+                      "family":  "f00564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00664.TGA",
+                      "lod":  16,
+                      "target_name":  "F006_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F006_16.TGA",
+                      "family":  "f00664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00764.TGA",
+                      "lod":  16,
+                      "target_name":  "F007_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F007_16.TGA",
+                      "family":  "f00764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00864.TGA",
+                      "lod":  16,
+                      "target_name":  "F008_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F008_16.TGA",
+                      "family":  "f00864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F00964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F00964.TGA",
+                      "lod":  16,
+                      "target_name":  "F009_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F009_16.TGA",
+                      "family":  "f00964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01064.TGA",
+                      "lod":  16,
+                      "target_name":  "F010_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F010_16.TGA",
+                      "family":  "f01064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01164.TGA",
+                      "lod":  16,
+                      "target_name":  "F011_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F011_16.TGA",
+                      "family":  "f01164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01264.TGA",
+                      "lod":  16,
+                      "target_name":  "F012_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F012_16.TGA",
+                      "family":  "f01264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01364.TGA",
+                      "lod":  16,
+                      "target_name":  "F013_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F013_16.TGA",
+                      "family":  "f01364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01464.TGA",
+                      "lod":  16,
+                      "target_name":  "F014_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F014_16.TGA",
+                      "family":  "f01464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01564.TGA",
+                      "lod":  16,
+                      "target_name":  "F015_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F015_16.TGA",
+                      "family":  "f01564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01664.TGA",
+                      "lod":  16,
+                      "target_name":  "F016_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F016_16.TGA",
+                      "family":  "f01664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01764.TGA",
+                      "lod":  16,
+                      "target_name":  "F017_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F017_16.TGA",
+                      "family":  "f01764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01864.TGA",
+                      "lod":  16,
+                      "target_name":  "F018_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F018_16.TGA",
+                      "family":  "f01864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F01964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F01964.TGA",
+                      "lod":  16,
+                      "target_name":  "F019_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F019_16.TGA",
+                      "family":  "f01964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02064.TGA",
+                      "lod":  16,
+                      "target_name":  "F020_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F020_16.TGA",
+                      "family":  "f02064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02164.TGA",
+                      "lod":  16,
+                      "target_name":  "F021_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F021_16.TGA",
+                      "family":  "f02164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02264.TGA",
+                      "lod":  16,
+                      "target_name":  "F022_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F022_16.TGA",
+                      "family":  "f02264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02364.TGA",
+                      "lod":  16,
+                      "target_name":  "F023_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F023_16.TGA",
+                      "family":  "f02364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02464.TGA",
+                      "lod":  16,
+                      "target_name":  "F024_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F024_16.TGA",
+                      "family":  "f02464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02564.TGA",
+                      "lod":  16,
+                      "target_name":  "F025_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F025_16.TGA",
+                      "family":  "f02564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02664.TGA",
+                      "lod":  16,
+                      "target_name":  "F026_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F026_16.TGA",
+                      "family":  "f02664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02764.TGA",
+                      "lod":  16,
+                      "target_name":  "F027_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F027_16.TGA",
+                      "family":  "f02764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02864.TGA",
+                      "lod":  16,
+                      "target_name":  "F028_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F028_16.TGA",
+                      "family":  "f02864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F02964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F02964.TGA",
+                      "lod":  16,
+                      "target_name":  "F029_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F029_16.TGA",
+                      "family":  "f02964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03064.TGA",
+                      "lod":  16,
+                      "target_name":  "F030_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F030_16.TGA",
+                      "family":  "f03064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03164.TGA",
+                      "lod":  16,
+                      "target_name":  "F031_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F031_16.TGA",
+                      "family":  "f03164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03264.TGA",
+                      "lod":  16,
+                      "target_name":  "F032_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F032_16.TGA",
+                      "family":  "f03264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03364.TGA",
+                      "lod":  16,
+                      "target_name":  "F033_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F033_16.TGA",
+                      "family":  "f03364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03464.TGA",
+                      "lod":  16,
+                      "target_name":  "F034_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F034_16.TGA",
+                      "family":  "f03464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03564.TGA",
+                      "lod":  16,
+                      "target_name":  "F035_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F035_16.TGA",
+                      "family":  "f03564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03664.TGA",
+                      "lod":  16,
+                      "target_name":  "F036_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F036_16.TGA",
+                      "family":  "f03664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03764.TGA",
+                      "lod":  16,
+                      "target_name":  "F037_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F037_16.TGA",
+                      "family":  "f03764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03864.TGA",
+                      "lod":  16,
+                      "target_name":  "F038_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F038_16.TGA",
+                      "family":  "f03864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F03964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F03964.TGA",
+                      "lod":  16,
+                      "target_name":  "F039_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F039_16.TGA",
+                      "family":  "f03964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04064.TGA",
+                      "lod":  16,
+                      "target_name":  "F040_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F040_16.TGA",
+                      "family":  "f04064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04164.TGA",
+                      "lod":  16,
+                      "target_name":  "F041_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F041_16.TGA",
+                      "family":  "f04164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04264.TGA",
+                      "lod":  16,
+                      "target_name":  "F042_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F042_16.TGA",
+                      "family":  "f04264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04364.TGA",
+                      "lod":  16,
+                      "target_name":  "F043_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F043_16.TGA",
+                      "family":  "f04364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04464.TGA",
+                      "lod":  16,
+                      "target_name":  "F044_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F044_16.TGA",
+                      "family":  "f04464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04564.TGA",
+                      "lod":  16,
+                      "target_name":  "F045_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F045_16.TGA",
+                      "family":  "f04564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04664.TGA",
+                      "lod":  16,
+                      "target_name":  "F046_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F046_16.TGA",
+                      "family":  "f04664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04764.TGA",
+                      "lod":  16,
+                      "target_name":  "F047_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F047_16.TGA",
+                      "family":  "f04764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04864.TGA",
+                      "lod":  16,
+                      "target_name":  "F048_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F048_16.TGA",
+                      "family":  "f04864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F04964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F04964.TGA",
+                      "lod":  16,
+                      "target_name":  "F049_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F049_16.TGA",
+                      "family":  "f04964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F05064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F05064.TGA",
+                      "lod":  16,
+                      "target_name":  "F050_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F050_16.TGA",
+                      "family":  "f05064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F05164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F05164.TGA",
+                      "lod":  16,
+                      "target_name":  "F051_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F051_16.TGA",
+                      "family":  "f05164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F05264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F05264.TGA",
+                      "lod":  16,
+                      "target_name":  "F052_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F052_16.TGA",
+                      "family":  "f05264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F05364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F05364.TGA",
+                      "lod":  16,
+                      "target_name":  "F053_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F053_16.TGA",
+                      "family":  "f05364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren",
+                      "source_name":  "F05464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\16_ren\\F05464.TGA",
+                      "lod":  16,
+                      "target_name":  "F054_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F054_16.TGA",
+                      "family":  "f05464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00164.TGA",
+                      "lod":  32,
+                      "target_name":  "F001_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F001_32.TGA",
+                      "family":  "f00164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00264.TGA",
+                      "lod":  32,
+                      "target_name":  "F002_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F002_32.TGA",
+                      "family":  "f00264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00364.TGA",
+                      "lod":  32,
+                      "target_name":  "F003_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F003_32.TGA",
+                      "family":  "f00364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00464.TGA",
+                      "lod":  32,
+                      "target_name":  "F004_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F004_32.TGA",
+                      "family":  "f00464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00564.TGA",
+                      "lod":  32,
+                      "target_name":  "F005_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F005_32.TGA",
+                      "family":  "f00564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00664.TGA",
+                      "lod":  32,
+                      "target_name":  "F006_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F006_32.TGA",
+                      "family":  "f00664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00764.TGA",
+                      "lod":  32,
+                      "target_name":  "F007_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F007_32.TGA",
+                      "family":  "f00764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00864.TGA",
+                      "lod":  32,
+                      "target_name":  "F008_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F008_32.TGA",
+                      "family":  "f00864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F00964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F00964.TGA",
+                      "lod":  32,
+                      "target_name":  "F009_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F009_32.TGA",
+                      "family":  "f00964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01064.TGA",
+                      "lod":  32,
+                      "target_name":  "F010_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F010_32.TGA",
+                      "family":  "f01064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01164.TGA",
+                      "lod":  32,
+                      "target_name":  "F011_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F011_32.TGA",
+                      "family":  "f01164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01264.TGA",
+                      "lod":  32,
+                      "target_name":  "F012_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F012_32.TGA",
+                      "family":  "f01264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01364.TGA",
+                      "lod":  32,
+                      "target_name":  "F013_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F013_32.TGA",
+                      "family":  "f01364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01464.TGA",
+                      "lod":  32,
+                      "target_name":  "F014_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F014_32.TGA",
+                      "family":  "f01464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01564.TGA",
+                      "lod":  32,
+                      "target_name":  "F015_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F015_32.TGA",
+                      "family":  "f01564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01664.TGA",
+                      "lod":  32,
+                      "target_name":  "F016_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F016_32.TGA",
+                      "family":  "f01664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01764.TGA",
+                      "lod":  32,
+                      "target_name":  "F017_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F017_32.TGA",
+                      "family":  "f01764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01864.TGA",
+                      "lod":  32,
+                      "target_name":  "F018_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F018_32.TGA",
+                      "family":  "f01864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F01964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F01964.TGA",
+                      "lod":  32,
+                      "target_name":  "F019_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F019_32.TGA",
+                      "family":  "f01964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02064.TGA",
+                      "lod":  32,
+                      "target_name":  "F020_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F020_32.TGA",
+                      "family":  "f02064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02164.TGA",
+                      "lod":  32,
+                      "target_name":  "F021_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F021_32.TGA",
+                      "family":  "f02164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02264.TGA",
+                      "lod":  32,
+                      "target_name":  "F022_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F022_32.TGA",
+                      "family":  "f02264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02364.TGA",
+                      "lod":  32,
+                      "target_name":  "F023_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F023_32.TGA",
+                      "family":  "f02364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02464.TGA",
+                      "lod":  32,
+                      "target_name":  "F024_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F024_32.TGA",
+                      "family":  "f02464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02564.TGA",
+                      "lod":  32,
+                      "target_name":  "F025_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F025_32.TGA",
+                      "family":  "f02564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02664.TGA",
+                      "lod":  32,
+                      "target_name":  "F026_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F026_32.TGA",
+                      "family":  "f02664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02764.TGA",
+                      "lod":  32,
+                      "target_name":  "F027_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F027_32.TGA",
+                      "family":  "f02764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02864.TGA",
+                      "lod":  32,
+                      "target_name":  "F028_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F028_32.TGA",
+                      "family":  "f02864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F02964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F02964.TGA",
+                      "lod":  32,
+                      "target_name":  "F029_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F029_32.TGA",
+                      "family":  "f02964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03064.TGA",
+                      "lod":  32,
+                      "target_name":  "F030_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F030_32.TGA",
+                      "family":  "f03064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03164.TGA",
+                      "lod":  32,
+                      "target_name":  "F031_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F031_32.TGA",
+                      "family":  "f03164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03264.TGA",
+                      "lod":  32,
+                      "target_name":  "F032_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F032_32.TGA",
+                      "family":  "f03264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03364.TGA",
+                      "lod":  32,
+                      "target_name":  "F033_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F033_32.TGA",
+                      "family":  "f03364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03464.TGA",
+                      "lod":  32,
+                      "target_name":  "F034_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F034_32.TGA",
+                      "family":  "f03464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03564.TGA",
+                      "lod":  32,
+                      "target_name":  "F035_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F035_32.TGA",
+                      "family":  "f03564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03664.TGA",
+                      "lod":  32,
+                      "target_name":  "F036_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F036_32.TGA",
+                      "family":  "f03664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03764.TGA",
+                      "lod":  32,
+                      "target_name":  "F037_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F037_32.TGA",
+                      "family":  "f03764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03864.TGA",
+                      "lod":  32,
+                      "target_name":  "F038_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F038_32.TGA",
+                      "family":  "f03864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F03964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F03964.TGA",
+                      "lod":  32,
+                      "target_name":  "F039_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F039_32.TGA",
+                      "family":  "f03964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04064.TGA",
+                      "lod":  32,
+                      "target_name":  "F040_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F040_32.TGA",
+                      "family":  "f04064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04164.TGA",
+                      "lod":  32,
+                      "target_name":  "F041_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F041_32.TGA",
+                      "family":  "f04164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04264.TGA",
+                      "lod":  32,
+                      "target_name":  "F042_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F042_32.TGA",
+                      "family":  "f04264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04364.TGA",
+                      "lod":  32,
+                      "target_name":  "F043_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F043_32.TGA",
+                      "family":  "f04364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04464.TGA",
+                      "lod":  32,
+                      "target_name":  "F044_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F044_32.TGA",
+                      "family":  "f04464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04564.TGA",
+                      "lod":  32,
+                      "target_name":  "F045_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F045_32.TGA",
+                      "family":  "f04564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04664.TGA",
+                      "lod":  32,
+                      "target_name":  "F046_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F046_32.TGA",
+                      "family":  "f04664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04764.TGA",
+                      "lod":  32,
+                      "target_name":  "F047_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F047_32.TGA",
+                      "family":  "f04764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04864.TGA",
+                      "lod":  32,
+                      "target_name":  "F048_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F048_32.TGA",
+                      "family":  "f04864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F04964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F04964.TGA",
+                      "lod":  32,
+                      "target_name":  "F049_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F049_32.TGA",
+                      "family":  "f04964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F05064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F05064.TGA",
+                      "lod":  32,
+                      "target_name":  "F050_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F050_32.TGA",
+                      "family":  "f05064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F05164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F05164.TGA",
+                      "lod":  32,
+                      "target_name":  "F051_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F051_32.TGA",
+                      "family":  "f05164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F05264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F05264.TGA",
+                      "lod":  32,
+                      "target_name":  "F052_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F052_32.TGA",
+                      "family":  "f05264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F05364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F05364.TGA",
+                      "lod":  32,
+                      "target_name":  "F053_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F053_32.TGA",
+                      "family":  "f05364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren",
+                      "source_name":  "F05464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\32_ren\\F05464.TGA",
+                      "lod":  32,
+                      "target_name":  "F054_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F054_32.TGA",
+                      "family":  "f05464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00164.TGA",
+                      "lod":  64,
+                      "target_name":  "F001_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F001_64.TGA",
+                      "family":  "f00164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00264.TGA",
+                      "lod":  64,
+                      "target_name":  "F002_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F002_64.TGA",
+                      "family":  "f00264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00364.TGA",
+                      "lod":  64,
+                      "target_name":  "F003_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F003_64.TGA",
+                      "family":  "f00364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00464.TGA",
+                      "lod":  64,
+                      "target_name":  "F004_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F004_64.TGA",
+                      "family":  "f00464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00564.TGA",
+                      "lod":  64,
+                      "target_name":  "F005_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F005_64.TGA",
+                      "family":  "f00564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00664.TGA",
+                      "lod":  64,
+                      "target_name":  "F006_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F006_64.TGA",
+                      "family":  "f00664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00764.TGA",
+                      "lod":  64,
+                      "target_name":  "F007_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F007_64.TGA",
+                      "family":  "f00764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00864.TGA",
+                      "lod":  64,
+                      "target_name":  "F008_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F008_64.TGA",
+                      "family":  "f00864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F00964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F00964.TGA",
+                      "lod":  64,
+                      "target_name":  "F009_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F009_64.TGA",
+                      "family":  "f00964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01064.TGA",
+                      "lod":  64,
+                      "target_name":  "F010_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F010_64.TGA",
+                      "family":  "f01064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01164.TGA",
+                      "lod":  64,
+                      "target_name":  "F011_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F011_64.TGA",
+                      "family":  "f01164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01264.TGA",
+                      "lod":  64,
+                      "target_name":  "F012_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F012_64.TGA",
+                      "family":  "f01264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01364.TGA",
+                      "lod":  64,
+                      "target_name":  "F013_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F013_64.TGA",
+                      "family":  "f01364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01464.TGA",
+                      "lod":  64,
+                      "target_name":  "F014_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F014_64.TGA",
+                      "family":  "f01464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01564.TGA",
+                      "lod":  64,
+                      "target_name":  "F015_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F015_64.TGA",
+                      "family":  "f01564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01664.TGA",
+                      "lod":  64,
+                      "target_name":  "F016_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F016_64.TGA",
+                      "family":  "f01664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01764.TGA",
+                      "lod":  64,
+                      "target_name":  "F017_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F017_64.TGA",
+                      "family":  "f01764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01864.TGA",
+                      "lod":  64,
+                      "target_name":  "F018_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F018_64.TGA",
+                      "family":  "f01864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F01964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F01964.TGA",
+                      "lod":  64,
+                      "target_name":  "F019_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F019_64.TGA",
+                      "family":  "f01964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02064.TGA",
+                      "lod":  64,
+                      "target_name":  "F020_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F020_64.TGA",
+                      "family":  "f02064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02164.TGA",
+                      "lod":  64,
+                      "target_name":  "F021_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F021_64.TGA",
+                      "family":  "f02164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02264.TGA",
+                      "lod":  64,
+                      "target_name":  "F022_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F022_64.TGA",
+                      "family":  "f02264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02364.TGA",
+                      "lod":  64,
+                      "target_name":  "F023_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F023_64.TGA",
+                      "family":  "f02364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02464.TGA",
+                      "lod":  64,
+                      "target_name":  "F024_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F024_64.TGA",
+                      "family":  "f02464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02564.TGA",
+                      "lod":  64,
+                      "target_name":  "F025_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F025_64.TGA",
+                      "family":  "f02564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02664.TGA",
+                      "lod":  64,
+                      "target_name":  "F026_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F026_64.TGA",
+                      "family":  "f02664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02764.TGA",
+                      "lod":  64,
+                      "target_name":  "F027_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F027_64.TGA",
+                      "family":  "f02764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02864.TGA",
+                      "lod":  64,
+                      "target_name":  "F028_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F028_64.TGA",
+                      "family":  "f02864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F02964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F02964.TGA",
+                      "lod":  64,
+                      "target_name":  "F029_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F029_64.TGA",
+                      "family":  "f02964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03064.TGA",
+                      "lod":  64,
+                      "target_name":  "F030_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F030_64.TGA",
+                      "family":  "f03064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03164.TGA",
+                      "lod":  64,
+                      "target_name":  "F031_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F031_64.TGA",
+                      "family":  "f03164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03264.TGA",
+                      "lod":  64,
+                      "target_name":  "F032_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F032_64.TGA",
+                      "family":  "f03264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03364.TGA",
+                      "lod":  64,
+                      "target_name":  "F033_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F033_64.TGA",
+                      "family":  "f03364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03464.TGA",
+                      "lod":  64,
+                      "target_name":  "F034_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F034_64.TGA",
+                      "family":  "f03464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03564.TGA",
+                      "lod":  64,
+                      "target_name":  "F035_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F035_64.TGA",
+                      "family":  "f03564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03664.TGA",
+                      "lod":  64,
+                      "target_name":  "F036_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F036_64.TGA",
+                      "family":  "f03664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03764.TGA",
+                      "lod":  64,
+                      "target_name":  "F037_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F037_64.TGA",
+                      "family":  "f03764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03864.TGA",
+                      "lod":  64,
+                      "target_name":  "F038_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F038_64.TGA",
+                      "family":  "f03864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F03964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F03964.TGA",
+                      "lod":  64,
+                      "target_name":  "F039_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F039_64.TGA",
+                      "family":  "f03964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04064.TGA",
+                      "lod":  64,
+                      "target_name":  "F040_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F040_64.TGA",
+                      "family":  "f04064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04164.TGA",
+                      "lod":  64,
+                      "target_name":  "F041_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F041_64.TGA",
+                      "family":  "f04164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04264.TGA",
+                      "lod":  64,
+                      "target_name":  "F042_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F042_64.TGA",
+                      "family":  "f04264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04364.TGA",
+                      "lod":  64,
+                      "target_name":  "F043_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F043_64.TGA",
+                      "family":  "f04364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04464.TGA",
+                      "lod":  64,
+                      "target_name":  "F044_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F044_64.TGA",
+                      "family":  "f04464"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04564.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04564.TGA",
+                      "lod":  64,
+                      "target_name":  "F045_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F045_64.TGA",
+                      "family":  "f04564"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04664.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04664.TGA",
+                      "lod":  64,
+                      "target_name":  "F046_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F046_64.TGA",
+                      "family":  "f04664"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04764.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04764.TGA",
+                      "lod":  64,
+                      "target_name":  "F047_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F047_64.TGA",
+                      "family":  "f04764"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04864.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04864.TGA",
+                      "lod":  64,
+                      "target_name":  "F048_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F048_64.TGA",
+                      "family":  "f04864"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F04964.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F04964.TGA",
+                      "lod":  64,
+                      "target_name":  "F049_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F049_64.TGA",
+                      "family":  "f04964"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F05064.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F05064.TGA",
+                      "lod":  64,
+                      "target_name":  "F050_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F050_64.TGA",
+                      "family":  "f05064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F05164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F05164.TGA",
+                      "lod":  64,
+                      "target_name":  "F051_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F051_64.TGA",
+                      "family":  "f05164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F05264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F05264.TGA",
+                      "lod":  64,
+                      "target_name":  "F052_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F052_64.TGA",
+                      "family":  "f05264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F05364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F05364.TGA",
+                      "lod":  64,
+                      "target_name":  "F053_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F053_64.TGA",
+                      "family":  "f05364"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren",
+                      "source_name":  "F05464.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\64_ren\\F05464.TGA",
+                      "lod":  64,
+                      "target_name":  "F054_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\F054_64.TGA",
+                      "family":  "f05464"
+                  }
+              ]
+}

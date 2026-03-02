@@ -1,36 +1,37 @@
 ﻿{
     "version":  1,
-    "generatedAtUtc":  "2026-02-25T00:19:26Z",
+    "generatedAtUtc":  "2026-03-02T19:45:48Z",
     "sourceJson":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\segments_map.json",
     "textureRoot":  "C:\\Users\\clebe\\OneDrive\\Área de Trabalho\\Objetos corrida\\Interlagos_2\\ARQ_TGA",
     "banks":  [
                   {
                       "lod":  8,
-                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_8.BIN",
-                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_8.json",
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK8.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK8.json",
                       "count":  54,
-                      "bytes":  9356
+                      "bytes":  8405
                   },
                   {
                       "lod":  16,
-                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_16.BIN",
-                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_16.json",
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK16.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK16.json",
                       "count":  54,
-                      "bytes":  20016
+                      "bytes":  18732
                   },
                   {
                       "lod":  32,
-                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_32.BIN",
-                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_32.json",
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK32.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK32.json",
                       "count":  54,
-                      "bytes":  57152
+                      "bytes":  55987
                   },
                   {
                       "lod":  64,
-                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_64.BIN",
-                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TEXBANK_64.json",
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK64.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK64.json",
                       "count":  54,
-                      "bytes":  197320
+                      "bytes":  208035
                   }
-              ]
+              ],
+    "tgaCompatReport":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\tga_compat_report.json"
 }

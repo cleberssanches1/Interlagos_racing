@@ -168,10 +168,83 @@ public:
         return true;
     }
 
+    bool InitializeFromComponentData(const std::vector<SRL::Math::Types::Vector3D>& verts,
+                                     const std::vector<SRL::Types::Polygon>& faces,
+                                     const std::vector<SRL::Types::Attribute>& attrs)
+    {
+        Reset();
+        if (verts.empty() || faces.empty() || attrs.size() != faces.size()) return false;
+
+        componentMode_ = true;
+        componentVerts_ = verts;
+        componentFaces_ = faces;
+        componentAttrs_ = attrs;
+        hasTrack_ = true;
+        isSmooth_ = false;
+        meshCount_ = 1;
+        faceCount_ = static_cast<uint32_t>(componentFaces_.size());
+        vertexCount_ = static_cast<uint32_t>(componentVerts_.size());
+        memStats_.verts = vertexCount_;
+        memStats_.faces = faceCount_;
+        memStats_.bytes = static_cast<uint32_t>(componentVerts_.size() * sizeof(SRL::Math::Types::Vector3D) +
+                                                componentFaces_.size() * sizeof(SRL::Types::Polygon) +
+                                                componentAttrs_.size() * sizeof(SRL::Types::Attribute));
+
+        SRL::Math::Types::Vector3D minv(32767, 32767, 32767);
+        SRL::Math::Types::Vector3D maxv(-32768, -32768, -32768);
+        for (const auto& v : componentVerts_)
+        {
+            minv.X = SRL::Math::Min(minv.X, v.X);
+            minv.Y = SRL::Math::Min(minv.Y, v.Y);
+            minv.Z = SRL::Math::Min(minv.Z, v.Z);
+            maxv.X = SRL::Math::Max(maxv.X, v.X);
+            maxv.Y = SRL::Math::Max(maxv.Y, v.Y);
+            maxv.Z = SRL::Math::Max(maxv.Z, v.Z);
+        }
+        bounds_.min = minv;
+        bounds_.max = maxv;
+        meshCenters_.assign(1, (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+        meshBytes_.assign(1, memStats_.bytes);
+        meshMap_.assign(1, 0);
+        trackOffset_ = {};
+        return true;
+    }
+
     // Draw a limited set of meshes using one of the rendering backends (original, SGL direct or 2D debug).
     void Render(SRL::Math::Types::Vector3D light, const SRL::Math::Types::Vector3D& /*cameraPos*/)
     {
-        if (!hasTrack_ || !trackObj_ || meshCount_ == 0) return;
+        if (!hasTrack_ || meshCount_ == 0) return;
+        if (componentMode_)
+        {
+            if (componentVerts_.empty() || componentFaces_.empty() || componentAttrs_.size() != componentFaces_.size()) return;
+            SRL::Scene3D::PushMatrix();
+            SRL::Scene3D::Translate(trackOffset_);
+            SRL::Scene3D::Scale(trackScale_);
+
+            SRL::Types::Mesh tmp;
+            tmp.Vertices = componentVerts_.data();
+            tmp.VertexCount = componentVerts_.size();
+            tmp.Faces = const_cast<SRL::Types::Polygon*>(componentFaces_.data());
+            tmp.FaceCount = componentFaces_.size();
+            tmp.Attributes = const_cast<SRL::Types::Attribute*>(componentAttrs_.data());
+            if (forceDoubleSided_)
+            {
+                std::vector<SRL::Types::Attribute> attrs = componentAttrs_;
+                for (auto& a : attrs) a.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
+                tmp.Attributes = attrs.data();
+                SRL::Scene3D::DrawMesh(tmp);
+            }
+            else
+            {
+                SRL::Scene3D::DrawMesh(tmp);
+            }
+
+            SRL::Scene3D::PopMatrix();
+            lastDrawnMeshes_ = 1;
+            lastDrawnFaces_ = static_cast<uint32_t>(componentFaces_.size());
+            return;
+        }
+        if (!trackObj_) return;
         if (startMeshIdx_ >= meshCount_) startMeshIdx_ = 0;
 
         // Debug log disabled to keep overlay clean during texture LOD validation.
@@ -634,6 +707,16 @@ public:
     void CollectFaceTextureSlotsGlobal(std::vector<int32_t>& out) const
     {
         out.clear();
+        if (componentMode_)
+        {
+            out.reserve(componentAttrs_.size());
+            for (const auto& a : componentAttrs_)
+            {
+                const uint16_t tex = a.Texture;
+                out.push_back((tex == No_Texture) ? -1 : static_cast<int32_t>(tex));
+            }
+            return;
+        }
         if (!trackObj_) return;
         out.reserve(faceCount_);
 
@@ -666,6 +749,60 @@ public:
     // faceTextureSlots[globalFaceIndex] = VDP1 texture slot to assign.
     size_t ApplyFaceTextureSlotsGlobal(const std::vector<int32_t>& faceTextureSlots)
     {
+        auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t slot)
+        {
+            attr.Texture = slot;
+            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+
+            const auto& meta = SRL::VDP1::Metadata[slot];
+            uint16_t colorMode = CL32KRGB;
+            uint16_t palette = No_Palet;
+            switch (meta.ColorMode)
+            {
+            case SRL::CRAM::TextureColorMode::Paletted256:
+                colorMode = CL256Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 8);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted128:
+                colorMode = CL128Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 7);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted64:
+                colorMode = CL64Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 6);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted16:
+                colorMode = CL16Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 4);
+                break;
+            default:
+                colorMode = CL32KRGB;
+                palette = No_Palet;
+                break;
+            }
+
+            attr.Sort = static_cast<uint8_t>((attr.Sort & ~0x1Cu) | ((texturedDir >> 16) & 0x1Cu));
+            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk)) | colorMode;
+            attr.Display = static_cast<uint16_t>((attr.Display & ~0x00C0u) | ((texturedDir >> 24) & 0x00C0u));
+            attr.ColorMode = palette;
+            attr.Direction = static_cast<uint16_t>(texturedDir & 0x003Fu);
+        };
+
+        if (componentMode_)
+        {
+            size_t applied = 0;
+            const size_t n = std::min(componentAttrs_.size(), faceTextureSlots.size());
+            constexpr int32_t kMaxSafeTextureSlot = 4095;
+            for (size_t i = 0; i < n; ++i)
+            {
+                const int32_t slot = faceTextureSlots[i];
+                if (slot < 0) continue;
+                if (slot > kMaxSafeTextureSlot) continue;
+                applyAttrTexture(componentAttrs_[i], static_cast<uint16_t>(slot));
+                ++applied;
+            }
+            return applied;
+        }
         if (!trackObj_) return 0;
         size_t applied = 0;
         size_t globalFace = 0;
@@ -681,7 +818,7 @@ public:
                 const int32_t slot = faceTextureSlots[globalFace];
                 if (slot < 0) continue;
                 if (slot > kMaxSafeTextureSlot) continue;
-                mesh->Attributes[fi].Texture = static_cast<uint16_t>(slot);
+                applyAttrTexture(mesh->Attributes[fi], static_cast<uint16_t>(slot));
                 ++applied;
             }
         };
@@ -709,6 +846,88 @@ public:
 
         return applied;
     }
+
+    size_t ForceTextureAll(uint16_t slot)
+    {
+        size_t applied = 0;
+        if (slot == No_Texture) return 0;
+
+        auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t actualSlot)
+        {
+            attr.Texture = actualSlot;
+            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+
+            const auto& meta = SRL::VDP1::Metadata[actualSlot];
+            uint16_t colorMode = CL32KRGB;
+            uint16_t palette = No_Palet;
+            switch (meta.ColorMode)
+            {
+            case SRL::CRAM::TextureColorMode::Paletted256:
+                colorMode = CL256Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 8);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted128:
+                colorMode = CL128Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 7);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted64:
+                colorMode = CL64Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 6);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted16:
+                colorMode = CL16Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 4);
+                break;
+            default:
+                colorMode = CL32KRGB;
+                palette = No_Palet;
+                break;
+            }
+
+            attr.Sort = static_cast<uint8_t>((attr.Sort & ~0x1Cu) | ((texturedDir >> 16) & 0x1Cu));
+            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk)) | colorMode;
+            attr.Display = static_cast<uint16_t>((attr.Display & ~0x00C0u) | ((texturedDir >> 24) & 0x00C0u));
+            attr.ColorMode = palette;
+            attr.Direction = static_cast<uint16_t>(texturedDir & 0x003Fu);
+        };
+
+        if (componentMode_)
+        {
+            for (auto& a : componentAttrs_)
+            {
+                applyAttrTexture(a, slot);
+                ++applied;
+            }
+            return applied;
+        }
+
+        if (!trackObj_) return 0;
+        auto applyMesh = [&](auto* mesh)
+        {
+            if (!mesh || !mesh->Attributes) return;
+            for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
+            {
+                applyAttrTexture(mesh->Attributes[fi], slot);
+                ++applied;
+            }
+        };
+
+        if (isSmooth_)
+        {
+            for (size_t i = 0; i < meshCount_; ++i) applyMesh(trackObj_->GetMesh<SRL::Types::SmoothMesh>(i));
+        }
+        else
+        {
+            for (size_t i = 0; i < meshCount_; ++i) applyMesh(trackObj_->GetMesh<SRL::Types::Mesh>(i));
+        }
+
+        smoothCache_.clear();
+        flatCache_.clear();
+        if (isSmooth_) smoothCache_.assign(meshCount_, {});
+        else flatCache_.assign(meshCount_, {});
+
+        return applied;
+    }
     SRL::Math::Types::Vector3D StartMeshCenter() const
     {
         if (meshCenters_.empty()) return SRL::Math::Types::Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
@@ -728,6 +947,13 @@ public:
     const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
     bool GetMeshStats(size_t idx, uint32_t& faces, uint32_t& verts) const
     {
+        if (componentMode_)
+        {
+            if (idx != 0) return false;
+            faces = static_cast<uint32_t>(componentFaces_.size());
+            verts = static_cast<uint32_t>(componentVerts_.size());
+            return true;
+        }
         if (!trackObj_ || idx >= meshCount_) return false;
         if (isSmooth_)
         {
@@ -789,6 +1015,10 @@ private:
     void Reset()
     {
         if (trackObj_) { delete trackObj_; trackObj_ = nullptr; }
+        componentMode_ = false;
+        componentVerts_.clear();
+        componentFaces_.clear();
+        componentAttrs_.clear();
         meshCenters_.clear();
         meshBytes_.clear();
         meshMap_.clear();
@@ -897,6 +1127,10 @@ private:
     bool useSglDirect_ = false;
     bool useOriginal_ = true;
     bool forceDoubleSided_ = false;
+    bool componentMode_ = false;
+    std::vector<SRL::Math::Types::Vector3D> componentVerts_{};
+    std::vector<SRL::Types::Polygon> componentFaces_{};
+    std::vector<SRL::Types::Attribute> componentAttrs_{};
 
     struct SmoothCache {
         bool valid = false;

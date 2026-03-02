@@ -2,7 +2,8 @@ param(
     [int]$SegmentId = 1,
     [string]$ObjDir = "C:\Models\png\sectors\source",
     [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\segments_map.json",
-    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data"
+    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [int]$Lod = 8
 )
 
 Set-StrictMode -Version Latest
@@ -12,6 +13,65 @@ function Write-U16([System.IO.BinaryWriter]$bw, [uint16]$v) { $bw.Write($v) }
 function Write-I16([System.IO.BinaryWriter]$bw, [int16]$v) { $bw.Write($v) }
 function Write-U32([System.IO.BinaryWriter]$bw, [uint32]$v) { $bw.Write($v) }
 function Write-I32([System.IO.BinaryWriter]$bw, [int32]$v) { $bw.Write($v) }
+
+function Normalize-MaterialFamilyName([string]$Name) {
+    if ([string]::IsNullOrWhiteSpace($Name)) { return "" }
+    $n = $Name.Trim()
+    $n = [regex]::Replace($n, '_(8|16|32|64)(\.[^\\\/]+)?$', '', 'IgnoreCase')
+    return $n
+}
+
+function Get-TextureStem([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
+    return [System.IO.Path]::GetFileNameWithoutExtension($Path).ToLowerInvariant()
+}
+
+function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName) {
+    $directTexToFamilyId = @{}
+    $materialToFamilyId = @{}
+    $entries = New-Object System.Collections.Generic.List[object]
+
+    if (-not (Test-Path -LiteralPath $MtlDir)) {
+        return $materialToFamilyId
+    }
+
+    $mtlFiles = @(Get-ChildItem -LiteralPath $MtlDir -File -Filter *.mtl -ErrorAction SilentlyContinue)
+    foreach ($mtl in $mtlFiles) {
+        $currentName = ""
+        foreach ($line in Get-Content -LiteralPath $mtl.FullName) {
+            $t = $line.Trim()
+            if ($t.StartsWith("newmtl ")) {
+                $currentName = (Normalize-MaterialFamilyName ($t.Substring(7).Trim())).ToLowerInvariant()
+                continue
+            }
+            if ([string]::IsNullOrWhiteSpace($currentName)) { continue }
+            if ($t -notmatch '^(?i)map_Kd\s+(.+)$') { continue }
+
+            $texStem = Get-TextureStem $Matches[1].Trim()
+            if ([string]::IsNullOrWhiteSpace($texStem)) { continue }
+            $entries.Add([pscustomobject]@{
+                material = $currentName
+                texStem = $texStem
+            }) | Out-Null
+        }
+    }
+
+    foreach ($e in $entries) {
+        if ($FamilyIdByName.ContainsKey($e.material)) {
+            $familyId = [uint32]$FamilyIdByName[$e.material]
+            $directTexToFamilyId[$e.texStem] = $familyId
+            $materialToFamilyId[$e.material] = $familyId
+        }
+    }
+
+    foreach ($e in $entries) {
+        if ($materialToFamilyId.ContainsKey($e.material)) { continue }
+        if (-not $directTexToFamilyId.ContainsKey($e.texStem)) { continue }
+        $materialToFamilyId[$e.material] = [uint32]$directTexToFamilyId[$e.texStem]
+    }
+
+    return $materialToFamilyId
+}
 
 function To-Fxp32([double]$v) {
     return [int32][Math]::Round($v * 65536.0)
@@ -34,19 +94,39 @@ if (-not (Test-Path $objPath)) { throw "OBJ nao encontrado: $objPath" }
 
 $json = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json
 $segNode = $json.segments | Where-Object { [int]$_.id -eq $SegmentId } | Select-Object -First 1
+$familyIdByName = @{}
+foreach ($family in @($json.textureFamilies)) {
+    if ($null -eq $family) { continue }
+    if (-not ($family.PSObject.Properties.Name -contains "name")) { continue }
+    $familyName = [string]$family.name
+    if ([string]::IsNullOrWhiteSpace($familyName)) { continue }
+    $familyIdByName[$familyName.ToLowerInvariant()] = [uint32]$family.id
+}
+$materialAliasToFamilyId = Build-MaterialAliasMap -MtlDir $ObjDir -FamilyIdByName $familyIdByName
 $hasSegmentMap = $true
 if (-not $segNode) {
     $hasSegmentMap = $false
     Write-Host ("AVISO: Segmento {0} nao encontrado em segments_map.json. MAT sera gerado com materialId=0 para todas as faces." -f $SegmentId)
 }
 $faceFamilies = @()
-if ($hasSegmentMap -and $segNode.faceTextureFamily) {
+if ($hasSegmentMap -and $segNode.PSObject.Properties.Name -contains "faces" -and $segNode.faces) {
+    $faceFamilies = @(
+        $segNode.faces |
+            Sort-Object { [int]$_.index } |
+            ForEach-Object {
+                if ($null -eq $_.familyId) { [uint32]0 } else { [uint32][Math]::Max(0, [int]$_.familyId) }
+            }
+    )
+}
+if (($faceFamilies.Count -eq 0) -and $hasSegmentMap -and $segNode.PSObject.Properties.Name -contains "faceTextureFamily" -and $segNode.faceTextureFamily) {
     $faceFamilies = @($segNode.faceTextureFamily | ForEach-Object { [uint32]$_ })
 }
 
 $verts = New-Object System.Collections.Generic.List[object]
 $uvs = New-Object System.Collections.Generic.List[object]
 $faces = New-Object System.Collections.Generic.List[object]
+$objFaceFamilies = New-Object System.Collections.Generic.List[uint32]
+$currentMaterialFamilyId = [uint32]0
 
 $lines = Get-Content -LiteralPath $objPath
 foreach ($line in $lines) {
@@ -76,6 +156,22 @@ foreach ($line in $lines) {
         continue
     }
 
+    if ($t.StartsWith("usemtl ")) {
+        $matName = $t.Substring(7).Trim()
+        $familyName = Normalize-MaterialFamilyName $matName
+        $key = $familyName.ToLowerInvariant()
+        if ($materialAliasToFamilyId.ContainsKey($key)) {
+            $currentMaterialFamilyId = [uint32]$materialAliasToFamilyId[$key]
+        }
+        elseif ($familyIdByName.ContainsKey($key)) {
+            $currentMaterialFamilyId = [uint32]$familyIdByName[$key]
+        }
+        else {
+            $currentMaterialFamilyId = [uint32]0
+        }
+        continue
+    }
+
     if ($t.StartsWith("f ")) {
         $p = $t.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
         if ($p.Count -lt 4) { continue }
@@ -92,9 +188,11 @@ foreach ($line in $lines) {
             # Fan triangulation for n-gons: (0, i, i+1)
             for ($i = 1; $i -lt ($corners.Count - 1); $i++) {
                 $faces.Add(@($corners[0], $corners[$i], $corners[$i + 1])) | Out-Null
+                $objFaceFamilies.Add([uint32]$currentMaterialFamilyId) | Out-Null
             }
         } else {
             $faces.Add($corners) | Out-Null
+            $objFaceFamilies.Add([uint32]$currentMaterialFamilyId) | Out-Null
         }
     }
 }
@@ -102,12 +200,15 @@ foreach ($line in $lines) {
 if ($verts.Count -eq 0 -or $faces.Count -eq 0) {
     throw "OBJ sem vertices/faces suficientes: $objPath"
 }
+if ($objFaceFamilies.Count -eq $faces.Count -and $objFaceFamilies.Count -gt 0) {
+    $faceFamilies = @($objFaceFamilies.ToArray())
+}
 
-$geoPath = Join-Path $OutDir ("SEG_{0:D3}.GEO" -f $SegmentId)
-$matPath = Join-Path $OutDir ("SEG_{0:D3}.MAT" -f $SegmentId)
+$geoShortPath = Join-Path $OutDir ("S{0:D3}.GEO" -f $SegmentId)
+$matShortPath = Join-Path $OutDir ("S{0:D3}M{1}.MAT" -f $SegmentId, $Lod)
 
 # GEO
-$geoFs = [System.IO.File]::Open($geoPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+$geoFs = [System.IO.File]::Open($geoShortPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
 try {
     $bw = New-Object System.IO.BinaryWriter($geoFs)
     # FileHeader
@@ -158,7 +259,7 @@ try {
 }
 
 # MAT
-$matFs = [System.IO.File]::Open($matPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+$matFs = [System.IO.File]::Open($matShortPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
 try {
     $bw = New-Object System.IO.BinaryWriter($matFs)
     $matPayloadBytes = [uint32](4 + ($faces.Count * 4))
@@ -180,6 +281,6 @@ try {
     $matFs.Close()
 }
 
-Write-Host ("OK GEO: {0}" -f $geoPath)
-Write-Host ("OK MAT: {0}" -f $matPath)
+Write-Host ("OK GEO: {0}" -f $geoShortPath)
+Write-Host ("OK MAT: {0}" -f $matShortPath)
 Write-Host ("Verts:{0} Faces:{1} Families:{2}" -f $verts.Count, $faces.Count, $faceFamilies.Count)

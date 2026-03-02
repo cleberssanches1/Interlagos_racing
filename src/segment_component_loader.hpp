@@ -23,6 +23,90 @@ struct Blob
 class Loader
 {
 public:
+    static uint16_t ReadLe16(const uint8_t* p)
+    {
+        return static_cast<uint16_t>(static_cast<uint16_t>(p[0]) |
+                                     (static_cast<uint16_t>(p[1]) << 8));
+    }
+
+    static uint32_t ReadLe32(const uint8_t* p)
+    {
+        return static_cast<uint32_t>(static_cast<uint32_t>(p[0]) |
+                                     (static_cast<uint32_t>(p[1]) << 8) |
+                                     (static_cast<uint32_t>(p[2]) << 16) |
+                                     (static_cast<uint32_t>(p[3]) << 24));
+    }
+
+    static int16_t ReadLeI16(const uint8_t* p)
+    {
+        return static_cast<int16_t>(ReadLe16(p));
+    }
+
+    static int32_t ReadLeI32(const uint8_t* p)
+    {
+        return static_cast<int32_t>(ReadLe32(p));
+    }
+
+    static bool ReadFileHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, FileHeader& out)
+    {
+        if (offset + 16 > bytes.size()) return false;
+        const uint8_t* p = bytes.data() + offset;
+        out.magic = ReadLe32(p + 0);
+        out.version = ReadLe16(p + 4);
+        out.reserved = ReadLe16(p + 6);
+        out.segmentId = ReadLe32(p + 8);
+        out.payloadBytes = ReadLe32(p + 12);
+        return true;
+    }
+
+    static bool ReadGeoHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, GeoHeader& out)
+    {
+        if (offset + 8 > bytes.size()) return false;
+        const uint8_t* p = bytes.data() + offset;
+        out.vertexCount = ReadLe32(p + 0);
+        out.faceCount = ReadLe32(p + 4);
+        return true;
+    }
+
+    static bool ReadMatHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, MatHeader& out)
+    {
+        if (offset + 4 > bytes.size()) return false;
+        const uint8_t* p = bytes.data() + offset;
+        out.faceCount = ReadLe32(p + 0);
+        return true;
+    }
+
+    static bool ReadGeoVertexLeAt(const std::vector<uint8_t>& bytes, size_t offset, GeoVertex& out)
+    {
+        if (offset + 12 > bytes.size()) return false;
+        const uint8_t* p = bytes.data() + offset;
+        out.x = ReadLeI32(p + 0);
+        out.y = ReadLeI32(p + 4);
+        out.z = ReadLeI32(p + 8);
+        return true;
+    }
+
+    static bool ReadGeoFaceLeAt(const std::vector<uint8_t>& bytes, size_t offset, GeoFace& out)
+    {
+        if (offset + sizeof(GeoFace) > bytes.size()) return false;
+        const uint8_t* p = bytes.data() + offset;
+        for (size_t i = 0; i < 4; ++i) out.vertex[i] = ReadLe16(p + (i * 2));
+        for (size_t i = 0; i < 4; ++i) out.u[i] = ReadLeI16(p + 8 + (i * 2));
+        for (size_t i = 0; i < 4; ++i) out.v[i] = ReadLeI16(p + 16 + (i * 2));
+        out.kind = p[24];
+        out.reservedA = p[25];
+        out.reservedB = ReadLe16(p + 26);
+        return true;
+    }
+
+    static bool ReadMatFaceBindingLeAt(const std::vector<uint8_t>& bytes, size_t offset, MatFaceBinding& out)
+    {
+        if (offset + 4 > bytes.size()) return false;
+        const uint8_t* p = bytes.data() + offset;
+        out.materialId = ReadLe32(p + 0);
+        return true;
+    }
+
     static bool LoadFirstExistingFromCd(const char* const* candidates, size_t count, Blob& out)
     {
         out = {};
@@ -80,14 +164,14 @@ public:
         if (!blob.loaded || blob.bytes.empty()) return false;
 
         size_t off = 0;
-        if (!ReadPodAt(blob.bytes, off, out.file)) return false;
+        if (!ReadFileHeaderLeAt(blob.bytes, off, out.file)) return false;
         off += sizeof(FileHeader);
 
         if (out.file.magic != kGeoMagic) return false;
         if (out.file.version != 1) return false;
         if (out.file.payloadBytes + sizeof(FileHeader) > blob.bytes.size()) return false;
 
-        if (!ReadPodAt(blob.bytes, off, out.header)) return false;
+        if (!ReadGeoHeaderLeAt(blob.bytes, off, out.header)) return false;
         off += sizeof(GeoHeader);
 
         const size_t vertexBytes = static_cast<size_t>(out.header.vertexCount) * sizeof(GeoVertex);
@@ -106,14 +190,14 @@ public:
         if (!blob.loaded || blob.bytes.empty()) return false;
 
         size_t off = 0;
-        if (!ReadPodAt(blob.bytes, off, out.file)) return false;
+        if (!ReadFileHeaderLeAt(blob.bytes, off, out.file)) return false;
         off += sizeof(FileHeader);
 
         if (out.file.magic != kMatMagic) return false;
         if (out.file.version != 1) return false;
         if (out.file.payloadBytes + sizeof(FileHeader) > blob.bytes.size()) return false;
 
-        if (!ReadPodAt(blob.bytes, off, out.header)) return false;
+        if (!ReadMatHeaderLeAt(blob.bytes, off, out.header)) return false;
         off += sizeof(MatHeader);
 
         const size_t bindBytes = static_cast<size_t>(out.header.faceCount) * sizeof(MatFaceBinding);

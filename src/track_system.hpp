@@ -101,6 +101,12 @@ private:
         uint32_t size = 0;
         std::vector<Seg1TexbankEntry> entries{};
     };
+    struct Seg1TgaCartEntry
+    {
+        char name[64]{};
+        void* cartPtr = nullptr;
+        uint32_t size = 0;
+    };
 
     using SegmentPool = TrackSegmentPool<kTrackSegmentLimit, SegmentRenderEntry>;
     using SegmentHandle = SegmentPool::Handle;
@@ -108,6 +114,8 @@ private:
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
     void ReleaseRawSegmentCatalog();
     void ReleaseSeg1Texbanks();
+    void ReleaseSeg1TgaCatalog();
+    bool PreloadTgaCatalogFromSegmentsMap();
     bool LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue);
     const TrackSegmentCopy* FindRawSegmentCopyById(int id) const;
     const char* FindExistingPath(const char* const* paths, size_t count);
@@ -163,7 +171,12 @@ private:
     std::vector<uint16_t> seg1FaceFamilyIds_{};
     std::vector<Seg1FamilySlotEntry> seg1FamilySlots_{};
     std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
+    std::vector<Seg1TgaCartEntry> seg1TgaCatalog_{};
     std::array<std::vector<int32_t>, 4> seg1RendererFaceSlotsByLod_{};
+    uint16_t seg1TgaPreloadCount_ = 0;
+    uint16_t seg1TgaAttemptCount_ = 0;
+    uint16_t seg1TgaFailCount_ = 0;
+    uint8_t seg1TgaJsonOk_ = 0;
     bool seg1RendererLodReady_ = false;
     bool seg1SingleFaceSwapReady_ = false;
     bool seg1SingleFaceSwapUseAlt_ = false;

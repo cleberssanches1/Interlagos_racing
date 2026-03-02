@@ -20,11 +20,23 @@ $seg = $root.segments | Where-Object { $_.id -eq 1 } | Select-Object -First 1
 if (-not $seg) {
     throw "Segmento id=1 nao encontrado em $JsonPath"
 }
-if (-not $seg.faceTextureFamily) {
-    throw "Campo 'faceTextureFamily' nao encontrado no segmento 1."
+$families = @()
+if ($seg.PSObject.Properties.Name -contains "faces" -and $seg.faces) {
+    $families = @(
+        $seg.faces |
+            Sort-Object { [int]$_.index } |
+            ForEach-Object {
+                if ($null -eq $_.familyId) { 0 } else { [Math]::Max(0, [int]$_.familyId) }
+            }
+    )
+}
+if ($families.Count -eq 0 -and $seg.PSObject.Properties.Name -contains "faceTextureFamily" -and $seg.faceTextureFamily) {
+    $families = @($seg.faceTextureFamily)
+}
+if ($families.Count -eq 0) {
+    throw "Nem 'faces[].familyId' nem 'faceTextureFamily' encontrados no segmento 1."
 }
 
-$families = @($seg.faceTextureFamily)
 $faceCount = $families.Count
 if ($faceCount -le 0) {
     throw "faceTextureFamily vazio para segmento 1."
