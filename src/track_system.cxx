@@ -45,6 +45,20 @@ struct RenTextureMap
     std::vector<RenTextureMapEntry> entries{};
 };
 
+struct PackedAssetEntryMeta
+{
+    char name[65]{};
+    uint32_t offset = 0;
+    uint32_t size = 0;
+};
+
+struct PackedAssetCache
+{
+    void* cartPtr = nullptr;
+    uint32_t size = 0;
+    std::vector<PackedAssetEntryMeta> entries{};
+};
+
 // Sticky diagnostics for TGA preload path resolution.
 static char g_tgaLastTry[96] = "none";
 static char g_tgaLastResult[96] = "none";
@@ -56,6 +70,8 @@ static Segment1TextureJson g_seg1MapCache{};
 static bool g_seg1MapCacheValid = false;
 
 static void NormalizeTextureFileName(const char* in, char* out, size_t outSize);
+static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache);
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out);
 
 static void NormalizeLoadedTextEncoding(std::vector<char>& text)
 {
@@ -1235,23 +1251,26 @@ static int32_t UploadDecodedTextureToVdp1(const DecodedTgaTexture& tex)
 
 static bool LoadMat8ForSegment(int segmentId, SegmentComponent::Blob& outBlob, SegmentComponent::Loader::MatView& outView)
 {
-    char a0[40]{}, a1[40]{}, a2[32]{}, a3[32]{}, a4[20]{}, a5[20]{}, a6[32]{}, a7[32]{}, a8[24]{}, a9[24]{}, a10[24]{}, a11[24]{};
-    std::snprintf(a4, sizeof(a4), "S%03dM8.MAT", segmentId);
-    std::snprintf(a5, sizeof(a5), "S%03dM8.MAT;1", segmentId);
-    std::snprintf(a6, sizeof(a6), "DATA/S%03dM8.MAT", segmentId);
-    std::snprintf(a7, sizeof(a7), "DATA/S%03dM8.MAT;1", segmentId);
-    std::snprintf(a0, sizeof(a0), "CD/DATA/SEG_%03d_M8.MAT", segmentId);
-    std::snprintf(a1, sizeof(a1), "CD/DATA/SEG_%03d_M8.MAT;1", segmentId);
-    std::snprintf(a2, sizeof(a2), "DATA/SEG_%03d_M8.MAT", segmentId);
-    std::snprintf(a3, sizeof(a3), "DATA/SEG_%03d_M8.MAT;1", segmentId);
-    std::snprintf(a8, sizeof(a8), "SEG_%03d_M8.MAT", segmentId);
-    std::snprintf(a9, sizeof(a9), "SEG_%03d_M8.MAT;1", segmentId);
-    std::snprintf(a10, sizeof(a10), "SEG_%03d_.MAT", segmentId);     // ISO9660 8.3 truncation fallback
-    std::snprintf(a11, sizeof(a11), "SEG_%03d_.MAT;1", segmentId);   // ISO9660 8.3 truncation fallback
-
-    const char* cands[] = { a4, a5, a6, a7, a0, a1, a2, a3, a8, a9, a10, a11 };
-    if (!SegmentComponent::Loader::LoadFirstExistingFromCd(cands, sizeof(cands) / sizeof(cands[0]), outBlob)) return false;
-    return SegmentComponent::Loader::ParseMat(outBlob, outView);
+    static PackedAssetCache sMat8PackCache{};
+    char packedName[20]{};
+    std::snprintf(packedName, sizeof(packedName), "S%03dM8.MAT", segmentId);
+    const char* packCandidates[] = {
+        "CD/DATA/MAT8.BIN",
+        "CD/DATA/MAT8.BIN;1",
+        "DATA/MAT8.BIN",
+        "DATA/MAT8.BIN;1",
+        "MAT8.BIN",
+        "MAT8.BIN;1"
+    };
+    if (LoadPackedAssetIndexToCart(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]), sMat8PackCache) &&
+        LoadPackedAssetEntryToBlob(sMat8PackCache, packedName, outBlob))
+    {
+        return SegmentComponent::Loader::ParseMat(outBlob, outView);
+    }
+    (void)segmentId;
+    outBlob = {};
+    outView = {};
+    return false;
 }
 
 static size_t ApplyMatFamiliesToRenderer(TrackRenderer& renderer,
@@ -1311,20 +1330,26 @@ static size_t ApplyMatFamiliesToRenderer(TrackRenderer& renderer,
 
 static bool LoadGeoForSegment(int segmentId, SegmentComponent::Blob& outBlob, SegmentComponent::Loader::GeoView& outView)
 {
-    char a0[40]{}, a1[40]{}, a2[32]{}, a3[32]{}, a4[20]{}, a5[20]{}, a6[32]{}, a7[32]{}, a8[20]{}, a9[20]{};
-    std::snprintf(a4, sizeof(a4), "S%03d.GEO", segmentId);
-    std::snprintf(a5, sizeof(a5), "S%03d.GEO;1", segmentId);
-    std::snprintf(a6, sizeof(a6), "DATA/S%03d.GEO", segmentId);
-    std::snprintf(a7, sizeof(a7), "DATA/S%03d.GEO;1", segmentId);
-    std::snprintf(a0, sizeof(a0), "CD/DATA/SEG_%03d.GEO", segmentId);
-    std::snprintf(a1, sizeof(a1), "CD/DATA/SEG_%03d.GEO;1", segmentId);
-    std::snprintf(a2, sizeof(a2), "DATA/SEG_%03d.GEO", segmentId);
-    std::snprintf(a3, sizeof(a3), "DATA/SEG_%03d.GEO;1", segmentId);
-    std::snprintf(a8, sizeof(a8), "SEG_%03d.GEO", segmentId);
-    std::snprintf(a9, sizeof(a9), "SEG_%03d.GEO;1", segmentId);
-    const char* cands[] = { a4, a5, a6, a7, a0, a1, a2, a3, a8, a9 };
-    if (!SegmentComponent::Loader::LoadFirstExistingFromCd(cands, sizeof(cands) / sizeof(cands[0]), outBlob)) return false;
-    return SegmentComponent::Loader::ParseGeo(outBlob, outView);
+    static PackedAssetCache sGeoPackCache{};
+    char packedName[16]{};
+    std::snprintf(packedName, sizeof(packedName), "S%03d.GEO", segmentId);
+    const char* packCandidates[] = {
+        "CD/DATA/GEO.BIN",
+        "CD/DATA/GEO.BIN;1",
+        "DATA/GEO.BIN",
+        "DATA/GEO.BIN;1",
+        "GEO.BIN",
+        "GEO.BIN;1"
+    };
+    if (LoadPackedAssetIndexToCart(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]), sGeoPackCache) &&
+        LoadPackedAssetEntryToBlob(sGeoPackCache, packedName, outBlob))
+    {
+        return SegmentComponent::Loader::ParseGeo(outBlob, outView);
+    }
+    (void)segmentId;
+    outBlob = {};
+    outView = {};
+    return false;
 }
 
 static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer)
@@ -1469,6 +1494,99 @@ static bool NameEqualsIgnoreCase(const char* a, const char* b)
     }
     return (*a == '\0' && *b == '\0');
 }
+
+namespace
+{
+static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache)
+{
+    if (cache.cartPtr && cache.size > 0 && !cache.entries.empty()) return true;
+
+    cache = {};
+    const char* foundPath = nullptr;
+    for (size_t i = 0; i < count; ++i)
+    {
+        SRL::Cd::File probe(candidates[i]);
+        if (probe.Exists() && probe.Size.Bytes > 0)
+        {
+            foundPath = candidates[i];
+            break;
+        }
+    }
+    if (!foundPath) return false;
+
+    SRL::Cd::File f(foundPath);
+    if (f.Size.Bytes <= 0) return false;
+    if (!f.Open()) return false;
+
+    const uint32_t bytes = static_cast<uint32_t>(f.Size.Bytes);
+    void* mem = SRL::Memory::CartRam::Malloc(bytes);
+    if (!mem) return false;
+
+    const int32_t read = f.Read(static_cast<int32_t>(bytes), mem);
+    if (read <= 0 || static_cast<uint32_t>(read) > bytes)
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
+
+    cache.cartPtr = mem;
+    cache.size = static_cast<uint32_t>(read);
+
+    const uint8_t* p = static_cast<const uint8_t*>(cache.cartPtr);
+    if (cache.size < 12) return false;
+    const uint32_t magic = ReadLe32(p + 0);
+    const uint32_t version = ReadLe32(p + 4);
+    const uint32_t entryCount = ReadLe32(p + 8);
+    if (magic != 0x314B4150 || version != 1) return false; // "PAK1"
+
+    const size_t entrySize = 64 + 4 + 4;
+    const size_t tableBytes = static_cast<size_t>(entryCount) * entrySize;
+    const size_t dataOffset = 12 + tableBytes;
+    if (dataOffset > cache.size) return false;
+
+    cache.entries.clear();
+    cache.entries.reserve(entryCount);
+    for (uint32_t i = 0; i < entryCount; ++i)
+    {
+        const size_t off = 12 + static_cast<size_t>(i) * entrySize;
+        if (off + entrySize > cache.size) return false;
+
+        PackedAssetEntryMeta e{};
+        ::memcpy(e.name, p + off, 64);
+        e.name[64] = '\0';
+        e.offset = ReadLe32(p + off + 64);
+        e.size = ReadLe32(p + off + 68);
+        if (e.size == 0) continue;
+        if (e.offset < dataOffset) continue;
+        if (static_cast<uint64_t>(e.offset) + static_cast<uint64_t>(e.size) > static_cast<uint64_t>(cache.size)) continue;
+        cache.entries.push_back(e);
+    }
+
+    return !cache.entries.empty();
+}
+
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out)
+{
+    out = {};
+    if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
+
+    for (size_t i = 0; i < cache.entries.size(); ++i)
+    {
+        const auto& e = cache.entries[i];
+        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
+
+        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
+        std::vector<uint8_t> tmp(e.size);
+        ::memcpy(tmp.data(), src, e.size);
+        out.bytes = std::move(tmp);
+        out.loaded = true;
+        out.size = out.bytes.size();
+        return true;
+    }
+
+    return false;
+}
+} // namespace
 
 static void BuildIso83UpperName(const char* inName, char* outName, size_t outSize)
 {
@@ -2502,30 +2620,14 @@ bool TrackSystem::Initialize(const Config& config)
     // Validate and optionally render SEG_001 from GEO/MAT component files.
     {
         constexpr bool kUseSeg1ComponentRenderer = false; // usar renderer normal da pista para LOD swap
-        const char* geoCandidates[] = {
-            "S001.GEO", "S001.GEO;1",
-            "DATA/S001.GEO", "DATA/S001.GEO;1",
-            "CD/DATA/S001.GEO", "CD/DATA/S001.GEO;1",
-            "CD/DATA/SEG_001.GEO", "CD/DATA/SEG_001.GEO;1",
-            "DATA/SEG_001.GEO", "DATA/SEG_001.GEO;1",
-            "SEG_001.GEO", "SEG_001.GEO;1",
-            "seg_001.geo", "seg_001.geo;1"
-        };
-        const char* matCandidates[] = {
-            "S001M8.MAT", "S001M8.MAT;1",
-            "DATA/S001M8.MAT", "DATA/S001M8.MAT;1",
-            "CD/DATA/S001M8.MAT", "CD/DATA/S001M8.MAT;1",
-            "SEG_001_M8.MAT", "SEG_001_M8.MAT;1",
-            "DATA/SEG_001_M8.MAT", "DATA/SEG_001_M8.MAT;1",
-            "CD/DATA/SEG_001_M8.MAT", "CD/DATA/SEG_001_M8.MAT;1"
-        };
-
         SegmentComponent::Blob geoBlob{};
         SegmentComponent::Blob matBlob{};
-        const bool geoOk = SegmentComponent::Loader::LoadFirstExistingFromCd(
-            geoCandidates, sizeof(geoCandidates) / sizeof(geoCandidates[0]), geoBlob);
-        const bool matOk = SegmentComponent::Loader::LoadFirstExistingFromCd(
-            matCandidates, sizeof(matCandidates) / sizeof(matCandidates[0]), matBlob);
+        SegmentComponent::Loader::GeoView geoView{};
+        SegmentComponent::Loader::MatView matView{};
+        const bool geoParsed = LoadGeoForSegment(1, geoBlob, geoView);
+        const bool matParsed = LoadMat8ForSegment(1, matBlob, matView);
+        const bool geoOk = geoParsed;
+        const bool matOk = matParsed;
         constexpr bool kShowSeg1ComponentProbeLogs = false;
         if (kShowSeg1ComponentProbeLogs)
         {
@@ -2533,11 +2635,6 @@ bool TrackSystem::Initialize(const Config& config)
                               geoOk ? 1 : 0, (unsigned)geoBlob.size,
                               matOk ? 1 : 0, (unsigned)matBlob.size);
         }
-
-        SegmentComponent::Loader::GeoView geoView{};
-        SegmentComponent::Loader::MatView matView{};
-        const bool geoParsed = geoOk && SegmentComponent::Loader::ParseGeo(geoBlob, geoView);
-        const bool matParsed = matOk && SegmentComponent::Loader::ParseMat(matBlob, matView);
         const bool pairOk = SegmentComponent::Loader::ValidateGeoMatPair(geoView, matView);
         if (kShowSeg1ComponentProbeLogs)
         {
