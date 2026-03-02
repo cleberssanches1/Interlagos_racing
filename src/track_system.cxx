@@ -73,6 +73,15 @@ static void NormalizeTextureFileName(const char* in, char* out, size_t outSize);
 static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out);
 
+struct CartTextCacheEntry
+{
+    char key[96]{};
+    void* cartPtr = nullptr;
+    uint32_t size = 0;
+};
+
+static std::vector<CartTextCacheEntry> g_textCache{};
+
 static void NormalizeLoadedTextEncoding(std::vector<char>& text)
 {
     if (text.empty()) return;
@@ -125,6 +134,66 @@ static void NormalizeLoadedTextEncoding(std::vector<char>& text)
     text.push_back('\0');
 }
 
+static void BuildTextCacheKey(const char* path, char* out, size_t outSize)
+{
+    if (!out || outSize == 0) return;
+    out[0] = '\0';
+    if (!path || path[0] == '\0') return;
+
+    const char* base = path;
+    for (const char* p = path; *p != '\0'; ++p)
+    {
+        if (*p == '/' || *p == '\\') base = p + 1;
+    }
+
+    size_t n = 0;
+    while (base[n] != '\0' && base[n] != ';' && n + 1 < outSize)
+    {
+        char c = base[n];
+        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        out[n] = c;
+        ++n;
+    }
+    out[n] = '\0';
+}
+
+static bool TryReadCachedTextByKey(const char* key, std::vector<char>& outText)
+{
+    if (!key || key[0] == '\0') return false;
+    for (size_t i = 0; i < g_textCache.size(); ++i)
+    {
+        const auto& e = g_textCache[i];
+        if (::strcmp(e.key, key) != 0) continue;
+        if (!e.cartPtr || e.size == 0) return false;
+
+        const char* src = static_cast<const char*>(e.cartPtr);
+        outText.assign(src, src + e.size);
+        return !outText.empty();
+    }
+    return false;
+}
+
+static void StoreCachedTextByKey(const char* key, const std::vector<char>& text)
+{
+    if (!key || key[0] == '\0' || text.empty()) return;
+    for (size_t i = 0; i < g_textCache.size(); ++i)
+    {
+        if (::strcmp(g_textCache[i].key, key) == 0) return;
+    }
+
+    const uint32_t bytes = static_cast<uint32_t>(text.size());
+    void* mem = SRL::Memory::CartRam::Malloc(bytes);
+    if (!mem) return;
+    ::memcpy(mem, text.data(), bytes);
+
+    CartTextCacheEntry e{};
+    ::strncpy(e.key, key, sizeof(e.key) - 1);
+    e.key[sizeof(e.key) - 1] = '\0';
+    e.cartPtr = mem;
+    e.size = bytes;
+    g_textCache.push_back(e);
+}
+
 static bool ReadCdFileText(const char* const* names, size_t count, std::vector<char>& outText)
 {
     auto tryReadOne = [&](const char* path) -> bool
@@ -151,6 +220,9 @@ static bool ReadCdFileText(const char* const* names, size_t count, std::vector<c
         if (outText.empty()) return false;
         outText.push_back('\0');
         NormalizeLoadedTextEncoding(outText);
+        char key[96]{};
+        BuildTextCacheKey(path, key, sizeof(key));
+        StoreCachedTextByKey(key, outText);
         SRL::Debug::Print(1, 3, "TGA map cd ok:%s", path);
         return true;
     };
@@ -159,6 +231,9 @@ static bool ReadCdFileText(const char* const* names, size_t count, std::vector<c
     {
         const char* n = names[i];
         if (!n || n[0] == '\0') continue;
+        char key[96]{};
+        BuildTextCacheKey(n, key, sizeof(key));
+        if (TryReadCachedTextByKey(key, outText)) return true;
         if (tryReadOne(n)) return true;
 
         // Some ISO builds expose versions other than ;1 (e.g. ;11).
