@@ -1164,6 +1164,48 @@ struct DecodedTgaTexture
     std::vector<uint8_t> pixels{};
 };
 
+// Compact paletted TGA data down to the indices that are actually used.
+static size_t CompactUsedPalette(const uint8_t* srcPixels,
+                                 size_t pixelCount,
+                                 const std::vector<SRL::Types::HighColor>& srcPalette,
+                                 std::vector<SRL::Types::HighColor>& outPalette,
+                                 std::vector<uint8_t>& outIndices)
+{
+    outPalette.clear();
+    outIndices.clear();
+    if (!srcPixels || pixelCount == 0 || srcPalette.empty()) return 0;
+
+    std::array<int16_t, 256> remap{};
+    remap.fill(-1);
+
+    if (srcPalette.size() > 0)
+    {
+        outPalette.push_back(srcPalette[0]);
+        remap[0] = 0;
+    }
+
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        const uint8_t idx = srcPixels[i];
+        if (idx >= srcPalette.size()) return 0;
+        if (remap[idx] >= 0) continue;
+        if (outPalette.size() >= 256) return 0;
+        remap[idx] = static_cast<int16_t>(outPalette.size());
+        outPalette.push_back(srcPalette[idx]);
+    }
+
+    outIndices.resize(pixelCount);
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        const uint8_t idx = srcPixels[i];
+        const int16_t mapped = remap[idx];
+        if (mapped < 0 || mapped > 255) return 0;
+        outIndices[i] = static_cast<uint8_t>(mapped);
+    }
+
+    return outPalette.size();
+}
+
 static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTgaTexture& out)
 {
     out = {};
@@ -1190,7 +1232,8 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
         const size_t cmapBytes = static_cast<size_t>(cmapLen) * static_cast<size_t>(cmapDepth / 8);
         if (off + cmapBytes > size) return false;
 
-        out.palette.resize(cmapLen);
+        std::vector<SRL::Types::HighColor> srcPalette{};
+        srcPalette.resize(cmapLen);
         for (size_t i = 0; i < cmapLen; ++i)
         {
             const uint8_t* c = data + off + i * (cmapDepth / 8);
@@ -1214,7 +1257,7 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
             {
                 hc = SRL::Types::HighColor::FromARGB15(ReadLe16(c));
             }
-            out.palette[i] = hc;
+            srcPalette[i] = hc;
         }
         off += cmapBytes;
 
@@ -1222,29 +1265,45 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
         if (off + srcPixels > size) return false;
         const uint8_t* src = data + off;
 
-        if (cmapLen <= 16)
+        std::vector<SRL::Types::HighColor> compactPalette{};
+        std::vector<uint8_t> compactIndices{};
+        size_t usedPaletteCount = CompactUsedPalette(src, srcPixels, srcPalette, compactPalette, compactIndices);
+        if (usedPaletteCount == 0)
+        {
+            compactPalette = srcPalette;
+            compactIndices.assign(src, src + srcPixels);
+            usedPaletteCount = compactPalette.size();
+        }
+
+        out.palette = compactPalette;
+
+        if (usedPaletteCount <= 16)
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted16;
-            out.pixels.resize(srcPixels / 2);
+            out.pixels.resize((srcPixels + 1) / 2);
             for (size_t i = 0; i + 1 < srcPixels; i += 2)
             {
-                out.pixels[i / 2] = static_cast<uint8_t>(((src[i] & 0x0F) << 4) | (src[i + 1] & 0x0F));
+                out.pixels[i / 2] = static_cast<uint8_t>(((compactIndices[i] & 0x0F) << 4) | (compactIndices[i + 1] & 0x0F));
+            }
+            if ((srcPixels & 1u) != 0u)
+            {
+                out.pixels[srcPixels / 2] = static_cast<uint8_t>((compactIndices[srcPixels - 1] & 0x0F) << 4);
             }
         }
-        else if (cmapLen <= 64)
+        else if (usedPaletteCount <= 64)
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted64;
-            out.pixels.assign(src, src + srcPixels);
+            out.pixels = compactIndices;
         }
-        else if (cmapLen <= 128)
+        else if (usedPaletteCount <= 128)
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted128;
-            out.pixels.assign(src, src + srcPixels);
+            out.pixels = compactIndices;
         }
         else
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted256;
-            out.pixels.assign(src, src + srcPixels);
+            out.pixels = compactIndices;
         }
         return true;
     }
@@ -1427,7 +1486,100 @@ static bool LoadGeoForSegment(int segmentId, SegmentComponent::Blob& outBlob, Se
     return false;
 }
 
-static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer)
+// Reorder quad corners from GEO UVs so the SGL textured polygon path sees a stable corner order.
+static bool ReorderQuadVerticesFromUv(const SegmentComponent::GeoFace& face, uint16_t outVertices[4])
+{
+    if (!outVertices) return false;
+
+    int16_t minU = face.u[0];
+    int16_t maxU = face.u[0];
+    int16_t minV = face.v[0];
+    int16_t maxV = face.v[0];
+    for (size_t i = 1; i < 4; ++i)
+    {
+        minU = std::min(minU, face.u[i]);
+        maxU = std::max(maxU, face.u[i]);
+        minV = std::min(minV, face.v[i]);
+        maxV = std::max(maxV, face.v[i]);
+    }
+
+    if (minU == maxU || minV == maxV) return false;
+
+    size_t uEdgeCount = 0;
+    size_t vEdgeCount = 0;
+    for (size_t i = 0; i < 4; ++i)
+    {
+        const bool onUEdge = (face.u[i] == minU) || (face.u[i] == maxU);
+        const bool onVEdge = (face.v[i] == minV) || (face.v[i] == maxV);
+        if (!onUEdge || !onVEdge) return false;
+        if (face.u[i] == minU || face.u[i] == maxU) ++uEdgeCount;
+        if (face.v[i] == minV || face.v[i] == maxV) ++vEdgeCount;
+    }
+    if (uEdgeCount != 4 || vEdgeCount != 4) return false;
+
+    const int16_t targetU[4] = { minU, maxU, maxU, minU };
+    const int16_t targetV[4] = { minV, minV, maxV, maxV };
+    bool used[4] = { false, false, false, false };
+
+    for (size_t corner = 0; corner < 4; ++corner)
+    {
+        int best = -1;
+        int32_t bestScore = 0x7FFFFFFF;
+        for (size_t src = 0; src < 4; ++src)
+        {
+            if (used[src]) continue;
+            const int32_t du = static_cast<int32_t>(face.u[src]) - static_cast<int32_t>(targetU[corner]);
+            const int32_t dv = static_cast<int32_t>(face.v[src]) - static_cast<int32_t>(targetV[corner]);
+            const int32_t score = (du < 0 ? -du : du) + (dv < 0 ? -dv : dv);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = static_cast<int>(src);
+            }
+        }
+        if (best < 0) return false;
+        used[best] = true;
+        outVertices[corner] = face.vertex[best];
+    }
+
+    return true;
+}
+
+// Build a stable face normal from the first three corners of the polygon.
+static Vector3D BuildFaceNormalFromVerts(const std::vector<SRL::Math::Types::Vector3D>& verts,
+                                         const uint16_t indices[4])
+{
+    if (verts.empty()) return Vector3D(0.0, 0.0, 0.0);
+    const size_t ia = static_cast<size_t>(indices[0]);
+    const size_t ib = static_cast<size_t>(indices[1]);
+    const size_t ic = static_cast<size_t>(indices[2]);
+    if (ia >= verts.size() || ib >= verts.size() || ic >= verts.size())
+    {
+        return Vector3D(0.0, 0.0, 0.0);
+    }
+
+    const auto& a = verts[ia];
+    const auto& b = verts[ib];
+    const auto& c = verts[ic];
+
+    const int64_t abx = static_cast<int64_t>(b.X.RawValue()) - static_cast<int64_t>(a.X.RawValue());
+    const int64_t aby = static_cast<int64_t>(b.Y.RawValue()) - static_cast<int64_t>(a.Y.RawValue());
+    const int64_t abz = static_cast<int64_t>(b.Z.RawValue()) - static_cast<int64_t>(a.Z.RawValue());
+    const int64_t acx = static_cast<int64_t>(c.X.RawValue()) - static_cast<int64_t>(a.X.RawValue());
+    const int64_t acy = static_cast<int64_t>(c.Y.RawValue()) - static_cast<int64_t>(a.Y.RawValue());
+    const int64_t acz = static_cast<int64_t>(c.Z.RawValue()) - static_cast<int64_t>(a.Z.RawValue());
+
+    const int32_t nx = static_cast<int32_t>(((aby * acz) - (abz * acy)) >> 16);
+    const int32_t ny = static_cast<int32_t>(((abz * acx) - (abx * acz)) >> 16);
+    const int32_t nz = static_cast<int32_t>(((abx * acy) - (aby * acx)) >> 16);
+
+    return Vector3D(SRL::Math::Types::Fxp::BuildRaw(nx),
+                    SRL::Math::Types::Fxp::BuildRaw(ny),
+                    SRL::Math::Types::Fxp::BuildRaw(nz));
+}
+
+// Build one component renderer and expose its center directly from GEO vertices.
+static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer, Vector3D* outCenter)
 {
     SegmentComponent::Blob geoBlob{};
     SegmentComponent::Loader::GeoView geoView{};
@@ -1454,16 +1606,29 @@ static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer)
     verts.reserve(geoView.header.vertexCount);
     faces.reserve(geoView.header.faceCount);
     attrs.reserve(geoView.header.faceCount);
+    Vector3D minv(SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(32767 << 16));
+    Vector3D maxv(SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(-32768 << 16));
 
     for (uint32_t vi = 0; vi < geoView.header.vertexCount; ++vi)
     {
         SegmentComponent::GeoVertex gv{};
         const size_t off = geoView.vertexOffset + static_cast<size_t>(vi) * sizeof(SegmentComponent::GeoVertex);
         if (!SegmentComponent::Loader::ReadGeoVertexLeAt(geoBlob.bytes, off, gv)) return false;
-        verts.emplace_back(
+        const Vector3D v(
             SRL::Math::Types::Fxp::BuildRaw(gv.x),
             SRL::Math::Types::Fxp::BuildRaw(gv.y),
             SRL::Math::Types::Fxp::BuildRaw(gv.z));
+        verts.push_back(v);
+        minv.X = SRL::Math::Min(minv.X, v.X);
+        minv.Y = SRL::Math::Min(minv.Y, v.Y);
+        minv.Z = SRL::Math::Min(minv.Z, v.Z);
+        maxv.X = SRL::Math::Max(maxv.X, v.X);
+        maxv.Y = SRL::Math::Max(maxv.Y, v.Y);
+        maxv.Z = SRL::Math::Max(maxv.Z, v.Z);
     }
     for (uint32_t fi = 0; fi < geoView.header.faceCount; ++fi)
     {
@@ -1475,12 +1640,21 @@ static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer)
         if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) return false;
 
         SRL::Types::Polygon p{};
-        p.Normal = Vector3D(0.0, 0.0, 0.0);
-        for (size_t c = 0; c < 4; ++c) p.Vertices[c] = gf.vertex[c];
-        if (gf.kind == static_cast<uint8_t>(SegmentComponent::FaceKind::Triangle))
+        if (gf.kind == static_cast<uint8_t>(SegmentComponent::FaceKind::Quad))
         {
+            for (size_t c = 0; c < 4; ++c) p.Vertices[c] = gf.vertex[c];
+            uint16_t reordered[4]{};
+            if (ReorderQuadVerticesFromUv(gf, reordered))
+            {
+                for (size_t c = 0; c < 4; ++c) p.Vertices[c] = reordered[c];
+            }
+        }
+        else
+        {
+            for (size_t c = 0; c < 4; ++c) p.Vertices[c] = gf.vertex[c];
             p.Vertices[3] = p.Vertices[2];
         }
+        p.Normal = BuildFaceNormalFromVerts(verts, p.Vertices);
         faces.push_back(p);
 
         const uint16_t m = static_cast<uint16_t>(mb.materialId & 0x1F);
@@ -1495,7 +1669,12 @@ static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer)
             sprPolygon,
             UseLight));
     }
-    return renderer.InitializeFromComponentData(verts, faces, attrs);
+    const bool ok = renderer.InitializeFromComponentData(verts, faces, attrs);
+    if (ok && outCenter)
+    {
+        *outCenter = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
+    }
+    return ok;
 }
 } // namespace
 
@@ -2251,15 +2430,15 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
     for (auto& entry : entries)
     {
         auto renderer = std::make_unique<TrackRenderer>();
-        // Component-only pipeline: GEO + MAT
-        const bool built = BuildRendererFromGeoMat8(entry.id, *renderer);
+        Vector3D resolvedCenter(0.0, 0.0, 0.0);
+        const bool built = BuildRendererFromGeoMat8(entry.id, *renderer, &resolvedCenter);
         if (!built)
         {
             SRL::Debug::Print(1, 15, "Renderer init fail %03d", entry.id);
             continue;
         }
 
-        // Keep original model path for stable segment placement.
+        // Component geometry is the active runtime path.
         renderer->SetUseOriginal(false);
         renderer->SetSglDirect(false);
         renderer->SetDirect2D(false);
@@ -2268,7 +2447,7 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
         renderer->SetDrawLimit(renderer->MeshCount());
         SegmentRenderEntry item{};
         item.id = entry.id;
-        item.center = ComputeRendererCenter(*renderer);
+        item.center = resolvedCenter;
         item.renderer = std::move(renderer);
         renderers.push_back(std::move(item));
     }
@@ -2285,6 +2464,198 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildSegmentHandleTable()
         handles.push_back(segmentPool_.Add(&entry));
     }
     return handles;
+}
+
+// Build shared family ids used by the track renderer set. Texture slots are loaded lazily.
+bool TrackSystem::BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& outSlots)
+{
+    outSlots.clear();
+    std::vector<uint16_t> familyIdsUsed{};
+    familyIdsUsed.reserve(256);
+
+    for (const auto& seg : segmentRenderers_)
+    {
+        if (!seg.renderer) continue;
+
+        SegmentComponent::Blob matBlob{};
+        SegmentComponent::Loader::MatView matView{};
+        if (!LoadMat8ForSegment(seg.id, matBlob, matView)) continue;
+        if (matView.file.segmentId != static_cast<uint32_t>(seg.id)) continue;
+
+        for (uint32_t fi = 0; fi < matView.header.faceCount; ++fi)
+        {
+            SegmentComponent::MatFaceBinding mb{};
+            const size_t moff = matView.bindingOffset + static_cast<size_t>(fi) * sizeof(SegmentComponent::MatFaceBinding);
+            if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) continue;
+            const uint16_t fam = static_cast<uint16_t>(mb.materialId);
+            if (fam == 0) continue;
+
+            bool exists = false;
+            for (size_t i = 0; i < familyIdsUsed.size(); ++i)
+            {
+                if (familyIdsUsed[i] == fam)
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) familyIdsUsed.push_back(fam);
+        }
+    }
+
+    if (familyIdsUsed.empty()) return false;
+
+    outSlots.reserve(familyIdsUsed.size());
+    for (size_t i = 0; i < familyIdsUsed.size(); ++i)
+    {
+        Seg1FamilySlotEntry slotEntry{};
+        slotEntry.familyId = familyIdsUsed[i];
+        slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+
+        outSlots.push_back(slotEntry);
+    }
+
+    return !outSlots.empty();
+}
+
+// Build the per face family table for one segment renderer from its MAT8 bindings.
+bool TrackSystem::BuildSegmentLodState(SegmentRenderEntry& entry,
+                                       const SegmentComponent::Blob& matBlob,
+                                       const SegmentComponent::Loader::MatView& matView,
+                                       std::vector<Seg1FamilySlotEntry>& familySlots)
+{
+    entry.lodState = {};
+    if (!entry.renderer) return false;
+
+    const size_t rendererFaces = static_cast<size_t>(entry.renderer->FaceCount());
+    const size_t nFaces = std::min(rendererFaces, static_cast<size_t>(matView.header.faceCount));
+    if (rendererFaces == 0 || nFaces == 0) return false;
+
+    entry.lodState.faceFamilyIds.assign(rendererFaces, 0);
+    entry.lodState.currentFaceSlots.assign(rendererFaces, -1);
+
+    for (size_t fi = 0; fi < nFaces; ++fi)
+    {
+        SegmentComponent::MatFaceBinding mb{};
+        const size_t moff = matView.bindingOffset + fi * sizeof(SegmentComponent::MatFaceBinding);
+        if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) continue;
+        entry.lodState.faceFamilyIds[fi] = static_cast<uint16_t>(mb.materialId);
+    }
+
+    entry.lodState.ready = true;
+    entry.lodState.currentLodIndex = 0xFF;
+    return RebuildSegmentFaceSlotsForLod(entry, ResolveSegmentLodIndexByRank(0), familySlots);
+}
+
+// Upload one family texture slot only when a lod band actually needs it.
+bool TrackSystem::EnsureFamilyLodSlotLoaded(std::vector<Seg1FamilySlotEntry>& familySlots,
+                                            uint16_t familyId,
+                                            uint8_t lodIndex)
+{
+    if (lodIndex > 3) return false;
+
+    Seg1FamilySlotEntry* slotEntry = nullptr;
+    for (size_t i = 0; i < familySlots.size(); ++i)
+    {
+        if (familySlots[i].familyId != familyId) continue;
+        slotEntry = &familySlots[i];
+        break;
+    }
+    if (!slotEntry) return false;
+    if (slotEntry->lodSlots[lodIndex] != No_Texture) return true;
+
+    const int lodValues[4] = { 8, 16, 32, 64 };
+    for (int fallbackLi = static_cast<int>(lodIndex); fallbackLi >= 0; --fallbackLi)
+    {
+        if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(fallbackLi), lodValues[fallbackLi])) continue;
+        const auto& bank = seg1Texbanks_[static_cast<size_t>(fallbackLi)];
+        const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
+        if (!bankBytes) continue;
+
+        const Seg1TexbankEntry* bankEntry = nullptr;
+        for (const auto& e : bank.entries)
+        {
+            if (e.familyId != familyId) continue;
+            bankEntry = &e;
+            break;
+        }
+        if (!bankEntry) continue;
+
+        DecodedTgaTexture decoded{};
+        if (!DecodePalettedTgaMemory(bankBytes + bankEntry->offset, bankEntry->size, decoded)) continue;
+
+        const int32_t slot = UploadDecodedTextureToVdp1(decoded);
+        if (slot < 0) continue;
+
+        slotEntry->lodSlots[lodIndex] = static_cast<uint16_t>(slot);
+        return true;
+    }
+
+    return false;
+}
+
+// Rebuild one segment face slot table on demand for the selected lod band.
+bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
+                                                uint8_t lodIndex,
+                                                std::vector<Seg1FamilySlotEntry>& familySlots)
+{
+    if (!entry.renderer) return false;
+    if (lodIndex > 3) return false;
+    if (entry.lodState.faceFamilyIds.empty()) return false;
+
+    const size_t faceCount = entry.lodState.faceFamilyIds.size();
+    entry.lodState.currentFaceSlots.assign(faceCount, -1);
+
+    for (size_t fi = 0; fi < faceCount; ++fi)
+    {
+        const uint16_t fam = entry.lodState.faceFamilyIds[fi];
+        if (fam == 0) continue;
+
+        (void)EnsureFamilyLodSlotLoaded(familySlots, fam, lodIndex);
+
+        uint16_t slot = No_Texture;
+        for (size_t si = 0; si < familySlots.size(); ++si)
+        {
+            if (familySlots[si].familyId != fam) continue;
+            slot = familySlots[si].lodSlots[lodIndex];
+            break;
+        }
+
+        if (slot != No_Texture)
+        {
+            entry.lodState.currentFaceSlots[fi] = static_cast<int32_t>(slot);
+        }
+    }
+
+    return true;
+}
+
+// Map a near to far rank into the current fixed lod bands for track rendering.
+uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
+{
+    if (rank < 3) return 3;    // 64x64
+    if (rank < 8) return 2;    // 32x32
+    if (rank < 15) return 1;   // 16x16
+    return 0;                  // 8x8
+}
+
+// Apply lod changes only when a visible segment crosses a band boundary.
+void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles)
+{
+    std::vector<Seg1FamilySlotEntry>& familySlots = seg1FamilySlots_;
+    for (size_t rank = 0; rank < nearToFarHandles.size(); ++rank)
+    {
+        auto* entry = segmentPool_.Resolve(nearToFarHandles[rank]);
+        if (!entry || !entry->renderer) continue;
+        if (!entry->lodState.ready) continue;
+
+        const uint8_t desiredLod = ResolveSegmentLodIndexByRank(rank);
+        if (entry->lodState.currentLodIndex == desiredLod) continue;
+
+        if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLod, familySlots)) continue;
+        (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+        entry->lodState.currentLodIndex = desiredLod;
+    }
 }
 
 bool TrackSystem::Initialize(const Config& config)
@@ -2332,7 +2703,7 @@ bool TrackSystem::Initialize(const Config& config)
     segmentEntries_.reserve(loadLimit);
     segmentRenderers_.reserve(loadLimit);
 
-    // 1) Build runtime renderers directly from GEO/MAT assets.
+    // Build runtime renderers directly from GEO/MAT assets.
     size_t builtCount = 0;
     for (size_t i = 1; i <= loadLimit; ++i)
     {
@@ -2347,7 +2718,6 @@ bool TrackSystem::Initialize(const Config& config)
             ++builtCount;
         }
 
-        // Keep registry by id (raw data lives in rawSegmentCatalog_).
         segmentEntries_.push_back({ static_cast<int>(i), {} });
     }
     SRL::Debug::Print(1, 13, "Track segments built %u/%u", unsigned(builtCount), unsigned(segmentEntries_.size()));
@@ -2371,9 +2741,10 @@ bool TrackSystem::Initialize(const Config& config)
 
     AdaptiveTrackBudgetController::Limits adaptiveBudgetLimits{};
     const uint32_t minSegmentsRequested = std::max<uint32_t>(1, config.minSegments);
+    const uint32_t maxSegmentsRequested = std::max<uint32_t>(minSegmentsRequested, config.initialSegments);
     const uint32_t maxSegmentsCap = static_cast<uint32_t>(kTrackSegmentLimit);
     adaptiveBudgetLimits.minSegments = std::min<uint32_t>(minSegmentsRequested, maxSegmentsCap);
-    adaptiveBudgetLimits.maxSegments = adaptiveBudgetLimits.minSegments;
+    adaptiveBudgetLimits.maxSegments = std::min<uint32_t>(maxSegmentsRequested, maxSegmentsCap);
     // Lock mesh/face budget to configured startup values to avoid runtime shrink.
     adaptiveBudgetLimits.minMeshes = std::max<uint32_t>(1u, config.initialMeshes);
     adaptiveBudgetLimits.maxMeshes = adaptiveBudgetLimits.minMeshes;
@@ -2420,154 +2791,63 @@ bool TrackSystem::Initialize(const Config& config)
         constexpr bool kEnableMat8FixedIntegration = true;
         if (kEnableMat8FixedIntegration)
         {
-            struct SegmentMatBinding
-            {
-                int segmentId = 0;
-                SegmentComponent::Blob matBlob{};
-                SegmentComponent::Loader::MatView matView{};
-            };
-
-            struct FamilySlot
-            {
-                uint16_t familyId = 0;
-                int32_t slot = -1;
-            };
-
             unsigned matOk = 0;
             unsigned matFail = 0;
-            unsigned faceChanged = 0;
-            unsigned texLoaded = 0;
-            unsigned texMissing = 0;
-            std::vector<SegmentMatBinding> segmentMats{};
-            segmentMats.reserve(segmentRenderers_.size());
-            std::vector<uint16_t> familyIdsUsed{};
-            familyIdsUsed.reserve(128);
-
-            for (auto& seg : segmentRenderers_)
+            std::vector<Seg1FamilySlotEntry> familyLodSlots{};
+            if (!BuildTrackFamilyLodSlots(familyLodSlots))
             {
-                if (!seg.renderer) { ++matFail; continue; }
-                SegmentComponent::Blob matBlob{};
-                SegmentComponent::Loader::MatView matView{};
-                if (!LoadMat8ForSegment(seg.id, matBlob, matView))
-                {
-                    ++matFail;
-                    continue;
-                }
-                if (matView.file.segmentId != static_cast<uint32_t>(seg.id))
-                {
-                    ++matFail;
-                    continue;
-                }
-                for (uint32_t fi = 0; fi < matView.header.faceCount; ++fi)
-                {
-                    SegmentComponent::MatFaceBinding mb{};
-                    const size_t moff = matView.bindingOffset + static_cast<size_t>(fi) * sizeof(SegmentComponent::MatFaceBinding);
-                    if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) continue;
-                    const uint16_t fam = static_cast<uint16_t>(mb.materialId);
-                    if (fam == 0) continue;
-
-                    bool exists = false;
-                    for (size_t i = 0; i < familyIdsUsed.size(); ++i)
-                    {
-                        if (familyIdsUsed[i] == fam)
-                        {
-                            exists = true;
-                            break;
-                        }
-                    }
-                    if (!exists)
-                    {
-                        familyIdsUsed.push_back(fam);
-                    }
-                }
-                SegmentMatBinding binding{};
-                binding.segmentId = seg.id;
-                binding.matBlob = std::move(matBlob);
-                binding.matView = matView;
-                segmentMats.push_back(std::move(binding));
-                ++matOk;
+                SRL::Debug::Print(1, 19, "MAT8 lod build fail");
             }
-
-            const int lodValues[4] = { 8, 16, 32, 64 };
-            std::vector<FamilySlot> resolvedFamilySlots{};
-            resolvedFamilySlots.reserve(familyIdsUsed.size());
-            for (size_t i = 0; i < familyIdsUsed.size(); ++i)
+            else
             {
-                const uint16_t fam = familyIdsUsed[i];
-                int32_t slot = -1;
-
-                for (int li = 3; li >= 0; --li)
+                seg1FamilySlots_ = familyLodSlots;
+                for (size_t i = 0; i < segmentRenderers_.size(); ++i)
                 {
-                    if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(li), lodValues[li])) continue;
-                    const auto& bank = seg1Texbanks_[static_cast<size_t>(li)];
-                    const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
-                    if (!bankBytes) continue;
+                    auto& seg = segmentRenderers_[i];
+                    if (!seg.renderer) { ++matFail; continue; }
 
-                    const Seg1TexbankEntry* entry = nullptr;
-                    for (const auto& e : bank.entries)
+                    SegmentComponent::Blob matBlob{};
+                    SegmentComponent::Loader::MatView matView{};
+                    if (!LoadMat8ForSegment(seg.id, matBlob, matView))
                     {
-                        if (e.familyId == fam)
-                        {
-                            entry = &e;
-                            break;
-                        }
+                        ++matFail;
+                        continue;
                     }
-                    if (!entry) continue;
-
-                    DecodedTgaTexture decoded{};
-                    if (!DecodePalettedTgaMemory(bankBytes + entry->offset, entry->size, decoded)) continue;
-
-                    slot = UploadDecodedTextureToVdp1(decoded);
-                    if (slot >= 0) break;
-                }
-
-                if (slot >= 0) ++texLoaded;
-                else ++texMissing;
-                resolvedFamilySlots.push_back({ fam, slot });
-            }
-
-            for (auto& seg : segmentRenderers_)
-            {
-                if (!seg.renderer) continue;
-
-                SegmentMatBinding* binding = nullptr;
-                for (auto& item : segmentMats)
-                {
-                    if (item.segmentId == seg.id)
+                    if (matView.file.segmentId != static_cast<uint32_t>(seg.id))
                     {
-                        binding = &item;
-                        break;
+                        ++matFail;
+                        continue;
                     }
-                }
-                if (!binding) continue;
+                    if (!BuildSegmentLodState(seg, matBlob, matView, familyLodSlots))
+                    {
+                        ++matFail;
+                        continue;
+                    }
 
-                std::vector<uint16_t> famIds{};
-                std::vector<int32_t> famSlots{};
-                famIds.reserve(resolvedFamilySlots.size());
-                famSlots.reserve(resolvedFamilySlots.size());
-                for (size_t i = 0; i < resolvedFamilySlots.size(); ++i)
-                {
-                    famIds.push_back(resolvedFamilySlots[i].familyId);
-                    famSlots.push_back(resolvedFamilySlots[i].slot);
+                    const uint8_t bootLod = ResolveSegmentLodIndexByRank(i);
+                    if (!RebuildSegmentFaceSlotsForLod(seg, bootLod, familyLodSlots))
+                    {
+                        ++matFail;
+                        continue;
+                    }
+                    (void)seg.renderer->ApplyFaceTextureSlotsGlobal(seg.lodState.currentFaceSlots);
+                    seg.lodState.currentLodIndex = bootLod;
+                    ++matOk;
                 }
 
-                faceChanged += static_cast<unsigned>(ApplyMatFamiliesToRenderer(
-                    *seg.renderer,
-                    binding->matBlob,
-                    binding->matView,
-                    famIds.data(),
-                    famSlots.data(),
-                    famIds.size()));
+                SRL::Debug::Print(1, 20, "MAT8 ok:%u fail:%u fam:%u", matOk, matFail, (unsigned)familyLodSlots.size());
             }
-
-            SRL::Debug::Print(1, 20, "MAT8 ok:%u fail:%u chg:%u", matOk, matFail, faceChanged);
-            SRL::Debug::Print(1, 19, "MAT8 tex ok:%u miss:%u fam:%u", texLoaded, texMissing, (unsigned)familyIdsUsed.size());
         }
     }
 
+    // Keep the normal multi segment render path active even when only one segment
+    // is visible, so single segment tests match the production flow.
+    const bool enableSeg1Diagnostics = false;
+
     // Preload all referenced TGA files into Cart 4MB (diagnostic + fast path source cache).
-    (void)PreloadTgaCatalogFromSegmentsMap();
+    if (enableSeg1Diagnostics)
     {
+        (void)PreloadTgaCatalogFromSegmentsMap();
         int32_t sCd = -1;
         int32_t sCart = -1;
         if (!seg1TgaCatalog_.empty() && seg1TgaCatalog_[0].cartPtr && seg1TgaCatalog_[0].size > 0)
@@ -2584,6 +2864,7 @@ bool TrackSystem::Initialize(const Config& config)
 
     // Minimal forced texture test for SEG_001 (diagnostic):
     // Apply one known texture slot to all faces to validate renderer texture path.
+    if (enableSeg1Diagnostics)
     {
         constexpr bool kEnableSeg1ForcedTextureTest = false;
         if (kEnableSeg1ForcedTextureTest)
@@ -2628,6 +2909,7 @@ bool TrackSystem::Initialize(const Config& config)
     }
 
     // Single-face overwrite probe (disabled - unstable in current runtime path).
+    if (enableSeg1Diagnostics)
     {
         constexpr bool kEnableSeg1SingleFaceSwapProbe = false;
         if (kEnableSeg1SingleFaceSwapProbe)
@@ -2693,6 +2975,7 @@ bool TrackSystem::Initialize(const Config& config)
 
     // Componentized pipeline probe (phase 1):
     // Validate and optionally render SEG_001 from GEO/MAT component files.
+    if (enableSeg1Diagnostics)
     {
         constexpr bool kUseSeg1ComponentRenderer = false; // usar renderer normal da pista para LOD swap
         SegmentComponent::Blob geoBlob{};
@@ -3807,8 +4090,8 @@ void TrackSystem::RenderFrame(bool renderTrack,
         const Vector3D c = e->center + trackOffset;
         return (c.X - cameraLocation.X).Abs() + (c.Z - cameraLocation.Z).Abs();
     };
-
-    // 1) Budget selection must keep nearest segments first.
+    // Keep a stable track-order selection during the current multi segment test.
+    // Using camera proximity here makes segments pop in and out while the camera moves.
     std::sort(orderedHandles.begin(), orderedHandles.end(),
         [&](const SegmentHandle& a, const SegmentHandle& b)
         {
@@ -3817,18 +4100,29 @@ void TrackSystem::RenderFrame(bool renderTrack,
             if (!ea && !eb) return false;
             if (!ea) return false;
             if (!eb) return true;
-            const auto da = manhattanToCamera(ea);
-            const auto db = manhattanToCamera(eb);
-            if (da == db) return ea->id < eb->id;
-            return da < db;
+            return ea->id < eb->id;
         });
+    // Test mode: skip SEG_006 while still keeping a six segment set.
+    orderedHandles.erase(
+        std::remove_if(
+            orderedHandles.begin(),
+            orderedHandles.end(),
+            [&](const SegmentHandle& handle)
+            {
+                const auto* entry = segmentPool_.Resolve(handle);
+                return entry && entry->id == 6;
+            }),
+        orderedHandles.end());
     if (!orderedHandles.empty())
     {
         const size_t keepCount =
-            std::min<size_t>(static_cast<size_t>(coordinator_.Budget().maxTrackSegments), orderedHandles.size());
+            std::min<size_t>(6, orderedHandles.size());
         orderedHandles.resize(keepCount);
+        UpdateVisibleSegmentLods(orderedHandles);
 
-        // 2) Rendering order for VDP1 painter: far -> near.
+        // Render the selected test set in reverse track order.
+        // This is a stricter painter order for the current contiguous segment test
+        // and helps verify whether center based sorting is causing overdraw artifacts.
         std::sort(orderedHandles.begin(), orderedHandles.end(),
             [&](const SegmentHandle& a, const SegmentHandle& b)
             {
@@ -3837,10 +4131,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
                 if (!ea && !eb) return false;
                 if (!ea) return false;
                 if (!eb) return true;
-                const auto da = manhattanToCamera(ea);
-                const auto db = manhattanToCamera(eb);
-                if (da == db) return ea->id > eb->id;
-                return da > db;
+                return ea->id > eb->id;
             });
     }
 
@@ -3874,7 +4165,9 @@ void TrackSystem::RenderFrame(bool renderTrack,
     }
 
     // SEG_001 LOD cycle test: every ~3s swap texture slots among {8,16,32,64}.
-    if ((seg1ComponentEnabled_ || seg1RendererLodReady_) && !seg1FamilySlots_.empty())
+    if (segmentRenderers_.size() <= 1 &&
+        (seg1ComponentEnabled_ || seg1RendererLodReady_) &&
+        !seg1FamilySlots_.empty())
     {
         if (seg1LodFrameCounter_ >= seg1LodSwapFrames_)
         {

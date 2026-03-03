@@ -13,6 +13,7 @@
 #include "frame_budget.hpp"
 #include "frame_budget_controller.hpp"
 #include "resource_loader.hpp"
+#include "segment_component_loader.hpp"
 #include "soak_monitor.hpp"
 #include "track_draw_producer.hpp"
 #include "track_render_coordinator.hpp"
@@ -74,9 +75,18 @@ private:
 
     struct SegmentRenderEntry
     {
+        struct SegmentLodState
+        {
+            bool ready = false;
+            uint8_t currentLodIndex = 0xFF; // 0:8, 1:16, 2:32, 3:64
+            std::vector<uint16_t> faceFamilyIds{};
+            std::vector<int32_t> currentFaceSlots{};
+        };
+
         int id = 0;
         std::unique_ptr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
+        SegmentLodState lodState{};
     };
     struct RawSegmentEntry
     {
@@ -117,6 +127,25 @@ private:
     void ReleaseSeg1TgaCatalog();
     bool PreloadTgaCatalogFromSegmentsMap();
     bool LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue);
+    // Build per family texture slots for all lod levels used by segment renderers.
+    bool BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& outSlots);
+    // Build per face slot tables for one segment renderer across all lod levels.
+    bool BuildSegmentLodState(SegmentRenderEntry& entry,
+                              const SegmentComponent::Blob& matBlob,
+                              const SegmentComponent::Loader::MatView& matView,
+                              std::vector<Seg1FamilySlotEntry>& familySlots);
+    // Rebuild one segment face slot table on demand for the selected lod band.
+    bool RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
+                                       uint8_t lodIndex,
+                                       std::vector<Seg1FamilySlotEntry>& familySlots);
+    // Upload one family texture slot only when a lod band actually needs it.
+    bool EnsureFamilyLodSlotLoaded(std::vector<Seg1FamilySlotEntry>& familySlots,
+                                   uint16_t familyId,
+                                   uint8_t lodIndex);
+    // Resolve the target lod band for a visible segment rank near the camera.
+    uint8_t ResolveSegmentLodIndexByRank(size_t rank) const;
+    // Apply lod changes only for segments whose desired band changed.
+    void UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles);
     const TrackSegmentCopy* FindRawSegmentCopyById(int id) const;
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);

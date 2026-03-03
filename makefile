@@ -15,8 +15,8 @@ SRL_ENABLE_FREQ_ANALYSIS = 1    # Set to 1 if you want to enable frequency analy
 # SGL configuration
 SGL_MAX_VERTICES = 50000        # Number of vertices that can be used
 SGL_MAX_POLYGONS = 10000        # Number of polygons that can be used
-SGL_MAX_EVENTS = 4              # Number of events that can be used
-SGL_MAX_WORKS = 4               # Number of works that can be used
+SGL_MAX_EVENTS = 16             # Number of events that can be used
+SGL_MAX_WORKS = 16              # Number of works that can be used
 
 # Disk name
 CD_NAME = Interlagos_racing

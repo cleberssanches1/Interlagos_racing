@@ -321,6 +321,7 @@ if ($RebuildSegmentsMap) {
     & ".\tools\build_segments_map_full.ps1" `
         -ResultDir $ResultDir `
         -OutJsonPath $jsonPath `
+        -SourceJsonPath $jsonPath `
         -Shading $Shading `
         -TexWidth $TexWidth `
         -TexHeight $TexHeight `

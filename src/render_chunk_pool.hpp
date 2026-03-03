@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <new>
+#include <type_traits>
 
 #include <srl.hpp>
 
@@ -18,6 +20,7 @@ public:
         if (!storage_) return false;
         capacity_ = capacity;
         count_ = 0;
+        constructed_ = 0;
         return true;
     }
 
@@ -25,11 +28,16 @@ public:
     {
         if (storage_)
         {
+            for (size_t i = 0; i < constructed_; ++i)
+            {
+                storage_[i].~Handle();
+            }
             SRL::Memory::HighWorkRam::Free(storage_);
             storage_ = nullptr;
         }
         capacity_ = 0;
         count_ = 0;
+        constructed_ = 0;
     }
 
     ~RenderChunkPool()
@@ -45,11 +53,24 @@ public:
             return;
         }
         const size_t copyCount = std::min(capacity_, count);
+        const size_t keepCount = std::min(constructed_, copyCount);
         for (size_t i = 0; i < copyCount; ++i)
         {
-            storage_[i] = items[i];
+            if (i < keepCount)
+            {
+                storage_[i] = items[i];
+            }
+            else
+            {
+                ::new (static_cast<void*>(storage_ + i)) Handle(items[i]);
+            }
+        }
+        for (size_t i = copyCount; i < constructed_; ++i)
+        {
+            storage_[i].~Handle();
         }
         count_ = copyCount;
+        constructed_ = copyCount;
     }
 
     const Handle* Active() const { return storage_; }
@@ -61,4 +82,5 @@ private:
     Handle* storage_ = nullptr;
     size_t capacity_ = 0;
     size_t count_ = 0;
+    size_t constructed_ = 0;
 };

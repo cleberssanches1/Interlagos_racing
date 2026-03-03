@@ -233,10 +233,18 @@ public:
                 for (auto& a : attrs) a.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
                 tmp.Attributes = attrs.data();
                 SRL::Scene3D::DrawMesh(tmp);
+                // Prevent the temporary mesh wrapper from deleting vector-owned memory.
+                tmp.Vertices = nullptr;
+                tmp.Faces = nullptr;
+                tmp.Attributes = nullptr;
             }
             else
             {
                 SRL::Scene3D::DrawMesh(tmp);
+                // Prevent the temporary mesh wrapper from deleting vector-owned memory.
+                tmp.Vertices = nullptr;
+                tmp.Faces = nullptr;
+                tmp.Attributes = nullptr;
             }
 
             SRL::Scene3D::PopMatrix();

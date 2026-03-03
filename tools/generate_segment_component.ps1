@@ -26,10 +26,19 @@ function Get-TextureStem([string]$Path) {
     return [System.IO.Path]::GetFileNameWithoutExtension($Path).ToLowerInvariant()
 }
 
-function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName) {
+function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [object[]]$Families) {
     $directTexToFamilyId = @{}
     $materialToFamilyId = @{}
     $entries = New-Object System.Collections.Generic.List[object]
+    $exactTexToFamilyId = @{}
+
+    foreach ($family in @($Families)) {
+        if ($null -eq $family) { continue }
+        if (-not ($family.PSObject.Properties.Name -contains "sourceStem")) { continue }
+        $sourceStem = [string]$family.sourceStem
+        if ([string]::IsNullOrWhiteSpace($sourceStem)) { continue }
+        $exactTexToFamilyId[$sourceStem.ToLowerInvariant()] = [uint32]$family.id
+    }
 
     if (-not (Test-Path -LiteralPath $MtlDir)) {
         return $materialToFamilyId
@@ -57,6 +66,12 @@ function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName) {
     }
 
     foreach ($e in $entries) {
+        if ($exactTexToFamilyId.ContainsKey($e.texStem)) {
+            $familyId = [uint32]$exactTexToFamilyId[$e.texStem]
+            $directTexToFamilyId[$e.texStem] = $familyId
+            $materialToFamilyId[$e.material] = $familyId
+            continue
+        }
         if ($FamilyIdByName.ContainsKey($e.material)) {
             $familyId = [uint32]$FamilyIdByName[$e.material]
             $directTexToFamilyId[$e.texStem] = $familyId
@@ -102,7 +117,7 @@ foreach ($family in @($json.textureFamilies)) {
     if ([string]::IsNullOrWhiteSpace($familyName)) { continue }
     $familyIdByName[$familyName.ToLowerInvariant()] = [uint32]$family.id
 }
-$materialAliasToFamilyId = Build-MaterialAliasMap -MtlDir $ObjDir -FamilyIdByName $familyIdByName
+$materialAliasToFamilyId = Build-MaterialAliasMap -MtlDir $ObjDir -FamilyIdByName $familyIdByName -Families @($json.textureFamilies)
 $hasSegmentMap = $true
 if (-not $segNode) {
     $hasSegmentMap = $false
@@ -201,7 +216,24 @@ if ($verts.Count -eq 0 -or $faces.Count -eq 0) {
     throw "OBJ sem vertices/faces suficientes: $objPath"
 }
 if ($objFaceFamilies.Count -eq $faces.Count -and $objFaceFamilies.Count -gt 0) {
-    $faceFamilies = @($objFaceFamilies.ToArray())
+    # Prefer the OBJ face order, but do not erase a valid family coming from the map
+    # when a helper material in the OBJ could not be resolved.
+    $mergedFaceFamilies = New-Object System.Collections.Generic.List[uint32]
+    for ($i = 0; $i -lt $objFaceFamilies.Count; $i++) {
+        $resolved = [uint32]$objFaceFamilies[$i]
+        if ($resolved -ne 0) {
+            $mergedFaceFamilies.Add($resolved) | Out-Null
+            continue
+        }
+
+        if ($i -lt $faceFamilies.Count) {
+            $mergedFaceFamilies.Add([uint32]$faceFamilies[$i]) | Out-Null
+        }
+        else {
+            $mergedFaceFamilies.Add([uint32]0) | Out-Null
+        }
+    }
+    $faceFamilies = @($mergedFaceFamilies.ToArray())
 }
 
 $geoShortPath = Join-Path $OutDir ("S{0:D3}.GEO" -f $SegmentId)

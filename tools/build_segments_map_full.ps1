@@ -1,6 +1,7 @@
 param(
     [string]$ResultDir,
     [string]$OutJsonPath,
+    [string]$SourceJsonPath = "",
     [string]$Shading,
     [int]$TexWidth,
     [int]$TexHeight,
@@ -70,7 +71,11 @@ function Copy-IfPresent([System.Collections.Specialized.OrderedDictionary]$Targe
     }
 }
 
-$sourceJson = Join-Path $ResultDir "segments_map.json"
+$sourceJson = if (-not [string]::IsNullOrWhiteSpace($SourceJsonPath)) {
+    $SourceJsonPath
+} else {
+    Join-Path $ResultDir "segments_map.json"
+}
 if (-not (Test-Path -LiteralPath $sourceJson)) {
     throw "Arquivo segments_map.json nao encontrado em $ResultDir"
 }

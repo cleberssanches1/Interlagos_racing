@@ -1,6 +1,6 @@
 ﻿{
     "version":  1,
-    "generatedAtUtc":  "2026-03-02T19:45:48Z",
+    "generatedAtUtc":  "2026-03-03T19:38:49Z",
     "entries":  [
                     {
                         "lod":  8,
@@ -55,7 +55,7 @@
                     {
                         "lod":  8,
                         "familyId":  6,
-                        "file":  "F051_8.TGA",
+                        "file":  "F052_8.TGA",
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
@@ -79,8 +79,8 @@
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
-                        "width":  8,
-                        "height":  6
+                        "width":  6,
+                        "height":  4
                     },
                     {
                         "lod":  8,
@@ -129,7 +129,7 @@
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
-                        "width":  8,
+                        "width":  7,
                         "height":  4
                     },
                     {
@@ -169,7 +169,7 @@
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
-                        "width":  8,
+                        "width":  7,
                         "height":  4
                     },
                     {
@@ -499,8 +499,8 @@
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
-                        "width":  8,
-                        "height":  6
+                        "width":  6,
+                        "height":  4
                     },
                     {
                         "lod":  8,
@@ -541,6 +541,26 @@
                         "pixelDepth":  8,
                         "width":  8,
                         "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  55,
+                        "file":  "F043_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  56,
+                        "file":  "F051_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
                     },
                     {
                         "lod":  16,
@@ -595,7 +615,7 @@
                     {
                         "lod":  16,
                         "familyId":  6,
-                        "file":  "F051_16.TGA",
+                        "file":  "F052_16.TGA",
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
@@ -620,7 +640,7 @@
                         "imageType":  1,
                         "pixelDepth":  8,
                         "width":  16,
-                        "height":  12
+                        "height":  10
                     },
                     {
                         "lod":  16,
@@ -669,7 +689,7 @@
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
-                        "width":  16,
+                        "width":  14,
                         "height":  8
                     },
                     {
@@ -709,7 +729,7 @@
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
-                        "width":  16,
+                        "width":  14,
                         "height":  8
                     },
                     {
@@ -916,9 +936,9 @@
                         "lod":  16,
                         "familyId":  38,
                         "file":  "F008_16.TGA",
-                        "colorMapType":  0,
-                        "imageType":  2,
-                        "pixelDepth":  32,
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
                         "width":  16,
                         "height":  16
                     },
@@ -1040,7 +1060,7 @@
                         "imageType":  1,
                         "pixelDepth":  8,
                         "width":  16,
-                        "height":  12
+                        "height":  10
                     },
                     {
                         "lod":  16,
@@ -1081,6 +1101,26 @@
                         "pixelDepth":  8,
                         "width":  16,
                         "height":  6
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  55,
+                        "file":  "F043_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  56,
+                        "file":  "F051_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
                     },
                     {
                         "lod":  32,
@@ -1135,7 +1175,7 @@
                     {
                         "lod":  32,
                         "familyId":  6,
-                        "file":  "F051_32.TGA",
+                        "file":  "F052_32.TGA",
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
@@ -1160,7 +1200,7 @@
                         "imageType":  1,
                         "pixelDepth":  8,
                         "width":  32,
-                        "height":  23
+                        "height":  22
                     },
                     {
                         "lod":  32,
@@ -1580,7 +1620,7 @@
                         "imageType":  1,
                         "pixelDepth":  8,
                         "width":  32,
-                        "height":  23
+                        "height":  22
                     },
                     {
                         "lod":  32,
@@ -1621,6 +1661,26 @@
                         "pixelDepth":  8,
                         "width":  32,
                         "height":  12
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  55,
+                        "file":  "F043_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  56,
+                        "file":  "F051_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
                     },
                     {
                         "lod":  64,
@@ -1675,7 +1735,7 @@
                     {
                         "lod":  64,
                         "familyId":  6,
-                        "file":  "F051_64.TGA",
+                        "file":  "F052_64.TGA",
                         "colorMapType":  1,
                         "imageType":  1,
                         "pixelDepth":  8,
@@ -2161,6 +2221,26 @@
                         "pixelDepth":  8,
                         "width":  62,
                         "height":  26
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  55,
+                        "file":  "F043_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  56,
+                        "file":  "F051_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
                     }
                 ]
 }

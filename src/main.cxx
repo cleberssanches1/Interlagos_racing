@@ -413,8 +413,8 @@ int GameApp::Run()
     AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 1;
-    trackConfig.minSegments = 1;
+    trackConfig.initialSegments = 7;
+    trackConfig.minSegments = 7;
     // Conservative track budget to keep VDP1 command list stable with car rendering enabled.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = 5000;
