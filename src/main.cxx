@@ -307,7 +307,9 @@ int GameApp::Run()
 
     // Simple frustum
 
-    SRL::Scene3D::SetPerspective(Angle::FromDegrees(60.0f));
+    // Balanced FOV: reduce fisheye without flattening car proportions.
+    constexpr float kCameraFovDeg = 34.0f;
+    SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
 
 
 

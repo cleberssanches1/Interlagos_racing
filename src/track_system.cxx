@@ -1917,8 +1917,7 @@ static bool BuildRendererFromBdrBatch(int firstId,
     renderer->SetVdp1Commands(false);
     renderer->SetDirect2D(false);
     renderer->SetForceDoubleSided(false);
-    // Test mode: scale track geometry by 2x.
-    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
     renderer->SetDrawLimit(renderer->MeshCount());
 
     outBatch = {};
@@ -2976,8 +2975,7 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
         renderer->SetVdp1Commands(kUseTrackVdp1Commands);
         renderer->SetDirect2D(false);
         renderer->SetForceDoubleSided(false);
-        // Test mode: scale track geometry by 2x.
-        renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+        renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
         renderer->SetDrawLimit(renderer->MeshCount());
 
         SegmentRenderEntry item{};
@@ -3065,8 +3063,7 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
     renderer->SetVdp1Commands(kUseTrackVdp1Commands);
     renderer->SetDirect2D(false);
     renderer->SetForceDoubleSided(false);
-    // Test mode: scale track geometry by 2x.
-    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
     renderer->SetDrawLimit(renderer->MeshCount());
 
     SegmentRenderEntry item{};
@@ -4804,11 +4801,17 @@ void TrackSystem::RenderFrame(bool renderTrack,
     bool segment01Logged = false;
     bool segment01Prepared = false;
     std::vector<SegmentHandle> orderedHandles = segmentHandles_;
-    auto manhattanToCamera = [&](const SegmentRenderEntry* e) -> SRL::Math::Types::Fxp
+    auto depthMetricToCamera = [&](const SegmentRenderEntry* e) -> SRL::Math::Types::Fxp
     {
         if (!e) return SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
         const Vector3D c = e->center + trackOffset;
-        return (c.X - cameraLocation.X).Abs() + (c.Z - cameraLocation.Z).Abs();
+        const auto dx = (c.X - cameraLocation.X).Abs();
+        const auto dz = (c.Z - cameraLocation.Z).Abs();
+        // Overflow-safe depth key for fixed-point on SH2.
+        // Keep monotonic far/near behavior without multiplication.
+        const auto major = (dx > dz) ? dx : dz;
+        const auto minor = (dx > dz) ? dz : dx;
+        return major + minor;
     };
     // Keep selection in logical track order so the same SDR cache works for
     // forward and reverse traversal. A future gameplay flag can flip this.
@@ -4834,8 +4837,9 @@ void TrackSystem::RenderFrame(bool renderTrack,
         orderedHandles.resize(keepCount);
         UpdateVisibleSegmentLods(orderedHandles);
 
-        // Draw in reverse logical order so farther logical segments land first.
-        // The direction flag is mirrored here so reverse travel keeps a stable painter order.
+        // Draw in camera-space painter order (far -> near).
+        // VDP1 has no Z-buffer for this path, so camera-relative order is required
+        // to avoid distortion when camera rotates around the car.
         std::sort(orderedHandles.begin(), orderedHandles.end(),
             [&](const SegmentHandle& a, const SegmentHandle& b)
             {
@@ -4844,7 +4848,14 @@ void TrackSystem::RenderFrame(bool renderTrack,
                 if (!ea && !eb) return false;
                 if (!ea) return false;
                 if (!eb) return true;
-                return kReverseTrackDirection ? (ea->id < eb->id) : (ea->id > eb->id);
+                const auto da = depthMetricToCamera(ea);
+                const auto db = depthMetricToCamera(eb);
+                if (da == db)
+                {
+                    return kReverseTrackDirection ? (ea->id > eb->id) : (ea->id < eb->id);
+                }
+                // far first
+                return da > db;
             });
     }
 

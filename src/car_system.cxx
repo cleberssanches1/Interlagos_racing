@@ -57,7 +57,8 @@ CarSystem::CarSystem(ModelObject* carObj, bool smooth, const Config& config)
     renderer_ = std::make_unique<MeshRenderer>(*carObj, smooth, rendererConfig);
     if (!renderer_) return;
     renderer_->SetSkipMesh(kCrashSkipMesh);
-    renderer_->SetScale(SRL::Math::Types::Fxp::BuildRaw(0x00008000)); // 0.5
+    // Keep car proportions at original model scale.
+    renderer_->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
 }
 
 void CarSystem::UpdateWheels(bool start, bool stop)

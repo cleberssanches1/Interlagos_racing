@@ -379,7 +379,7 @@ private:
     Context context_{};
     SRL::Input::Digital pad_{0};
     CameraRig::OrbitState orbitState_{};
-    int32_t carYawDeg_ = 0;
+    int32_t carYawDeg_ = 180;
     uint32_t frameCounter_ = 0;
     SimulationTask simulationTask_{};
     SimulationTask::Payload simInput_[2]{};
