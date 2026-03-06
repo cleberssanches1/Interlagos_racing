@@ -79,11 +79,14 @@ private:
         {
             bool ready = false;
             uint8_t currentLodIndex = 0xFF; // 0:8, 1:16, 2:32, 3:64
+            int16_t currentBaseRank = -1;
             std::vector<uint16_t> faceFamilyIds{};
+            std::vector<uint8_t> faceRankOffsets{};
             std::vector<int32_t> currentFaceSlots{};
         };
 
         int id = 0;
+        uint8_t logicalSegmentCount = 0;
         std::unique_ptr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
         SegmentLodState lodState{};
@@ -138,6 +141,10 @@ private:
     bool RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
                                        uint8_t lodIndex,
                                        std::vector<Seg1FamilySlotEntry>& familySlots);
+    // Rebuild one batch face slot table using the first logical rank carried by that batch.
+    bool RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
+                                            size_t baseRank,
+                                            std::vector<Seg1FamilySlotEntry>& familySlots);
     // Upload one family texture slot only when a lod band actually needs it.
     bool EnsureFamilyLodSlotLoaded(std::vector<Seg1FamilySlotEntry>& familySlots,
                                    uint16_t familyId,
@@ -188,6 +195,8 @@ private:
     char lastSegmentPath_[128]{};
     bool ready_ = false;
     bool segmentsReady_ = false;
+    bool coordinatorReady_ = false;
+    uint32_t fixedVisibleSegmentCap_ = 1;
 
     std::vector<TrackSegmentEntry> segmentEntries_{};
     std::vector<RawSegmentEntry> rawSegmentCatalog_{};

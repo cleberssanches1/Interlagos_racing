@@ -2,6 +2,7 @@
     [string]$ConverterDir = "C:\saturn\tools\ModelConverter-linux-main\BuildDrop",
     [string]$SourceObjDir = "C:\Models\png\sectors\source",
     [string]$ResultDir = "C:\Models\png\sectors\result",
+    [string]$PackageDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [string]$CdDataDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
     [string]$TextureRoot = "C:\Users\clebe\OneDrive\Área de Trabalho\Objetos corrida\Interlagos_2\ARQ_TGA",
     [string]$Pattern = "seg_*.obj",
@@ -25,6 +26,7 @@ function Get-SegmentIdFromFile([string]$BaseName) {
 }
 
 if (-not (Test-Path -LiteralPath $SourceObjDir)) { throw "SourceObjDir nao encontrado: $SourceObjDir" }
+if (-not (Test-Path -LiteralPath $PackageDir)) { New-Item -Path $PackageDir -ItemType Directory -Force | Out-Null }
 if (-not (Test-Path -LiteralPath $CdDataDir)) { New-Item -Path $CdDataDir -ItemType Directory -Force | Out-Null }
 
 $scriptDir = $PSScriptRoot
@@ -37,6 +39,8 @@ if ([string]::IsNullOrWhiteSpace($scriptDir)) {
 
 $script:exportScript = Join-Path $scriptDir "export_nya_with_segments_json.ps1"
 $script:componentScript = Join-Path $scriptDir "generate_segment_component.ps1"
+$script:sdrScript = Join-Path $scriptDir "generate_segment_draw_ready.ps1"
+$script:bdrScript = Join-Path $scriptDir "generate_batch_draw_ready.ps1"
 $script:texbanksScript = Join-Path $scriptDir "generate_texbanks.ps1"
 $script:seg1FamScript = Join-Path $scriptDir "build_seg1_facefam_bin.ps1"
 $script:packByTypeScript = Join-Path $scriptDir "pack_assets_by_type.ps1"
@@ -46,6 +50,8 @@ $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
+if (-not (Test-Path -LiteralPath $script:sdrScript)) { throw "Script nao encontrado: $script:sdrScript" }
+if (-not (Test-Path -LiteralPath $script:bdrScript)) { throw "Script nao encontrado: $script:bdrScript" }
 if (-not (Test-Path -LiteralPath $script:texbanksScript)) { throw "Script nao encontrado: $script:texbanksScript" }
 if (-not (Test-Path -LiteralPath $script:seg1FamScript)) { throw "Script nao encontrado: $script:seg1FamScript" }
 if (-not (Test-Path -LiteralPath $script:packByTypeScript)) { throw "Script nao encontrado: $script:packByTypeScript" }
@@ -58,7 +64,7 @@ $exportArgs = @{
     ConverterDir = $ConverterDir
     SourceObjDir = $SourceObjDir
     ResultDir = $ResultDir
-    CdDataDir = $CdDataDir
+    CdDataDir = $PackageDir
     Pattern = $Pattern
     Shading = $Shading
     TexWidth = $TexWidth
@@ -70,7 +76,7 @@ if ($RebuildSegmentsMap) {
 }
 & $script:exportScript @exportArgs
 
-$jsonPath = Join-Path $CdDataDir "segments_map.json"
+$jsonPath = Join-Path $PackageDir "segments_map.json"
 if (-not (Test-Path -LiteralPath $jsonPath)) {
     throw "segments_map.json nao foi gerado em: $jsonPath"
 }
@@ -78,7 +84,7 @@ if (-not (Test-Path -LiteralPath $jsonPath)) {
 Write-Host "=== Etapa 2/7: Atualizar segments_map.json válido ==="
 function Get-SegmentsMapSource {
     param(
-        [string]$CdDir
+        [string]$MapDir
     )
     $candidates = @(
         "SAP.json",
@@ -92,19 +98,19 @@ function Get-SegmentsMapSource {
         "smap"
     )
     foreach ($name in $candidates) {
-        $path = Join-Path $CdDir $name
+        $path = Join-Path $MapDir $name
         if (Test-Path -LiteralPath $path) {
             return $path
         }
     }
-    throw "Nao foi possivel localizar uma fonte valida para segments_map no diretorio $CdDir."
+    throw "Nao foi possivel localizar uma fonte valida para segments_map no diretorio $MapDir."
 }
 
 if ($RebuildSegmentsMap) {
     Write-Host "RebuildSegmentsMap ativo: mantendo o segments_map.json novo da exportacao nesta etapa."
 }
 else {
-    $sourceMap = Get-SegmentsMapSource -CdDir $CdDataDir
+    $sourceMap = Get-SegmentsMapSource -MapDir $PackageDir
     Copy-Item -LiteralPath $sourceMap -Destination $jsonPath -Force
     Write-Host ("segments_map.json atualizado a partir de {0}" -f $sourceMap)
 }
@@ -138,7 +144,7 @@ foreach ($entry in $lodDirs) {
                 -SegmentId $id `
                 -ObjDir $entry.Dir `
                 -JsonPath $jsonPath `
-                -OutDir $CdDataDir `
+                -OutDir $PackageDir `
                 -Lod $entry.Lod
         }
         catch {
@@ -149,12 +155,27 @@ foreach ($entry in $lodDirs) {
 
 Write-Host ("Concluido GEO/MAT por LOD: {0} segmentos distintos encontrados" -f $segmentsDone.Count)
 
+Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 ==="
+& $script:sdrScript `
+    -DataDir $PackageDir `
+    -OutDir $PackageDir `
+    -Lod 8 `
+    -AllSegments
+
+Write-Host "=== Etapa 3.6/7: Gerar batches draw-ready BDR1 ==="
+& $script:bdrScript `
+    -DataDir $PackageDir `
+    -OutDir $PackageDir `
+    -BatchSize 2 `
+    -AllBatches
+
 Write-Host "=== Etapa 4/6: Renomear/copiar texturas com sufixo ==="
 & $script:copyRenScript `
-    -DataDir $CdDataDir
+    -DataDir $PackageDir `
+    -TextOutDir $CdDataDir
 
 Write-Host "=== Etapa 4.5: Atualizar segments_map com texturas renomeadas ==="
-$renManifestPath = Join-Path $CdDataDir "ren_textures_copy_map.json"
+$renManifestPath = Join-Path $PackageDir "ren_textures_copy_map.json"
 & $script:updateSegmentsMapScript `
     -SegmentsMapPath $jsonPath `
     -RenManifestPath $renManifestPath `
@@ -170,38 +191,14 @@ function Copy-SegmentsMapShortNames {
     )
 
     $names = @(
-        "segments_map.json",
-        "segments_map.json;1",
-        "segments_map",
-        "seg_map",
-        "SEG_MAP",
-        "seg_map.json",
-        "SEG_MAP.JSON",
-        "segmap",
-        "SEGMAP",
-        "smap",
-        "SMAP",
         "smap.txt",
         "SMAP.TXT",
         "smap.txt;1",
         "SMAP.TXT;1",
-        "sap",
-        "SAP",
-        "sap.json",
-        "SAP.json",
         "sap.txt",
         "SAP.TXT",
-        "seg_map;1",
-        "SEG_MAP;1",
-        "segmap;1",
-        "SEGMAP;1",
-        "smap;1",
-        "SMAP;1",
-        "sap.json;1",
-        "SAP.json;1",
         "sap.txt;1",
-        "SAP.TXT;1",
-        "SAP;1"
+        "SAP.TXT;1"
     )
 
     foreach ($dir in $TargetDirs) {
@@ -224,6 +221,34 @@ function Copy-SegmentsMapShortNames {
     }
 }
 
+# Remove helper files from cd/data so only runtime-facing files remain there.
+function Remove-CdDataAuxFiles {
+    param(
+        [string[]]$TargetDirs
+    )
+
+    $patterns = @(
+        "*.json",
+        "segments_map",
+        "segments_map.json"
+    )
+
+    foreach ($dir in $TargetDirs) {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        foreach ($pattern in $patterns) {
+            $files = @(Get-ChildItem -LiteralPath $dir -File -Filter $pattern -ErrorAction SilentlyContinue)
+            foreach ($file in $files) {
+                try {
+                    Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                }
+                catch {
+                    Write-Host ("Aviso: nao foi possivel remover auxiliar de cd/data: {0}" -f $file.FullName)
+                }
+            }
+        }
+    }
+}
+
 Write-Host "=== Etapa 4.7: Criar aliases 8.3 para segments_map ==="
 $upperCdDir = Join-Path (Split-Path -Parent $CdDataDir) "CD\DATA"
 $targetDirs = @($CdDataDir)
@@ -233,8 +258,9 @@ Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
 Write-Host "=== Etapa 5/6: Gerar TEXBANK_*.BIN ==="
 & $script:texbanksScript `
     -JsonPath $jsonPath `
-    -TextureRoot $TextureRoot `
+    -TextureRoot $PackageDir `
     -OutDir $CdDataDir `
+    -ReportDir $PackageDir `
     -UseLodSubfolders:$UseLodSubfolders
 
 Write-Host "=== Etapa 6/6: Gerar S001FAM.BIN ==="
@@ -245,28 +271,33 @@ $seg1FamOut = Join-Path $CdDataDir "S001FAM.BIN"
 
 Write-Host "=== Etapa 7/7: Empacotar por tipo (*.BIN) incluindo imagens ==="
 & $script:packByTypeScript `
-    -DataDir $CdDataDir `
+    -SourceDir $PackageDir `
+    -OutDir $CdDataDir `
+    -ManifestDir $PackageDir `
     -IncludeTga
+
+Write-Host "=== Limpeza: Remover auxiliares de cd/data ==="
+Remove-CdDataAuxFiles -TargetDirs $targetDirs
 
 Write-Host "=== Validacao final ==="
 $expectedSegmentIds = $segmentsDone | Sort-Object -Unique
 $expectedCount = $expectedSegmentIds.Count
 
-$geoCountLong = @(Get-ChildItem -Path $CdDataDir -File -Filter "SEG_*.GEO").Count
-$geoCountShort = @(Get-ChildItem -Path $CdDataDir -File -Filter "S???.GEO").Count
-$matCountLong = @(Get-ChildItem -Path $CdDataDir -File -Filter "SEG_*.MAT").Count
-$matCountShort = @(Get-ChildItem -Path $CdDataDir -File -Filter "S???M*.MAT").Count
+$geoCountLong = @(Get-ChildItem -Path $PackageDir -File -Filter "SEG_*.GEO").Count
+$geoCountShort = @(Get-ChildItem -Path $PackageDir -File -Filter "S???.GEO").Count
+$matCountLong = @(Get-ChildItem -Path $PackageDir -File -Filter "SEG_*.MAT").Count
+$matCountShort = @(Get-ChildItem -Path $PackageDir -File -Filter "S???M*.MAT").Count
 $geoCount = [Math]::Max($geoCountLong, $geoCountShort)
 $matCount = [Math]::Max($matCountLong, $matCountShort)
 $texbankCountLegacy = @(Get-ChildItem -Path $CdDataDir -File -Filter "TEXBANK_*.BIN").Count
 $texbankCountShort = @(Get-ChildItem -Path $CdDataDir -File -Filter "TBK*.BIN").Count
 $texbankCount = $texbankCountLegacy + $texbankCountShort
 
-$segmentsMapPath = Join-Path $CdDataDir "segments_map.json"
-$texManifestPath = Join-Path $CdDataDir "texbanks_manifest.json"
-$tgaCompatPath = Join-Path $CdDataDir "tga_compat_report.json"
+$segmentsMapPath = Join-Path $PackageDir "segments_map.json"
+$texManifestPath = Join-Path $PackageDir "texbanks_manifest.json"
+$tgaCompatPath = Join-Path $PackageDir "tga_compat_report.json"
 $seg1FamPath = Join-Path $CdDataDir "S001FAM.BIN"
-$packsManifestPath = Join-Path $CdDataDir "packs_manifest.json"
+$packsManifestPath = Join-Path $PackageDir "packs_manifest.json"
 $hasSegmentsMap = Test-Path -LiteralPath $segmentsMapPath
 $hasTexManifest = Test-Path -LiteralPath $texManifestPath
 $hasTgaCompat = Test-Path -LiteralPath $tgaCompatPath
@@ -297,16 +328,16 @@ $validationErrors = New-Object System.Collections.Generic.List[string]
 if ($geoCount -lt $expectedCount) { $validationErrors.Add(("GEO insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $geoCount)) | Out-Null }
 if ($matCount -lt $expectedCount) { $validationErrors.Add(("MAT insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $matCount)) | Out-Null }
 if ($texbankCount -lt 4) { $validationErrors.Add(("TEXBANK_*.BIN insuficiente: esperado>=4, encontrado={0}" -f $texbankCount)) | Out-Null }
-if (-not $hasSegmentsMap) { $validationErrors.Add("segments_map.json ausente em cd\\data") | Out-Null }
-if (-not $hasTexManifest) { $validationErrors.Add("texbanks_manifest.json ausente em cd\\data") | Out-Null }
-if (-not $hasTgaCompat) { $validationErrors.Add("tga_compat_report.json ausente em cd\\data") | Out-Null }
+if (-not $hasSegmentsMap) { $validationErrors.Add("segments_map.json ausente em pacote_rancing") | Out-Null }
+if (-not $hasTexManifest) { $validationErrors.Add("texbanks_manifest.json ausente em pacote_rancing") | Out-Null }
+if (-not $hasTgaCompat) { $validationErrors.Add("tga_compat_report.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasSeg1Fam) { $validationErrors.Add("S001FAM.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasGeoBin) { $validationErrors.Add("GEO.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat8Bin) { $validationErrors.Add("MAT8.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat16Bin) { $validationErrors.Add("MAT16.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat64Bin) { $validationErrors.Add("MAT64.BIN ausente em cd\\data") | Out-Null }
-if (-not $hasPacksManifest) { $validationErrors.Add("packs_manifest.json ausente em cd\\data") | Out-Null }
+if (-not $hasPacksManifest) { $validationErrors.Add("packs_manifest.json ausente em pacote_rancing") | Out-Null }
 
 if ($validationErrors.Count -gt 0) {
     Write-Host "Falhas na validacao final:"
@@ -315,7 +346,8 @@ if ($validationErrors.Count -gt 0) {
 }
 
 Write-Host "Validacao final: OK"
-Write-Host "Arquivos finais em: $CdDataDir"
+Write-Host "Arquivos soltos finais em: $PackageDir"
+Write-Host "Arquivos BIN/TXT finais em: $CdDataDir"
 if ($RebuildSegmentsMap) {
     Write-Host "=== Reconstruindo segments_map completo ==="
     & ".\tools\build_segments_map_full.ps1" `
@@ -330,6 +362,8 @@ if ($RebuildSegmentsMap) {
     & python $script:minifyJsonScript $jsonPath
     Write-Host "=== Recriando aliases 8.3 apos rebuild final ==="
     Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
+    Write-Host "=== Limpeza final: Remover auxiliares de cd/data apos rebuild ==="
+    Remove-CdDataAuxFiles -TargetDirs $targetDirs
 } else {
     Write-Host "segments_map.json mantido (rebuild desativado)."
 }

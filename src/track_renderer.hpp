@@ -4,6 +4,7 @@
 #include "modelObject.hpp"
 #include "sgl_poly_renderer.hpp"
 #include "track_sgl_renderer.hpp"
+#include "track_vdp1_renderer.hpp"
 #include "track_serialized.hpp"
 #include <vector>
 #include <cstdint>
@@ -217,11 +218,40 @@ public:
         if (componentMode_)
         {
             if (componentVerts_.empty() || componentFaces_.empty() || componentAttrs_.size() != componentFaces_.size()) return;
+            if (useVdp1Commands_)
+            {
+                const size_t submitted = TrackVdp1Renderer::DrawMesh(componentVerts_.data(),
+                                                                     componentVerts_.size(),
+                                                                     componentFaces_.data(),
+                                                                     componentFaces_.size(),
+                                                                     componentAttrs_.data(),
+                                                                     trackOffset_,
+                                                                     trackScale_,
+                                                                     0);
+                lastDrawnMeshes_ = (submitted > 0) ? 1u : 0u;
+                lastDrawnFaces_ = static_cast<uint32_t>(submitted);
+                return;
+            }
+            if (useSglDirect_)
+            {
+                TrackSglRenderer::DrawMesh(componentVerts_.data(),
+                                           componentVerts_.size(),
+                                           componentFaces_.data(),
+                                           componentFaces_.size(),
+                                           componentAttrs_.data(),
+                                           0x83FF,
+                                           trackOffset_,
+                                           trackScale_,
+                                           false);
+                lastDrawnMeshes_ = 1;
+                lastDrawnFaces_ = static_cast<uint32_t>(componentFaces_.size());
+                return;
+            }
             SRL::Scene3D::PushMatrix();
             SRL::Scene3D::Translate(trackOffset_);
             SRL::Scene3D::Scale(trackScale_);
 
-            SRL::Types::Mesh tmp;
+            SRL::Types::Mesh tmp{};
             tmp.Vertices = componentVerts_.data();
             tmp.VertexCount = componentVerts_.size();
             tmp.Faces = const_cast<SRL::Types::Polygon*>(componentFaces_.data());
@@ -383,6 +413,7 @@ public:
                 }
                     TrackSglRenderer::DrawMesh(cache.verts.data(), cache.verts.size(),
                                                 cache.faces.data(), cache.faces.size(),
+                                                cache.attrs.data(),
                                                 0x83FF, trackOffset_, trackScale_, drawn == 0);
                 drawnFaces += (uint32_t)cache.faces.size();
             }
@@ -408,6 +439,7 @@ public:
                     }
                     TrackSglRenderer::DrawMesh(cache.verts.data(), cache.verts.size(),
                                                 cache.faces.data(), cache.faces.size(),
+                                                cache.attrs.data(),
                                                 0x83FF, trackOffset_, trackScale_, drawn == 0);
                     drawnFaces += (uint32_t)cache.faces.size();
                 }
@@ -577,7 +609,7 @@ public:
                             {
                                 attr.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
                             }
-                            SRL::Types::Mesh tmp;
+                    SRL::Types::Mesh tmp{};
                             tmp.Vertices = mesh->Vertices;
                             tmp.VertexCount = mesh->VertexCount;
                             tmp.Faces = mesh->Faces;
@@ -635,7 +667,7 @@ public:
                     {
                         if (i >= flatCache_.size() || !flatCache_[i].valid) { SRL::Scene3D::PopMatrix(); continue; }
                         const auto& cache = flatCache_[i];
-                        SRL::Types::Mesh tmp;
+                    SRL::Types::Mesh tmp{};
                         tmp.Vertices    = const_cast<SRL::Math::Types::Vector3D*>(cache.verts.data());
                         tmp.VertexCount = cache.verts.size();
                         tmp.Faces       = const_cast<SRL::Types::Polygon*>(cache.faces.data());
@@ -800,12 +832,11 @@ public:
         {
             size_t applied = 0;
             const size_t n = std::min(componentAttrs_.size(), faceTextureSlots.size());
-            constexpr int32_t kMaxSafeTextureSlot = 4095;
             for (size_t i = 0; i < n; ++i)
             {
                 const int32_t slot = faceTextureSlots[i];
                 if (slot < 0) continue;
-                if (slot > kMaxSafeTextureSlot) continue;
+                if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
                 applyAttrTexture(componentAttrs_[i], static_cast<uint16_t>(slot));
                 ++applied;
             }
@@ -815,7 +846,6 @@ public:
         size_t applied = 0;
         size_t globalFace = 0;
         constexpr uint16_t kNoTexture = No_Texture;
-        constexpr int32_t kMaxSafeTextureSlot = 4095;
 
         auto applyMesh = [&](auto* mesh)
         {
@@ -825,7 +855,7 @@ public:
                 if (globalFace >= faceTextureSlots.size()) continue;
                 const int32_t slot = faceTextureSlots[globalFace];
                 if (slot < 0) continue;
-                if (slot > kMaxSafeTextureSlot) continue;
+                if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
                 applyAttrTexture(mesh->Attributes[fi], static_cast<uint16_t>(slot));
                 ++applied;
             }
@@ -950,6 +980,7 @@ public:
     void SetStartMesh(size_t idx) { startMeshIdx_ = (idx < meshCount_) ? idx : 0; }
     void SetDirect2D(bool v) { useDirect2D_ = v; }
     void SetSglDirect(bool v) { useSglDirect_ = v; }
+    void SetVdp1Commands(bool v) { useVdp1Commands_ = v; }
     void SetUseOriginal(bool v) { useOriginal_ = v; }
     void SetForceDoubleSided(bool v) { forceDoubleSided_ = v; }
     const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
@@ -1133,6 +1164,7 @@ private:
     size_t startMeshIdx_ = 0;
     bool useDirect2D_ = false;
     bool useSglDirect_ = false;
+    bool useVdp1Commands_ = false;
     bool useOriginal_ = true;
     bool forceDoubleSided_ = false;
     bool componentMode_ = false;

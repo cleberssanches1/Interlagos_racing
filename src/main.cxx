@@ -183,7 +183,7 @@ int GameApp::Run()
     }
 
     const bool renderTrack = true; // teste pista
-    const bool renderCar = false; // somente pista
+    const bool renderCar = true; // pista + carro
     const bool loadCarAfterTrack = true; // pista primeiro, depois carro
     const bool enableTrackSlaveProducer = false; // diagnostico: desativa Slave para estabilizar
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
@@ -413,8 +413,8 @@ int GameApp::Run()
     AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 7;
-    trackConfig.minSegments = 7;
+    trackConfig.initialSegments = 20;
+    trackConfig.minSegments = 20;
     // Conservative track budget to keep VDP1 command list stable with car rendering enabled.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = 5000;
@@ -432,7 +432,7 @@ int GameApp::Run()
         Vector3D seg01Center(0.0, 0.0, 0.0);
         if (trackSystem.FindSegmentCenterById(1, trackSegOffset, seg01Center))
         {
-            // Segment center is an AABB center; keep car spawn Y stable to avoid starting inside geometry.
+            // Keep spawn Y stable; segment Y center may vary with imported data.
             carWorldPosition.X = seg01Center.X;
             carWorldPosition.Z = seg01Center.Z;
             carWorldPosition.Y = SRL::Math::Types::Fxp::BuildRaw(0);
@@ -441,6 +441,16 @@ int GameApp::Run()
     }
     if (renderCar && loadCarAfterTrack)
     {
+        constexpr size_t kMinHighWorkRamForCarLoad = 128u * 1024u;
+        const size_t hwrFreeBeforeCarLoad = SRL::Memory::HighWorkRam::GetFreeSpace();
+        if (hwrFreeBeforeCarLoad <= kMinHighWorkRamForCarLoad)
+        {
+            if (logCar)
+            {
+                MLOG(0, 7, "Car load low HWR:%lu (continuing)", (unsigned long)hwrFreeBeforeCarLoad);
+            }
+        }
+
         AppState::Set(AppState::Stage::CarLoad, 1);
         SRL::Cd::ChangeDir((const char*)0);
         carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
@@ -525,7 +535,16 @@ int GameApp::Run()
         gouraudFaceCapacity = std::max(gouraudFaceCapacity, trackSystem.MaxSegmentFaceCount());
         gouraudVertexCapacity = std::max(gouraudVertexCapacity, trackSystem.MaxSegmentVertexCount());
     }
-    const bool enableSmoothLighting = (gouraudFaceCapacity > 0) && (gouraudVertexCapacity > 0);
+    // Guard smooth lighting allocation when High Work RAM is tight.
+    const size_t hwrFreeBeforeLighting = SRL::Memory::HighWorkRam::GetFreeSpace();
+    const size_t lightingBytesEstimate =
+        (static_cast<size_t>(gouraudFaceCapacity) << 2) * sizeof(HighColor) +
+        static_cast<size_t>(gouraudVertexCapacity) * sizeof(uint8_t) +
+        (32u * 1024u);
+    const bool enableSmoothLighting =
+        (gouraudFaceCapacity > 0) &&
+        (gouraudVertexCapacity > 0) &&
+        (hwrFreeBeforeLighting > lightingBytesEstimate);
     // Stability guard: disable VBlank gouraud callback until crash root-cause is fully isolated.
     const bool enableVblankGouraudCopy = false;
     if (enableSmoothLighting)
@@ -540,11 +559,19 @@ int GameApp::Run()
         }
     }
 
-    // Draw order: wheels first (1..4), then body (0)
-
+    // Car draw order: adapt to mesh count.
+    // For single-mesh cars, always draw mesh 0.
     std::array<size_t, 5> drawOrder = {1, 2, 3, 4, 0};
-
-    size_t orderCount = (meshCount < 5) ? meshCount : 5;
+    size_t orderCount = 0;
+    if (meshCount == 1)
+    {
+        drawOrder = {0, 1, 2, 3, 4};
+        orderCount = 1;
+    }
+    else
+    {
+        orderCount = (meshCount < 5) ? meshCount : 5;
+    }
 
     Game::CarSystem::Config carConfig{};
     carConfig.modelCenter = modelCenter;
@@ -641,6 +668,8 @@ int GameApp::Run()
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
     Game::SimpleAudioEvents audioEvents;
+    // Safety mode: keep runtime simulation disabled while stabilizing render path.
+    const bool enableRuntimeSimulation = false;
 
     GameLoopSystem::Context loopContext{};
     loopContext.cartOkFlag = &cartOkFlag;
@@ -656,6 +685,7 @@ int GameApp::Run()
     // Simulation/car prepare em Slave junto com producer da pista causa conflito de jobs.
     loopContext.enableSlaveForCarPrepare = false;
     loopContext.enableSlaveForSimulation = false;
+    loopContext.enableManualGouraudCopy = enableSmoothLighting;
     loopContext.faceCount = faceCount;
     loopContext.vertexCount = vertexCount;
     loopContext.trackSegOffset = trackSegOffset;
@@ -668,10 +698,10 @@ int GameApp::Run()
     loopContext.carSystem = &carSystem;
     loopContext.renderPipeline = &renderPipeline;
     loopContext.hudSystem = &hudSystem;
-    loopContext.trackCollision = &trackCollision;
-    loopContext.carPhysics = &carPhysics;
-    loopContext.gameplayTick = &gameplayTick;
-    loopContext.audioEvents = &audioEvents;
+    loopContext.trackCollision = enableRuntimeSimulation ? static_cast<Game::ITrackCollisionQuery*>(&trackCollision) : nullptr;
+    loopContext.carPhysics = enableRuntimeSimulation ? static_cast<Game::ICarPhysics*>(&carPhysics) : nullptr;
+    loopContext.gameplayTick = enableRuntimeSimulation ? static_cast<Game::IGameplayTick*>(&gameplayTick) : nullptr;
+    loopContext.audioEvents = enableRuntimeSimulation ? static_cast<Game::IAudioEvents*>(&audioEvents) : nullptr;
 
     GameLoopSystem gameLoop(loopContext);
     AppState::Set(AppState::Stage::LoopStart, 0);

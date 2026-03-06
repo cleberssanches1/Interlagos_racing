@@ -14,6 +14,7 @@ namespace TrackSglRenderer
 
     inline void DrawMesh(const SRL::Math::Types::Vector3D* verts, size_t vertCount,
                          const SRL::Types::Polygon* faces, size_t faceCount,
+                         const SRL::Types::Attribute* srcAttrs,
                          uint16_t color, const SRL::Math::Types::Vector3D& offset,
                          SRL::Math::Types::Fxp scale, bool logAttrs = false)
     {
@@ -41,14 +42,28 @@ namespace TrackSglRenderer
             dst.Vertices[3] = src.Vertices[3];
 
             ATTR a{};
-            a.flag  = Dual_Plane;
-            a.sort  = UseLight;
-            a.texno = No_Texture;
-            a.atrb  = static_cast<uint16_t>(static_cast<uint16_t>(sprPolygon) |
-                                            static_cast<uint16_t>(CL32KRGB));
-            a.colno = color & 0x7FFF;
-            a.gstb  = 0;
-            a.dir   = UseLight;
+            if (srcAttrs)
+            {
+                const auto& srcAttr = srcAttrs[f];
+                a.flag  = (srcAttr.Visibility == SRL::Types::Attribute::FaceVisibility::DoubleSided) ? Dual_Plane : Single_Plane;
+                a.sort  = srcAttr.Sort;
+                a.texno = srcAttr.Texture;
+                a.atrb  = srcAttr.Display;
+                a.colno = srcAttr.ColorMode;
+                a.gstb  = srcAttr.Gouraud;
+                a.dir   = srcAttr.Direction;
+            }
+            else
+            {
+                a.flag  = Dual_Plane;
+                a.sort  = UseLight;
+                a.texno = No_Texture;
+                a.atrb  = static_cast<uint16_t>(static_cast<uint16_t>(sprPolygon) |
+                                                static_cast<uint16_t>(CL32KRGB));
+                a.colno = color & 0x7FFF;
+                a.gstb  = 0;
+                a.dir   = UseLight;
+            }
             attrs[f] = a;
 
             if (logAttrs && f == 0)

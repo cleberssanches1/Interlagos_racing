@@ -12,6 +12,8 @@
 #include "modelObject.hpp"
 #include "resource_loader.hpp"
 #include "segment_component_loader.hpp"
+#include "segment_draw_ready_loader.hpp"
+#include "batch_draw_ready_loader.hpp"
 #include "srl_tga.hpp"
 
 using SRL::Math::Types::Vector3D;
@@ -59,6 +61,14 @@ struct PackedAssetCache
     std::vector<PackedAssetEntryMeta> entries{};
 };
 
+struct BdrBatchBuildResult
+{
+    std::unique_ptr<TrackRenderer> renderer{};
+    Vector3D center{};
+    std::vector<uint16_t> familyIds{};
+    std::vector<uint8_t> faceRankOffsets{};
+};
+
 // Sticky diagnostics for TGA preload path resolution.
 static char g_tgaLastTry[96] = "none";
 static char g_tgaLastResult[96] = "none";
@@ -72,6 +82,32 @@ static bool g_seg1MapCacheValid = false;
 static void NormalizeTextureFileName(const char* in, char* out, size_t outSize);
 static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out);
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentDrawReady::Blob& out);
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, BatchDrawReady::Blob& out);
+
+// Validate a renderer before issuing draw calls.
+// This prevents invalid state from reaching VDP1 command generation.
+static bool IsRendererStateIntegral(const TrackRenderer& renderer)
+{
+    if (!renderer.HasTrack()) return false;
+    if (renderer.MeshCount() == 0) return false;
+    if (renderer.FaceCount() == 0) return false;
+    if (renderer.VertexCount() == 0) return false;
+    if (renderer.DrawLimit() == 0) return false;
+    if (renderer.DrawLimit() > renderer.MeshCount()) return false;
+    return true;
+}
+
+// Try to repair a renderer state with safe defaults.
+// Returns true when the renderer becomes integral after repair.
+static bool TryRepairRendererState(TrackRenderer& renderer)
+{
+    if (IsRendererStateIntegral(renderer)) return true;
+    if (!renderer.HasTrack()) return false;
+    if (renderer.MeshCount() == 0) return false;
+    renderer.SetDrawLimit(renderer.MeshCount());
+    return IsRendererStateIntegral(renderer);
+}
 
 struct CartTextCacheEntry
 {
@@ -1407,6 +1443,149 @@ static bool LoadMat8ForSegment(int segmentId, SegmentComponent::Blob& outBlob, S
     return false;
 }
 
+static bool LoadSdrForSegment(int segmentId, SegmentDrawReady::Blob& outBlob, SegmentDrawReady::Loader::View& outView)
+{
+    static PackedAssetCache sSdrPackCache{};
+    char packedName[16]{};
+    std::snprintf(packedName, sizeof(packedName), "S%03d.SDR", segmentId);
+    const char* packCandidates[] = {
+        "CD/DATA/SDR.BIN",
+        "CD/DATA/SDR.BIN;1",
+        "DATA/SDR.BIN",
+        "DATA/SDR.BIN;1",
+        "SDR.BIN",
+        "SDR.BIN;1"
+    };
+    if (LoadPackedAssetIndexToCart(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]), sSdrPackCache) &&
+        LoadPackedAssetEntryToBlob(sSdrPackCache, packedName, outBlob))
+    {
+        return SegmentDrawReady::Loader::Parse(outBlob, outView);
+    }
+    (void)segmentId;
+    outBlob = {};
+    outView = {};
+    return false;
+}
+
+// Read only SDR header counts used for memory planning.
+static bool LoadSdrHeaderForSegment(int segmentId, SegmentDrawReady::HeaderV1& outHeader)
+{
+    SegmentDrawReady::Blob blob{};
+    SegmentDrawReady::Loader::View view{};
+    if (!LoadSdrForSegment(segmentId, blob, view)) return false;
+    outHeader = view.header;
+    return true;
+}
+
+// Estimate a safe package size for runtime batch assembly using current High Work RAM.
+static size_t ComputeSafeSegmentsPerPackage(size_t requestedSegments)
+{
+    if (requestedSegments == 0) return 1;
+
+    SegmentDrawReady::HeaderV1 ref{};
+    if (!LoadSdrHeaderForSegment(1, ref) || ref.vertexCount == 0 || ref.faceCount == 0)
+    {
+        return requestedSegments;
+    }
+
+    const size_t bytesPerSeg =
+        static_cast<size_t>(ref.vertexCount) * sizeof(SRL::Math::Types::Vector3D) +
+        static_cast<size_t>(ref.faceCount) * (sizeof(SRL::Types::Polygon) + sizeof(SRL::Types::Attribute)) +
+        static_cast<size_t>(ref.faceCount) * (sizeof(uint16_t) + sizeof(uint8_t));
+
+    // Keep a fixed reserve for frame runtime systems and transient data.
+    const size_t kWorkRamHeadroomBytes = 96 * 1024;
+    const size_t hwrFree = SRL::Memory::HighWorkRam::GetFreeSpace();
+    const size_t usable = (hwrFree > kWorkRamHeadroomBytes) ? (hwrFree - kWorkRamHeadroomBytes) : 0;
+
+    const size_t byMem = (bytesPerSeg > 0 && usable > 0) ? (usable / bytesPerSeg) : 1;
+    const size_t byIndex = (ref.vertexCount > 0) ? (65000u / static_cast<size_t>(ref.vertexCount)) : requestedSegments;
+
+    size_t safe = std::min(requestedSegments, std::max<size_t>(1, std::min(byMem, byIndex)));
+
+    // In test mode we prefer preserving the requested package size.
+    // A too-conservative clamp here collapses the view to a single segment package.
+    if (safe < requestedSegments)
+    {
+        SRL::Debug::Print(1, 12, "PKG guard bypass req:%u est:%u hwr:%u",
+                          static_cast<unsigned>(requestedSegments),
+                          static_cast<unsigned>(safe),
+                          static_cast<unsigned>(hwrFree));
+        safe = requestedSegments;
+    }
+
+    SRL::Debug::Print(1, 12, "PKG safe req:%u got:%u hwr:%u",
+                      static_cast<unsigned>(requestedSegments),
+                      static_cast<unsigned>(safe),
+                      static_cast<unsigned>(hwrFree));
+    return safe;
+}
+
+// Estimate bytes needed in runtime containers for one SDR segment.
+// This is a conservative estimate used only for memory admission checks.
+static size_t EstimateSdrSegmentRuntimeBytes(const SegmentDrawReady::HeaderV1& hdr)
+{
+    const size_t v = static_cast<size_t>(hdr.vertexCount);
+    const size_t f = static_cast<size_t>(hdr.faceCount);
+    const size_t vertsBytes = v * sizeof(SRL::Math::Types::Vector3D);
+    const size_t facesBytes = f * sizeof(SRL::Types::Polygon);
+    const size_t attrsBytes = f * sizeof(SRL::Types::Attribute);
+    const size_t lodBytes = f * (sizeof(uint16_t) + sizeof(uint8_t) + sizeof(int32_t));
+    const size_t overhead = 8u * 1024u;
+    return vertsBytes + facesBytes + attrsBytes + lodBytes + overhead;
+}
+
+// Check if a contiguous segment batch can be admitted with current High Work RAM.
+// Keeps a fixed reserve to avoid starving other systems in the same frame.
+static bool CanAdmitSdrBatchInHighWorkRam(size_t firstSegmentId,
+                                          size_t lastSegmentId,
+                                          size_t reserveBytes,
+                                          size_t& outEstimatedBytes,
+                                          size_t& outFreeBytes)
+{
+    outEstimatedBytes = 0;
+    outFreeBytes = SRL::Memory::HighWorkRam::GetFreeSpace();
+    if (lastSegmentId < firstSegmentId) return false;
+
+    for (size_t sid = firstSegmentId; sid <= lastSegmentId; ++sid)
+    {
+        SegmentDrawReady::HeaderV1 hdr{};
+        if (!LoadSdrHeaderForSegment(static_cast<int>(sid), hdr))
+        {
+            return false;
+        }
+        outEstimatedBytes += EstimateSdrSegmentRuntimeBytes(hdr);
+    }
+
+    if (outFreeBytes <= reserveBytes) return false;
+    const size_t usable = outFreeBytes - reserveBytes;
+    return outEstimatedBytes <= usable;
+}
+
+static bool LoadSdrFamilyIdsForSegment(int segmentId, std::vector<uint16_t>& outFamilyIds)
+{
+    outFamilyIds.clear();
+
+    SegmentDrawReady::Blob sdrBlob{};
+    SegmentDrawReady::Loader::View sdrView{};
+    if (!LoadSdrForSegment(segmentId, sdrBlob, sdrView))
+    {
+        return false;
+    }
+
+    if (sdrView.header.faceCount == 0) return false;
+    outFamilyIds.assign(static_cast<size_t>(sdrView.header.faceCount), 0);
+    for (uint32_t fi = 0; fi < sdrView.header.faceCount; ++fi)
+    {
+        uint16_t familyId = 0;
+        const size_t off = sdrView.familyIdsOffset + static_cast<size_t>(fi) * sizeof(uint16_t);
+        if (!SegmentDrawReady::Loader::ReadFamilyIdLeAt(sdrBlob.bytes, off, familyId)) return false;
+        outFamilyIds[static_cast<size_t>(fi)] = familyId;
+    }
+
+    return true;
+}
+
 static size_t ApplyMatFamiliesToRenderer(TrackRenderer& renderer,
                                          const SegmentComponent::Blob& matBlob,
                                          const SegmentComponent::Loader::MatView& matView,
@@ -1484,6 +1663,389 @@ static bool LoadGeoForSegment(int segmentId, SegmentComponent::Blob& outBlob, Se
     outBlob = {};
     outView = {};
     return false;
+}
+
+static bool BuildRendererFromSdr(int segmentId, TrackRenderer& renderer, Vector3D* outCenter)
+{
+    SegmentDrawReady::Blob sdrBlob{};
+    SegmentDrawReady::Loader::View sdrView{};
+    if (!LoadSdrForSegment(segmentId, sdrBlob, sdrView))
+    {
+        return false;
+    }
+
+    std::vector<SRL::Math::Types::Vector3D> verts{};
+    std::vector<SRL::Types::Polygon> faces{};
+    std::vector<SRL::Types::Attribute> attrs{};
+    verts.reserve(sdrView.header.vertexCount);
+    faces.reserve(sdrView.header.faceCount);
+    attrs.reserve(sdrView.header.faceCount);
+
+    for (uint32_t vi = 0; vi < sdrView.header.vertexCount; ++vi)
+    {
+        SegmentDrawReady::Vertex sv{};
+        const size_t off = sdrView.verticesOffset + static_cast<size_t>(vi) * sizeof(SegmentDrawReady::Vertex);
+        if (!SegmentDrawReady::Loader::ReadVertexLeAt(sdrBlob.bytes, off, sv)) return false;
+
+        verts.push_back(Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(sv.x),
+            SRL::Math::Types::Fxp::BuildRaw(sv.y),
+            SRL::Math::Types::Fxp::BuildRaw(sv.z)));
+    }
+
+    auto DecodeSortMode = [](uint16_t raw) -> SRL::Types::Attribute::SortMode
+    {
+        const uint16_t clamped = (raw > 3u) ? 0u : raw;
+        return static_cast<SRL::Types::Attribute::SortMode>(SRL::Types::Attribute::SortMode::Center - clamped);
+    };
+
+    auto BuildSdrBaseAttr = [&](const SegmentDrawReady::AttrBase& sa) -> SRL::Types::Attribute
+    {
+        const auto visibility =
+            (sa.visibility == static_cast<uint16_t>(SegmentDrawReady::VisibilityMode::SingleSided))
+                ? SRL::Types::Attribute::FaceVisibility::SingleSided
+                : SRL::Types::Attribute::FaceVisibility::DoubleSided;
+        const auto sortMode = DecodeSortMode(sa.sortMode);
+        const uint16_t gouraud = sa.gouraudMode ? sa.gouraudMode : CL32KRGB;
+        const uint16_t keepFlags = static_cast<uint16_t>(sa.flags & (CL_Trans | CL_Half | MESHon | MESHoff));
+        const uint16_t display = static_cast<uint16_t>((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags);
+        const uint16_t spriteMode = sa.spriteMode ? sa.spriteMode : sprPolygon;
+        const uint16_t direction = sa.useLight ? UseLight : UseGouraud;
+        return SRL::Types::Attribute(
+            visibility,
+            sortMode,
+            No_Texture,
+            sa.baseColor,
+            gouraud,
+            display,
+            spriteMode,
+            direction);
+    };
+
+    for (uint32_t fi = 0; fi < sdrView.header.faceCount; ++fi)
+    {
+        SegmentDrawReady::Face sf{};
+        SegmentDrawReady::AttrBase sa{};
+        const size_t foff = sdrView.facesOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::Face);
+        const size_t aoff = sdrView.attrsOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::AttrBase);
+        if (!SegmentDrawReady::Loader::ReadFaceLeAt(sdrBlob.bytes, foff, sf)) return false;
+        if (!SegmentDrawReady::Loader::ReadAttrBaseLeAt(sdrBlob.bytes, aoff, sa)) return false;
+
+        const uint16_t indices[4] = { sf.v0, sf.v1, sf.v2, sf.v3 };
+        for (size_t i = 0; i < 4; ++i)
+        {
+            if (static_cast<size_t>(indices[i]) >= verts.size())
+            {
+                SRL::Debug::Print(1, 15, "SEG%03d SDR bad idx f:%u i:%u v:%u max:%u",
+                                  segmentId,
+                                  static_cast<unsigned>(fi),
+                                  static_cast<unsigned>(i),
+                                  static_cast<unsigned>(indices[i]),
+                                  static_cast<unsigned>(verts.size()));
+                return false;
+            }
+        }
+
+        SRL::Types::Polygon p{};
+        p.Vertices[0] = sf.v0;
+        p.Vertices[1] = sf.v1;
+        p.Vertices[2] = sf.v2;
+        p.Vertices[3] = sf.v3;
+        p.Normal = Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalX),
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalY),
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalZ));
+        faces.push_back(p);
+
+        attrs.push_back(BuildSdrBaseAttr(sa));
+    }
+
+    const bool ok = renderer.InitializeFromComponentData(verts, faces, attrs);
+    if (ok && outCenter)
+    {
+        *outCenter = Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(sdrView.header.centerX),
+            SRL::Math::Types::Fxp::BuildRaw(sdrView.header.centerY),
+            SRL::Math::Types::Fxp::BuildRaw(sdrView.header.centerZ));
+    }
+    return ok;
+}
+
+// Load one precompiled draw-ready batch from BDR.BIN.
+static bool LoadBdrForBatch(int firstSegmentId,
+                            int lastSegmentId,
+                            BatchDrawReady::Blob& outBlob,
+                            BatchDrawReady::Loader::View& outView)
+{
+    static PackedAssetCache sBdrPackCache{};
+    char packedName[24]{};
+    std::snprintf(packedName, sizeof(packedName), "B%03d_%03d.BDR", firstSegmentId, lastSegmentId);
+    const char* packCandidates[] = {
+        "CD/DATA/BDR.BIN",
+        "CD/DATA/BDR.BIN;1",
+        "DATA/BDR.BIN",
+        "DATA/BDR.BIN;1",
+        "BDR.BIN",
+        "BDR.BIN;1"
+    };
+    if (!LoadPackedAssetIndexToCart(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]), sBdrPackCache))
+    {
+        return false;
+    }
+    if (!LoadPackedAssetEntryToBlob(sBdrPackCache, packedName, outBlob))
+    {
+        return false;
+    }
+    return BatchDrawReady::Loader::Parse(outBlob, outView);
+}
+
+// Build one renderer directly from a precompiled BDR batch.
+static bool BuildRendererFromBdrBatch(int firstId,
+                                      int lastId,
+                                      uint8_t logicalSegmentCount,
+                                      BdrBatchBuildResult& outBatch)
+{
+    if (firstId <= 0 || lastId < firstId || logicalSegmentCount == 0) return false;
+
+    BatchDrawReady::Blob bdrBlob{};
+    BatchDrawReady::Loader::View bdrView{};
+    if (!LoadBdrForBatch(firstId, lastId, bdrBlob, bdrView))
+    {
+        return false;
+    }
+
+    std::vector<SRL::Math::Types::Vector3D> verts{};
+    std::vector<SRL::Types::Polygon> faces{};
+    std::vector<SRL::Types::Attribute> attrs{};
+    std::vector<uint16_t> familyIds{};
+    std::vector<uint8_t> faceRankOffsets{};
+
+    verts.reserve(bdrView.header.vertexCount);
+    faces.reserve(bdrView.header.faceCount);
+    attrs.reserve(bdrView.header.faceCount);
+    familyIds.reserve(bdrView.header.faceCount);
+    faceRankOffsets.reserve(bdrView.header.faceCount);
+
+    for (uint32_t vi = 0; vi < bdrView.header.vertexCount; ++vi)
+    {
+        SegmentDrawReady::Vertex sv{};
+        const size_t off = bdrView.verticesOffset + static_cast<size_t>(vi) * sizeof(SegmentDrawReady::Vertex);
+        if (!SegmentDrawReady::Loader::ReadVertexLeAt(bdrBlob.bytes, off, sv)) return false;
+
+        verts.push_back(Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(sv.x),
+            SRL::Math::Types::Fxp::BuildRaw(sv.y),
+            SRL::Math::Types::Fxp::BuildRaw(sv.z)));
+    }
+
+    auto DecodeSortMode = [](uint16_t raw) -> SRL::Types::Attribute::SortMode
+    {
+        const uint16_t clamped = (raw > 3u) ? 0u : raw;
+        return static_cast<SRL::Types::Attribute::SortMode>(SRL::Types::Attribute::SortMode::Center - clamped);
+    };
+
+    auto BuildSdrBaseAttr = [&](const SegmentDrawReady::AttrBase& sa) -> SRL::Types::Attribute
+    {
+        const auto visibility =
+            (sa.visibility == static_cast<uint16_t>(SegmentDrawReady::VisibilityMode::SingleSided))
+                ? SRL::Types::Attribute::FaceVisibility::SingleSided
+                : SRL::Types::Attribute::FaceVisibility::DoubleSided;
+        const auto sortMode = DecodeSortMode(sa.sortMode);
+        const uint16_t gouraud = sa.gouraudMode ? sa.gouraudMode : CL32KRGB;
+        const uint16_t keepFlags = static_cast<uint16_t>(sa.flags & (CL_Trans | CL_Half | MESHon | MESHoff));
+        const uint16_t display = static_cast<uint16_t>((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags);
+        const uint16_t spriteMode = sa.spriteMode ? sa.spriteMode : sprPolygon;
+        const uint16_t direction = sa.useLight ? UseLight : UseGouraud;
+        return SRL::Types::Attribute(
+            visibility,
+            sortMode,
+            No_Texture,
+            sa.baseColor,
+            gouraud,
+            display,
+            spriteMode,
+            direction);
+    };
+
+    for (uint32_t fi = 0; fi < bdrView.header.faceCount; ++fi)
+    {
+        SegmentDrawReady::Face sf{};
+        SegmentDrawReady::AttrBase sa{};
+        const size_t foff = bdrView.facesOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::Face);
+        const size_t aoff = bdrView.attrsOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::AttrBase);
+        const size_t ioff = bdrView.familyIdsOffset + static_cast<size_t>(fi) * sizeof(uint16_t);
+        const size_t roff = bdrView.faceRankOffsetsOffset + static_cast<size_t>(fi);
+        if (!SegmentDrawReady::Loader::ReadFaceLeAt(bdrBlob.bytes, foff, sf)) return false;
+        if (!SegmentDrawReady::Loader::ReadAttrBaseLeAt(bdrBlob.bytes, aoff, sa)) return false;
+
+        uint16_t familyId = 0;
+        if (!SegmentDrawReady::Loader::ReadFamilyIdLeAt(bdrBlob.bytes, ioff, familyId)) return false;
+        if (roff >= bdrBlob.bytes.size()) return false;
+        const uint8_t rankOffset = bdrBlob.bytes[roff];
+
+        const uint16_t indices[4] = { sf.v0, sf.v1, sf.v2, sf.v3 };
+        for (size_t i = 0; i < 4; ++i)
+        {
+            if (static_cast<size_t>(indices[i]) >= verts.size()) return false;
+        }
+
+        SRL::Types::Polygon p{};
+        p.Vertices[0] = sf.v0;
+        p.Vertices[1] = sf.v1;
+        p.Vertices[2] = sf.v2;
+        p.Vertices[3] = sf.v3;
+        p.Normal = Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalX),
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalY),
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalZ));
+        faces.push_back(p);
+
+        attrs.push_back(BuildSdrBaseAttr(sa));
+
+        familyIds.push_back(familyId);
+        faceRankOffsets.push_back(rankOffset);
+    }
+
+    auto renderer = std::make_unique<TrackRenderer>();
+    if (!renderer->InitializeFromComponentData(verts, faces, attrs))
+    {
+        return false;
+    }
+
+    renderer->SetUseOriginal(false);
+    renderer->SetSglDirect(true);
+    renderer->SetVdp1Commands(false);
+    renderer->SetDirect2D(false);
+    renderer->SetForceDoubleSided(false);
+    // Test mode: scale track geometry by 2x.
+    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+    renderer->SetDrawLimit(renderer->MeshCount());
+
+    outBatch = {};
+    outBatch.center = Vector3D(
+        SRL::Math::Types::Fxp::BuildRaw(bdrView.header.centerX),
+        SRL::Math::Types::Fxp::BuildRaw(bdrView.header.centerY),
+        SRL::Math::Types::Fxp::BuildRaw(bdrView.header.centerZ));
+    outBatch.renderer = std::move(renderer);
+    outBatch.familyIds = std::move(familyIds);
+    outBatch.faceRankOffsets = std::move(faceRankOffsets);
+    (void)logicalSegmentCount;
+    return true;
+}
+
+static bool AppendSdrSegmentToBatch(int segmentId,
+                                    uint8_t rankOffset,
+                                    std::vector<SRL::Math::Types::Vector3D>& ioVerts,
+                                    std::vector<SRL::Types::Polygon>& ioFaces,
+                                    std::vector<SRL::Types::Attribute>& ioAttrs,
+                                    std::vector<uint16_t>& ioFamilyIds,
+                                    std::vector<uint8_t>& ioFaceRankOffsets,
+                                    Vector3D& ioMin,
+                                    Vector3D& ioMax)
+{
+    SegmentDrawReady::Blob sdrBlob{};
+    SegmentDrawReady::Loader::View sdrView{};
+    if (!LoadSdrForSegment(segmentId, sdrBlob, sdrView))
+    {
+        return false;
+    }
+
+    const size_t vertexBase = ioVerts.size();
+
+    for (uint32_t vi = 0; vi < sdrView.header.vertexCount; ++vi)
+    {
+        SegmentDrawReady::Vertex sv{};
+        const size_t off = sdrView.verticesOffset + static_cast<size_t>(vi) * sizeof(SegmentDrawReady::Vertex);
+        if (!SegmentDrawReady::Loader::ReadVertexLeAt(sdrBlob.bytes, off, sv)) return false;
+
+        const Vector3D v(
+            SRL::Math::Types::Fxp::BuildRaw(sv.x),
+            SRL::Math::Types::Fxp::BuildRaw(sv.y),
+            SRL::Math::Types::Fxp::BuildRaw(sv.z));
+        ioVerts.push_back(v);
+        ioMin.X = SRL::Math::Min(ioMin.X, v.X);
+        ioMin.Y = SRL::Math::Min(ioMin.Y, v.Y);
+        ioMin.Z = SRL::Math::Min(ioMin.Z, v.Z);
+        ioMax.X = SRL::Math::Max(ioMax.X, v.X);
+        ioMax.Y = SRL::Math::Max(ioMax.Y, v.Y);
+        ioMax.Z = SRL::Math::Max(ioMax.Z, v.Z);
+    }
+
+    auto DecodeSortMode = [](uint16_t raw) -> SRL::Types::Attribute::SortMode
+    {
+        const uint16_t clamped = (raw > 3u) ? 0u : raw;
+        return static_cast<SRL::Types::Attribute::SortMode>(SRL::Types::Attribute::SortMode::Center - clamped);
+    };
+
+    auto BuildSdrBaseAttr = [&](const SegmentDrawReady::AttrBase& sa) -> SRL::Types::Attribute
+    {
+        const auto visibility =
+            (sa.visibility == static_cast<uint16_t>(SegmentDrawReady::VisibilityMode::SingleSided))
+                ? SRL::Types::Attribute::FaceVisibility::SingleSided
+                : SRL::Types::Attribute::FaceVisibility::DoubleSided;
+        const auto sortMode = DecodeSortMode(sa.sortMode);
+        const uint16_t gouraud = sa.gouraudMode ? sa.gouraudMode : CL32KRGB;
+        const uint16_t keepFlags = static_cast<uint16_t>(sa.flags & (CL_Trans | CL_Half | MESHon | MESHoff));
+        const uint16_t display = static_cast<uint16_t>((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags);
+        const uint16_t spriteMode = sa.spriteMode ? sa.spriteMode : sprPolygon;
+        const uint16_t direction = sa.useLight ? UseLight : UseGouraud;
+        return SRL::Types::Attribute(
+            visibility,
+            sortMode,
+            No_Texture,
+            sa.baseColor,
+            gouraud,
+            display,
+            spriteMode,
+            direction);
+    };
+
+    for (uint32_t fi = 0; fi < sdrView.header.faceCount; ++fi)
+    {
+        SegmentDrawReady::Face sf{};
+        SegmentDrawReady::AttrBase sa{};
+        uint16_t familyId = 0;
+        const size_t foff = sdrView.facesOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::Face);
+        const size_t aoff = sdrView.attrsOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::AttrBase);
+        const size_t ioff = sdrView.familyIdsOffset + static_cast<size_t>(fi) * sizeof(uint16_t);
+        if (!SegmentDrawReady::Loader::ReadFaceLeAt(sdrBlob.bytes, foff, sf)) return false;
+        if (!SegmentDrawReady::Loader::ReadAttrBaseLeAt(sdrBlob.bytes, aoff, sa)) return false;
+        if (!SegmentDrawReady::Loader::ReadFamilyIdLeAt(sdrBlob.bytes, ioff, familyId)) return false;
+
+        const uint16_t srcIdx[4] = { sf.v0, sf.v1, sf.v2, sf.v3 };
+        for (size_t i = 0; i < 4; ++i)
+        {
+            if (static_cast<uint32_t>(srcIdx[i]) >= sdrView.header.vertexCount)
+            {
+                SRL::Debug::Print(1, 15, "SDR idx bad seg:%03d f:%u i:%u v:%u max:%u",
+                                  segmentId,
+                                  static_cast<unsigned>(fi),
+                                  static_cast<unsigned>(i),
+                                  static_cast<unsigned>(srcIdx[i]),
+                                  static_cast<unsigned>(sdrView.header.vertexCount));
+                return false;
+            }
+        }
+        SRL::Types::Polygon p{};
+        for (size_t i = 0; i < 4; ++i)
+        {
+            const size_t mapped = vertexBase + static_cast<size_t>(srcIdx[i]);
+            if (mapped >= static_cast<size_t>(0xFFFF)) return false;
+            p.Vertices[i] = static_cast<uint16_t>(mapped);
+        }
+        p.Normal = Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalX),
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalY),
+            SRL::Math::Types::Fxp::BuildRaw(sf.normalZ));
+        ioFaces.push_back(p);
+
+        ioAttrs.push_back(BuildSdrBaseAttr(sa));
+
+        ioFamilyIds.push_back(familyId);
+        ioFaceRankOffsets.push_back(rankOffset);
+    }
+
+    return true;
 }
 
 // Reorder quad corners from GEO UVs so the SGL textured polygon path sees a stable corner order.
@@ -1581,100 +2143,13 @@ static Vector3D BuildFaceNormalFromVerts(const std::vector<SRL::Math::Types::Vec
 // Build one component renderer and expose its center directly from GEO vertices.
 static bool BuildRendererFromGeoMat8(int segmentId, TrackRenderer& renderer, Vector3D* outCenter)
 {
-    SegmentComponent::Blob geoBlob{};
-    SegmentComponent::Loader::GeoView geoView{};
-    SegmentComponent::Blob matBlob{};
-    SegmentComponent::Loader::MatView matView{};
-    if (!LoadGeoForSegment(segmentId, geoBlob, geoView))
+    if (BuildRendererFromSdr(segmentId, renderer, outCenter))
     {
-        SRL::Debug::Print(1, 15, "SEG%03d GEO load fail", segmentId);
-        return false;
+        return true;
     }
-    if (!LoadMat8ForSegment(segmentId, matBlob, matView))
-    {
-        SRL::Debug::Print(1, 15, "SEG%03d MAT8 load fail", segmentId);
-        return false;
-    }
-    if (!SegmentComponent::Loader::ValidateGeoMatPair(geoView, matView))
-    {
-        SRL::Debug::Print(1, 15, "SEG%03d GEO/MAT pair bad", segmentId);
-        return false;
-    }
-    std::vector<SRL::Math::Types::Vector3D> verts;
-    std::vector<SRL::Types::Polygon> faces;
-    std::vector<SRL::Types::Attribute> attrs;
-    verts.reserve(geoView.header.vertexCount);
-    faces.reserve(geoView.header.faceCount);
-    attrs.reserve(geoView.header.faceCount);
-    Vector3D minv(SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
-                  SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
-                  SRL::Math::Types::Fxp::BuildRaw(32767 << 16));
-    Vector3D maxv(SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
-                  SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
-                  SRL::Math::Types::Fxp::BuildRaw(-32768 << 16));
 
-    for (uint32_t vi = 0; vi < geoView.header.vertexCount; ++vi)
-    {
-        SegmentComponent::GeoVertex gv{};
-        const size_t off = geoView.vertexOffset + static_cast<size_t>(vi) * sizeof(SegmentComponent::GeoVertex);
-        if (!SegmentComponent::Loader::ReadGeoVertexLeAt(geoBlob.bytes, off, gv)) return false;
-        const Vector3D v(
-            SRL::Math::Types::Fxp::BuildRaw(gv.x),
-            SRL::Math::Types::Fxp::BuildRaw(gv.y),
-            SRL::Math::Types::Fxp::BuildRaw(gv.z));
-        verts.push_back(v);
-        minv.X = SRL::Math::Min(minv.X, v.X);
-        minv.Y = SRL::Math::Min(minv.Y, v.Y);
-        minv.Z = SRL::Math::Min(minv.Z, v.Z);
-        maxv.X = SRL::Math::Max(maxv.X, v.X);
-        maxv.Y = SRL::Math::Max(maxv.Y, v.Y);
-        maxv.Z = SRL::Math::Max(maxv.Z, v.Z);
-    }
-    for (uint32_t fi = 0; fi < geoView.header.faceCount; ++fi)
-    {
-        SegmentComponent::GeoFace gf{};
-        SegmentComponent::MatFaceBinding mb{};
-        const size_t goff = geoView.faceOffset + static_cast<size_t>(fi) * sizeof(SegmentComponent::GeoFace);
-        const size_t moff = matView.bindingOffset + static_cast<size_t>(fi) * sizeof(SegmentComponent::MatFaceBinding);
-        if (!SegmentComponent::Loader::ReadGeoFaceLeAt(geoBlob.bytes, goff, gf)) return false;
-        if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) return false;
-
-        SRL::Types::Polygon p{};
-        if (gf.kind == static_cast<uint8_t>(SegmentComponent::FaceKind::Quad))
-        {
-            for (size_t c = 0; c < 4; ++c) p.Vertices[c] = gf.vertex[c];
-            uint16_t reordered[4]{};
-            if (ReorderQuadVerticesFromUv(gf, reordered))
-            {
-                for (size_t c = 0; c < 4; ++c) p.Vertices[c] = reordered[c];
-            }
-        }
-        else
-        {
-            for (size_t c = 0; c < 4; ++c) p.Vertices[c] = gf.vertex[c];
-            p.Vertices[3] = p.Vertices[2];
-        }
-        p.Normal = BuildFaceNormalFromVerts(verts, p.Vertices);
-        faces.push_back(p);
-
-        const uint16_t m = static_cast<uint16_t>(mb.materialId & 0x1F);
-        const uint16_t tint = static_cast<uint16_t>(0x8400 | (m ? m : 0x1F));
-        attrs.push_back(SRL::Types::Attribute(
-            SRL::Types::Attribute::FaceVisibility::DoubleSided,
-            SRL::Types::Attribute::SortMode::Center,
-            No_Texture,
-            tint,
-            CL32KRGB,
-            CL32KRGB,
-            sprPolygon,
-            UseLight));
-    }
-    const bool ok = renderer.InitializeFromComponentData(verts, faces, attrs);
-    if (ok && outCenter)
-    {
-        *outCenter = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
-    }
-    return ok;
+    SRL::Debug::Print(1, 15, "SEG%03d SDR load fail", segmentId);
+    return false;
 }
 } // namespace
 
@@ -1820,6 +2295,50 @@ static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t cou
 }
 
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out)
+{
+    out = {};
+    if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
+
+    for (size_t i = 0; i < cache.entries.size(); ++i)
+    {
+        const auto& e = cache.entries[i];
+        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
+
+        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
+        std::vector<uint8_t> tmp(e.size);
+        ::memcpy(tmp.data(), src, e.size);
+        out.bytes = std::move(tmp);
+        out.loaded = true;
+        out.size = out.bytes.size();
+        return true;
+    }
+
+    return false;
+}
+
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentDrawReady::Blob& out)
+{
+    out = {};
+    if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
+
+    for (size_t i = 0; i < cache.entries.size(); ++i)
+    {
+        const auto& e = cache.entries[i];
+        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
+
+        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
+        std::vector<uint8_t> tmp(e.size);
+        ::memcpy(tmp.data(), src, e.size);
+        out.bytes = std::move(tmp);
+        out.loaded = true;
+        out.size = out.bytes.size();
+        return true;
+    }
+
+    return false;
+}
+
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, BatchDrawReady::Blob& out)
 {
     out = {};
     if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
@@ -2426,31 +2945,142 @@ std::vector<TrackSystem::TrackSegmentEntry> TrackSystem::CopyAllTrackSegments(si
 std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(std::vector<TrackSegmentEntry>& entries)
 {
     std::vector<SegmentRenderEntry> renderers;
-    renderers.reserve(entries.size());
-    for (auto& entry : entries)
+    if (entries.empty()) return renderers;
+    // Keep the new direct VDP1 command path disabled until the draw path is validated.
+    constexpr bool kUseTrackVdp1Commands = false;
+    renderers.reserve(1);
+
+    // Single-segment package: use the direct SDR loader path.
+    // This mirrors the robust contract of the NYA flow (one prepared mesh per draw)
+    // and avoids extra merge/remap steps.
+    if (entries.size() == 1)
     {
+        const int segmentId = entries[0].id;
         auto renderer = std::make_unique<TrackRenderer>();
-        Vector3D resolvedCenter(0.0, 0.0, 0.0);
-        const bool built = BuildRendererFromGeoMat8(entry.id, *renderer, &resolvedCenter);
-        if (!built)
+        Vector3D center(0.0, 0.0, 0.0);
+        if (!BuildRendererFromSdr(segmentId, *renderer, &center))
         {
-            SRL::Debug::Print(1, 15, "Renderer init fail %03d", entry.id);
-            continue;
+            SRL::Debug::Print(1, 15, "SDR init fail %03d", segmentId);
+            return {};
         }
 
-        // Component geometry is the active runtime path.
+        std::vector<uint16_t> familyIds{};
+        if (!LoadSdrFamilyIdsForSegment(segmentId, familyIds) || familyIds.empty())
+        {
+            SRL::Debug::Print(1, 15, "SDR fam fail %03d", segmentId);
+            return {};
+        }
+
         renderer->SetUseOriginal(false);
         renderer->SetSglDirect(false);
+        renderer->SetVdp1Commands(kUseTrackVdp1Commands);
         renderer->SetDirect2D(false);
-        // Keep original face visibility from model to avoid front/back overdraw artifacts.
         renderer->SetForceDoubleSided(false);
+        // Test mode: scale track geometry by 2x.
+        renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(2 << 16));
         renderer->SetDrawLimit(renderer->MeshCount());
+
         SegmentRenderEntry item{};
-        item.id = entry.id;
-        item.center = resolvedCenter;
+        item.id = segmentId;
+        item.logicalSegmentCount = 1;
+        item.center = center;
         item.renderer = std::move(renderer);
+        item.lodState.ready = true;
+        item.lodState.currentLodIndex = 0xFF;
+        item.lodState.currentBaseRank = -1;
+        item.lodState.faceFamilyIds = std::move(familyIds);
+        item.lodState.faceRankOffsets.assign(item.lodState.faceFamilyIds.size(), 0);
+        item.lodState.currentFaceSlots.assign(item.lodState.faceFamilyIds.size(), -1);
         renderers.push_back(std::move(item));
+        return renderers;
     }
+
+    // Pre-size batch buffers using exact SDR counts for this package.
+    // This avoids repeated growth and lowers Work RAM fragmentation.
+    size_t totalVerts = 0;
+    size_t totalFaces = 0;
+    for (size_t i = 0; i < entries.size(); ++i)
+    {
+        SegmentDrawReady::HeaderV1 hdr{};
+        if (!LoadSdrHeaderForSegment(entries[i].id, hdr))
+        {
+            SRL::Debug::Print(1, 15, "SDR head fail %03d", entries[i].id);
+            return {};
+        }
+        totalVerts += static_cast<size_t>(hdr.vertexCount);
+        totalFaces += static_cast<size_t>(hdr.faceCount);
+    }
+    if (totalVerts >= static_cast<size_t>(0xFFFF))
+    {
+        SRL::Debug::Print(1, 15, "SDR pkg vtx ovf:%u", static_cast<unsigned>(totalVerts));
+        return {};
+    }
+    SRL::Debug::Print(1, 12, "SDR pkg vf v:%u f:%u", (unsigned)totalVerts, (unsigned)totalFaces);
+
+    std::vector<SRL::Math::Types::Vector3D> batchVerts{};
+    std::vector<SRL::Types::Polygon> batchFaces{};
+    std::vector<SRL::Types::Attribute> batchAttrs{};
+    std::vector<uint16_t> batchFamilyIds{};
+    std::vector<uint8_t> batchFaceRankOffsets{};
+    batchVerts.reserve(totalVerts);
+    batchFaces.reserve(totalFaces);
+    batchAttrs.reserve(totalFaces);
+    batchFamilyIds.reserve(totalFaces);
+    batchFaceRankOffsets.reserve(totalFaces);
+
+    Vector3D minv(SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(32767 << 16));
+    Vector3D maxv(SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(-32768 << 16),
+                  SRL::Math::Types::Fxp::BuildRaw(-32768 << 16));
+
+    // Build one runtime draw package from N contiguous SDR segments.
+    // This keeps asset flexibility (segment-level SDR) while reducing draw count.
+    for (size_t i = 0; i < entries.size(); ++i)
+    {
+        if (!AppendSdrSegmentToBatch(entries[i].id,
+                                     static_cast<uint8_t>(i),
+                                     batchVerts,
+                                     batchFaces,
+                                     batchAttrs,
+                                     batchFamilyIds,
+                                     batchFaceRankOffsets,
+                                     minv,
+                                     maxv))
+        {
+            SRL::Debug::Print(1, 15, "SDR batch fail %03d", entries[i].id);
+            return {};
+        }
+    }
+
+    auto renderer = std::make_unique<TrackRenderer>();
+    if (!renderer->InitializeFromComponentData(batchVerts, batchFaces, batchAttrs))
+    {
+        SRL::Debug::Print(1, 15, "SDR pkg init fail %03d", entries.front().id);
+        return {};
+    }
+    renderer->SetUseOriginal(false);
+    renderer->SetSglDirect(false);
+    renderer->SetVdp1Commands(kUseTrackVdp1Commands);
+    renderer->SetDirect2D(false);
+    renderer->SetForceDoubleSided(false);
+    // Test mode: scale track geometry by 2x.
+    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+    renderer->SetDrawLimit(renderer->MeshCount());
+
+    SegmentRenderEntry item{};
+    item.id = entries.front().id;
+    item.logicalSegmentCount = static_cast<uint8_t>(std::min<size_t>(entries.size(), 255));
+    item.center = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
+    item.renderer = std::move(renderer);
+    item.lodState.ready = true;
+    item.lodState.currentLodIndex = 0xFF;
+    item.lodState.currentBaseRank = -1;
+    item.lodState.faceFamilyIds = std::move(batchFamilyIds);
+    item.lodState.faceRankOffsets = std::move(batchFaceRankOffsets);
+    item.lodState.currentFaceSlots.assign(item.lodState.faceFamilyIds.size(), -1);
+    renderers.push_back(std::move(item));
     return renderers;
 }
 
@@ -2476,20 +3106,11 @@ bool TrackSystem::BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& out
     for (const auto& seg : segmentRenderers_)
     {
         if (!seg.renderer) continue;
-
-        SegmentComponent::Blob matBlob{};
-        SegmentComponent::Loader::MatView matView{};
-        if (!LoadMat8ForSegment(seg.id, matBlob, matView)) continue;
-        if (matView.file.segmentId != static_cast<uint32_t>(seg.id)) continue;
-
-        for (uint32_t fi = 0; fi < matView.header.faceCount; ++fi)
+        if (!seg.lodState.ready) continue;
+        for (size_t fi = 0; fi < seg.lodState.faceFamilyIds.size(); ++fi)
         {
-            SegmentComponent::MatFaceBinding mb{};
-            const size_t moff = matView.bindingOffset + static_cast<size_t>(fi) * sizeof(SegmentComponent::MatFaceBinding);
-            if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) continue;
-            const uint16_t fam = static_cast<uint16_t>(mb.materialId);
+            const uint16_t fam = seg.lodState.faceFamilyIds[fi];
             if (fam == 0) continue;
-
             bool exists = false;
             for (size_t i = 0; i < familyIdsUsed.size(); ++i)
             {
@@ -2518,33 +3139,23 @@ bool TrackSystem::BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& out
     return !outSlots.empty();
 }
 
-// Build the per face family table for one segment renderer from its MAT8 bindings.
+// Build the per face family table for one segment renderer from SDR1.
 bool TrackSystem::BuildSegmentLodState(SegmentRenderEntry& entry,
                                        const SegmentComponent::Blob& matBlob,
                                        const SegmentComponent::Loader::MatView& matView,
                                        std::vector<Seg1FamilySlotEntry>& familySlots)
 {
-    entry.lodState = {};
     if (!entry.renderer) return false;
+    if (!entry.lodState.ready) return false;
+    if (entry.lodState.faceFamilyIds.empty()) return false;
+    entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
 
-    const size_t rendererFaces = static_cast<size_t>(entry.renderer->FaceCount());
-    const size_t nFaces = std::min(rendererFaces, static_cast<size_t>(matView.header.faceCount));
-    if (rendererFaces == 0 || nFaces == 0) return false;
+    (void)matBlob;
+    (void)matView;
 
-    entry.lodState.faceFamilyIds.assign(rendererFaces, 0);
-    entry.lodState.currentFaceSlots.assign(rendererFaces, -1);
-
-    for (size_t fi = 0; fi < nFaces; ++fi)
-    {
-        SegmentComponent::MatFaceBinding mb{};
-        const size_t moff = matView.bindingOffset + fi * sizeof(SegmentComponent::MatFaceBinding);
-        if (!SegmentComponent::Loader::ReadMatFaceBindingLeAt(matBlob.bytes, moff, mb)) continue;
-        entry.lodState.faceFamilyIds[fi] = static_cast<uint16_t>(mb.materialId);
-    }
-
-    entry.lodState.ready = true;
     entry.lodState.currentLodIndex = 0xFF;
-    return RebuildSegmentFaceSlotsForLod(entry, ResolveSegmentLodIndexByRank(0), familySlots);
+    entry.lodState.currentBaseRank = -1;
+    return RebuildSegmentFaceSlotsForBaseRank(entry, 0, familySlots);
 }
 
 // Upload one family texture slot only when a lod band actually needs it.
@@ -2565,8 +3176,25 @@ bool TrackSystem::EnsureFamilyLodSlotLoaded(std::vector<Seg1FamilySlotEntry>& fa
     if (slotEntry->lodSlots[lodIndex] != No_Texture) return true;
 
     const int lodValues[4] = { 8, 16, 32, 64 };
-    for (int fallbackLi = static_cast<int>(lodIndex); fallbackLi >= 0; --fallbackLi)
+    // Fallback policy:
+    // 1) requested lod
+    // 2) smaller lods (cheaper)
+    // 3) larger lods (prevent holes when only high lod exists)
+    uint8_t searchOrder[4]{};
+    size_t searchCount = 0;
+    searchOrder[searchCount++] = lodIndex;
+    for (int li = static_cast<int>(lodIndex) - 1; li >= 0; --li)
     {
+        searchOrder[searchCount++] = static_cast<uint8_t>(li);
+    }
+    for (uint8_t li = static_cast<uint8_t>(lodIndex + 1); li < 4; ++li)
+    {
+        searchOrder[searchCount++] = li;
+    }
+
+    for (size_t si = 0; si < searchCount; ++si)
+    {
+        const int fallbackLi = static_cast<int>(searchOrder[si]);
         if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(fallbackLi), lodValues[fallbackLi])) continue;
         const auto& bank = seg1Texbanks_[static_cast<size_t>(fallbackLi)];
         const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
@@ -2630,31 +3258,79 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
     return true;
 }
 
+bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
+                                                     size_t baseRank,
+                                                     std::vector<Seg1FamilySlotEntry>& familySlots)
+{
+    if (!entry.renderer) return false;
+    if (entry.lodState.faceFamilyIds.empty()) return false;
+
+    const size_t faceCount = entry.lodState.faceFamilyIds.size();
+    entry.lodState.currentFaceSlots.assign(faceCount, -1);
+
+    const bool hasRankOffsets = entry.lodState.faceRankOffsets.size() == faceCount;
+    for (size_t fi = 0; fi < faceCount; ++fi)
+    {
+        const uint16_t fam = entry.lodState.faceFamilyIds[fi];
+        if (fam == 0) continue;
+
+        const size_t rank = baseRank + (hasRankOffsets ? static_cast<size_t>(entry.lodState.faceRankOffsets[fi]) : 0u);
+        const uint8_t lodIndex = ResolveSegmentLodIndexByRank(rank);
+        (void)EnsureFamilyLodSlotLoaded(familySlots, fam, lodIndex);
+
+        uint16_t slot = No_Texture;
+        for (size_t si = 0; si < familySlots.size(); ++si)
+        {
+            if (familySlots[si].familyId != fam) continue;
+            slot = familySlots[si].lodSlots[lodIndex];
+            break;
+        }
+
+        if (slot != No_Texture)
+        {
+            entry.lodState.currentFaceSlots[fi] = static_cast<int32_t>(slot);
+        }
+    }
+
+    return true;
+}
+
 // Map a near to far rank into the current fixed lod bands for track rendering.
 uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
 {
-    if (rank < 3) return 3;    // 64x64
-    if (rank < 8) return 2;    // 32x32
-    if (rank < 15) return 1;   // 16x16
-    return 0;                  // 8x8
+    if (rank < 3) return 3;    // 64x64 (3)
+    if (rank < 8) return 2;    // 32x32 (5)
+    if (rank < 13) return 1;   // 16x16 (5)
+    return 0;                  // 8x8  (7)
 }
 
 // Apply lod changes only when a visible segment crosses a band boundary.
 void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles)
 {
     std::vector<Seg1FamilySlotEntry>& familySlots = seg1FamilySlots_;
+    size_t logicalRank = 0;
     for (size_t rank = 0; rank < nearToFarHandles.size(); ++rank)
     {
         auto* entry = segmentPool_.Resolve(nearToFarHandles[rank]);
         if (!entry || !entry->renderer) continue;
         if (!entry->lodState.ready) continue;
 
-        const uint8_t desiredLod = ResolveSegmentLodIndexByRank(rank);
-        if (entry->lodState.currentLodIndex == desiredLod) continue;
+        const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+        if (entry->lodState.currentBaseRank == desiredBaseRank)
+        {
+            logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
+            continue;
+        }
 
-        if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLod, familySlots)) continue;
+        if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots))
+        {
+            logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
+            continue;
+        }
         (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
-        entry->lodState.currentLodIndex = desiredLod;
+        entry->lodState.currentBaseRank = desiredBaseRank;
+        entry->lodState.currentLodIndex = 0xFE;
+        logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
     }
 }
 
@@ -2662,6 +3338,8 @@ bool TrackSystem::Initialize(const Config& config)
 {
     ready_ = false;
     segmentsReady_ = false;
+    coordinatorReady_ = false;
+    fixedVisibleSegmentCap_ = 1;
     seg1ComponentEnabled_ = false;
     seg1ComponentVerts_.clear();
     seg1ComponentFaces_.clear();
@@ -2700,48 +3378,96 @@ bool TrackSystem::Initialize(const Config& config)
             : ((config.initialSegments == 0)
                    ? kTrackSegmentLimit
                    : std::min<size_t>(config.initialSegments, kTrackSegmentLimit));
+    fixedVisibleSegmentCap_ = std::max<uint32_t>(1u, static_cast<uint32_t>(loadLimit));
     segmentEntries_.reserve(loadLimit);
     segmentRenderers_.reserve(loadLimit);
 
-    // Build runtime renderers directly from GEO/MAT assets.
+    // Build runtime draw packages with contiguous SDR segments.
+    // Requested package size is capped by a Work RAM safety guard.
+    // For stability, keep packages small enough to avoid large merged batches.
+    constexpr size_t kRequestedSegmentsPerDrawPackage = 1;
+    const size_t segmentsPerDrawPackage = ComputeSafeSegmentsPerPackage(kRequestedSegmentsPerDrawPackage);
     size_t builtCount = 0;
-    for (size_t i = 1; i <= loadLimit; ++i)
+    constexpr size_t kHighWorkRamReserveBytes = 96u * 1024u;
+    for (size_t sid = 1; sid <= loadLimit; )
     {
-        std::vector<TrackSegmentEntry> singleEntry;
-        singleEntry.reserve(1);
-        singleEntry.push_back({ static_cast<int>(i), {} });
+        const size_t maxCount = std::min(segmentsPerDrawPackage, (loadLimit - sid + 1));
+        size_t chosenCount = maxCount;
+        size_t chosenEnd = sid;
+        size_t batchEstimatedBytes = 0;
+        size_t hwrFreeBytes = 0;
+        bool admitted = false;
 
-        auto built = BuildSegmentRenderers(singleEntry);
+        while (chosenCount > 0)
+        {
+            const size_t testEnd = sid + chosenCount - 1;
+            if (CanAdmitSdrBatchInHighWorkRam(sid, testEnd, kHighWorkRamReserveBytes, batchEstimatedBytes, hwrFreeBytes))
+            {
+                admitted = true;
+                chosenEnd = testEnd;
+                break;
+            }
+            --chosenCount;
+        }
+
+        if (!admitted)
+        {
+            SRL::Debug::Print(1, 11, "PKG stop HWR sid:%u need:%u free:%u",
+                              static_cast<unsigned>(sid),
+                              static_cast<unsigned>(batchEstimatedBytes),
+                              static_cast<unsigned>(hwrFreeBytes));
+            break;
+        }
+
+        std::vector<TrackSegmentEntry> batchEntries{};
+        batchEntries.reserve(chosenCount);
+        for (size_t id = sid; id <= chosenEnd; ++id)
+        {
+            batchEntries.push_back({ static_cast<int>(id), {} });
+            segmentEntries_.push_back({ static_cast<int>(id), {} });
+        }
+
+        auto built = BuildSegmentRenderers(batchEntries);
         if (!built.empty())
         {
+            SRL::Debug::Print(1, 11, "PKG add id:%u..%u", (unsigned)sid, (unsigned)chosenEnd);
             segmentRenderers_.push_back(std::move(built[0]));
             ++builtCount;
         }
-
-        segmentEntries_.push_back({ static_cast<int>(i), {} });
+        sid = chosenEnd + 1;
     }
-    SRL::Debug::Print(1, 13, "Track segments built %u/%u", unsigned(builtCount), unsigned(segmentEntries_.size()));
-    SRL::Debug::Print(1, 28, "DBG build tag:TS27A segs:%lu", (unsigned long)segmentEntries_.size());
+    SRL::Debug::Print(1, 13, "Track pkg built %u segs:%u", unsigned(builtCount), unsigned(segmentEntries_.size()));
+    SRL::Debug::Print(1, 28, "DBG build tag:TS29A segs:%lu", (unsigned long)segmentEntries_.size());
     segmentsReady_ = !segmentRenderers_.empty();
     segmentHandles_ = BuildSegmentHandleTable();
 
     (void)config.useSlave; // stability mode: always use synchronous/double-buffer producer
 
+    // Safety guard: cap draws by configured visible segments.
+    const uint32_t kSafeTrackDrawsPerFrame =
+        std::min<uint32_t>(
+            std::max<uint32_t>(1u, config.initialSegments),
+            static_cast<uint32_t>(kTrackSegmentLimit));
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::Config coordinatorConfig{};
-    coordinatorConfig.budget.maxTrackSegments = std::min<uint32_t>(config.initialSegments, static_cast<uint32_t>(kTrackSegmentLimit));
+    coordinatorConfig.budget.maxTrackSegments =
+        std::min<uint32_t>(
+            std::min<uint32_t>(config.initialSegments, static_cast<uint32_t>(kTrackSegmentLimit)),
+            kSafeTrackDrawsPerFrame);
     coordinatorConfig.budget.maxTrackMeshes = config.initialMeshes;
     coordinatorConfig.budget.maxTrackFaces = config.initialFaces;
     coordinatorConfig.chunkCapacity = kTrackSegmentLimit;
 
-    const bool coordinatorReady = coordinator_.Initialize(coordinatorConfig);
-    if (!coordinatorReady)
+    coordinatorReady_ = coordinator_.Initialize(coordinatorConfig);
+    if (!coordinatorReady_)
     {
         SRL::Debug::Print(1, 31, "TrackRenderCoordinator HWR alloc failed");
     }
 
     AdaptiveTrackBudgetController::Limits adaptiveBudgetLimits{};
-    const uint32_t minSegmentsRequested = std::max<uint32_t>(1, config.minSegments);
-    const uint32_t maxSegmentsRequested = std::max<uint32_t>(minSegmentsRequested, config.initialSegments);
+    const uint32_t minSegmentsRequested =
+        std::min<uint32_t>(std::max<uint32_t>(1, config.minSegments), kSafeTrackDrawsPerFrame);
+    const uint32_t maxSegmentsRequested =
+        std::min<uint32_t>(std::max<uint32_t>(minSegmentsRequested, config.initialSegments), kSafeTrackDrawsPerFrame);
     const uint32_t maxSegmentsCap = static_cast<uint32_t>(kTrackSegmentLimit);
     adaptiveBudgetLimits.minSegments = std::min<uint32_t>(minSegmentsRequested, maxSegmentsCap);
     adaptiveBudgetLimits.maxSegments = std::min<uint32_t>(maxSegmentsRequested, maxSegmentsCap);
@@ -2785,8 +3511,7 @@ bool TrackSystem::Initialize(const Config& config)
         SRL::Debug::Print(1, 29, "DBG build tag:TS27A near(%lu):%s", (unsigned long)count, ids);
     }
 
-    // MAT8 fixed integration (safe step): apply per-segment family mapping from MAT8
-    // over existing renderer slots (no runtime texture upload/swap).
+    // Build the initial per batch face slots from SDR family ids.
     {
         constexpr bool kEnableMat8FixedIntegration = true;
         if (kEnableMat8FixedIntegration)
@@ -2796,46 +3521,39 @@ bool TrackSystem::Initialize(const Config& config)
             std::vector<Seg1FamilySlotEntry> familyLodSlots{};
             if (!BuildTrackFamilyLodSlots(familyLodSlots))
             {
-                SRL::Debug::Print(1, 19, "MAT8 lod build fail");
+                SRL::Debug::Print(1, 19, "SDR lod build fail");
             }
             else
             {
                 seg1FamilySlots_ = familyLodSlots;
+                size_t logicalRank = 0;
                 for (size_t i = 0; i < segmentRenderers_.size(); ++i)
                 {
                     auto& seg = segmentRenderers_[i];
                     if (!seg.renderer) { ++matFail; continue; }
 
-                    SegmentComponent::Blob matBlob{};
-                    SegmentComponent::Loader::MatView matView{};
-                    if (!LoadMat8ForSegment(seg.id, matBlob, matView))
-                    {
-                        ++matFail;
-                        continue;
-                    }
-                    if (matView.file.segmentId != static_cast<uint32_t>(seg.id))
-                    {
-                        ++matFail;
-                        continue;
-                    }
-                    if (!BuildSegmentLodState(seg, matBlob, matView, familyLodSlots))
+                    SegmentComponent::Blob unusedMatBlob{};
+                    SegmentComponent::Loader::MatView unusedMatView{};
+                    if (!BuildSegmentLodState(seg, unusedMatBlob, unusedMatView, familyLodSlots))
                     {
                         ++matFail;
                         continue;
                     }
 
-                    const uint8_t bootLod = ResolveSegmentLodIndexByRank(i);
-                    if (!RebuildSegmentFaceSlotsForLod(seg, bootLod, familyLodSlots))
+                    if (!RebuildSegmentFaceSlotsForBaseRank(seg, logicalRank, familyLodSlots))
                     {
                         ++matFail;
+                        logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
                         continue;
                     }
                     (void)seg.renderer->ApplyFaceTextureSlotsGlobal(seg.lodState.currentFaceSlots);
-                    seg.lodState.currentLodIndex = bootLod;
+                    seg.lodState.currentBaseRank = static_cast<int16_t>(logicalRank);
+                    seg.lodState.currentLodIndex = 0xFE;
+                    logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
                     ++matOk;
                 }
 
-                SRL::Debug::Print(1, 20, "MAT8 ok:%u fail:%u fam:%u", matOk, matFail, (unsigned)familyLodSlots.size());
+                SRL::Debug::Print(1, 20, "SDR ok:%u fail:%u fam:%u", matOk, matFail, (unsigned)familyLodSlots.size());
             }
         }
     }
@@ -4062,7 +4780,9 @@ bool TrackSystem::Initialize(const Config& config)
         SRL::Debug::Print(1, 21, "S1 TBK ok:%u/4", (unsigned)banksOk);
     }
 
-    ready_ = coordinatorReady && segmentsReady_;
+    // Keep track rendering available even when coordinator allocation fails.
+    // RenderFrame will use a direct fallback path when coordinator is unavailable.
+    ready_ = segmentsReady_;
     return ready_;
 }
 
@@ -4090,8 +4810,9 @@ void TrackSystem::RenderFrame(bool renderTrack,
         const Vector3D c = e->center + trackOffset;
         return (c.X - cameraLocation.X).Abs() + (c.Z - cameraLocation.Z).Abs();
     };
-    // Keep a stable track-order selection during the current multi segment test.
-    // Using camera proximity here makes segments pop in and out while the camera moves.
+    // Keep selection in logical track order so the same SDR cache works for
+    // forward and reverse traversal. A future gameplay flag can flip this.
+    constexpr bool kReverseTrackDirection = false;
     std::sort(orderedHandles.begin(), orderedHandles.end(),
         [&](const SegmentHandle& a, const SegmentHandle& b)
         {
@@ -4100,29 +4821,21 @@ void TrackSystem::RenderFrame(bool renderTrack,
             if (!ea && !eb) return false;
             if (!ea) return false;
             if (!eb) return true;
-            return ea->id < eb->id;
+            return kReverseTrackDirection ? (ea->id > eb->id) : (ea->id < eb->id);
         });
-    // Test mode: skip SEG_006 while still keeping a six segment set.
-    orderedHandles.erase(
-        std::remove_if(
-            orderedHandles.begin(),
-            orderedHandles.end(),
-            [&](const SegmentHandle& handle)
-            {
-                const auto* entry = segmentPool_.Resolve(handle);
-                return entry && entry->id == 6;
-            }),
-        orderedHandles.end());
     if (!orderedHandles.empty())
     {
+        // Deterministic test window: draw the configured package set for this profile.
+        // Keep up to the configured budget for this frame.
         const size_t keepCount =
-            std::min<size_t>(6, orderedHandles.size());
+            std::min<size_t>(
+                orderedHandles.size(),
+                static_cast<size_t>(fixedVisibleSegmentCap_));
         orderedHandles.resize(keepCount);
         UpdateVisibleSegmentLods(orderedHandles);
 
-        // Render the selected test set in reverse track order.
-        // This is a stricter painter order for the current contiguous segment test
-        // and helps verify whether center based sorting is causing overdraw artifacts.
+        // Draw in reverse logical order so farther logical segments land first.
+        // The direction flag is mirrored here so reverse travel keeps a stable painter order.
         std::sort(orderedHandles.begin(), orderedHandles.end(),
             [&](const SegmentHandle& a, const SegmentHandle& b)
             {
@@ -4131,7 +4844,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
                 if (!ea && !eb) return false;
                 if (!ea) return false;
                 if (!eb) return true;
-                return ea->id > eb->id;
+                return kReverseTrackDirection ? (ea->id < eb->id) : (ea->id > eb->id);
             });
     }
 
@@ -4165,7 +4878,12 @@ void TrackSystem::RenderFrame(bool renderTrack,
     }
 
     // SEG_001 LOD cycle test: every ~3s swap texture slots among {8,16,32,64}.
-    if (segmentRenderers_.size() <= 1 &&
+    // Keep this test isolated to true single-segment scenes only.
+    const bool isTrueSingleSegmentScene =
+        (segmentRenderers_.size() == 1) &&
+        (segmentRenderers_[0].logicalSegmentCount == 1) &&
+        (segmentRenderers_[0].id == 1);
+    if (isTrueSingleSegmentScene &&
         (seg1ComponentEnabled_ || seg1RendererLodReady_) &&
         !seg1FamilySlots_.empty())
     {
@@ -4247,6 +4965,34 @@ void TrackSystem::RenderFrame(bool renderTrack,
     std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};
     std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountById{};
 
+    if (!coordinatorReady_)
+    {
+        // Fallback render path when coordinator is unavailable.
+        for (size_t i = 0; i < orderedHandles.size(); ++i)
+        {
+            auto* entry = segmentPool_.Resolve(orderedHandles[i]);
+            if (!entry || !entry->renderer) continue;
+            entry->renderer->SetOffset(trackOffset);
+            entry->renderer->Render(lightDirection, cameraLocation);
+            const int sid = entry->id;
+            if (sid > 0 && sid <= static_cast<int>(kTrackSegmentLimit))
+            {
+                if (renderedCountById[static_cast<size_t>(sid)] < 255)
+                {
+                    ++renderedCountById[static_cast<size_t>(sid)];
+                }
+            }
+        }
+        for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
+        {
+            if (renderedCountById[id] > 1)
+            {
+                SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u", (unsigned)id, (unsigned)renderedCountById[id]);
+            }
+        }
+        return;
+    }
+
     coordinator_.Prepare(
         orderedHandles,
         coordinator_.Budget().maxTrackSegments,
@@ -4267,6 +5013,12 @@ void TrackSystem::RenderFrame(bool renderTrack,
             auto* renderer = entry.renderer.get();
             if (!renderer)
             {
+                return estimate;
+            }
+            // Do not budget corrupted renderers for this frame.
+            if (!TryRepairRendererState(*renderer))
+            {
+                SRL::Debug::Print(1, 23, "TRK prep skip seg:%d", entry.id);
                 return estimate;
             }
             estimate.rendered = true;
@@ -4331,6 +5083,15 @@ void TrackSystem::RenderFrame(bool renderTrack,
             {
                 return {};
             }
+            // Guard draw path and retry one repair before issuing commands.
+            if (!IsRendererStateIntegral(*renderer))
+            {
+                if (!TryRepairRendererState(*renderer))
+                {
+                    SRL::Debug::Print(1, 23, "TRK draw skip seg:%d", chunk.segmentId);
+                    return {};
+                }
+            }
 
             renderer->SetOffset(trackOffset);
             if (chunk.segmentId > 0 && chunk.segmentId <= static_cast<int>(kTrackSegmentLimit))
@@ -4374,6 +5135,14 @@ void TrackSystem::EndFrame()
     coordinator_.PresentTelemetry();
     soakMonitor_.Update(ready_, coordinator_.Telemetry());
     soakMonitor_.Present();
+    // Work RAM monitor for runtime stability tuning.
+    const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+    const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+    const unsigned long hwrUsed = static_cast<unsigned long>(hwr.TotalSize - hwr.FreeSize);
+    const unsigned long hwrTotal = static_cast<unsigned long>(hwr.TotalSize);
+    const unsigned long lwrUsed = static_cast<unsigned long>(lwr.TotalSize - lwr.FreeSize);
+    const unsigned long lwrTotal = static_cast<unsigned long>(lwr.TotalSize);
+    SRL::Debug::Print(1, 30, "WR H:%lu/%lu L:%lu/%lu", hwrUsed, hwrTotal, lwrUsed, lwrTotal);
     SRL::Debug::Print(1, 4, "TGA c:%u a:%u f:%u j:%u                    ",
                       (unsigned)seg1TgaPreloadCount_,
                       (unsigned)seg1TgaAttemptCount_,
@@ -4432,8 +5201,13 @@ void TrackSystem::EndFrame()
         SRL::Debug::Print(1, 29, "F1 dims:empty                           ");
     }
 
-    const FrameBudget nextBudget = budgetController_.Update(coordinator_.Budget(), coordinator_.Telemetry());
-    coordinator_.SetBudget(nextBudget);
+    // Stability mode: keep a fixed budget to avoid frame-to-frame visibility oscillation.
+    const bool enableAdaptiveBudget = false;
+    if (enableAdaptiveBudget)
+    {
+        const FrameBudget nextBudget = budgetController_.Update(coordinator_.Budget(), coordinator_.Telemetry());
+        coordinator_.SetBudget(nextBudget);
+    }
 }
 
 bool TrackSystem::FindNearestSegment(const Vector3D& worldPosition,

@@ -40,11 +40,14 @@ public:
 private:
     // Initialize manual camera offset so initial framing matches expected setup.
     void InitializeManualOffset();
+    // Restore camera orientation and manual offset to startup defaults.
+    void ResetToDefaultView();
 
     Camera::State state_;
     Camera::Tuning tuning_;
     Vector3D manualOffset_{};
     bool zHeld_ = false;
+    bool startHeldPrev_ = false;
     int16_t orbitYawStepDeg_ = 4;
     int16_t orbitPitchStepDeg_ = 2;
     int16_t orbitPitchLimitDeg_ = 40;

@@ -1,5 +1,7 @@
 param(
-    [string]$DataDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$SourceDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
+    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$ManifestDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [switch]$IncludeNya,
     [switch]$IncludeTga
 )
@@ -7,8 +9,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if (-not (Test-Path -LiteralPath $DataDir)) {
-    throw "DataDir nao encontrado: $DataDir"
+if (-not (Test-Path -LiteralPath $SourceDir)) {
+    throw "SourceDir nao encontrado: $SourceDir"
+}
+if (-not (Test-Path -LiteralPath $OutDir)) {
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+}
+if (-not (Test-Path -LiteralPath $ManifestDir)) {
+    New-Item -ItemType Directory -Force -Path $ManifestDir | Out-Null
 }
 
 function Write-U32LE([System.IO.BinaryWriter]$bw, [uint32]$v) { $bw.Write([uint32]$v) }
@@ -84,26 +92,28 @@ function Build-Pack {
 }
 
 $groups = [ordered]@{
-    GEO   = @((Get-ChildItem -LiteralPath $DataDir -File -Filter "S???.GEO" | Sort-Object Name | ForEach-Object FullName))
-    MAT8  = @((Get-ChildItem -LiteralPath $DataDir -File -Filter "S???M8.MAT" | Sort-Object Name | ForEach-Object FullName))
-    MAT16 = @((Get-ChildItem -LiteralPath $DataDir -File -Filter "S???M16.MAT" | Sort-Object Name | ForEach-Object FullName))
-    MAT32 = @((Get-ChildItem -LiteralPath $DataDir -File -Filter "S???M32.MAT" | Sort-Object Name | ForEach-Object FullName))
-    MAT64 = @((Get-ChildItem -LiteralPath $DataDir -File -Filter "S???M64.MAT" | Sort-Object Name | ForEach-Object FullName))
+    GEO   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???.GEO" | Sort-Object Name | ForEach-Object FullName))
+    SDR   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???.SDR" | Sort-Object Name | ForEach-Object FullName))
+    BDR   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "B*.BDR" | Sort-Object Name | ForEach-Object FullName))
+    MAT8  = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M8.MAT" | Sort-Object Name | ForEach-Object FullName))
+    MAT16 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M16.MAT" | Sort-Object Name | ForEach-Object FullName))
+    MAT32 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M32.MAT" | Sort-Object Name | ForEach-Object FullName))
+    MAT64 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M64.MAT" | Sort-Object Name | ForEach-Object FullName))
 }
 
 if ($IncludeNya) {
-    $groups["NYA"] = @((Get-ChildItem -LiteralPath $DataDir -File -Filter "SEG_*.NYA" | Sort-Object Name | ForEach-Object FullName))
+    $groups["NYA"] = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "SEG_*.NYA" | Sort-Object Name | ForEach-Object FullName))
 }
 if ($IncludeTga) {
-    $groups["TGA8"]  = @((Get-ChildItem -LiteralPath $DataDir -File | Where-Object { $_.Name -match '^F\d{3}_?8\.TGA$' }  | Sort-Object Name | ForEach-Object FullName))
-    $groups["TGA16"] = @((Get-ChildItem -LiteralPath $DataDir -File | Where-Object { $_.Name -match '^F\d{3}_?16\.TGA$' } | Sort-Object Name | ForEach-Object FullName))
-    $groups["TGA32"] = @((Get-ChildItem -LiteralPath $DataDir -File | Where-Object { $_.Name -match '^F\d{3}_?32\.TGA$' } | Sort-Object Name | ForEach-Object FullName))
-    $groups["TGA64"] = @((Get-ChildItem -LiteralPath $DataDir -File | Where-Object { $_.Name -match '^F\d{3}_?64\.TGA$' } | Sort-Object Name | ForEach-Object FullName))
+    $groups["TGA8"]  = @((Get-ChildItem -LiteralPath $SourceDir -File | Where-Object { $_.Name -match '^F\d{3}_?8\.TGA$' }  | Sort-Object Name | ForEach-Object FullName))
+    $groups["TGA16"] = @((Get-ChildItem -LiteralPath $SourceDir -File | Where-Object { $_.Name -match '^F\d{3}_?16\.TGA$' } | Sort-Object Name | ForEach-Object FullName))
+    $groups["TGA32"] = @((Get-ChildItem -LiteralPath $SourceDir -File | Where-Object { $_.Name -match '^F\d{3}_?32\.TGA$' } | Sort-Object Name | ForEach-Object FullName))
+    $groups["TGA64"] = @((Get-ChildItem -LiteralPath $SourceDir -File | Where-Object { $_.Name -match '^F\d{3}_?64\.TGA$' } | Sort-Object Name | ForEach-Object FullName))
 }
 
 $results = New-Object System.Collections.Generic.List[object]
 foreach ($k in $groups.Keys) {
-    $out = Join-Path $DataDir ("{0}.BIN" -f $k)
+    $out = Join-Path $OutDir ("{0}.BIN" -f $k)
     $r = Build-Pack -TypeName $k -FilePaths $groups[$k] -OutPath $out
     if ($null -ne $r) {
         $results.Add($r) | Out-Null
@@ -113,11 +123,12 @@ foreach ($k in $groups.Keys) {
     }
 }
 
-$manifestPath = Join-Path $DataDir "packs_manifest.json"
+$manifestPath = Join-Path $ManifestDir "packs_manifest.json"
 $manifest = [ordered]@{
     version = 1
     generated_at_utc = [string]([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))
-    data_dir = [string]$DataDir
+    source_dir = [string]$SourceDir
+    out_dir = [string]$OutDir
     packs = @($results.ToArray())
 }
 $manifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $manifestPath -Encoding UTF8

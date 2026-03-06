@@ -1,7 +1,7 @@
 param(
     [string]$ObjSourceDir = "C:\Models\png\sectors\source",
     [string]$LodRootDir = "C:\Models\png\sectors\result",
-    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [string]$Pattern = "SEG_*.NYA",
     [switch]$WriteLongCompatNames
 )

@@ -1,8 +1,8 @@
 param(
     [int]$SegmentId = 1,
     [string]$ObjDir = "C:\Models\png\sectors\source",
-    [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\segments_map.json",
-    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
+    [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [int]$Lod = 8
 )
 

@@ -31,6 +31,7 @@ public:
         bool logCar = false;
         bool enableSlaveForCarPrepare = false;
         bool enableSlaveForSimulation = false;
+        bool enableManualGouraudCopy = false;
         uint32_t faceCount = 0;
         uint32_t vertexCount = 0;
         SRL::Math::Types::Vector3D trackSegOffset{};
@@ -280,8 +281,11 @@ public:
                                                           context_.vertexCount,
                                                           submittedTrackFaces,
                                                           submittedCarFaces);
-            // Keep gouraud table upload alive even when VBlank Event dispatch is disabled.
-            SRL::Scene3D::LightCopyGouraudTable();
+            // Keep gouraud table upload alive only when gouraud tables are initialized.
+            if (context_.enableManualGouraudCopy)
+            {
+                SRL::Scene3D::LightCopyGouraudTable();
+            }
             if (context_.verboseFrameLogs)
             {
                 SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);

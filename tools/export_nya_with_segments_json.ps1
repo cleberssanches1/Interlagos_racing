@@ -2,7 +2,7 @@ param(
     [string]$ConverterDir = "C:\saturn\tools\ModelConverter-linux-main\BuildDrop",
     [string]$SourceObjDir = "C:\Models\png\sectors\result",
     [string]$ResultDir = "C:\Models\png\sectors\result",
-    [string]$CdDataDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$CdDataDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [string]$Pattern = "seg_*.obj",
     [ValidateSet("Smooth", "Flat")]
     [string]$Shading = "Smooth",

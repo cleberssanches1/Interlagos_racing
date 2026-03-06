@@ -1,7 +1,7 @@
 param(
     [int]$SegmentId = 1,
     [string]$ResultDir = "C:\Models\png\sectors\result",
-    [string]$OutJsonPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\segments_map.json",
+    [string]$OutJsonPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
     [ValidateSet("Smooth","Flat")]
     [string]$Shading = "Smooth",
     [int]$TexWidth = 8,

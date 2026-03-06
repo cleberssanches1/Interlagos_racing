@@ -1,5 +1,6 @@
 param(
-    [string]$DataDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$DataDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
+    [string]$TextOutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
     [string]$ResultDir = "C:\Models\png\sectors\result",
     [switch]$UppercaseExt = $true
 )
@@ -9,6 +10,9 @@ $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path -LiteralPath $DataDir)) {
     throw "DataDir nao encontrado: $DataDir"
+}
+if (-not (Test-Path -LiteralPath $TextOutDir)) {
+    New-Item -ItemType Directory -Force -Path $TextOutDir | Out-Null
 }
 
 $sources = @(
@@ -126,7 +130,7 @@ foreach ($src in $sources) {
 }
 
 $manifestPath = Join-Path $DataDir "ren_textures_copy_map.json"
-$manifestShortPath = Join-Path $DataDir "RTMAP.TXT"
+$manifestShortPath = Join-Path $TextOutDir "RTMAP.TXT"
 $manifest = [ordered]@{
     version = 1
     generated_at_utc = [string]([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))

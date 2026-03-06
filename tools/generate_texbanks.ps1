@@ -1,7 +1,8 @@
 param(
-    [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\segments_map.json",
+    [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
     [string]$TextureRoot = "C:\Users\clebe\OneDrive\Área de Trabalho\Objetos corrida\Interlagos_2\ARQ_TGA",
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
+    [string]$ReportDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [switch]$UseLodSubfolders = $true
 )
 
@@ -216,7 +217,7 @@ function Build-TexBank {
         $fs.Close()
     }
 
-    $indexPath = Join-Path $OutDirectory ("TBK{0}.json" -f $Lod)
+    $indexPath = Join-Path $ReportDir ("TBK{0}.json" -f $Lod)
     $indexObj = [pscustomobject]@{
         version = 1
         lod = $Lod
@@ -252,10 +253,12 @@ function Build-TexBank {
 $JsonPath = Resolve-AbsolutePathOrCreate $JsonPath
 $TextureRoot = Resolve-AbsolutePathOrCreate $TextureRoot
 $OutDir = Resolve-AbsolutePathOrCreate $OutDir
+$ReportDir = Resolve-AbsolutePathOrCreate $ReportDir
 
 if (-not (Test-Path -LiteralPath $JsonPath)) { throw "JsonPath nao encontrado: $JsonPath" }
 if (-not (Test-Path -LiteralPath $TextureRoot)) { throw "TextureRoot nao encontrado: $TextureRoot" }
 Ensure-Dir $OutDir
+Ensure-Dir $ReportDir
 
 $j = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json
 $families = @($j.textureFamilies)
@@ -272,7 +275,7 @@ foreach ($lod in $lods) {
 
 $compatEntries = New-Object System.Collections.Generic.List[object]
 foreach ($lod in $lods) {
-    $idxPath = Join-Path $OutDir ("TBK{0}.json" -f $lod)
+    $idxPath = Join-Path $ReportDir ("TBK{0}.json" -f $lod)
     if (-not (Test-Path -LiteralPath $idxPath)) { continue }
     $idx = Get-Content -LiteralPath $idxPath -Raw | ConvertFrom-Json
     foreach ($e in @($idx.entries)) {
@@ -289,7 +292,7 @@ foreach ($lod in $lods) {
     }
 }
 
-$compatPath = Join-Path $OutDir "tga_compat_report.json"
+$compatPath = Join-Path $ReportDir "tga_compat_report.json"
 $compatObj = [pscustomobject]@{
     version = 1
     generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -298,7 +301,7 @@ $compatObj = [pscustomobject]@{
 $compatObj | ConvertTo-Json -Depth 8 | Set-Content -Path $compatPath -Encoding UTF8
 Write-Host ("OK TGA compat: {0}" -f $compatPath)
 
-$manifestPath = Join-Path $OutDir "texbanks_manifest.json"
+$manifestPath = Join-Path $ReportDir "texbanks_manifest.json"
 $manifest = [pscustomobject]@{
     version = 1
     generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")

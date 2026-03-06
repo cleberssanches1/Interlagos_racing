@@ -32,6 +32,25 @@ void CameraSystem::InitializeManualOffset()
     manualOffset_ = desiredCamera - initialOrbit;
 }
 
+void CameraSystem::ResetToDefaultView()
+{
+    state_.yawDeg = 180;
+    state_.pitchDeg = -10;
+    state_.viewYawDeg = 0;
+    state_.viewPitchDeg = 13;
+    state_.radius = Fxp::BuildRaw(0x0043BD70); // ~67.74
+    state_.strafe = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(20 << 16));
+    state_.location = Vector3D(0.0, 0.0, -50.0f);
+    state_.yaw = Angle::FromDegrees(Fxp::BuildRaw(180 << 16));
+    state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-10 << 16));
+    state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
+    state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
+    tuning_.targetDistance = Fxp::BuildRaw(1174 << 16);
+    tuning_.yawStepDeg = 4;
+    Camera::RefreshAngles(state_);
+    InitializeManualOffset();
+}
+
 void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, CameraRig::OrbitState& orbitState)
 {
     Camera::UpdateInput(state_, tuning_, pad);
@@ -43,8 +62,16 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, C
     const bool downHeld = pad.IsHeld(SRL::Input::Digital::Button::Down);
     const bool leftArrowHeld = pad.IsHeld(SRL::Input::Digital::Button::Left);
     const bool rightArrowHeld = pad.IsHeld(SRL::Input::Digital::Button::Right);
+    const bool startHeld = pad.IsHeld(SRL::Input::Digital::Button::START);
     zHeld_ = pad.IsHeld(SRL::Input::Digital::Button::Z);
     const bool orbitControlActive = zHeld_ && (lHeld || rHeld || upHeld || downHeld);
+
+    // One-shot reset of camera framing.
+    if (startHeld && !startHeldPrev_)
+    {
+        ResetToDefaultView();
+    }
+    startHeldPrev_ = startHeld;
 
     // Allow L/R car yaw while accelerating/braking; only block in explicit orbit/edit modes.
     if (!orbitControlActive && !xHeld)
@@ -84,6 +111,7 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, C
         if (leftArrowHeld) manualOffset_.X -= cameraMoveStep;
         if (rightArrowHeld) manualOffset_.X += cameraMoveStep;
     }
+
 }
 
 Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const

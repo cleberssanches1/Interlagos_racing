@@ -1,5 +1,5 @@
 param(
-    [string]$JsonPath = ".\cd\data\segments_map.json",
+    [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
     [string]$OutPath = ".\cd\data\S001FAM.BIN"
 )
 

@@ -1,6 +1,6 @@
 param(
-    [string]$SegmentsMapPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\segments_map.json",
-    [string]$RenManifestPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\ren_textures_copy_map.json",
+    [string]$SegmentsMapPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
+    [string]$RenManifestPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\ren_textures_copy_map.json",
     [string]$ResultDir = "C:\Models\png\sectors\result"
 )
 
