@@ -4,6 +4,14 @@
 
 #include <algorithm>
 
+namespace
+{
+// Chase camera preset.
+// Increase kChaseOffsetZ to move camera farther from the car.
+constexpr int32_t kChaseOffsetY = -52;
+constexpr int32_t kChaseOffsetZ = 140;
+}
+
 CameraSystem::CameraSystem()
 {
     state_.yawDeg = 180;
@@ -18,7 +26,8 @@ CameraSystem::CameraSystem()
     state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-7 << 16));
     state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
-    tuning_.targetDistance = Fxp::BuildRaw(1174 << 16);
+    // Used only by debug view direction path.
+    tuning_.targetDistance = Fxp::BuildRaw(120 << 16);
     tuning_.yawStepDeg = 4;
     Camera::RefreshAngles(state_);
     InitializeManualOffset();
@@ -33,7 +42,7 @@ CameraSystem::CameraSystem()
 void CameraSystem::InitializeManualOffset()
 {
     // Base chase framing with moderate pullback.
-    const Vector3D desiredCamera(0.0, Fxp::BuildRaw(-52 << 16), Fxp::BuildRaw(116 << 16));
+    const Vector3D desiredCamera(0.0, Fxp::BuildRaw(kChaseOffsetY << 16), Fxp::BuildRaw(kChaseOffsetZ << 16));
     Vector3D initialOrbit = Camera::OrbitPosition(state_.yaw, state_.pitch, state_.radius);
     manualOffset_ = desiredCamera - initialOrbit;
 }
@@ -51,7 +60,8 @@ void CameraSystem::ResetToDefaultView()
     state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-7 << 16));
     state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
-    tuning_.targetDistance = Fxp::BuildRaw(1174 << 16);
+    // Used only by debug view direction path.
+    tuning_.targetDistance = Fxp::BuildRaw(120 << 16);
     tuning_.yawStepDeg = 4;
     Camera::RefreshAngles(state_);
     InitializeManualOffset();
@@ -61,7 +71,9 @@ void CameraSystem::ResetToDefaultView()
 
 void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, CameraRig::OrbitState& orbitState)
 {
-    Camera::UpdateInput(state_, tuning_, pad);
+    // Keep chase rig stable frame to frame.
+    // Generic input update can modify strafe/location and destabilize the camera matrix.
+    // We handle only explicit controls below (orbit and look).
 
     const bool lHeld = pad.IsHeld(SRL::Input::Digital::Button::L);
     const bool rHeld = pad.IsHeld(SRL::Input::Digital::Button::R);

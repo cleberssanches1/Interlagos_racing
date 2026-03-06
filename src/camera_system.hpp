@@ -70,7 +70,7 @@ private:
     CameraSafety::Config safetyConfig_{};
     bool zHeld_ = false;
     bool startHeldPrev_ = false;
-    int16_t carYawStepDeg_ = 1;
+    int16_t carYawStepDeg_ = 4;
     int16_t orbitYawStepDeg_ = 4;
     int16_t orbitPitchStepDeg_ = 2;
     int16_t orbitPitchLimitDeg_ = 40;

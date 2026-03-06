@@ -74,4 +74,3 @@ private:
     int32_t orbitDeltaYawDeg_ = 0;
     Vector3D orbitBaseOffset_{};
 };
-

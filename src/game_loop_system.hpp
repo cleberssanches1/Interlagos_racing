@@ -200,9 +200,7 @@ public:
             }
 
             const Vector3D cameraLocation = context_.cameraSystem->CameraLocation(context_.carWorldPosition);
-            const Vector3D viewDirection = context_.cameraSystem->ViewDirection();
             const Vector3D lookTarget = context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
-            (void)viewDirection;
 
             if (context_.verboseFrameLogs)
             {
@@ -234,6 +232,16 @@ public:
             if (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
             {
                 AppState::Set(AppState::Stage::LoopCar, frameCounter_);
+                SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
+                if (!IsFiniteCarPos(carRenderPos))
+                {
+                    carRenderPos = lastValidCarRenderPos_;
+                }
+                else
+                {
+                    lastValidCarRenderPos_ = carRenderPos;
+                }
+                context_.carSystem->get()->SetWorldPosition(carRenderPos);
                 if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
                 {
                     context_.carSystem->get()->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
@@ -243,9 +251,6 @@ public:
                 {
                     context_.carSystem->get()->Render(carYawDeg_);
                 }
-                // Visual bias: keep car slightly above track draw order/transitions.
-                const Vector3D renderLift(0.0, SRL::Math::Types::Fxp::BuildRaw(-2 << 16), 0.0);
-                context_.carSystem->get()->SetWorldPosition(context_.carWorldPosition + renderLift);
                 context_.renderPipeline->Reset();
                 context_.carSystem->get()->SubmitRender(*context_.renderPipeline);
                 context_.renderPipeline->Flush();
@@ -296,6 +301,19 @@ public:
     }
 
 private:
+    // Validate world position before rendering to avoid invalid transform collapse.
+    static bool IsFiniteCarPos(const SRL::Math::Types::Vector3D& p)
+    {
+        constexpr int32_t kRawLimit = (32767 << 16);
+        const int32_t x = p.X.RawValue();
+        const int32_t y = p.Y.RawValue();
+        const int32_t z = p.Z.RawValue();
+        if (x < -kRawLimit || x > kRawLimit) return false;
+        if (y < -kRawLimit || y > kRawLimit) return false;
+        if (z < -kRawLimit || z > kRawLimit) return false;
+        return true;
+    }
+
     class SimulationTask final : public SRL::Types::ITask
     {
     public:
@@ -379,7 +397,7 @@ private:
     Context context_{};
     SRL::Input::Digital pad_{0};
     CameraRig::OrbitState orbitState_{};
-    int32_t carYawDeg_ = 180;
+    int32_t carYawDeg_ = 0;
     uint32_t frameCounter_ = 0;
     SimulationTask simulationTask_{};
     SimulationTask::Payload simInput_[2]{};
@@ -397,4 +415,8 @@ private:
     uint8_t carPrepareWriteIdx_ = 0;
     uint8_t carPrepareInFlightIdx_ = 0;
     uint8_t carPrepareCompletedIdx_ = 0;
+    SRL::Math::Types::Vector3D lastValidCarRenderPos_{
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0)};
 };
