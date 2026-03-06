@@ -38,6 +38,8 @@ public:
     Snapshot CreateSnapshot() const;
 
 private:
+    // Rotate a vector around Y axis by yaw degrees.
+    static Vector3D RotateY(const Vector3D& v, int32_t yawDeg);
     // Initialize manual camera offset so initial framing matches expected setup.
     void InitializeManualOffset();
     // Restore camera orientation and manual offset to startup defaults.
@@ -48,6 +50,14 @@ private:
     Vector3D manualOffset_{};
     bool zHeld_ = false;
     bool startHeldPrev_ = false;
+    bool xHeldPrev_ = false;
+    bool orbitModeActive_ = false;
+    int32_t lastCarYawDeg_ = 0;
+    int32_t orbitDeltaYawDeg_ = 0;
+    Camera::State orbitSavedState_{};
+    Vector3D orbitSavedManualOffset_{};
+    Vector3D orbitBaseOffset_{};
+    bool orbitSavedStateValid_ = false;
     int16_t orbitYawStepDeg_ = 4;
     int16_t orbitPitchStepDeg_ = 2;
     int16_t orbitPitchLimitDeg_ = 40;

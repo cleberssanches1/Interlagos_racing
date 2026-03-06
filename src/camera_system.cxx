@@ -4,6 +4,15 @@
 
 #include <algorithm>
 
+Vector3D CameraSystem::RotateY(const Vector3D& v, int32_t yawDeg)
+{
+    const int32_t n = ((yawDeg % 360) + 360) % 360;
+    const Angle a = Angle::FromDegrees(Fxp::BuildRaw(n << 16));
+    const Fxp s = SRL::Math::Trigonometry::Sin(a);
+    const Fxp c = SRL::Math::Trigonometry::Cos(a);
+    return Vector3D(v.X * c + v.Z * s, v.Y, (-v.X) * s + v.Z * c);
+}
+
 CameraSystem::CameraSystem()
 {
     state_.yawDeg = 180;
@@ -20,8 +29,15 @@ CameraSystem::CameraSystem()
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
     tuning_.targetDistance = Fxp::BuildRaw(1174 << 16);
     tuning_.yawStepDeg = 4;
+    xHeldPrev_ = false;
+    orbitModeActive_ = false;
+    lastCarYawDeg_ = 0;
+    orbitDeltaYawDeg_ = 0;
+    orbitSavedState_ = state_;
+    orbitSavedStateValid_ = false;
     Camera::RefreshAngles(state_);
     InitializeManualOffset();
+    orbitSavedManualOffset_ = manualOffset_;
 }
 
 void CameraSystem::InitializeManualOffset()
@@ -47,8 +63,15 @@ void CameraSystem::ResetToDefaultView()
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
     tuning_.targetDistance = Fxp::BuildRaw(1174 << 16);
     tuning_.yawStepDeg = 4;
+    xHeldPrev_ = false;
+    orbitModeActive_ = false;
+    lastCarYawDeg_ = 0;
+    orbitDeltaYawDeg_ = 0;
+    orbitSavedState_ = state_;
+    orbitSavedStateValid_ = false;
     Camera::RefreshAngles(state_);
     InitializeManualOffset();
+    orbitSavedManualOffset_ = manualOffset_;
 }
 
 void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, CameraRig::OrbitState& orbitState)
@@ -81,11 +104,37 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, C
         if (carYawDeg < 0) carYawDeg += 360;
         if (carYawDeg >= 360) carYawDeg -= 360;
     }
+    lastCarYawDeg_ = carYawDeg;
 
-    if (!xHeld)
+    // Orbit mode while X is held. Keep stable camera pipeline and only orbit yaw.
+    if (xHeld && !xHeldPrev_)
     {
-        CameraRig::HandleOrbitAroundCar(state_, tuning_.yawStepDeg, xHeld, lHeld, rHeld, carYawDeg, orbitState, true);
+        orbitSavedState_ = state_;
+        orbitSavedManualOffset_ = manualOffset_;
+        orbitBaseOffset_ = state_.location + manualOffset_;
+        orbitDeltaYawDeg_ = 0;
+        orbitSavedStateValid_ = true;
+        orbitModeActive_ = true;
     }
+    if (xHeld)
+    {
+        if (leftArrowHeld) orbitDeltaYawDeg_ -= tuning_.yawStepDeg;
+        if (rightArrowHeld) orbitDeltaYawDeg_ += tuning_.yawStepDeg;
+        orbitDeltaYawDeg_ = ((orbitDeltaYawDeg_ % 360) + 360) % 360;
+    }
+    if (!xHeld && xHeldPrev_)
+    {
+        if (orbitSavedStateValid_)
+        {
+            state_ = orbitSavedState_;
+            manualOffset_ = orbitSavedManualOffset_;
+        }
+        orbitSavedStateValid_ = false;
+        orbitModeActive_ = false;
+        orbitDeltaYawDeg_ = 0;
+    }
+    xHeldPrev_ = xHeld;
+    (void)orbitState;
 
     if (zHeld_)
     {
@@ -103,19 +152,14 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, C
         state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(state_.viewYawDeg << 16));
     }
 
-    if (xHeld)
-    {
-        const Fxp cameraMoveStep = Fxp::BuildRaw(4 << 16);
-        if (upHeld) manualOffset_.Y -= cameraMoveStep;
-        if (downHeld) manualOffset_.Y += cameraMoveStep;
-        if (leftArrowHeld) manualOffset_.X -= cameraMoveStep;
-        if (rightArrowHeld) manualOffset_.X += cameraMoveStep;
-    }
-
 }
 
 Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
 {
+    if (orbitModeActive_)
+    {
+        return carWorldPosition + RotateY(orbitBaseOffset_, orbitDeltaYawDeg_);
+    }
     return state_.location + carWorldPosition + manualOffset_;
 }
 
@@ -127,7 +171,7 @@ Vector3D CameraSystem::ViewDirection() const
 Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const
 {
     (void)modelOffset;
-    // Hard lock: gameplay rule is that car stays as camera center target.
+    // Keep car as camera target in all modes.
     return carWorldPosition;
 }
 

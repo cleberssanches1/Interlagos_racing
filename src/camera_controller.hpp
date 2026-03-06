@@ -80,44 +80,7 @@ inline void UpdateInput(State& state, const Tuning& tuning, Digital& pad)
     bool yHeld = pad.IsHeld(Digital::Button::Y);
     bool xHeld = pad.IsHeld(Digital::Button::X);
 
-    // Salva posio inicial e restaura quando X no estiver pressionado
-    static bool homeSet = false;
-    static int32_t homeYawDeg = 0, homePitchDeg = 0, homeViewYawDeg = 0, homeViewPitchDeg = 0;
-    static Vector3D homeStrafe;
-    static bool wasXHeld = false;
-
-    if (!homeSet)
-    {
-        homeYawDeg = state.yawDeg;
-        homePitchDeg = state.pitchDeg;
-        homeViewYawDeg = state.viewYawDeg;
-        homeViewPitchDeg = state.viewPitchDeg;
-        homeStrafe = state.strafe;
-        homeSet = true;
-    }
-
-    if (xHeld)
-    {
-        // Orbita ao redor do modelo
-        if (pad.IsHeld(Digital::Button::Left))  state.yawDeg -= yawStep;
-        if (pad.IsHeld(Digital::Button::Right)) state.yawDeg += yawStep;
-        if (state.yawDeg >= 360 || state.yawDeg < 0)
-        {
-            state.yawDeg %= 360;
-            if (state.yawDeg < 0) state.yawDeg += 360;
-        }
-    }
-    // Se X foi solto neste frame, restaurar posio inicial uma nica vez
-    if (wasXHeld && !xHeld)
-    {
-        state.yawDeg = homeYawDeg;
-        state.pitchDeg = homePitchDeg;
-        state.viewYawDeg = homeViewYawDeg;
-        state.viewPitchDeg = homeViewPitchDeg;
-        state.strafe = homeStrafe;
-    }
-
-    wasXHeld = xHeld;
+    (void)xHeld;
 
     if (yHeld)
     {
