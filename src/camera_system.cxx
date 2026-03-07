@@ -8,14 +8,14 @@ namespace
 {
 // Chase camera preset.
 // Increase kChaseOffsetZ to move camera farther from the car.
-constexpr int32_t kChaseOffsetY = -52;
-constexpr int32_t kChaseOffsetZ = 140;
+constexpr int32_t kChaseOffsetY = -80;
+constexpr int32_t kChaseOffsetZ = 245;
 }
 
 CameraSystem::CameraSystem()
 {
     state_.yawDeg = 180;
-    state_.pitchDeg = -7;
+    state_.pitchDeg = -24;
     state_.viewYawDeg = 0;
     state_.viewPitchDeg = 13;
     state_.radius = Fxp::BuildRaw(86 << 16);
@@ -23,7 +23,7 @@ CameraSystem::CameraSystem()
     state_.strafe = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
     state_.location = Vector3D(0.0, 0.0, -50.0f);
     state_.yaw = Angle::FromDegrees(Fxp::BuildRaw(180 << 16));
-    state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-7 << 16));
+    state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-24 << 16));
     state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
     // Used only by debug view direction path.
@@ -50,14 +50,14 @@ void CameraSystem::InitializeManualOffset()
 void CameraSystem::ResetToDefaultView()
 {
     state_.yawDeg = 180;
-    state_.pitchDeg = -7;
+    state_.pitchDeg = -24;
     state_.viewYawDeg = 0;
     state_.viewPitchDeg = 13;
     state_.radius = Fxp::BuildRaw(86 << 16);
     state_.strafe = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
     state_.location = Vector3D(0.0, 0.0, -50.0f);
     state_.yaw = Angle::FromDegrees(Fxp::BuildRaw(180 << 16));
-    state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-7 << 16));
+    state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-24 << 16));
     state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(13 << 16));
     // Used only by debug view direction path.

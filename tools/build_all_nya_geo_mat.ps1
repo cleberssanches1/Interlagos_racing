@@ -155,6 +155,65 @@ foreach ($entry in $lodDirs) {
 
 Write-Host ("Concluido GEO/MAT por LOD: {0} segmentos distintos encontrados" -f $segmentsDone.Count)
 
+function Test-GeoMatPayload {
+    param(
+        [string]$BaseDir
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+
+    $geoFiles = @(Get-ChildItem -LiteralPath $BaseDir -File -Filter "S???.GEO" -ErrorAction SilentlyContinue)
+    foreach ($f in $geoFiles) {
+        try {
+            [byte[]]$b = [System.IO.File]::ReadAllBytes($f.FullName)
+            if ($b.Length -lt 24) {
+                $errors.Add(("GEO pequeno: {0} len={1}" -f $f.Name, $b.Length)) | Out-Null
+                continue
+            }
+            $magic = [uint32][System.BitConverter]::ToUInt32($b, 0)
+            $ver = [uint16][System.BitConverter]::ToUInt16($b, 4)
+            $payload = [uint32][System.BitConverter]::ToUInt32($b, 12)
+            $expect = [uint32]($payload + 16)
+            if ($magic -ne 0x314F4547 -or $ver -ne 1 -or $expect -ne $b.Length) {
+                $errors.Add(("GEO invalido: {0} magic=0x{1:X8} ver={2} payload+16={3} len={4}" -f $f.Name, $magic, $ver, $expect, $b.Length)) | Out-Null
+            }
+        }
+        catch {
+            $errors.Add(("Falha lendo GEO {0}: {1}" -f $f.Name, $_.Exception.Message)) | Out-Null
+        }
+    }
+
+    $matFiles = @(Get-ChildItem -LiteralPath $BaseDir -File -Filter "S???M*.MAT" -ErrorAction SilentlyContinue)
+    foreach ($f in $matFiles) {
+        try {
+            [byte[]]$b = [System.IO.File]::ReadAllBytes($f.FullName)
+            if ($b.Length -lt 20) {
+                $errors.Add(("MAT pequeno: {0} len={1}" -f $f.Name, $b.Length)) | Out-Null
+                continue
+            }
+            $magic = [uint32][System.BitConverter]::ToUInt32($b, 0)
+            $ver = [uint16][System.BitConverter]::ToUInt16($b, 4)
+            $payload = [uint32][System.BitConverter]::ToUInt32($b, 12)
+            $expect = [uint32]($payload + 16)
+            if ($magic -ne 0x3154414D -or $ver -ne 1 -or $expect -ne $b.Length) {
+                $errors.Add(("MAT invalido: {0} magic=0x{1:X8} ver={2} payload+16={3} len={4}" -f $f.Name, $magic, $ver, $expect, $b.Length)) | Out-Null
+            }
+        }
+        catch {
+            $errors.Add(("Falha lendo MAT {0}: {1}" -f $f.Name, $_.Exception.Message)) | Out-Null
+        }
+    }
+
+    return @($errors.ToArray())
+}
+
+$payloadErrors = @(Test-GeoMatPayload -BaseDir $PackageDir)
+if ($payloadErrors.Count -gt 0) {
+    Write-Host "Falha de integridade apos gerar GEO/MAT. Arquivos corrompidos detectados:"
+    $payloadErrors | ForEach-Object { Write-Host (" - " + $_) }
+    throw "GEO/MAT invalidos. Interrompido antes da etapa SDR para evitar propagar corrupcao."
+}
+
 Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 ==="
 & $script:sdrScript `
     -DataDir $PackageDir `

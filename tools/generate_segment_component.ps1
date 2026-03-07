@@ -14,6 +14,32 @@ function Write-I16([System.IO.BinaryWriter]$bw, [int16]$v) { $bw.Write($v) }
 function Write-U32([System.IO.BinaryWriter]$bw, [uint32]$v) { $bw.Write($v) }
 function Write-I32([System.IO.BinaryWriter]$bw, [int32]$v) { $bw.Write($v) }
 
+function Assert-GeoFileValid([string]$Path) {
+    [byte[]]$bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 24) { throw "GEO truncado apos escrita: $Path" }
+    $magic = [uint32][System.BitConverter]::ToUInt32($bytes, 0)
+    $ver = [uint16][System.BitConverter]::ToUInt16($bytes, 4)
+    $payload = [uint32][System.BitConverter]::ToUInt32($bytes, 12)
+    if ($magic -ne 0x314F4547) { throw "GEO magic invalido apos escrita: $Path" }
+    if ($ver -ne 1) { throw "GEO versao invalida apos escrita: $Path" }
+    if (($payload + 16) -ne $bytes.Length) {
+        throw ("GEO payload inconsistente apos escrita: {0} payload+16={1} len={2}" -f $Path, ($payload + 16), $bytes.Length)
+    }
+}
+
+function Assert-MatFileValid([string]$Path) {
+    [byte[]]$bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 20) { throw "MAT truncado apos escrita: $Path" }
+    $magic = [uint32][System.BitConverter]::ToUInt32($bytes, 0)
+    $ver = [uint16][System.BitConverter]::ToUInt16($bytes, 4)
+    $payload = [uint32][System.BitConverter]::ToUInt32($bytes, 12)
+    if ($magic -ne 0x3154414D) { throw "MAT magic invalido apos escrita: $Path" }
+    if ($ver -ne 1) { throw "MAT versao invalida apos escrita: $Path" }
+    if (($payload + 16) -ne $bytes.Length) {
+        throw ("MAT payload inconsistente apos escrita: {0} payload+16={1} len={2}" -f $Path, ($payload + 16), $bytes.Length)
+    }
+}
+
 function Normalize-MaterialFamilyName([string]$Name) {
     if ([string]::IsNullOrWhiteSpace($Name)) { return "" }
     $n = $Name.Trim()
@@ -89,7 +115,11 @@ function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [ob
 }
 
 function To-Fxp32([double]$v) {
-    return [int32][Math]::Round($v * 65536.0)
+    # Convert float to 16.16 fixed point with saturation to int32 range.
+    $scaled = [double]$v * 65536.0
+    if ($scaled -lt [double][int]::MinValue) { return [int32][int]::MinValue }
+    if ($scaled -gt [double][int]::MaxValue) { return [int32][int]::MaxValue }
+    return [int32][Math]::Round($scaled)
 }
 
 function To-I16Uv([double]$v) {
@@ -238,9 +268,11 @@ if ($objFaceFamilies.Count -eq $faces.Count -and $objFaceFamilies.Count -gt 0) {
 
 $geoShortPath = Join-Path $OutDir ("S{0:D3}.GEO" -f $SegmentId)
 $matShortPath = Join-Path $OutDir ("S{0:D3}M{1}.MAT" -f $SegmentId, $Lod)
+$geoTempPath = "$geoShortPath.tmp"
+$matTempPath = "$matShortPath.tmp"
 
 # GEO
-$geoFs = [System.IO.File]::Open($geoShortPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+$geoFs = [System.IO.File]::Open($geoTempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
 try {
     $bw = New-Object System.IO.BinaryWriter($geoFs)
     # FileHeader
@@ -286,12 +318,15 @@ try {
         Write-U16 $bw 0
     }
     $bw.Flush()
+    $bw.Dispose()
 } finally {
     $geoFs.Close()
 }
+Assert-GeoFileValid -Path $geoTempPath
+Move-Item -LiteralPath $geoTempPath -Destination $geoShortPath -Force
 
 # MAT
-$matFs = [System.IO.File]::Open($matShortPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+$matFs = [System.IO.File]::Open($matTempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
 try {
     $bw = New-Object System.IO.BinaryWriter($matFs)
     $matPayloadBytes = [uint32](4 + ($faces.Count * 4))
@@ -309,9 +344,12 @@ try {
         Write-U32 $bw $mid
     }
     $bw.Flush()
+    $bw.Dispose()
 } finally {
     $matFs.Close()
 }
+Assert-MatFileValid -Path $matTempPath
+Move-Item -LiteralPath $matTempPath -Destination $matShortPath -Force
 
 Write-Host ("OK GEO: {0}" -f $geoShortPath)
 Write-Host ("OK MAT: {0}" -f $matShortPath)
