@@ -83,9 +83,30 @@ public:
 
             const bool bHeld = pad_.IsHeld(SRL::Input::Digital::Button::B);
             const bool cHeld = pad_.IsHeld(SRL::Input::Digital::Button::C);
+            const bool yHeld = pad_.IsHeld(SRL::Input::Digital::Button::Y);
             const bool leftHeld = pad_.IsHeld(SRL::Input::Digital::Button::Left);
             const bool rightHeld = pad_.IsHeld(SRL::Input::Digital::Button::Right);
             context_.cameraSystem->UpdateFromPad(pad_, carYawDeg_, orbitState_);
+            if (yHeld && !yHeldPrev_)
+            {
+                autoLapTestEnabled_ = !autoLapTestEnabled_;
+                autoLapRouteInitialized_ = false;
+                autoLapRouteBuilt_ = false;
+                SRL::Debug::Print(1, 23, "AUTO LAP:%u", autoLapTestEnabled_ ? 1u : 0u);
+            }
+            if (yHeld && leftHeld && !leftHeldPrev_)
+            {
+                if (autoLapStepUnits_ > 1) --autoLapStepUnits_;
+                SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
+            }
+            if (yHeld && rightHeld && !rightHeldPrev_)
+            {
+                if (autoLapStepUnits_ < 12) ++autoLapStepUnits_;
+                SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
+            }
+            yHeldPrev_ = yHeld;
+            leftHeldPrev_ = leftHeld;
+            rightHeldPrev_ = rightHeld;
 
             // Consume last completed slave simulation (double-buffered, one-frame latency).
             if (simJobInFlight_ && simulationTask_.IsDone())
@@ -177,6 +198,10 @@ public:
                 context_.carWorldPosition = frameState.carWorldPosition;
                 carYawDeg_ = frameState.carYawDeg;
             }
+            if (autoLapTestEnabled_)
+            {
+                UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
+            }
 
             if (context_.renderCar && context_.carSystem && context_.carSystem->get() &&
                 context_.carSystem->get()->Valid() && context_.enableSlaveForCarPrepare)
@@ -199,8 +224,18 @@ public:
                 context_.bgManager->Update(context_.cameraSystem->State());
             }
 
-            const Vector3D cameraLocation = context_.cameraSystem->CameraLocation(context_.carWorldPosition);
-            const Vector3D lookTarget = context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
+            const Vector3D rawCameraLocation = context_.cameraSystem->CameraLocation(context_.carWorldPosition);
+            const Vector3D rawLookTarget = context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
+            const bool cameraReady =
+                IsFiniteCameraPoint(rawCameraLocation) &&
+                IsFiniteCameraPoint(rawLookTarget);
+            if (cameraReady)
+            {
+                lastValidCameraLocation_ = rawCameraLocation;
+                lastValidLookTarget_ = rawLookTarget;
+            }
+            const Vector3D cameraLocation = cameraReady ? rawCameraLocation : lastValidCameraLocation_;
+            const Vector3D lookTarget = cameraReady ? rawLookTarget : lastValidLookTarget_;
 
             if (context_.verboseFrameLogs)
             {
@@ -215,45 +250,52 @@ public:
                                        cameraLocation,
                                        context_.carWorldPosition);
 
-            SRL::Scene3D::LoadIdentity();
-            SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
-
-            context_.trackSystem->BeginFrame(frameCounter_);
-            if (context_.trackSystemReady && context_.renderTrack)
+            if (cameraReady)
             {
-                AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
-                context_.trackSystem->RenderFrame(true, context_.trackSegOffset, context_.lightDirection, cameraLocation);
-                context_.trackSystem->EndFrame();
+                SRL::Scene3D::LoadIdentity();
+                SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
+
+                context_.trackSystem->BeginFrame(frameCounter_);
+                if (context_.trackSystemReady && context_.renderTrack)
+                {
+                    AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
+                    context_.trackSystem->RenderFrame(true, context_.trackSegOffset, context_.lightDirection, cameraLocation);
+                    context_.trackSystem->EndFrame();
+                }
+
+                SRL::Scene3D::LoadIdentity();
+                SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
+
+                if (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
+                {
+                    AppState::Set(AppState::Stage::LoopCar, frameCounter_);
+                    SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
+                    if (!IsFiniteCarPos(carRenderPos))
+                    {
+                        carRenderPos = lastValidCarRenderPos_;
+                    }
+                    else
+                    {
+                        lastValidCarRenderPos_ = carRenderPos;
+                    }
+                    context_.carSystem->get()->SetWorldPosition(carRenderPos);
+                    if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
+                    {
+                        context_.carSystem->get()->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
+                        context_.carSystem->get()->TickCommandState();
+                    }
+                    else
+                    {
+                        context_.carSystem->get()->Render(carYawDeg_);
+                    }
+                    context_.renderPipeline->Reset();
+                    context_.carSystem->get()->SubmitRender(*context_.renderPipeline);
+                    context_.renderPipeline->Flush();
+                }
             }
-
-            SRL::Scene3D::LoadIdentity();
-            SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
-
-            if (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
+            else
             {
-                AppState::Set(AppState::Stage::LoopCar, frameCounter_);
-                SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
-                if (!IsFiniteCarPos(carRenderPos))
-                {
-                    carRenderPos = lastValidCarRenderPos_;
-                }
-                else
-                {
-                    lastValidCarRenderPos_ = carRenderPos;
-                }
-                context_.carSystem->get()->SetWorldPosition(carRenderPos);
-                if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
-                {
-                    context_.carSystem->get()->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
-                    context_.carSystem->get()->TickCommandState();
-                }
-                else
-                {
-                    context_.carSystem->get()->Render(carYawDeg_);
-                }
-                context_.renderPipeline->Reset();
-                context_.carSystem->get()->SubmitRender(*context_.renderPipeline);
-                context_.renderPipeline->Flush();
+                SRL::Debug::Print(1, 23, "CAM wait snapshot");
             }
             if (context_.renderAxes)
             {
@@ -312,6 +354,109 @@ private:
         if (y < -kRawLimit || y > kRawLimit) return false;
         if (z < -kRawLimit || z > kRawLimit) return false;
         return true;
+    }
+
+    // Validate camera vectors before releasing render for the frame.
+    static bool IsFiniteCameraPoint(const SRL::Math::Types::Vector3D& p)
+    {
+        return IsFiniteCarPos(p);
+    }
+
+    // Advance car through segment centers for full lap streaming test.
+    void UpdateAutoLapRoute(const Context& context,
+                            SRL::Math::Types::Vector3D& ioCarWorldPosition,
+                            int32_t& ioCarYawDeg)
+    {
+        if (!context.trackSystem || !context.trackSystemReady) return;
+        if (!autoLapRouteBuilt_)
+        {
+            BuildAutoLapRoute(context);
+        }
+        if (autoLapRouteIds_.size() < 2 || autoLapRouteCenters_.size() < 2) return;
+
+        // Keep car ride height stable during autopilot.
+        // Segment center Y is not a reliable asphalt height reference.
+        const auto fixedY = ioCarWorldPosition.Y;
+
+        if (!autoLapRouteInitialized_)
+        {
+            int32_t nearestId = -1;
+            SRL::Math::Types::Vector3D nearestCenter{};
+            if (!context.trackSystem->FindNearestSegment(ioCarWorldPosition, context.trackSegOffset, nearestId, nearestCenter) ||
+                nearestId <= 0)
+            {
+                return;
+            }
+            size_t bestIdx = 0;
+            for (size_t i = 0; i < autoLapRouteIds_.size(); ++i)
+            {
+                if (autoLapRouteIds_[i] == nearestId)
+                {
+                    bestIdx = i;
+                    break;
+                }
+            }
+            autoLapRouteIndex_ = bestIdx;
+            ioCarWorldPosition.X = autoLapRouteCenters_[autoLapRouteIndex_].X;
+            ioCarWorldPosition.Z = autoLapRouteCenters_[autoLapRouteIndex_].Z;
+            ioCarWorldPosition.Y = fixedY;
+            autoLapRouteInitialized_ = true;
+        }
+
+        const size_t nextIndex = (autoLapRouteIndex_ + 1u) % autoLapRouteCenters_.size();
+        const SRL::Math::Types::Vector3D& nextCenter = autoLapRouteCenters_[nextIndex];
+
+        // Move from current car position to next segment center.
+        const int32_t ndx = nextCenter.X.RawValue() - ioCarWorldPosition.X.RawValue();
+        const int32_t ndz = nextCenter.Z.RawValue() - ioCarWorldPosition.Z.RawValue();
+        const int32_t nAdx = (ndx < 0) ? -ndx : ndx;
+        const int32_t nAdz = (ndz < 0) ? -ndz : ndz;
+        const int32_t maxAxis = (nAdx > nAdz) ? nAdx : nAdz;
+        if (maxAxis <= 0) return;
+
+        const int32_t stepRaw = (autoLapStepUnits_ << 16);
+        const int64_t moveX64 = (static_cast<int64_t>(ndx) * static_cast<int64_t>(stepRaw)) / maxAxis;
+        const int64_t moveZ64 = (static_cast<int64_t>(ndz) * static_cast<int64_t>(stepRaw)) / maxAxis;
+        ioCarWorldPosition.X += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveX64));
+        ioCarWorldPosition.Z += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveZ64));
+        ioCarWorldPosition.Y = fixedY;
+
+        // Advance route when the car reaches next center.
+        const int32_t tx = nextCenter.X.RawValue() - ioCarWorldPosition.X.RawValue();
+        const int32_t tz = nextCenter.Z.RawValue() - ioCarWorldPosition.Z.RawValue();
+        const int32_t atx = (tx < 0) ? -tx : tx;
+        const int32_t atz = (tz < 0) ? -tz : tz;
+        if (atx <= (8 << 16) && atz <= (8 << 16))
+        {
+            autoLapRouteIndex_ = nextIndex;
+        }
+
+        if (nAdx >= nAdz)
+        {
+            ioCarYawDeg = (ndx >= 0) ? 90 : 270;
+        }
+        else
+        {
+            ioCarYawDeg = (ndz >= 0) ? 180 : 0;
+        }
+    }
+
+    // Build deterministic segment route ordered by segment id.
+    void BuildAutoLapRoute(const Context& context)
+    {
+        autoLapRouteIds_.clear();
+        autoLapRouteCenters_.clear();
+        if (!context.trackSystem) return;
+
+        SRL::Math::Types::Vector3D c{};
+        for (int32_t id = 1; id <= static_cast<int32_t>(TrackSystem::kTrackSegmentLimit); ++id)
+        {
+            if (!context.trackSystem->FindSegmentCenterById(id, context.trackSegOffset, c)) continue;
+            autoLapRouteIds_.push_back(id);
+            autoLapRouteCenters_.push_back(c);
+        }
+        autoLapRouteBuilt_ = !autoLapRouteIds_.empty();
+        autoLapRouteInitialized_ = false;
     }
 
     class SimulationTask final : public SRL::Types::ITask
@@ -419,4 +564,23 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
+    SRL::Math::Types::Vector3D lastValidCameraLocation_{
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0)};
+    SRL::Math::Types::Vector3D lastValidLookTarget_{
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0)};
+    bool autoLapTestEnabled_ = true;
+    int32_t autoLapTargetSegmentId_ = 1;
+    int16_t autoLapStepUnits_ = 2;
+    bool autoLapRouteInitialized_ = false;
+    bool autoLapRouteBuilt_ = false;
+    size_t autoLapRouteIndex_ = 0;
+    std::vector<int32_t> autoLapRouteIds_{};
+    std::vector<SRL::Math::Types::Vector3D> autoLapRouteCenters_{};
+    bool yHeldPrev_ = false;
+    bool leftHeldPrev_ = false;
+    bool rightHeldPrev_ = false;
 };
