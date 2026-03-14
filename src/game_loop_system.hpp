@@ -57,288 +57,32 @@ public:
     // Run the main frame loop with fixed subsystem ordering.
     int RunForever()
     {
-        using SRL::Math::Types::Angle;
-        using SRL::Math::Types::Fxp;
-        using SRL::Math::Types::Vector2D;
-        using SRL::Math::Types::Vector3D;
-
         while (1)
         {
             AppState::Set(AppState::Stage::LoopFrameBegin, frameCounter_);
             AppState::PresentOverlay(2);
-            if (!context_.cartOkFlag || !(*context_.cartOkFlag))
-            {
-                AppState::Set(AppState::Stage::Fault, frameCounter_);
-                SRL::Debug::Print(1, 3, "ERRO: Cartucho 4MB ausente");
-                SRL::Debug::Print(1, 4, "Insira cart DRAM e reinicie");
-                continue;
-            }
+            if (!ValidateFramePreconditions()) continue;
 
-            if (!context_.cameraSystem || !context_.trackSystem || !context_.hudSystem || !context_.renderPipeline)
-            {
-                AppState::Set(AppState::Stage::Fault, frameCounter_);
-                SRL::Debug::Print(1, 3, "ERRO: subsistemas nao inicializados");
-                continue;
-            }
+            const FrameInputState input = PollFrameInput();
+            ConsumeCompletedJobs();
 
-            const bool bHeld = pad_.IsHeld(SRL::Input::Digital::Button::B);
-            const bool cHeld = pad_.IsHeld(SRL::Input::Digital::Button::C);
-            const bool yHeld = pad_.IsHeld(SRL::Input::Digital::Button::Y);
-            const bool leftHeld = pad_.IsHeld(SRL::Input::Digital::Button::Left);
-            const bool rightHeld = pad_.IsHeld(SRL::Input::Digital::Button::Right);
-            context_.cameraSystem->UpdateFromPad(pad_, carYawDeg_, orbitState_);
-            if (yHeld && !yHeldPrev_)
-            {
-                autoLapTestEnabled_ = !autoLapTestEnabled_;
-                autoLapRouteInitialized_ = false;
-                autoLapRouteBuilt_ = false;
-                SRL::Debug::Print(1, 23, "AUTO LAP:%u", autoLapTestEnabled_ ? 1u : 0u);
-            }
-            if (yHeld && leftHeld && !leftHeldPrev_)
-            {
-                if (autoLapStepUnits_ > 1) --autoLapStepUnits_;
-                SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
-            }
-            if (yHeld && rightHeld && !rightHeldPrev_)
-            {
-                if (autoLapStepUnits_ < 12) ++autoLapStepUnits_;
-                SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
-            }
-            yHeldPrev_ = yHeld;
-            leftHeldPrev_ = leftHeld;
-            rightHeldPrev_ = rightHeld;
+            Game::GameplayFrameState frameState = BuildGameplayFrameState(input);
+            ExecuteGameplayFrame(frameState);
 
-            // Consume last completed slave simulation (double-buffered, one-frame latency).
-            if (simJobInFlight_ && simulationTask_.IsDone())
-            {
-                simJobInFlight_ = false;
-                simHasCompleted_ = true;
-                simCompletedIdx_ = simInFlightIdx_;
-            }
-            if (simHasCompleted_)
-            {
-                const auto& simOut = simOutput_[simCompletedIdx_];
-                context_.carWorldPosition = simOut.outWorldPosition;
-                carYawDeg_ = simOut.outYawDeg;
-            }
-            if (carPrepareJobInFlight_ && carPrepareTask_.IsDone())
-            {
-                carPrepareJobInFlight_ = false;
-                carPrepareHasCompleted_ = true;
-                carPrepareCompletedIdx_ = carPrepareInFlightIdx_;
-            }
-
-            Game::GameplayFrameState frameState{};
-            frameState.frameId = frameCounter_;
-            frameState.carWorldPosition = context_.carWorldPosition;
-            frameState.carYawDeg = carYawDeg_;
-
-            if (context_.carSystem && context_.carSystem->get())
-            {
-                // Feed command interface for future physics integration.
-                if (cHeld) context_.carSystem->get()->Command()->Accelerate();
-                if (bHeld) context_.carSystem->get()->Command()->Brake();
-                if (leftHeld) context_.carSystem->get()->Command()->SteerLeft();
-                if (rightHeld) context_.carSystem->get()->Command()->SteerRight();
-                context_.carSystem->get()->UpdateWheels(cHeld, bHeld);
-                const auto& commands = context_.carSystem->get()->Commands();
-                frameState.throttle = commands.throttle;
-                frameState.steering = commands.steering;
-                frameState.braking = commands.braking;
-                frameState.wheelsSpinning = commands.wheelsSpinning;
-            }
-
-            const bool useSlaveSim =
-                context_.enableSlaveForSimulation &&
-                (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
-            if (useSlaveSim)
-            {
-                SimulationTask::Payload simPayload{};
-                simPayload.gameplayTick = context_.gameplayTick;
-                simPayload.carPhysics = context_.carPhysics;
-                simPayload.audioEvents = context_.audioEvents;
-                simPayload.trackCollision = context_.trackCollision;
-                simPayload.frameState = frameState;
-                simPayload.outWorldPosition = frameState.carWorldPosition;
-                simPayload.outYawDeg = frameState.carYawDeg;
-                if (!simJobInFlight_)
-                {
-                    const uint8_t slot = simWriteIdx_;
-                    simInput_[slot] = simPayload;
-                    simulationTask_.Configure(&simInput_[slot], &simOutput_[slot]);
-                    SRL::Slave::ExecuteOnSlave(simulationTask_);
-                    simJobInFlight_ = true;
-                    simInFlightIdx_ = slot;
-                    simWriteIdx_ ^= 1u;
-                }
-            }
-            else
-            {
-                if (context_.gameplayTick)
-                {
-                    context_.gameplayTick->Tick(frameState, context_.trackCollision);
-                }
-                if (context_.carPhysics)
-                {
-                    context_.carPhysics->Step(frameState,
-                                              context_.trackCollision,
-                                              frameState.carWorldPosition,
-                                              frameState.carYawDeg);
-                }
-                if (frameState.resetRequested)
-                {
-                    frameState.carWorldPosition = frameState.respawnPosition;
-                    frameState.carYawDeg = frameState.respawnYawDeg;
-                    frameState.resetRequested = false;
-                }
-                if (context_.audioEvents)
-                {
-                    context_.audioEvents->OnFrame(frameState);
-                }
-                context_.carWorldPosition = frameState.carWorldPosition;
-                carYawDeg_ = frameState.carYawDeg;
-            }
             if (autoLapTestEnabled_)
             {
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
             }
 
-            if (context_.renderCar && context_.carSystem && context_.carSystem->get() &&
-                context_.carSystem->get()->Valid() && context_.enableSlaveForCarPrepare)
-            {
-                if (!carPrepareJobInFlight_)
-                {
-                    const uint8_t slot = carPrepareWriteIdx_;
-                    carPrepareInputYaw_[slot] = carYawDeg_;
-                    carPrepareTask_.Configure(&carPrepareInputYaw_[slot], &carPrepareOutputYaw_[slot]);
-                    SRL::Slave::ExecuteOnSlave(carPrepareTask_);
-                    carPrepareJobInFlight_ = true;
-                    carPrepareInFlightIdx_ = slot;
-                    carPrepareWriteIdx_ ^= 1u;
-                }
-            }
+            ScheduleCarPrepareIfEnabled();
+            UpdateBackground();
 
-            if (context_.enableBg && context_.bgManager)
-            {
-                AppState::Set(AppState::Stage::LoopBackground, frameCounter_);
-                context_.bgManager->Update(context_.cameraSystem->State());
-            }
+            const CameraFrameState camera = ResolveCameraFrameState();
+            UpdateHud(camera);
+            RenderFrame(camera);
+            RenderAxes();
 
-            const Vector3D rawCameraLocation = context_.cameraSystem->CameraLocation(context_.carWorldPosition);
-            const Vector3D rawLookTarget = context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
-            const bool cameraReady =
-                IsFiniteCameraPoint(rawCameraLocation) &&
-                IsFiniteCameraPoint(rawLookTarget);
-            if (cameraReady)
-            {
-                lastValidCameraLocation_ = rawCameraLocation;
-                lastValidLookTarget_ = rawLookTarget;
-            }
-            const Vector3D cameraLocation = cameraReady ? rawCameraLocation : lastValidCameraLocation_;
-            const Vector3D lookTarget = cameraReady ? rawLookTarget : lastValidLookTarget_;
-
-            if (context_.verboseFrameLogs)
-            {
-                SRL::Debug::Print(0, 18, "Cam pos: %d %d %d",
-                                  cameraLocation.X.As<int16_t>(),
-                                  cameraLocation.Y.As<int16_t>(),
-                                  cameraLocation.Z.As<int16_t>());
-            }
-
-            context_.hudSystem->Update(context_.cameraSystem->State(),
-                                       context_.modelOffset,
-                                       cameraLocation,
-                                       context_.carWorldPosition);
-
-            if (cameraReady)
-            {
-                SRL::Scene3D::LoadIdentity();
-                SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
-
-                context_.trackSystem->BeginFrame(frameCounter_);
-                if (context_.trackSystemReady && context_.renderTrack)
-                {
-                    AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
-                    context_.trackSystem->RenderFrame(true, context_.trackSegOffset, context_.lightDirection, cameraLocation);
-                    context_.trackSystem->EndFrame();
-                }
-
-                SRL::Scene3D::LoadIdentity();
-                SRL::Scene3D::LookAt(cameraLocation, lookTarget, Angle::FromDegrees(0.0));
-
-                if (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
-                {
-                    AppState::Set(AppState::Stage::LoopCar, frameCounter_);
-                    SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
-                    if (!IsFiniteCarPos(carRenderPos))
-                    {
-                        carRenderPos = lastValidCarRenderPos_;
-                    }
-                    else
-                    {
-                        lastValidCarRenderPos_ = carRenderPos;
-                    }
-                    context_.carSystem->get()->SetWorldPosition(carRenderPos);
-                    if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
-                    {
-                        context_.carSystem->get()->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
-                        context_.carSystem->get()->TickCommandState();
-                    }
-                    else
-                    {
-                        context_.carSystem->get()->Render(carYawDeg_);
-                    }
-                    context_.renderPipeline->Reset();
-                    context_.carSystem->get()->SubmitRender(*context_.renderPipeline);
-                    context_.renderPipeline->Flush();
-                }
-            }
-            else
-            {
-                SRL::Debug::Print(1, 23, "CAM wait snapshot");
-            }
-            if (context_.renderAxes)
-            {
-                Vector2D o2D, x2D, y2D, z2D;
-                SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
-                SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
-                SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
-                SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
-                const Fxp sort2D = 0;
-                SRL::Scene2D::DrawLine(o2D, x2D, SRL::Types::HighColor::Colors::Red, sort2D);
-                SRL::Scene2D::DrawLine(o2D, y2D, SRL::Types::HighColor::Colors::Green, sort2D);
-                SRL::Scene2D::DrawLine(o2D, z2D, SRL::Types::HighColor::Colors::Blue, sort2D);
-            }
-
-            uint32_t submittedTrackFaces = 0;
-            if (context_.trackSystemReady && context_.renderTrack && context_.trackSystem)
-            {
-                submittedTrackFaces = context_.trackSystem->Telemetry().submittedTrackFaces;
-            }
-            const uint32_t submittedCarFaces =
-                (context_.renderCar && context_.carSystem && context_.carSystem->get() && context_.carSystem->get()->Valid())
-                    ? context_.faceCount
-                    : 0;
-
-            ++frameCounter_;
-            context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
-                                                          context_.logTrack,
-                                                          context_.logCar,
-                                                          context_.faceCount,
-                                                          context_.vertexCount,
-                                                          submittedTrackFaces,
-                                                          submittedCarFaces);
-            // Keep gouraud table upload alive only when gouraud tables are initialized.
-            if (context_.enableManualGouraudCopy)
-            {
-                SRL::Scene3D::LightCopyGouraudTable();
-            }
-            if (context_.verboseFrameLogs)
-            {
-                SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);
-            }
-            AppState::Set(AppState::Stage::LoopSync, frameCounter_);
-            SRL::Core::Synchronize();
+            FinishFrame();
         }
     }
 
@@ -360,6 +104,355 @@ private:
     static bool IsFiniteCameraPoint(const SRL::Math::Types::Vector3D& p)
     {
         return IsFiniteCarPos(p);
+    }
+
+    struct FrameInputState
+    {
+        bool bHeld = false;
+        bool cHeld = false;
+        bool yHeld = false;
+        bool leftHeld = false;
+        bool rightHeld = false;
+    };
+
+    struct CameraFrameState
+    {
+        SRL::Math::Types::Vector3D location{};
+        SRL::Math::Types::Vector3D lookTarget{};
+        bool ready = false;
+    };
+
+    Game::CarSystem* ActiveCarSystem() const
+    {
+        return (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr;
+    }
+
+    bool CanRenderCar() const
+    {
+        Game::CarSystem* car = ActiveCarSystem();
+        return context_.renderCar && car && car->Valid();
+    }
+
+    bool ValidateFramePreconditions()
+    {
+        if (!context_.cartOkFlag || !(*context_.cartOkFlag))
+        {
+            AppState::Set(AppState::Stage::Fault, frameCounter_);
+            SRL::Debug::Print(1, 3, "ERRO: Cartucho 4MB ausente");
+            SRL::Debug::Print(1, 4, "Insira cart DRAM e reinicie");
+            return false;
+        }
+
+        if (!context_.cameraSystem || !context_.trackSystem || !context_.hudSystem || !context_.renderPipeline)
+        {
+            AppState::Set(AppState::Stage::Fault, frameCounter_);
+            SRL::Debug::Print(1, 3, "ERRO: subsistemas nao inicializados");
+            return false;
+        }
+        return true;
+    }
+
+    FrameInputState PollFrameInput()
+    {
+        FrameInputState input{};
+        input.bHeld = pad_.IsHeld(SRL::Input::Digital::Button::B);
+        input.cHeld = pad_.IsHeld(SRL::Input::Digital::Button::C);
+        input.yHeld = pad_.IsHeld(SRL::Input::Digital::Button::Y);
+        input.leftHeld = pad_.IsHeld(SRL::Input::Digital::Button::Left);
+        input.rightHeld = pad_.IsHeld(SRL::Input::Digital::Button::Right);
+
+        context_.cameraSystem->UpdateFromPad(pad_, carYawDeg_, orbitState_);
+        if (input.yHeld && !yHeldPrev_)
+        {
+            autoLapTestEnabled_ = !autoLapTestEnabled_;
+            autoLapRouteInitialized_ = false;
+            autoLapRouteBuilt_ = false;
+            SRL::Debug::Print(1, 23, "AUTO LAP:%u", autoLapTestEnabled_ ? 1u : 0u);
+        }
+        if (input.yHeld && input.leftHeld && !leftHeldPrev_)
+        {
+            if (autoLapStepUnits_ > 1) --autoLapStepUnits_;
+            SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
+        }
+        if (input.yHeld && input.rightHeld && !rightHeldPrev_)
+        {
+            if (autoLapStepUnits_ < 12) ++autoLapStepUnits_;
+            SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
+        }
+        yHeldPrev_ = input.yHeld;
+        leftHeldPrev_ = input.leftHeld;
+        rightHeldPrev_ = input.rightHeld;
+        return input;
+    }
+
+    void ConsumeCompletedJobs()
+    {
+        if (simJobInFlight_ && simulationTask_.IsDone())
+        {
+            simJobInFlight_ = false;
+            simHasCompleted_ = true;
+            simCompletedIdx_ = simInFlightIdx_;
+        }
+        if (simHasCompleted_)
+        {
+            const auto& simOut = simOutput_[simCompletedIdx_];
+            context_.carWorldPosition = simOut.outWorldPosition;
+            carYawDeg_ = simOut.outYawDeg;
+        }
+        if (carPrepareJobInFlight_ && carPrepareTask_.IsDone())
+        {
+            carPrepareJobInFlight_ = false;
+            carPrepareHasCompleted_ = true;
+            carPrepareCompletedIdx_ = carPrepareInFlightIdx_;
+        }
+    }
+
+    Game::GameplayFrameState BuildGameplayFrameState(const FrameInputState& input)
+    {
+        Game::GameplayFrameState frameState{};
+        frameState.frameId = frameCounter_;
+        frameState.carWorldPosition = context_.carWorldPosition;
+        frameState.carYawDeg = carYawDeg_;
+
+        Game::CarSystem* car = ActiveCarSystem();
+        if (car)
+        {
+            // Feed command interface for future physics integration.
+            if (input.cHeld) car->Command()->Accelerate();
+            if (input.bHeld) car->Command()->Brake();
+            if (input.leftHeld) car->Command()->SteerLeft();
+            if (input.rightHeld) car->Command()->SteerRight();
+            car->UpdateWheels(input.cHeld, input.bHeld);
+            const auto& commands = car->Commands();
+            frameState.throttle = commands.throttle;
+            frameState.steering = commands.steering;
+            frameState.braking = commands.braking;
+            frameState.wheelsSpinning = commands.wheelsSpinning;
+        }
+        return frameState;
+    }
+
+    void ExecuteGameplayFrame(Game::GameplayFrameState& frameState)
+    {
+        const bool useSlaveSim =
+            context_.enableSlaveForSimulation &&
+            (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
+
+        if (useSlaveSim)
+        {
+            if (!simJobInFlight_)
+            {
+                SimulationTask::Payload simPayload{};
+                simPayload.gameplayTick = context_.gameplayTick;
+                simPayload.carPhysics = context_.carPhysics;
+                simPayload.audioEvents = context_.audioEvents;
+                simPayload.trackCollision = context_.trackCollision;
+                simPayload.frameState = frameState;
+                simPayload.outWorldPosition = frameState.carWorldPosition;
+                simPayload.outYawDeg = frameState.carYawDeg;
+
+                const uint8_t slot = simWriteIdx_;
+                simInput_[slot] = simPayload;
+                simulationTask_.Configure(&simInput_[slot], &simOutput_[slot]);
+                SRL::Slave::ExecuteOnSlave(simulationTask_);
+                simJobInFlight_ = true;
+                simInFlightIdx_ = slot;
+                simWriteIdx_ ^= 1u;
+            }
+            return;
+        }
+
+        if (context_.gameplayTick)
+        {
+            context_.gameplayTick->Tick(frameState, context_.trackCollision);
+        }
+        if (context_.carPhysics)
+        {
+            context_.carPhysics->Step(frameState,
+                                      context_.trackCollision,
+                                      frameState.carWorldPosition,
+                                      frameState.carYawDeg);
+        }
+        if (frameState.resetRequested)
+        {
+            frameState.carWorldPosition = frameState.respawnPosition;
+            frameState.carYawDeg = frameState.respawnYawDeg;
+            frameState.resetRequested = false;
+        }
+        if (context_.audioEvents)
+        {
+            context_.audioEvents->OnFrame(frameState);
+        }
+        context_.carWorldPosition = frameState.carWorldPosition;
+        carYawDeg_ = frameState.carYawDeg;
+    }
+
+    void ScheduleCarPrepareIfEnabled()
+    {
+        if (!CanRenderCar() || !context_.enableSlaveForCarPrepare) return;
+        if (carPrepareJobInFlight_) return;
+
+        const uint8_t slot = carPrepareWriteIdx_;
+        carPrepareInputYaw_[slot] = carYawDeg_;
+        carPrepareTask_.Configure(&carPrepareInputYaw_[slot], &carPrepareOutputYaw_[slot]);
+        SRL::Slave::ExecuteOnSlave(carPrepareTask_);
+        carPrepareJobInFlight_ = true;
+        carPrepareInFlightIdx_ = slot;
+        carPrepareWriteIdx_ ^= 1u;
+    }
+
+    void UpdateBackground()
+    {
+        if (!context_.enableBg || !context_.bgManager) return;
+        AppState::Set(AppState::Stage::LoopBackground, frameCounter_);
+        context_.bgManager->Update(context_.cameraSystem->State());
+    }
+
+    CameraFrameState ResolveCameraFrameState()
+    {
+        const SRL::Math::Types::Vector3D rawCameraLocation =
+            context_.cameraSystem->CameraLocation(context_.carWorldPosition);
+        const SRL::Math::Types::Vector3D rawLookTarget =
+            context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
+        const bool cameraReady =
+            IsFiniteCameraPoint(rawCameraLocation) &&
+            IsFiniteCameraPoint(rawLookTarget);
+        if (cameraReady)
+        {
+            lastValidCameraLocation_ = rawCameraLocation;
+            lastValidLookTarget_ = rawLookTarget;
+        }
+
+        CameraFrameState frame{};
+        frame.ready = cameraReady;
+        frame.location = cameraReady ? rawCameraLocation : lastValidCameraLocation_;
+        frame.lookTarget = cameraReady ? rawLookTarget : lastValidLookTarget_;
+
+        if (context_.verboseFrameLogs)
+        {
+            SRL::Debug::Print(0, 18, "Cam pos: %d %d %d",
+                              frame.location.X.As<int16_t>(),
+                              frame.location.Y.As<int16_t>(),
+                              frame.location.Z.As<int16_t>());
+        }
+        return frame;
+    }
+
+    void UpdateHud(const CameraFrameState& camera)
+    {
+        context_.hudSystem->Update(context_.cameraSystem->State(),
+                                   context_.modelOffset,
+                                   camera.location,
+                                   context_.carWorldPosition);
+    }
+
+    void RenderCar(const CameraFrameState& /*camera*/)
+    {
+        if (!CanRenderCar()) return;
+
+        AppState::Set(AppState::Stage::LoopCar, frameCounter_);
+        Game::CarSystem* car = ActiveCarSystem();
+
+        SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
+        if (!IsFiniteCarPos(carRenderPos))
+        {
+            carRenderPos = lastValidCarRenderPos_;
+        }
+        else
+        {
+            lastValidCarRenderPos_ = carRenderPos;
+        }
+
+        car->SetWorldPosition(carRenderPos);
+        if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
+        {
+            car->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
+            car->TickCommandState();
+        }
+        else
+        {
+            car->Render(carYawDeg_);
+        }
+
+        context_.renderPipeline->Reset();
+        car->SubmitRender(*context_.renderPipeline);
+        context_.renderPipeline->Flush();
+    }
+
+    void RenderFrame(const CameraFrameState& camera)
+    {
+        using SRL::Math::Types::Angle;
+        if (!camera.ready)
+        {
+            SRL::Debug::Print(1, 23, "CAM wait snapshot");
+            return;
+        }
+
+        SRL::Scene3D::LoadIdentity();
+        SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
+
+        context_.trackSystem->BeginFrame(frameCounter_);
+        if (context_.trackSystemReady && context_.renderTrack)
+        {
+            AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
+            context_.trackSystem->RenderFrame(true,
+                                             context_.trackSegOffset,
+                                             context_.lightDirection,
+                                             camera.location,
+                                             context_.carWorldPosition);
+            context_.trackSystem->EndFrame();
+        }
+
+        SRL::Scene3D::LoadIdentity();
+        SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
+        RenderCar(camera);
+    }
+
+    void RenderAxes()
+    {
+        using SRL::Math::Types::Fxp;
+        using SRL::Math::Types::Vector2D;
+        using SRL::Math::Types::Vector3D;
+        if (!context_.renderAxes) return;
+
+        Vector2D o2D, x2D, y2D, z2D;
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(4.0, 0.0, 0.0), &x2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 4.0, 0.0), &y2D);
+        SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 4.0), &z2D);
+        const Fxp sort2D = 0;
+        SRL::Scene2D::DrawLine(o2D, x2D, SRL::Types::HighColor::Colors::Red, sort2D);
+        SRL::Scene2D::DrawLine(o2D, y2D, SRL::Types::HighColor::Colors::Green, sort2D);
+        SRL::Scene2D::DrawLine(o2D, z2D, SRL::Types::HighColor::Colors::Blue, sort2D);
+    }
+
+    void FinishFrame()
+    {
+        uint32_t submittedTrackFaces = 0;
+        if (context_.trackSystemReady && context_.renderTrack && context_.trackSystem)
+        {
+            submittedTrackFaces = context_.trackSystem->Telemetry().submittedTrackFaces;
+        }
+        const uint32_t submittedCarFaces = CanRenderCar() ? context_.faceCount : 0;
+
+        ++frameCounter_;
+        context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
+                                                      context_.logTrack,
+                                                      context_.logCar,
+                                                      context_.faceCount,
+                                                      context_.vertexCount,
+                                                      submittedTrackFaces,
+                                                      submittedCarFaces);
+        if (context_.enableManualGouraudCopy)
+        {
+            SRL::Scene3D::LightCopyGouraudTable();
+        }
+        if (context_.verboseFrameLogs)
+        {
+            SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);
+        }
+        AppState::Set(AppState::Stage::LoopSync, frameCounter_);
+        SRL::Core::Synchronize();
     }
 
     // Advance car through segment centers for full lap streaming test.
@@ -449,7 +542,8 @@ private:
         if (!context.trackSystem) return;
 
         SRL::Math::Types::Vector3D c{};
-        for (int32_t id = 1; id <= static_cast<int32_t>(TrackSystem::kTrackSegmentLimit); ++id)
+        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
+        for (int32_t id = 1; id <= segmentCount; ++id)
         {
             if (!context.trackSystem->FindSegmentCenterById(id, context.trackSegOffset, c)) continue;
             autoLapRouteIds_.push_back(id);

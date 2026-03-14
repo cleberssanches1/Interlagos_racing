@@ -7,7 +7,9 @@
 #include <cctype>
 #include <string.h>
 #include <vector>
+#include <utility>
 #include <errno.h>
+#include <limits>
 
 #include "modelObject.hpp"
 #include "resource_loader.hpp"
@@ -58,6 +60,7 @@ struct PackedAssetCache
 {
     void* cartPtr = nullptr;
     uint32_t size = 0;
+    char sourcePath[96]{};
     std::vector<PackedAssetEntryMeta> entries{};
 };
 
@@ -78,8 +81,43 @@ static char g_smapSig[24] = "none";
 static char g_smapHead[48] = "none";
 static Segment1TextureJson g_seg1MapCache{};
 static bool g_seg1MapCacheValid = false;
+// Visible window LOD distribution (20 segments total):
+// 4x 64x64, 5x 32x32, 5x 16x16, 6x 8x8.
+static constexpr uint32_t kLodBand64Count = 4u;
+static constexpr uint32_t kLodBand32Count = 5u;
+static constexpr uint32_t kLodBand16Count = 5u;
+static constexpr uint32_t kLodBand8Count = 6u;
+static constexpr size_t kWorkRamPlanningHeadroomBytes = 48u * 1024u;
+static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
+
+static int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount)
+{
+    if (totalSegmentCount == 0) return -1;
+    const int32_t total = static_cast<int32_t>(totalSegmentCount);
+    // Convert arbitrary integer to 1..N id range while preserving valid 1-based ids.
+    int32_t normalized = (segmentId - 1) % total;
+    if (normalized < 0) normalized += total;
+    return normalized + 1;
+}
+
+static bool IsVdp1TextureSlotLive(uint16_t slot)
+{
+    if (slot == No_Texture) return false;
+    if (slot >= SRL_MAX_TEXTURES) return false;
+    if (slot >= SRL::VDP1::GetTextureCount()) return false;
+    return SRL::VDP1::Metadata[slot].Texture != nullptr;
+}
+
+static size_t GetHighWorkRamFreeBytesSafe(bool* outValid = nullptr)
+{
+    const auto report = SRL::Memory::HighWorkRam::GetReport();
+    const bool valid = (report.TotalSize > 0u) && (report.FreeSize <= report.TotalSize);
+    if (outValid) *outValid = valid;
+    return valid ? report.FreeSize : 0u;
+}
 
 static void NormalizeTextureFileName(const char* in, char* out, size_t outSize);
+static void InvalidatePackedAssetCache(PackedAssetCache& cache);
 static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentDrawReady::Blob& out);
@@ -107,6 +145,17 @@ static bool TryRepairRendererState(TrackRenderer& renderer)
     if (renderer.MeshCount() == 0) return false;
     renderer.SetDrawLimit(renderer.MeshCount());
     return IsRendererStateIntegral(renderer);
+}
+
+static void ConfigureStreamedRendererDefaults(TrackRenderer& renderer)
+{
+    renderer.SetUseOriginal(false);
+    renderer.SetSglDirect(false);
+    renderer.SetVdp1Commands(false);
+    renderer.SetDirect2D(false);
+    renderer.SetForceDoubleSided(false);
+    renderer.SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
+    renderer.SetDrawLimit(renderer.MeshCount());
 }
 
 struct CartTextCacheEntry
@@ -1446,23 +1495,201 @@ static bool LoadMat8ForSegment(int segmentId, SegmentComponent::Blob& outBlob, S
 static bool LoadSdrForSegment(int segmentId, SegmentDrawReady::Blob& outBlob, SegmentDrawReady::Loader::View& outView)
 {
     static PackedAssetCache sSdrPackCache{};
+    static char sSdrPinnedPath[96]{};
+    static size_t sSdrTrustedEntries = 0;
+    static std::array<int32_t, 4097> sSdrEntryById{};
+    static bool sSdrEntryByIdBuilt = false;
+    static size_t sSdrEntryByIdCount = 0;
+    static char sSdrEntryByIdSource[96]{};
     char packedName[16]{};
     std::snprintf(packedName, sizeof(packedName), "S%03d.SDR", segmentId);
     const char* packCandidates[] = {
+        "/CD/DATA/SDR.BIN",
+        "/CD/DATA/SDR.BIN;1",
+        "/DATA/SDR.BIN",
+        "/DATA/SDR.BIN;1",
         "CD/DATA/SDR.BIN",
         "CD/DATA/SDR.BIN;1",
         "DATA/SDR.BIN",
         "DATA/SDR.BIN;1",
+        "cd/data/SDR.BIN",
+        "cd/data/SDR.BIN;1",
+        "cd/data/sdr.bin",
+        "cd/data/sdr.bin;1",
+        "data/SDR.BIN",
+        "data/SDR.BIN;1",
+        "data/sdr.bin",
+        "data/sdr.bin;1",
         "SDR.BIN",
-        "SDR.BIN;1"
+        "SDR.BIN;1",
+        "sdr.bin",
+        "sdr.bin;1"
     };
-    if (LoadPackedAssetIndexToCart(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]), sSdrPackCache) &&
-        LoadPackedAssetEntryToBlob(sSdrPackCache, packedName, outBlob))
+
+    auto indexAcceptable = [&](size_t entryCount) -> bool
     {
-        return SegmentDrawReady::Loader::Parse(outBlob, outView);
+        if (entryCount == 0) return false;
+        if (segmentId > 0 && entryCount < static_cast<size_t>(segmentId)) return false;
+        if (sSdrTrustedEntries >= 128 && entryCount < (sSdrTrustedEntries / 2u)) return false;
+        return true;
+    };
+
+    auto parseSdrNameToId = [&](const char* name, int32_t& outId) -> bool
+    {
+        outId = -1;
+        if (!name) return false;
+        if (name[0] != 'S' && name[0] != 's') return false;
+        if (name[1] < '0' || name[1] > '9') return false;
+        if (name[2] < '0' || name[2] > '9') return false;
+        if (name[3] < '0' || name[3] > '9') return false;
+        if (name[4] != '.') return false;
+        outId = (name[1] - '0') * 100 + (name[2] - '0') * 10 + (name[3] - '0');
+        return outId > 0;
+    };
+
+    auto rebuildSdrEntryLookup = [&]()
+    {
+        for (size_t i = 0; i < sSdrEntryById.size(); ++i) sSdrEntryById[i] = -1;
+        for (size_t i = 0; i < sSdrPackCache.entries.size(); ++i)
+        {
+            int32_t id = -1;
+            if (!parseSdrNameToId(sSdrPackCache.entries[i].name, id)) continue;
+            if (id <= 0 || static_cast<size_t>(id) >= sSdrEntryById.size()) continue;
+            if (sSdrEntryById[static_cast<size_t>(id)] < 0)
+            {
+                sSdrEntryById[static_cast<size_t>(id)] = static_cast<int32_t>(i);
+            }
+        }
+        sSdrEntryByIdBuilt = true;
+        sSdrEntryByIdCount = sSdrPackCache.entries.size();
+        if (sSdrPackCache.sourcePath[0] != '\0')
+        {
+            ::strncpy(sSdrEntryByIdSource, sSdrPackCache.sourcePath, sizeof(sSdrEntryByIdSource) - 1);
+            sSdrEntryByIdSource[sizeof(sSdrEntryByIdSource) - 1] = '\0';
+        }
+        else
+        {
+            sSdrEntryByIdSource[0] = '\0';
+        }
+    };
+
+    auto tryLoadSdrBySegmentId = [&]() -> bool
+    {
+        if (segmentId <= 0) return false;
+        if (static_cast<size_t>(segmentId) >= sSdrEntryById.size()) return false;
+        const bool sourceChanged = (::strcmp(sSdrEntryByIdSource, sSdrPackCache.sourcePath) != 0);
+        if (!sSdrEntryByIdBuilt || sSdrEntryByIdCount != sSdrPackCache.entries.size() || sourceChanged)
+        {
+            rebuildSdrEntryLookup();
+        }
+
+        const int32_t idx = sSdrEntryById[static_cast<size_t>(segmentId)];
+        if (idx < 0) return false;
+        const size_t uidx = static_cast<size_t>(idx);
+        if (uidx >= sSdrPackCache.entries.size()) return false;
+        const auto& e = sSdrPackCache.entries[uidx];
+        if (e.size == 0) return false;
+        if (static_cast<uint64_t>(e.offset) + static_cast<uint64_t>(e.size) > static_cast<uint64_t>(sSdrPackCache.size))
+        {
+            return false;
+        }
+
+        const uint8_t* src = static_cast<const uint8_t*>(sSdrPackCache.cartPtr) + e.offset;
+        outBlob.bytes.resize(e.size);
+        ::memcpy(outBlob.bytes.data(), src, e.size);
+        if (outBlob.bytes.size() < sizeof(SegmentDrawReady::HeaderV1)) return false;
+        if (ReadLe32(outBlob.bytes.data()) != SegmentDrawReady::kMagicSdr1) return false;
+        if (ReadLe16(outBlob.bytes.data() + 4) != SegmentDrawReady::kVersion1) return false;
+        outBlob.loaded = true;
+        outBlob.size = outBlob.bytes.size();
+        return true;
+    };
+
+    auto rememberTrustedSource = [&]()
+    {
+        if (sSdrPackCache.entries.size() > sSdrTrustedEntries)
+        {
+            sSdrTrustedEntries = sSdrPackCache.entries.size();
+        }
+        if (sSdrPackCache.sourcePath[0] != '\0')
+        {
+            ::strncpy(sSdrPinnedPath, sSdrPackCache.sourcePath, sizeof(sSdrPinnedPath) - 1);
+            sSdrPinnedPath[sizeof(sSdrPinnedPath) - 1] = '\0';
+        }
+    };
+
+    auto tryLoadFromCandidates = [&](const char* const* candidates, size_t count) -> bool
+    {
+        if (!LoadPackedAssetIndexToCart(candidates, count, sSdrPackCache))
+        {
+            return false;
+        }
+        if (!indexAcceptable(sSdrPackCache.entries.size()))
+        {
+            InvalidatePackedAssetCache(sSdrPackCache);
+            return false;
+        }
+        if (!tryLoadSdrBySegmentId() &&
+            !LoadPackedAssetEntryToBlob(sSdrPackCache, packedName, outBlob))
+        {
+            return false;
+        }
+        rememberTrustedSource();
+        return true;
+    };
+
+    auto tryLoad = [&]() -> bool
+    {
+        if (sSdrPinnedPath[0] != '\0')
+        {
+            const char* pinnedCandidates[] = { sSdrPinnedPath };
+            if (tryLoadFromCandidates(pinnedCandidates, 1)) return true;
+        }
+        return tryLoadFromCandidates(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]));
+    };
+
+    auto tryParseLoaded = [&]() -> bool
+    {
+        if (SegmentDrawReady::Loader::Parse(outBlob, outView)) return true;
+        const uint32_t m = (outBlob.bytes.size() >= 4) ? ReadLe32(outBlob.bytes.data()) : 0u;
+        const uint16_t v = (outBlob.bytes.size() >= 6) ? ReadLe16(outBlob.bytes.data() + 4) : 0u;
+        SRL::Debug::Print(1, 15, "SDR parse fail %03d m:%lx v:%u s:%u",
+                          segmentId,
+                          static_cast<unsigned long>(m),
+                          static_cast<unsigned>(v),
+                          static_cast<unsigned>(outBlob.bytes.size()));
+        outView = {};
+        return false;
+    };
+
+    if (tryLoad())
+    {
+        if (tryParseLoaded()) return true;
+    }
+
+    // Recovery: force one full pack reload when cached index/entry lookup fails.
+    // SDR runtime stays cart-only (4MB) for performance.
+    InvalidatePackedAssetCache(sSdrPackCache);
+    if (tryLoad())
+    {
+        if (tryParseLoaded()) return true;
+    }
+
+    const auto cart = SRL::Memory::CartRam::GetReport();
+    SRL::Debug::Print(1, 15, "SDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+                      segmentId,
+                      static_cast<unsigned>(sSdrPackCache.size),
+                      static_cast<unsigned>(sSdrPackCache.entries.size()),
+                      static_cast<unsigned>(sSdrTrustedEntries),
+                      static_cast<unsigned>(cart.FreeSize));
+    if (sSdrPackCache.sourcePath[0] != '\0')
+    {
+        SRL::Debug::Print(1, 16, "SDR src:%s", sSdrPackCache.sourcePath);
     }
     (void)segmentId;
-    outBlob = {};
+    outBlob.loaded = false;
+    outBlob.size = 0;
+    outBlob.bytes.clear();
     outView = {};
     return false;
 }
@@ -1494,9 +1721,8 @@ static size_t ComputeSafeSegmentsPerPackage(size_t requestedSegments)
         static_cast<size_t>(ref.faceCount) * (sizeof(uint16_t) + sizeof(uint8_t));
 
     // Keep a fixed reserve for frame runtime systems and transient data.
-    const size_t kWorkRamHeadroomBytes = 96 * 1024;
-    const size_t hwrFree = SRL::Memory::HighWorkRam::GetFreeSpace();
-    const size_t usable = (hwrFree > kWorkRamHeadroomBytes) ? (hwrFree - kWorkRamHeadroomBytes) : 0;
+    const size_t hwrFree = GetHighWorkRamFreeBytesSafe();
+    const size_t usable = (hwrFree > kWorkRamPlanningHeadroomBytes) ? (hwrFree - kWorkRamPlanningHeadroomBytes) : 0;
 
     const size_t byMem = (bytesPerSeg > 0 && usable > 0) ? (usable / bytesPerSeg) : 1;
     const size_t byIndex = (ref.vertexCount > 0) ? (65000u / static_cast<size_t>(ref.vertexCount)) : requestedSegments;
@@ -1531,7 +1757,8 @@ static size_t EstimateSdrSegmentRuntimeBytes(const SegmentDrawReady::HeaderV1& h
     const size_t facesBytes = f * sizeof(SRL::Types::Polygon);
     const size_t attrsBytes = f * sizeof(SRL::Types::Attribute);
     const size_t lodBytes = f * (sizeof(uint16_t) + sizeof(uint8_t) + sizeof(int32_t));
-    const size_t overhead = 8u * 1024u;
+    // Keep a small fixed overhead for vector metadata and allocator alignment.
+    const size_t overhead = 2u * 1024u;
     return vertsBytes + facesBytes + attrsBytes + lodBytes + overhead;
 }
 
@@ -1544,7 +1771,13 @@ static bool CanAdmitSdrBatchInHighWorkRam(size_t firstSegmentId,
                                           size_t& outFreeBytes)
 {
     outEstimatedBytes = 0;
-    outFreeBytes = SRL::Memory::HighWorkRam::GetFreeSpace();
+    bool freeValid = false;
+    outFreeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+    if (!freeValid)
+    {
+        // Keep planner permissive when report telemetry is temporarily invalid.
+        outFreeBytes = std::numeric_limits<size_t>::max();
+    }
     if (lastSegmentId < firstSegmentId) return false;
 
     for (size_t sid = firstSegmentId; sid <= lastSegmentId; ++sid)
@@ -1557,9 +1790,21 @@ static bool CanAdmitSdrBatchInHighWorkRam(size_t firstSegmentId,
         outEstimatedBytes += EstimateSdrSegmentRuntimeBytes(hdr);
     }
 
-    if (outFreeBytes <= reserveBytes) return false;
+    if (outFreeBytes <= reserveBytes + kWorkRamHardFloorBytes) return false;
     const size_t usable = outFreeBytes - reserveBytes;
-    return outEstimatedBytes <= usable;
+    // Safety margin on top of estimate to absorb per-allocation metadata and
+    // temporary vectors while a segment renderer is being built.
+    const size_t guardedEstimate = outEstimatedBytes + (outEstimatedBytes / 5u); // +20%
+    if (guardedEstimate <= usable) return true;
+
+    // Fallback: allow exact estimate when free memory after admission still
+    // keeps a hard floor for runtime systems.
+    if (outEstimatedBytes <= usable)
+    {
+        const size_t freeAfter = outFreeBytes - outEstimatedBytes;
+        return freeAfter >= kWorkRamHardFloorBytes;
+    }
+    return false;
 }
 
 static bool LoadSdrFamilyIdsForSegment(int segmentId, std::vector<uint16_t>& outFamilyIds)
@@ -1665,27 +1910,57 @@ static bool LoadGeoForSegment(int segmentId, SegmentComponent::Blob& outBlob, Se
     return false;
 }
 
-static bool BuildRendererFromSdr(int segmentId, TrackRenderer& renderer, Vector3D* outCenter)
+static bool BuildRendererFromSdr(int segmentId,
+                                 TrackRenderer& renderer,
+                                 Vector3D* outCenter,
+                                 std::vector<uint16_t>* outFamilyIds = nullptr)
 {
-    SegmentDrawReady::Blob sdrBlob{};
+    static SegmentDrawReady::Blob sdrBlob{};
+    static std::vector<SRL::Math::Types::Vector3D> verts{};
+    static std::vector<SRL::Types::Polygon> faces{};
+    static std::vector<SRL::Types::Attribute> attrs{};
+    sdrBlob.loaded = false;
+    sdrBlob.size = 0;
+    sdrBlob.bytes.clear();
     SegmentDrawReady::Loader::View sdrView{};
     if (!LoadSdrForSegment(segmentId, sdrBlob, sdrView))
     {
+        SRL::Debug::Print(1, 15, "SDR load fail %03d", segmentId);
         return false;
     }
 
-    std::vector<SRL::Math::Types::Vector3D> verts{};
-    std::vector<SRL::Types::Polygon> faces{};
-    std::vector<SRL::Types::Attribute> attrs{};
-    verts.reserve(sdrView.header.vertexCount);
-    faces.reserve(sdrView.header.faceCount);
-    attrs.reserve(sdrView.header.faceCount);
+    verts.clear();
+    faces.clear();
+    attrs.clear();
+    if (verts.capacity() < sdrView.header.vertexCount) verts.reserve(sdrView.header.vertexCount);
+    if (faces.capacity() < sdrView.header.faceCount) faces.reserve(sdrView.header.faceCount);
+    if (attrs.capacity() < sdrView.header.faceCount) attrs.reserve(sdrView.header.faceCount);
+    if (outFamilyIds)
+    {
+        outFamilyIds->clear();
+        outFamilyIds->reserve(sdrView.header.faceCount);
+        for (uint32_t fi = 0; fi < sdrView.header.faceCount; ++fi)
+        {
+            uint16_t familyId = 0;
+            const size_t off = sdrView.familyIdsOffset + static_cast<size_t>(fi) * sizeof(uint16_t);
+            if (!SegmentDrawReady::Loader::ReadFamilyIdLeAt(sdrBlob.bytes, off, familyId))
+            {
+                SRL::Debug::Print(1, 15, "SDR fam read fail %03d f:%u", segmentId, static_cast<unsigned>(fi));
+                return false;
+            }
+            outFamilyIds->push_back(familyId);
+        }
+    }
 
     for (uint32_t vi = 0; vi < sdrView.header.vertexCount; ++vi)
     {
         SegmentDrawReady::Vertex sv{};
         const size_t off = sdrView.verticesOffset + static_cast<size_t>(vi) * sizeof(SegmentDrawReady::Vertex);
-        if (!SegmentDrawReady::Loader::ReadVertexLeAt(sdrBlob.bytes, off, sv)) return false;
+        if (!SegmentDrawReady::Loader::ReadVertexLeAt(sdrBlob.bytes, off, sv))
+        {
+            SRL::Debug::Print(1, 15, "SDR vtx read fail %03d v:%u", segmentId, static_cast<unsigned>(vi));
+            return false;
+        }
 
         verts.push_back(Vector3D(
             SRL::Math::Types::Fxp::BuildRaw(sv.x),
@@ -1728,8 +2003,16 @@ static bool BuildRendererFromSdr(int segmentId, TrackRenderer& renderer, Vector3
         SegmentDrawReady::AttrBase sa{};
         const size_t foff = sdrView.facesOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::Face);
         const size_t aoff = sdrView.attrsOffset + static_cast<size_t>(fi) * sizeof(SegmentDrawReady::AttrBase);
-        if (!SegmentDrawReady::Loader::ReadFaceLeAt(sdrBlob.bytes, foff, sf)) return false;
-        if (!SegmentDrawReady::Loader::ReadAttrBaseLeAt(sdrBlob.bytes, aoff, sa)) return false;
+        if (!SegmentDrawReady::Loader::ReadFaceLeAt(sdrBlob.bytes, foff, sf))
+        {
+            SRL::Debug::Print(1, 15, "SDR face read fail %03d f:%u", segmentId, static_cast<unsigned>(fi));
+            return false;
+        }
+        if (!SegmentDrawReady::Loader::ReadAttrBaseLeAt(sdrBlob.bytes, aoff, sa))
+        {
+            SRL::Debug::Print(1, 15, "SDR attr read fail %03d f:%u", segmentId, static_cast<unsigned>(fi));
+            return false;
+        }
 
         const uint16_t indices[4] = { sf.v0, sf.v1, sf.v2, sf.v3 };
         for (size_t i = 0; i < 4; ++i)
@@ -1760,7 +2043,11 @@ static bool BuildRendererFromSdr(int segmentId, TrackRenderer& renderer, Vector3
         attrs.push_back(BuildSdrBaseAttr(sa));
     }
 
-    const bool ok = renderer.InitializeFromComponentData(verts, faces, attrs);
+    const bool ok = renderer.InitializeFromComponentDataRecycled(verts, faces, attrs);
+    if (!ok)
+    {
+        SRL::Debug::Print(1, 15, "SDR init cmp fail %03d", segmentId);
+    }
     if (ok && outCenter)
     {
         *outCenter = Vector3D(
@@ -1907,7 +2194,9 @@ static bool BuildRendererFromBdrBatch(int firstId,
     }
 
     auto renderer = std::make_unique<TrackRenderer>();
-    if (!renderer->InitializeFromComponentData(verts, faces, attrs))
+    if (!renderer->InitializeFromComponentData(std::move(verts),
+                                               std::move(faces),
+                                               std::move(attrs)))
     {
         return false;
     }
@@ -2225,14 +2514,188 @@ static bool NameEqualsIgnoreCase(const char* a, const char* b)
 
 namespace
 {
+static void InvalidatePackedAssetCache(PackedAssetCache& cache)
+{
+    if (cache.cartPtr)
+    {
+        SRL::Memory::CartRam::Free(cache.cartPtr);
+    }
+    cache = {};
+}
+
+static bool RebuildPackedAssetEntries(PackedAssetCache& cache)
+{
+    cache.entries.clear();
+    if (!cache.cartPtr || cache.size < 12) return false;
+
+    const uint8_t* p = static_cast<const uint8_t*>(cache.cartPtr);
+    const uint32_t magic = ReadLe32(p + 0);
+    const uint32_t version = ReadLe32(p + 4);
+    const uint32_t entryCount = ReadLe32(p + 8);
+    if (magic != 0x314B4150 || version != 1) return false; // "PAK1"
+    if (entryCount == 0) return false;
+
+    const size_t entrySize = 64 + 4 + 4;
+    const size_t tableBytes = static_cast<size_t>(entryCount) * entrySize;
+    const size_t dataOffset = 12 + tableBytes;
+    if (dataOffset > cache.size) return false;
+
+    cache.entries.reserve(entryCount);
+    uint32_t minOffset = 0xFFFFFFFFu;
+    for (uint32_t i = 0; i < entryCount; ++i)
+    {
+        const size_t off = 12 + static_cast<size_t>(i) * entrySize;
+        if (off + entrySize > cache.size) return false;
+
+        PackedAssetEntryMeta e{};
+        ::memcpy(e.name, p + off, 64);
+        e.name[64] = '\0';
+        e.offset = ReadLe32(p + off + 64);
+        e.size = ReadLe32(p + off + 68);
+        if (e.size == 0) continue;
+        if (e.offset < dataOffset) continue;
+        if (static_cast<uint64_t>(e.offset) + static_cast<uint64_t>(e.size) > static_cast<uint64_t>(cache.size)) continue;
+        if (e.offset < minOffset) minOffset = e.offset;
+        cache.entries.push_back(e);
+    }
+
+    if (cache.entries.empty()) return false;
+    // Header corruption guard: valid packs should start data immediately after table.
+    // Allow a small slack for potential packer alignment/padding.
+    if (minOffset > dataOffset)
+    {
+        const size_t gap = static_cast<size_t>(minOffset - static_cast<uint32_t>(dataOffset));
+        if (gap > entrySize)
+        {
+            cache.entries.clear();
+            return false;
+        }
+    }
+
+    return !cache.entries.empty();
+}
+
+static bool ReadCdFileFully(SRL::Cd::File& file, uint32_t totalBytes, uint8_t* dst, uint32_t& outReadBytes)
+{
+    outReadBytes = 0;
+    if (!dst || totalBytes == 0) return false;
+
+    while (outReadBytes < totalBytes)
+    {
+        const int32_t toRead = static_cast<int32_t>(totalBytes - outReadBytes);
+        if (toRead <= 0) break;
+        int32_t got = file.Read(toRead, dst + outReadBytes);
+        if (got <= 0) break;
+        outReadBytes += static_cast<uint32_t>(got);
+    }
+
+    return outReadBytes == totalBytes;
+}
+
 static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache)
 {
-    if (cache.cartPtr && cache.size > 0 && !cache.entries.empty()) return true;
+    char rememberedPath[96]{};
+    if (cache.sourcePath[0] != '\0')
+    {
+        ::strncpy(rememberedPath, cache.sourcePath, sizeof(rememberedPath) - 1);
+        rememberedPath[sizeof(rememberedPath) - 1] = '\0';
+    }
 
+    if (cache.cartPtr && cache.size > 0)
+    {
+        // Keep previously validated in-memory index for runtime stability.
+        if (!cache.entries.empty()) return true;
+        if (RebuildPackedAssetEntries(cache)) return true;
+        const uint8_t* p = static_cast<const uint8_t*>(cache.cartPtr);
+        if (cache.size >= 12 &&
+            ReadLe32(p + 0) == 0x314B4150 &&
+            ReadLe32(p + 4) == 1u)
+        {
+            // Keep raw buffer alive even when vector index rebuild failed.
+            // Callers with raw-table fallback can still resolve entries.
+            return true;
+        }
+
+        // Cart-only recovery path: try to refresh the existing Cart RAM block
+        // before freeing/reallocating, minimizing fragmentation and stalls.
+        SRL::Cd::ChangeDir((const char*)0);
+        if (cache.sourcePath[0] != '\0')
+        {
+            SRL::Cd::File rf(cache.sourcePath);
+            if (rf.Exists() && rf.Size.Bytes > 0 &&
+                static_cast<uint64_t>(rf.Size.Bytes) <= static_cast<uint64_t>(cache.size) &&
+                rf.Open())
+            {
+                const uint32_t bytes = static_cast<uint32_t>(rf.Size.Bytes);
+                uint32_t readBytes = 0;
+                if (ReadCdFileFully(rf, bytes, static_cast<uint8_t*>(cache.cartPtr), readBytes))
+                {
+                    cache.size = readBytes;
+                    if (RebuildPackedAssetEntries(cache)) return true;
+                    const uint8_t* rp = static_cast<const uint8_t*>(cache.cartPtr);
+                    if (cache.size >= 12 &&
+                        ReadLe32(rp + 0) == 0x314B4150 &&
+                        ReadLe32(rp + 4) == 1u)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (size_t i = 0; i < count; ++i)
+        {
+            SRL::Cd::File rf(candidates[i]);
+            if (!rf.Exists() || rf.Size.Bytes <= 0) continue;
+            if (static_cast<uint64_t>(rf.Size.Bytes) > static_cast<uint64_t>(cache.size)) continue;
+            if (!rf.Open()) continue;
+
+            const uint32_t bytes = static_cast<uint32_t>(rf.Size.Bytes);
+            uint32_t readBytes = 0;
+            if (!ReadCdFileFully(rf, bytes, static_cast<uint8_t*>(cache.cartPtr), readBytes)) continue;
+            cache.size = readBytes;
+            if (RebuildPackedAssetEntries(cache))
+            {
+                ::strncpy(cache.sourcePath, candidates[i], sizeof(cache.sourcePath) - 1);
+                cache.sourcePath[sizeof(cache.sourcePath) - 1] = '\0';
+                return true;
+            }
+
+            const uint8_t* rp = static_cast<const uint8_t*>(cache.cartPtr);
+            if (cache.size >= 12 &&
+                ReadLe32(rp + 0) == 0x314B4150 &&
+                ReadLe32(rp + 4) == 1u)
+            {
+                return true;
+            }
+        }
+        InvalidatePackedAssetCache(cache);
+    }
+
+    char pinnedPath[96]{};
+    if (rememberedPath[0] != '\0')
+    {
+        ::strncpy(pinnedPath, rememberedPath, sizeof(pinnedPath) - 1);
+        pinnedPath[sizeof(pinnedPath) - 1] = '\0';
+    }
     cache = {};
+    if (pinnedPath[0] != '\0')
+    {
+        ::strncpy(cache.sourcePath, pinnedPath, sizeof(cache.sourcePath) - 1);
+        cache.sourcePath[sizeof(cache.sourcePath) - 1] = '\0';
+    }
+    SRL::Cd::ChangeDir((const char*)0);
     const char* foundPath = nullptr;
+    if (cache.sourcePath[0] != '\0')
+    {
+        SRL::Cd::File pinnedProbe(cache.sourcePath);
+        if (pinnedProbe.Exists() && pinnedProbe.Size.Bytes > 0)
+        {
+            foundPath = cache.sourcePath;
+        }
+    }
     for (size_t i = 0; i < count; ++i)
     {
+        if (foundPath) break;
         SRL::Cd::File probe(candidates[i]);
         if (probe.Exists() && probe.Size.Bytes > 0)
         {
@@ -2250,16 +2713,94 @@ static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t cou
     void* mem = SRL::Memory::CartRam::Malloc(bytes);
     if (!mem) return false;
 
-    const int32_t read = f.Read(static_cast<int32_t>(bytes), mem);
-    if (read <= 0 || static_cast<uint32_t>(read) > bytes)
+    uint32_t readBytes = 0;
+    if (!ReadCdFileFully(f, bytes, static_cast<uint8_t*>(mem), readBytes))
     {
+        SRL::Debug::Print(1, 15, "PAK read short %s got:%u exp:%u",
+                          foundPath ? foundPath : "?",
+                          static_cast<unsigned>(readBytes),
+                          static_cast<unsigned>(bytes));
         SRL::Memory::CartRam::Free(mem);
         return false;
     }
 
     cache.cartPtr = mem;
-    cache.size = static_cast<uint32_t>(read);
+    cache.size = readBytes;
+    if (RebuildPackedAssetEntries(cache))
+    {
+        if (foundPath && foundPath[0] != '\0')
+        {
+            ::strncpy(cache.sourcePath, foundPath, sizeof(cache.sourcePath) - 1);
+            cache.sourcePath[sizeof(cache.sourcePath) - 1] = '\0';
+        }
+        return true;
+    }
 
+    const uint8_t* p = static_cast<const uint8_t*>(cache.cartPtr);
+    if (cache.size >= 12 &&
+        ReadLe32(p + 0) == 0x314B4150 &&
+        ReadLe32(p + 4) == 1u)
+    {
+        if (foundPath && foundPath[0] != '\0')
+        {
+            ::strncpy(cache.sourcePath, foundPath, sizeof(cache.sourcePath) - 1);
+            cache.sourcePath[sizeof(cache.sourcePath) - 1] = '\0';
+        }
+        return true;
+    }
+
+    InvalidatePackedAssetCache(cache);
+    return false;
+}
+
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out)
+{
+    out.loaded = false;
+    out.size = 0;
+    out.bytes.clear();
+    if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
+
+    for (size_t i = 0; i < cache.entries.size(); ++i)
+    {
+        const auto& e = cache.entries[i];
+        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
+
+        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
+        out.bytes.resize(e.size);
+        ::memcpy(out.bytes.data(), src, e.size);
+        out.loaded = true;
+        out.size = out.bytes.size();
+        return true;
+    }
+
+    return false;
+}
+
+static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentDrawReady::Blob& out)
+{
+    out.loaded = false;
+    out.size = 0;
+    out.bytes.clear();
+    if (!cache.cartPtr || cache.size == 0 || !entryName || entryName[0] == '\0') return false;
+
+    for (size_t i = 0; i < cache.entries.size(); ++i)
+    {
+        const auto& e = cache.entries[i];
+        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
+
+        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
+        out.bytes.resize(e.size);
+        ::memcpy(out.bytes.data(), src, e.size);
+        if (out.bytes.size() < sizeof(SegmentDrawReady::HeaderV1)) return false;
+        if (ReadLe32(out.bytes.data()) != SegmentDrawReady::kMagicSdr1) return false;
+        if (ReadLe16(out.bytes.data() + 4) != SegmentDrawReady::kVersion1) return false;
+        out.loaded = true;
+        out.size = out.bytes.size();
+        return true;
+    }
+
+    // Fallback path: scan raw PAK table directly.
+    // This avoids runtime dependence on the in-memory vector index.
     const uint8_t* p = static_cast<const uint8_t*>(cache.cartPtr);
     if (cache.size < 12) return false;
     const uint32_t magic = ReadLe32(p + 0);
@@ -2272,65 +2813,65 @@ static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t cou
     const size_t dataOffset = 12 + tableBytes;
     if (dataOffset > cache.size) return false;
 
-    cache.entries.clear();
-    cache.entries.reserve(entryCount);
     for (uint32_t i = 0; i < entryCount; ++i)
     {
         const size_t off = 12 + static_cast<size_t>(i) * entrySize;
         if (off + entrySize > cache.size) return false;
 
-        PackedAssetEntryMeta e{};
-        ::memcpy(e.name, p + off, 64);
-        e.name[64] = '\0';
-        e.offset = ReadLe32(p + off + 64);
-        e.size = ReadLe32(p + off + 68);
-        if (e.size == 0) continue;
-        if (e.offset < dataOffset) continue;
-        if (static_cast<uint64_t>(e.offset) + static_cast<uint64_t>(e.size) > static_cast<uint64_t>(cache.size)) continue;
-        cache.entries.push_back(e);
-    }
+        char name[65]{};
+        ::memcpy(name, p + off, 64);
+        name[64] = '\0';
+        if (!NameEqualsIgnoreCase(name, entryName)) continue;
 
-    return !cache.entries.empty();
-}
+        const uint32_t entryOffset = ReadLe32(p + off + 64);
+        const uint32_t entrySizeBytes = ReadLe32(p + off + 68);
+        if (entrySizeBytes == 0) return false;
+        if (entryOffset < dataOffset) return false;
+        if (static_cast<uint64_t>(entryOffset) + static_cast<uint64_t>(entrySizeBytes) > static_cast<uint64_t>(cache.size))
+        {
+            return false;
+        }
 
-static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out)
-{
-    out = {};
-    if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
-
-    for (size_t i = 0; i < cache.entries.size(); ++i)
-    {
-        const auto& e = cache.entries[i];
-        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
-
-        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
-        std::vector<uint8_t> tmp(e.size);
-        ::memcpy(tmp.data(), src, e.size);
-        out.bytes = std::move(tmp);
+        const uint8_t* src = p + entryOffset;
+        out.bytes.resize(entrySizeBytes);
+        ::memcpy(out.bytes.data(), src, entrySizeBytes);
+        if (out.bytes.size() < sizeof(SegmentDrawReady::HeaderV1)) return false;
+        if (ReadLe32(out.bytes.data()) != SegmentDrawReady::kMagicSdr1) return false;
+        if (ReadLe16(out.bytes.data() + 4) != SegmentDrawReady::kVersion1) return false;
         out.loaded = true;
         out.size = out.bytes.size();
+        SRL::Debug::Print(1, 15, "SDR raw idx hit %s", entryName);
         return true;
     }
 
-    return false;
-}
-
-static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentDrawReady::Blob& out)
-{
-    out = {};
-    if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
-
-    for (size_t i = 0; i < cache.entries.size(); ++i)
+    // Last-resort cart-only fallback: scan the table area by fixed record stride
+    // and match the entry name directly, even when header entryCount is corrupted.
+    const size_t bruteLimit = std::min<size_t>(cache.size, 256u * 1024u);
+    for (size_t off = 12; (off + entrySize) <= bruteLimit; off += entrySize)
     {
-        const auto& e = cache.entries[i];
-        if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
+        char name[65]{};
+        ::memcpy(name, p + off, 64);
+        name[64] = '\0';
+        if (!NameEqualsIgnoreCase(name, entryName)) continue;
 
-        const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
-        std::vector<uint8_t> tmp(e.size);
-        ::memcpy(tmp.data(), src, e.size);
-        out.bytes = std::move(tmp);
+        const uint32_t entryOffset = ReadLe32(p + off + 64);
+        const uint32_t entrySizeBytes = ReadLe32(p + off + 68);
+        if (entrySizeBytes == 0) return false;
+        if (entryOffset >= cache.size) return false;
+        if (static_cast<uint64_t>(entryOffset) + static_cast<uint64_t>(entrySizeBytes) > static_cast<uint64_t>(cache.size))
+        {
+            return false;
+        }
+
+        const uint8_t* src = p + entryOffset;
+        out.bytes.resize(entrySizeBytes);
+        ::memcpy(out.bytes.data(), src, entrySizeBytes);
+        if (out.bytes.size() < sizeof(SegmentDrawReady::HeaderV1)) return false;
+        if (ReadLe32(out.bytes.data()) != SegmentDrawReady::kMagicSdr1) return false;
+        if (ReadLe16(out.bytes.data() + 4) != SegmentDrawReady::kVersion1) return false;
         out.loaded = true;
         out.size = out.bytes.size();
+        SRL::Debug::Print(1, 15, "SDR brute idx hit %s", entryName);
         return true;
     }
 
@@ -2339,7 +2880,9 @@ static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entr
 
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, BatchDrawReady::Blob& out)
 {
-    out = {};
+    out.loaded = false;
+    out.size = 0;
+    out.bytes.clear();
     if (!cache.cartPtr || cache.size == 0 || cache.entries.empty() || !entryName || entryName[0] == '\0') return false;
 
     for (size_t i = 0; i < cache.entries.size(); ++i)
@@ -2348,9 +2891,8 @@ static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entr
         if (!NameEqualsIgnoreCase(e.name, entryName)) continue;
 
         const uint8_t* src = static_cast<const uint8_t*>(cache.cartPtr) + e.offset;
-        std::vector<uint8_t> tmp(e.size);
-        ::memcpy(tmp.data(), src, e.size);
-        out.bytes = std::move(tmp);
+        out.bytes.resize(e.size);
+        ::memcpy(out.bytes.data(), src, e.size);
         out.loaded = true;
         out.size = out.bytes.size();
         return true;
@@ -2724,43 +3266,70 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
     return !seg1TgaCatalog_.empty();
 }
 
+bool TrackSystem::BuildSeg1TexbankCandidatePaths(int lodValue,
+                                                 std::array<std::array<char, 40>, 16>& storage,
+                                                 const char** outCandidates,
+                                                 size_t& outCount)
+{
+    if (!outCandidates) return false;
+
+    outCount = 0;
+    auto addCandidate = [&](const char* fmt)
+    {
+        if (outCount >= storage.size()) return;
+        std::snprintf(storage[outCount].data(), storage[outCount].size(), fmt, lodValue);
+        outCandidates[outCount] = storage[outCount].data();
+        ++outCount;
+    };
+
+    addCandidate("CD/DATA/TEXBANK_%d.BIN");
+    addCandidate("CD/DATA/TEXBANK_%d.BIN;1");
+    addCandidate("DATA/TEXBANK_%d.BIN");
+    addCandidate("DATA/TEXBANK_%d.BIN;1");
+    addCandidate("TEXBANK_%d.BIN");
+    addCandidate("TEXBANK_%d.BIN;1");
+    addCandidate("texbank_%d.bin");
+    addCandidate("texbank_%d.bin;1");
+    addCandidate("CD/DATA/TBK%d.BIN");
+    addCandidate("CD/DATA/TBK%d.BIN;1");
+    addCandidate("DATA/TBK%d.BIN");
+    addCandidate("DATA/TBK%d.BIN;1");
+    addCandidate("TBK%d.BIN");
+    addCandidate("TBK%d.BIN;1");
+    addCandidate("tbk%d.bin");
+    addCandidate("tbk%d.bin;1");
+    return outCount > 0;
+}
+
 bool TrackSystem::LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue)
 {
     if (lodIndex >= seg1Texbanks_.size()) return false;
     auto& bank = seg1Texbanks_[lodIndex];
-    if (bank.cartPtr && bank.size > 0 && !bank.entries.empty()) return true;
+    if (bank.lod == lodValue && bank.cartPtr && bank.size > 0 && !bank.entries.empty()) return true;
 
+    if (bank.cartPtr)
+    {
+        SRL::Memory::CartRam::Free(bank.cartPtr);
+    }
     bank = {};
     bank.lod = lodValue;
 
-    char n0[40]{}, n1[40]{}, n2[28]{}, n3[28]{}, n4[24]{}, n5[24]{}, n6[24]{}, n7[24]{}, n8[24]{}, n9[24]{}, n10[24]{}, n11[24]{};
-    std::snprintf(n0, sizeof(n0), "CD/DATA/TEXBANK_%d.BIN", bank.lod);
-    std::snprintf(n1, sizeof(n1), "CD/DATA/TEXBANK_%d.BIN;1", bank.lod);
-    std::snprintf(n2, sizeof(n2), "DATA/TEXBANK_%d.BIN", bank.lod);
-    std::snprintf(n3, sizeof(n3), "DATA/TEXBANK_%d.BIN;1", bank.lod);
-    std::snprintf(n4, sizeof(n4), "TEXBANK_%d.BIN", bank.lod);
-    std::snprintf(n5, sizeof(n5), "TEXBANK_%d.BIN;1", bank.lod);
-    std::snprintf(n6, sizeof(n6), "texbank_%d.bin", bank.lod);
-    std::snprintf(n7, sizeof(n7), "texbank_%d.bin;1", bank.lod);
-    std::snprintf(n8, sizeof(n8), "CD/DATA/TBK%d.BIN", bank.lod);
-    std::snprintf(n9, sizeof(n9), "CD/DATA/TBK%d.BIN;1", bank.lod);
-    std::snprintf(n10, sizeof(n10), "TBK%d.BIN", bank.lod);
-    std::snprintf(n11, sizeof(n11), "TBK%d.BIN;1", bank.lod);
-    const char* cands[] = { n0, n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11 };
+    std::array<std::array<char, 40>, 16> candidateStorage{};
+    const char* cands[16]{};
+    size_t candCount = 0;
+    if (!BuildSeg1TexbankCandidatePaths(bank.lod, candidateStorage, cands, candCount)) return false;
 
     const char* foundPath = nullptr;
-    bool found = false;
-    for (size_t i = 0; i < sizeof(cands) / sizeof(cands[0]); ++i)
+    for (size_t i = 0; i < candCount; ++i)
     {
         SRL::Cd::File probe(cands[i]);
         if (probe.Exists() && probe.Size.Bytes > 0)
         {
             foundPath = cands[i];
-            found = true;
             break;
         }
     }
-    if (!found || !foundPath) return false;
+    if (!foundPath) return false;
     SRL::Cd::File f(foundPath);
     if (f.Size.Bytes <= 0) return false;
     if (!f.Open()) return false;
@@ -2774,38 +3343,68 @@ bool TrackSystem::LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue)
         SRL::Memory::CartRam::Free(mem);
         return false;
     }
-    bank.cartPtr = mem;
-    bank.size = static_cast<uint32_t>(read);
 
-    const uint8_t* p = static_cast<const uint8_t*>(bank.cartPtr);
-    if (bank.size < 20) return false;
+    const uint32_t readBytes = static_cast<uint32_t>(read);
+    const uint8_t* p = static_cast<const uint8_t*>(mem);
+    if (readBytes < 20)
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
     const uint32_t magic = ReadLe32(p + 0);
     const uint16_t ver = ReadLe16(p + 4);
     const uint16_t lod = ReadLe16(p + 6);
     const uint32_t count = ReadLe32(p + 8);
     const uint32_t dataOff = ReadLe32(p + 12);
     (void)ver;
-    if (magic != 0x314B4254 || lod != static_cast<uint16_t>(bank.lod)) return false;
+    if (magic != 0x314B4254 || lod != static_cast<uint16_t>(bank.lod))
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
     const uint32_t entryBase = 20;
     const uint32_t entrySize = 16;
-    if (entryBase + count * entrySize > bank.size) return false;
-    if (dataOff > bank.size) return false;
+    if (readBytes < entryBase)
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
+    const uint32_t entrySpan = readBytes - entryBase;
+    if (count > (entrySpan / entrySize))
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
+    if (dataOff > readBytes)
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
 
-    bank.entries.clear();
-    bank.entries.reserve(count);
+    std::vector<Seg1TexbankEntry> parsedEntries{};
+    parsedEntries.reserve(count);
     for (uint32_t i = 0; i < count; ++i)
     {
-        const uint32_t o = entryBase + i * entrySize;
+        const uint32_t o = entryBase + (i * entrySize);
         Seg1TexbankEntry e{};
         e.familyId = static_cast<uint16_t>(ReadLe32(p + o + 0));
         e.offset = ReadLe32(p + o + 4);
         e.size = ReadLe32(p + o + 8);
-        if (e.offset + e.size <= bank.size)
+        if (e.offset <= readBytes && e.size <= (readBytes - e.offset))
         {
-            bank.entries.push_back(e);
+            parsedEntries.push_back(e);
         }
     }
-    return !bank.entries.empty();
+    if (parsedEntries.empty())
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
+
+    bank.cartPtr = mem;
+    bank.size = readBytes;
+    bank.entries = std::move(parsedEntries);
+    return true;
 }
 
 const TrackSegmentCopy* TrackSystem::FindRawSegmentCopyById(int id) const
@@ -2945,8 +3544,6 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
 {
     std::vector<SegmentRenderEntry> renderers;
     if (entries.empty()) return renderers;
-    // Keep the new direct VDP1 command path disabled until the draw path is validated.
-    constexpr bool kUseTrackVdp1Commands = false;
     renderers.reserve(1);
 
     // Single-segment package: use the direct SDR loader path.
@@ -2957,26 +3554,20 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
         const int segmentId = entries[0].id;
         auto renderer = std::make_unique<TrackRenderer>();
         Vector3D center(0.0, 0.0, 0.0);
-        if (!BuildRendererFromSdr(segmentId, *renderer, &center))
+        std::vector<uint16_t> familyIds{};
+        if (!BuildRendererFromSdr(segmentId, *renderer, &center, &familyIds))
         {
             SRL::Debug::Print(1, 15, "SDR init fail %03d", segmentId);
             return {};
         }
 
-        std::vector<uint16_t> familyIds{};
-        if (!LoadSdrFamilyIdsForSegment(segmentId, familyIds) || familyIds.empty())
+        if (familyIds.empty())
         {
             SRL::Debug::Print(1, 15, "SDR fam fail %03d", segmentId);
             return {};
         }
 
-        renderer->SetUseOriginal(false);
-        renderer->SetSglDirect(false);
-        renderer->SetVdp1Commands(kUseTrackVdp1Commands);
-        renderer->SetDirect2D(false);
-        renderer->SetForceDoubleSided(false);
-        renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
-        renderer->SetDrawLimit(renderer->MeshCount());
+        ConfigureStreamedRendererDefaults(*renderer);
 
         SegmentRenderEntry item{};
         item.id = segmentId;
@@ -2984,6 +3575,7 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
         item.center = center;
         item.renderer = std::move(renderer);
         item.lodState.ready = true;
+        item.lodState.hasPerFaceRankOffsets = false;
         item.lodState.currentLodIndex = 0xFF;
         item.lodState.currentBaseRank = -1;
         item.lodState.faceFamilyIds = std::move(familyIds);
@@ -3053,18 +3645,14 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
     }
 
     auto renderer = std::make_unique<TrackRenderer>();
-    if (!renderer->InitializeFromComponentData(batchVerts, batchFaces, batchAttrs))
+    if (!renderer->InitializeFromComponentData(std::move(batchVerts),
+                                               std::move(batchFaces),
+                                               std::move(batchAttrs)))
     {
         SRL::Debug::Print(1, 15, "SDR pkg init fail %03d", entries.front().id);
         return {};
     }
-    renderer->SetUseOriginal(false);
-    renderer->SetSglDirect(false);
-    renderer->SetVdp1Commands(kUseTrackVdp1Commands);
-    renderer->SetDirect2D(false);
-    renderer->SetForceDoubleSided(false);
-    renderer->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
-    renderer->SetDrawLimit(renderer->MeshCount());
+    ConfigureStreamedRendererDefaults(*renderer);
 
     SegmentRenderEntry item{};
     item.id = entries.front().id;
@@ -3076,6 +3664,15 @@ std::vector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRenderers(
     item.lodState.currentBaseRank = -1;
     item.lodState.faceFamilyIds = std::move(batchFamilyIds);
     item.lodState.faceRankOffsets = std::move(batchFaceRankOffsets);
+    item.lodState.hasPerFaceRankOffsets = false;
+    for (size_t fi = 0; fi < item.lodState.faceRankOffsets.size(); ++fi)
+    {
+        if (item.lodState.faceRankOffsets[fi] != 0)
+        {
+            item.lodState.hasPerFaceRankOffsets = true;
+            break;
+        }
+    }
     item.lodState.currentFaceSlots.assign(item.lodState.faceFamilyIds.size(), -1);
     renderers.push_back(std::move(item));
     return renderers;
@@ -3086,11 +3683,226 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildSegmentHandleTable()
     segmentPool_.Reset();
     std::vector<SegmentHandle> handles;
     handles.reserve(segmentRenderers_.size());
-    for (auto& entry : segmentRenderers_)
+    if (segmentRenderers_.empty()) return handles;
+    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
     {
+        auto& entry = segmentRenderers_[i];
         handles.push_back(segmentPool_.Add(&entry));
     }
     return handles;
+}
+
+void TrackSystem::InitializeFamilySlots(std::vector<Seg1FamilySlotEntry>& outSlots,
+                                        const int* familyIds,
+                                        size_t count) const
+{
+    outSlots.clear();
+    outSlots.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        const int fam = familyIds ? familyIds[i] : 0;
+        if (fam <= 0) continue;
+        Seg1FamilySlotEntry slotEntry{};
+        slotEntry.familyId = static_cast<uint16_t>(fam);
+        slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+        outSlots.push_back(slotEntry);
+    }
+    if (&outSlots == &seg1FamilySlots_) InvalidateFamilySlotIndex();
+}
+
+void TrackSystem::InitializeFamilySlots(std::vector<Seg1FamilySlotEntry>& outSlots,
+                                        const std::vector<uint16_t>& familyIds) const
+{
+    outSlots.clear();
+    outSlots.reserve(familyIds.size());
+    for (size_t i = 0; i < familyIds.size(); ++i)
+    {
+        const uint16_t fam = familyIds[i];
+        if (fam == 0) continue;
+        Seg1FamilySlotEntry slotEntry{};
+        slotEntry.familyId = fam;
+        slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+        outSlots.push_back(slotEntry);
+    }
+    if (&outSlots == &seg1FamilySlots_) InvalidateFamilySlotIndex();
+}
+
+void TrackSystem::InvalidateFamilySlotIndex() const
+{
+    familySlotIndexDirty_ = true;
+}
+
+void TrackSystem::RebuildFamilySlotIndex() const
+{
+    if (!familySlotIndexDirty_) return;
+    for (size_t i = 0; i < familySlotIndex_.size(); ++i)
+    {
+        familySlotIndex_[i] = -1;
+    }
+    for (size_t i = 0; i < seg1FamilySlots_.size(); ++i)
+    {
+        const uint16_t fam = seg1FamilySlots_[i].familyId;
+        if (fam < familySlotIndex_.size() && familySlotIndex_[fam] < 0)
+        {
+            familySlotIndex_[fam] = static_cast<int16_t>(i);
+        }
+    }
+    familySlotIndexDirty_ = false;
+}
+
+TrackSystem::Seg1FamilySlotEntry* TrackSystem::FindFamilySlot(std::vector<Seg1FamilySlotEntry>& familySlots, uint16_t familyId)
+{
+    if (&familySlots == &seg1FamilySlots_ && familyId < familySlotIndex_.size())
+    {
+        RebuildFamilySlotIndex();
+        const int16_t idx = familySlotIndex_[familyId];
+        if (idx >= 0)
+        {
+            const size_t uidx = static_cast<size_t>(idx);
+            if (uidx < familySlots.size() && familySlots[uidx].familyId == familyId)
+            {
+                return &familySlots[uidx];
+            }
+        }
+    }
+    for (size_t i = 0; i < familySlots.size(); ++i)
+    {
+        if (familySlots[i].familyId == familyId) return &familySlots[i];
+    }
+    return nullptr;
+}
+
+const TrackSystem::Seg1FamilySlotEntry* TrackSystem::FindFamilySlot(const std::vector<Seg1FamilySlotEntry>& familySlots, uint16_t familyId) const
+{
+    if (&familySlots == &seg1FamilySlots_ && familyId < familySlotIndex_.size())
+    {
+        RebuildFamilySlotIndex();
+        const int16_t idx = familySlotIndex_[familyId];
+        if (idx >= 0)
+        {
+            const size_t uidx = static_cast<size_t>(idx);
+            if (uidx < familySlots.size() && familySlots[uidx].familyId == familyId)
+            {
+                return &familySlots[uidx];
+            }
+        }
+    }
+    for (size_t i = 0; i < familySlots.size(); ++i)
+    {
+        if (familySlots[i].familyId == familyId) return &familySlots[i];
+    }
+    return nullptr;
+}
+
+bool TrackSystem::TryGetFamilyLodSlot(const std::vector<Seg1FamilySlotEntry>& familySlots,
+                                      uint16_t familyId,
+                                      uint8_t lodIndex,
+                                      uint16_t& outSlot) const
+{
+    outSlot = No_Texture;
+    if (lodIndex > 3) return false;
+    const auto* slotEntry = FindFamilySlot(familySlots, familyId);
+    if (!slotEntry) return false;
+    outSlot = slotEntry->lodSlots[lodIndex];
+    return IsVdp1TextureSlotLive(outSlot);
+}
+
+const TrackSystem::Seg1TexbankEntry* TrackSystem::FindTexbankEntryByFamily(const Seg1TexbankCart& bank, uint16_t familyId) const
+{
+    for (size_t i = 0; i < bank.entries.size(); ++i)
+    {
+        if (bank.entries[i].familyId == familyId) return &bank.entries[i];
+    }
+    return nullptr;
+}
+
+bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
+                                       uint8_t targetLodIndex,
+                                       bool fallbackToLowerLods,
+                                       bool fallbackToHigherLods,
+                                       bool* outSawMissingFamily,
+                                       bool* outSawDecodeFail,
+                                       bool* outSawUploadFail,
+                                       int* outLoadedFromLodValue)
+{
+    if (outSawMissingFamily) *outSawMissingFamily = false;
+    if (outSawDecodeFail) *outSawDecodeFail = false;
+    if (outSawUploadFail) *outSawUploadFail = false;
+    if (outLoadedFromLodValue) *outLoadedFromLodValue = 0;
+
+    if (targetLodIndex > 3) return false;
+    if (slotEntry.familyId == 0) return false;
+    if (slotEntry.lodSlots[targetLodIndex] != No_Texture)
+    {
+        const uint16_t existingSlot = slotEntry.lodSlots[targetLodIndex];
+        if (IsVdp1TextureSlotLive(existingSlot))
+        {
+            if (outLoadedFromLodValue)
+            {
+                const int lodValues[4] = { 8, 16, 32, 64 };
+                *outLoadedFromLodValue = lodValues[targetLodIndex];
+            }
+            return true;
+        }
+        // Slot was previously assigned but is no longer valid in VDP1 metadata.
+        slotEntry.lodSlots[targetLodIndex] = No_Texture;
+    }
+
+    const int lodValues[4] = { 8, 16, 32, 64 };
+    uint8_t searchOrder[4]{};
+    size_t searchCount = 0;
+    searchOrder[searchCount++] = targetLodIndex;
+    if (fallbackToHigherLods)
+    {
+        // Prefer nearest higher lod first to reduce upload cost and memory spikes.
+        for (int li = static_cast<int>(targetLodIndex) + 1; li <= 3; ++li)
+        {
+            searchOrder[searchCount++] = static_cast<uint8_t>(li);
+        }
+    }
+    if (fallbackToLowerLods)
+    {
+        for (int li = static_cast<int>(targetLodIndex) - 1; li >= 0; --li)
+        {
+            searchOrder[searchCount++] = static_cast<uint8_t>(li);
+        }
+    }
+
+    for (size_t si = 0; si < searchCount; ++si)
+    {
+        const uint8_t sourceLodIndex = searchOrder[si];
+        if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(sourceLodIndex), lodValues[sourceLodIndex])) continue;
+        const auto& bank = seg1Texbanks_[sourceLodIndex];
+        const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
+        if (!bankBytes) continue;
+
+        const Seg1TexbankEntry* bankEntry = FindTexbankEntryByFamily(bank, slotEntry.familyId);
+        if (!bankEntry)
+        {
+            if (outSawMissingFamily) *outSawMissingFamily = true;
+            continue;
+        }
+
+        DecodedTgaTexture decoded{};
+        if (!DecodePalettedTgaMemory(bankBytes + bankEntry->offset, bankEntry->size, decoded))
+        {
+            if (outSawDecodeFail) *outSawDecodeFail = true;
+            continue;
+        }
+
+        const int32_t slot = UploadDecodedTextureToVdp1(decoded);
+        if (slot < 0)
+        {
+            if (outSawUploadFail) *outSawUploadFail = true;
+            continue;
+        }
+
+        slotEntry.lodSlots[targetLodIndex] = static_cast<uint16_t>(slot);
+        if (outLoadedFromLodValue) *outLoadedFromLodValue = lodValues[sourceLodIndex];
+        return true;
+    }
+
+    return false;
 }
 
 // Build shared family ids used by the track renderer set. Texture slots are loaded lazily.
@@ -3099,6 +3911,8 @@ bool TrackSystem::BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& out
     outSlots.clear();
     std::vector<uint16_t> familyIdsUsed{};
     familyIdsUsed.reserve(256);
+    std::array<uint8_t, 4096> seenSmallFamily{};
+    for (size_t i = 0; i < seenSmallFamily.size(); ++i) seenSmallFamily[i] = 0;
 
     for (const auto& seg : segmentRenderers_)
     {
@@ -3108,6 +3922,13 @@ bool TrackSystem::BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& out
         {
             const uint16_t fam = seg.lodState.faceFamilyIds[fi];
             if (fam == 0) continue;
+            if (fam < seenSmallFamily.size())
+            {
+                if (seenSmallFamily[fam]) continue;
+                seenSmallFamily[fam] = 1;
+                familyIdsUsed.push_back(fam);
+                continue;
+            }
             bool exists = false;
             for (size_t i = 0; i < familyIdsUsed.size(); ++i)
             {
@@ -3123,15 +3944,7 @@ bool TrackSystem::BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& out
 
     if (familyIdsUsed.empty()) return false;
 
-    outSlots.reserve(familyIdsUsed.size());
-    for (size_t i = 0; i < familyIdsUsed.size(); ++i)
-    {
-        Seg1FamilySlotEntry slotEntry{};
-        slotEntry.familyId = familyIdsUsed[i];
-        slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
-
-        outSlots.push_back(slotEntry);
-    }
+    InitializeFamilySlots(outSlots, familyIdsUsed);
 
     return !outSlots.empty();
 }
@@ -3146,6 +3959,15 @@ bool TrackSystem::BuildSegmentLodState(SegmentRenderEntry& entry,
     if (!entry.lodState.ready) return false;
     if (entry.lodState.faceFamilyIds.empty()) return false;
     entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
+    entry.lodState.hasPerFaceRankOffsets = false;
+    for (size_t fi = 0; fi < entry.lodState.faceRankOffsets.size(); ++fi)
+    {
+        if (entry.lodState.faceRankOffsets[fi] != 0)
+        {
+            entry.lodState.hasPerFaceRankOffsets = true;
+            break;
+        }
+    }
 
     (void)matBlob;
     (void)matView;
@@ -3162,61 +3984,21 @@ bool TrackSystem::EnsureFamilyLodSlotLoaded(std::vector<Seg1FamilySlotEntry>& fa
 {
     if (lodIndex > 3) return false;
 
-    Seg1FamilySlotEntry* slotEntry = nullptr;
-    for (size_t i = 0; i < familySlots.size(); ++i)
-    {
-        if (familySlots[i].familyId != familyId) continue;
-        slotEntry = &familySlots[i];
-        break;
-    }
+    Seg1FamilySlotEntry* slotEntry = FindFamilySlot(familySlots, familyId);
     if (!slotEntry) return false;
-    if (slotEntry->lodSlots[lodIndex] != No_Texture) return true;
-
-    const int lodValues[4] = { 8, 16, 32, 64 };
-    // Fallback policy:
-    // 1) requested lod
-    // 2) smaller lods (cheaper)
-    // 3) larger lods (prevent holes when only high lod exists)
-    uint8_t searchOrder[4]{};
-    size_t searchCount = 0;
-    searchOrder[searchCount++] = lodIndex;
-    for (int li = static_cast<int>(lodIndex) - 1; li >= 0; --li)
-    {
-        searchOrder[searchCount++] = static_cast<uint8_t>(li);
-    }
-    for (uint8_t li = static_cast<uint8_t>(lodIndex + 1); li < 4; ++li)
-    {
-        searchOrder[searchCount++] = li;
-    }
-
-    for (size_t si = 0; si < searchCount; ++si)
-    {
-        const int fallbackLi = static_cast<int>(searchOrder[si]);
-        if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(fallbackLi), lodValues[fallbackLi])) continue;
-        const auto& bank = seg1Texbanks_[static_cast<size_t>(fallbackLi)];
-        const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
-        if (!bankBytes) continue;
-
-        const Seg1TexbankEntry* bankEntry = nullptr;
-        for (const auto& e : bank.entries)
-        {
-            if (e.familyId != familyId) continue;
-            bankEntry = &e;
-            break;
-        }
-        if (!bankEntry) continue;
-
-        DecodedTgaTexture decoded{};
-        if (!DecodePalettedTgaMemory(bankBytes + bankEntry->offset, bankEntry->size, decoded)) continue;
-
-        const int32_t slot = UploadDecodedTextureToVdp1(decoded);
-        if (slot < 0) continue;
-
-        slotEntry->lodSlots[lodIndex] = static_cast<uint16_t>(slot);
-        return true;
-    }
-
-    return false;
+    const uint16_t existing = slotEntry->lodSlots[lodIndex];
+    if (existing != No_Texture && IsVdp1TextureSlotLive(existing)) return true;
+    if (ready_ && textureUploadsThisFrame_ >= kTextureUploadsBudgetPerFrame) return false;
+    const bool loaded = TryLoadFamilyLodSlot(*slotEntry,
+                                             lodIndex,
+                                             /*fallbackToLowerLods*/true,
+                                             /*fallbackToHigherLods*/true,
+                                             nullptr,
+                                             nullptr,
+                                             nullptr,
+                                             nullptr);
+    if (loaded && ready_) ++textureUploadsThisFrame_;
+    return loaded;
 }
 
 // Rebuild one segment face slot table on demand for the selected lod band.
@@ -3230,26 +4012,41 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
 
     const size_t faceCount = entry.lodState.faceFamilyIds.size();
     entry.lodState.currentFaceSlots.assign(faceCount, -1);
+    std::vector<uint16_t> seenFamilies{};
+    std::vector<int32_t> seenSlots{};
+    seenFamilies.reserve(32);
+    seenSlots.reserve(32);
 
     for (size_t fi = 0; fi < faceCount; ++fi)
     {
         const uint16_t fam = entry.lodState.faceFamilyIds[fi];
         if (fam == 0) continue;
 
+        size_t cached = static_cast<size_t>(-1);
+        for (size_t i = 0; i < seenFamilies.size(); ++i)
+        {
+            if (seenFamilies[i] == fam)
+            {
+                cached = i;
+                break;
+            }
+        }
+        if (cached != static_cast<size_t>(-1))
+        {
+            entry.lodState.currentFaceSlots[fi] = seenSlots[cached];
+            continue;
+        }
+
         (void)EnsureFamilyLodSlotLoaded(familySlots, fam, lodIndex);
-
+        int32_t resolved = -1;
         uint16_t slot = No_Texture;
-        for (size_t si = 0; si < familySlots.size(); ++si)
+        if (TryGetFamilyLodSlot(familySlots, fam, lodIndex, slot))
         {
-            if (familySlots[si].familyId != fam) continue;
-            slot = familySlots[si].lodSlots[lodIndex];
-            break;
+            resolved = static_cast<int32_t>(slot);
+            entry.lodState.currentFaceSlots[fi] = resolved;
         }
-
-        if (slot != No_Texture)
-        {
-            entry.lodState.currentFaceSlots[fi] = static_cast<int32_t>(slot);
-        }
+        seenFamilies.push_back(fam);
+        seenSlots.push_back(resolved);
     }
 
     return true;
@@ -3264,6 +4061,10 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
 
     const size_t faceCount = entry.lodState.faceFamilyIds.size();
     entry.lodState.currentFaceSlots.assign(faceCount, -1);
+    std::vector<uint16_t> seenFamilies{};
+    std::vector<int32_t> seenSlots{};
+    seenFamilies.reserve(32);
+    seenSlots.reserve(32);
 
     const bool hasRankOffsets = entry.lodState.faceRankOffsets.size() == faceCount;
     for (size_t fi = 0; fi < faceCount; ++fi)
@@ -3273,20 +4074,32 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
 
         const size_t rank = baseRank + (hasRankOffsets ? static_cast<size_t>(entry.lodState.faceRankOffsets[fi]) : 0u);
         const uint8_t lodIndex = ResolveSegmentLodIndexByRank(rank);
+        const uint16_t key = static_cast<uint16_t>((static_cast<uint16_t>(lodIndex) << 12) | (fam & 0x0FFFu));
+        size_t cached = static_cast<size_t>(-1);
+        for (size_t i = 0; i < seenFamilies.size(); ++i)
+        {
+            if (seenFamilies[i] == key)
+            {
+                cached = i;
+                break;
+            }
+        }
+        if (cached != static_cast<size_t>(-1))
+        {
+            entry.lodState.currentFaceSlots[fi] = seenSlots[cached];
+            continue;
+        }
+
         (void)EnsureFamilyLodSlotLoaded(familySlots, fam, lodIndex);
-
+        int32_t resolved = -1;
         uint16_t slot = No_Texture;
-        for (size_t si = 0; si < familySlots.size(); ++si)
+        if (TryGetFamilyLodSlot(familySlots, fam, lodIndex, slot))
         {
-            if (familySlots[si].familyId != fam) continue;
-            slot = familySlots[si].lodSlots[lodIndex];
-            break;
+            resolved = static_cast<int32_t>(slot);
+            entry.lodState.currentFaceSlots[fi] = resolved;
         }
-
-        if (slot != No_Texture)
-        {
-            entry.lodState.currentFaceSlots[fi] = static_cast<int32_t>(slot);
-        }
+        seenFamilies.push_back(key);
+        seenSlots.push_back(resolved);
     }
 
     return true;
@@ -3295,10 +4108,15 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
 // Map a near to far rank into the current fixed lod bands for track rendering.
 uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
 {
-    if (rank < 3) return 3;    // 64x64 (3)
-    if (rank < 8) return 2;    // 32x32 (5)
-    if (rank < 13) return 1;   // 16x16 (5)
-    return 0;                  // 8x8  (7)
+    const size_t lod64End = static_cast<size_t>(kLodBand64Count);
+    const size_t lod32End = lod64End + static_cast<size_t>(kLodBand32Count);
+    const size_t lod16End = lod32End + static_cast<size_t>(kLodBand16Count);
+    const size_t lod8End = lod16End + static_cast<size_t>(kLodBand8Count);
+    if (rank < lod64End) return 3; // 64x64 for [0..3]
+    if (rank < lod32End) return 2; // 32x32 for [4..8]
+    if (rank < lod16End) return 1; // 16x16 for [9..13]
+    if (rank < lod8End) return 0;  // 8x8   for [14..19]
+    return 0;                      // keep 8x8 beyond rank 19
 }
 
 // Apply lod changes only when a visible segment crosses a band boundary.
@@ -3312,13 +4130,35 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
         if (!entry || !entry->renderer) continue;
         if (!entry->lodState.ready) continue;
 
+        const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
         const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+        if (!entry->lodState.hasPerFaceRankOffsets)
+        {
+            // Fast path for 1-segment packages: update only when band changes.
+            if (entry->lodState.currentLodIndex == desiredLodIndex)
+            {
+                logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
+                continue;
+            }
+
+            if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, familySlots))
+            {
+                logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
+                continue;
+            }
+            (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+            entry->lodState.currentLodIndex = desiredLodIndex;
+            entry->lodState.currentBaseRank = desiredBaseRank;
+            logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
+            continue;
+        }
+
+        // Fallback path for multi-segment batches with per-face rank offsets.
         if (entry->lodState.currentBaseRank == desiredBaseRank)
         {
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
             continue;
         }
-
         if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots))
         {
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
@@ -3326,23 +4166,539 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
         }
         (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
         entry->lodState.currentBaseRank = desiredBaseRank;
-        entry->lodState.currentLodIndex = 0xFE;
+        entry->lodState.currentLodIndex = desiredLodIndex;
         logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
     }
 }
 
-bool TrackSystem::Initialize(const Config& config)
+bool TrackSystem::BuildSegmentCenterCatalog()
+{
+    segmentCenterCatalog_.clear();
+
+    // Catalog source is SDR.BIN entry set (S001.SDR..Sxxx.SDR).
+    // Stop on first missing id to keep the id space contiguous.
+    constexpr int32_t kCatalogHardLimit = 4096;
+    for (int32_t id = 1; id <= kCatalogHardLimit; ++id)
+    {
+        SegmentDrawReady::HeaderV1 header{};
+        if (!LoadSdrHeaderForSegment(id, header))
+        {
+            break;
+        }
+
+        segmentCenterCatalog_.push_back(Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(header.centerX),
+            SRL::Math::Types::Fxp::BuildRaw(header.centerY),
+            SRL::Math::Types::Fxp::BuildRaw(header.centerZ)));
+    }
+
+    totalSegmentCount_ = static_cast<uint16_t>(std::min<size_t>(
+        segmentCenterCatalog_.size(),
+        static_cast<size_t>(std::numeric_limits<uint16_t>::max())));
+    if (totalSegmentCount_ == 0)
+    {
+        activeWindowStartId_ = 1;
+        return false;
+    }
+
+    activeWindowStartId_ = 1;
+    return true;
+}
+
+bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t loadLimit)
+{
+    if (totalSegmentCount_ == 0 || loadLimit == 0)
+    {
+        segmentEntries_.clear();
+        segmentRenderers_.clear();
+        segmentHandles_.clear();
+        segmentPool_.Reset();
+        activeWindowHead_ = 0;
+        slideScratchRenderer_.reset();
+        ResetSlidePrefetchState();
+        familyMergeCooldown_ = 0;
+        segmentsReady_ = false;
+        return false;
+    }
+
+    const int32_t wrappedStartId = WrapSegmentIdToRange(startSegmentId, totalSegmentCount_);
+    if (wrappedStartId <= 0) return false;
+    activeWindowStartId_ = wrappedStartId;
+
+    const size_t windowCount = std::min<size_t>(
+        std::min<size_t>(loadLimit, kTrackSegmentLimit),
+        static_cast<size_t>(totalSegmentCount_));
+
+    segmentEntries_.clear();
+    segmentRenderers_.clear();
+    segmentHandles_.clear();
+    segmentPool_.Reset();
+    activeWindowHead_ = 0;
+    slideScratchRenderer_.reset();
+    ResetSlidePrefetchState();
+    familyMergeCooldown_ = 0;
+    segmentEntries_.reserve(windowCount);
+    segmentRenderers_.reserve(windowCount);
+
+    // Runtime streaming path: keep package fixed at one segment to minimize
+    // transient allocations and avoid heavy planner probes every window shift.
+    const size_t segmentsPerDrawPackage = 1;
+    size_t builtCount = 0;
+
+    for (size_t logicalSid = 0; logicalSid < windowCount; )
+    {
+        bool freeValid = false;
+        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+        if (freeValid && freeBytes <= kWorkRamHardFloorBytes)
+        {
+            SRL::Debug::Print(1, 11, "PKG low HWR sid:%u free:%u ok:%u",
+                              static_cast<unsigned>(logicalSid + 1),
+                              static_cast<unsigned>(freeBytes),
+                              freeValid ? 1u : 0u);
+        }
+
+        const size_t chosenCount = std::min(segmentsPerDrawPackage, (windowCount - logicalSid));
+        std::vector<TrackSegmentEntry> batchEntries{};
+        batchEntries.reserve(chosenCount);
+        for (size_t i = 0; i < chosenCount; ++i)
+        {
+            const int32_t sid = WrapSegmentIdToRange(
+                wrappedStartId + static_cast<int32_t>(logicalSid + i),
+                totalSegmentCount_);
+            if (sid <= 0) continue;
+            batchEntries.push_back({ sid, {} });
+        }
+
+        if (batchEntries.empty())
+        {
+            logicalSid += chosenCount;
+            continue;
+        }
+
+        auto built = BuildSegmentRenderers(batchEntries);
+        if (built.empty())
+        {
+            SRL::Debug::Print(1, 11, "PKG build fail id:%d", batchEntries.front().id);
+            break;
+        }
+
+        // Keep metadata aligned with successfully built renderers.
+        segmentEntries_.push_back({ batchEntries.front().id, {} });
+        segmentRenderers_.push_back(std::move(built[0]));
+        ++builtCount;
+        logicalSid += chosenCount;
+    }
+
+    const bool fullWindowBuilt = (builtCount == windowCount);
+    segmentsReady_ = fullWindowBuilt;
+    if (!segmentsReady_)
+    {
+        segmentEntries_.clear();
+        segmentRenderers_.clear();
+        segmentHandles_.clear();
+        segmentPool_.Reset();
+        activeWindowHead_ = 0;
+        slideScratchRenderer_.reset();
+        ResetSlidePrefetchState();
+        SRL::Debug::Print(1, 11, "PKG window incomplete built:%u need:%u",
+                          static_cast<unsigned>(builtCount),
+                          static_cast<unsigned>(windowCount));
+        return false;
+    }
+    activeWindowHead_ = 0;
+    segmentHandles_ = BuildSegmentHandleTable();
+
+    SRL::Debug::Print(1, 13, "Track pkg built %u segs:%u start:%d tot:%u",
+                      static_cast<unsigned>(builtCount),
+                      static_cast<unsigned>(segmentEntries_.size()),
+                      activeWindowStartId_,
+                      static_cast<unsigned>(totalSegmentCount_));
+    return segmentsReady_;
+}
+
+void TrackSystem::ResetSlidePrefetchState()
+{
+    slidePrefetchSegmentId_ = -1;
+    slidePrefetchCenter_ = Vector3D(0.0, 0.0, 0.0);
+    slidePrefetchFamilyIds_.clear();
+}
+
+bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
+                                               Vector3D& outCenter,
+                                               std::vector<uint16_t>& outFamilyIds)
+{
+    if (segmentId <= 0) return false;
+    if (!slideScratchRenderer_) slideScratchRenderer_ = std::make_unique<TrackRenderer>();
+    if (!slideScratchRenderer_) return false;
+
+    outFamilyIds.clear();
+    if (!BuildRendererFromSdr(segmentId, *slideScratchRenderer_, &outCenter, &outFamilyIds)) return false;
+    if (outFamilyIds.empty()) return false;
+    ConfigureStreamedRendererDefaults(*slideScratchRenderer_);
+    return true;
+}
+
+void TrackSystem::TryPrefetchUpcomingSegment()
+{
+    if (!segmentsReady_ || segmentRenderers_.empty() || totalSegmentCount_ == 0) return;
+
+    const size_t windowCount = segmentRenderers_.size();
+    const int32_t nextId = WrapSegmentIdToRange(
+        activeWindowStartId_ + static_cast<int32_t>(windowCount),
+        totalSegmentCount_);
+    if (nextId <= 0) return;
+    if (slidePrefetchSegmentId_ == nextId &&
+        slideScratchRenderer_ &&
+        !slidePrefetchFamilyIds_.empty())
+    {
+        return;
+    }
+
+    bool freeValid = false;
+    const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+    const size_t floorBytes = slideScratchRenderer_
+        ? (kWorkRamHardFloorBytes + (12u * 1024u))
+        : (kWorkRamHardFloorBytes + (96u * 1024u));
+    if (freeValid && freeBytes <= floorBytes) return;
+
+    Vector3D center(0.0, 0.0, 0.0);
+    std::vector<uint16_t> familyIds{};
+    if (!BuildSegmentIntoSlideScratch(nextId, center, familyIds)) return;
+
+    slidePrefetchSegmentId_ = nextId;
+    slidePrefetchCenter_ = center;
+    slidePrefetchFamilyIds_ = std::move(familyIds);
+}
+
+void TrackSystem::CaptureTrackTextureHeapBase()
+{
+    trackTextureHeapBase_ = SRL::VDP1::GetTextureCount();
+    trackTextureHeapBaseValid_ = true;
+}
+
+bool TrackSystem::ShouldRecycleTrackTextureHeap() const
+{
+    if (!trackTextureHeapBaseValid_) return false;
+    const uint16_t texCount = SRL::VDP1::GetTextureCount();
+    if (texCount <= trackTextureHeapBase_) return false;
+
+    const uint16_t trackUsed = static_cast<uint16_t>(texCount - trackTextureHeapBase_);
+    constexpr uint16_t kTrackTexBudgetBeforeRecycle = 920u;
+    constexpr uint16_t kHeapGuardSlots = 24u;
+    if (texCount >= static_cast<uint16_t>(SRL_MAX_TEXTURES - kHeapGuardSlots)) return true;
+    return trackUsed >= kTrackTexBudgetBeforeRecycle;
+}
+
+void TrackSystem::RecycleTrackTextureHeap()
+{
+    if (!trackTextureHeapBaseValid_) return;
+    SRL::VDP1::ResetTextureHeap(trackTextureHeapBase_);
+    for (size_t i = 0; i < seg1FamilySlots_.size(); ++i)
+    {
+        seg1FamilySlots_[i].lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+    }
+    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+    {
+        auto& lod = segmentRenderers_[i].lodState;
+        lod.currentLodIndex = 0xFF;
+        lod.currentBaseRank = -1;
+        if (!lod.currentFaceSlots.empty())
+        {
+            lod.currentFaceSlots.assign(lod.currentFaceSlots.size(), -1);
+        }
+    }
+    ++trackTextureRecycleCount_;
+    SRL::Debug::Print(1, 23, "TRK tex recycle:%u base:%u",
+                      static_cast<unsigned>(trackTextureRecycleCount_),
+                      static_cast<unsigned>(trackTextureHeapBase_));
+}
+
+bool TrackSystem::SlideActiveSegmentWindowForward(size_t stepCount)
+{
+    if (stepCount == 0) return true;
+    if (!segmentsReady_ || segmentRenderers_.empty()) return false;
+    if (totalSegmentCount_ == 0) return false;
+
+    const size_t windowCount = segmentRenderers_.size();
+    if (windowCount == 0) return false;
+    if (activeWindowHead_ >= windowCount) activeWindowHead_ = 0;
+
+    for (size_t step = 0; step < stepCount; ++step)
+    {
+        bool freeValid = false;
+        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+        if (freeValid && freeBytes <= kWorkRamHardFloorBytes)
+        {
+            SRL::Debug::Print(1, 11, "PKG slide low step:%u free:%u ok:%u",
+                              static_cast<unsigned>(step + 1),
+                              static_cast<unsigned>(freeBytes),
+                              freeValid ? 1u : 0u);
+        }
+
+        const int32_t nextId = WrapSegmentIdToRange(
+            activeWindowStartId_ + static_cast<int32_t>(windowCount),
+            totalSegmentCount_);
+        if (nextId <= 0) return false;
+
+        Vector3D center(0.0, 0.0, 0.0);
+        std::vector<uint16_t> familyIds{};
+        bool rendererOk = false;
+        bool familyOk = false;
+        if (slidePrefetchSegmentId_ == nextId &&
+            slideScratchRenderer_ &&
+            !slidePrefetchFamilyIds_.empty())
+        {
+            center = slidePrefetchCenter_;
+            familyIds = std::move(slidePrefetchFamilyIds_);
+            rendererOk = true;
+            familyOk = true;
+        }
+        else
+        {
+            rendererOk = BuildSegmentIntoSlideScratch(nextId, center, familyIds);
+            familyOk = rendererOk && !familyIds.empty();
+        }
+
+        if (!rendererOk || !familyOk)
+        {
+            const size_t failFree = GetHighWorkRamFreeBytesSafe();
+            SRL::Debug::Print(1, 11, "PKG slide build fail id:%d r:%u f:%u free:%u",
+                              nextId,
+                              rendererOk ? 1u : 0u,
+                              familyOk ? 1u : 0u,
+                              static_cast<unsigned>(failFree));
+            return false;
+        }
+
+        const size_t dropIdx = activeWindowHead_ % windowCount;
+        SegmentRenderEntry& slot = segmentRenderers_[dropIdx];
+        TrackSegmentEntry& meta = segmentEntries_[dropIdx];
+
+        slot.renderer.swap(slideScratchRenderer_);
+        if (slideScratchRenderer_)
+        {
+            // Free memory from the dropped segment immediately to avoid
+            // per-slot capacity growth as the window advances.
+            slideScratchRenderer_->RecycleRuntimeState();
+        }
+        slot.id = nextId;
+        slot.logicalSegmentCount = 1;
+        slot.center = center;
+        slot.lodState.ready = true;
+        slot.lodState.hasPerFaceRankOffsets = false;
+        slot.lodState.currentLodIndex = 0xFF;
+        slot.lodState.currentBaseRank = -1;
+        decltype(slot.lodState.faceFamilyIds)().swap(slot.lodState.faceFamilyIds);
+        decltype(slot.lodState.faceRankOffsets)().swap(slot.lodState.faceRankOffsets);
+        decltype(slot.lodState.currentFaceSlots)().swap(slot.lodState.currentFaceSlots);
+        slot.lodState.faceFamilyIds = std::move(familyIds);
+        slot.lodState.faceRankOffsets.assign(slot.lodState.faceFamilyIds.size(), 0);
+        slot.lodState.currentFaceSlots.assign(slot.lodState.faceFamilyIds.size(), -1);
+        meta.id = nextId;
+
+        // Incremental family cache update: avoid full-window rebuild scan every slide.
+        bool addedFamily = false;
+        for (size_t fi = 0; fi < slot.lodState.faceFamilyIds.size(); ++fi)
+        {
+            const uint16_t fam = slot.lodState.faceFamilyIds[fi];
+            if (fam == 0) continue;
+            if (FindFamilySlot(seg1FamilySlots_, fam)) continue;
+            Seg1FamilySlotEntry slotEntry{};
+            slotEntry.familyId = fam;
+            slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+            seg1FamilySlots_.push_back(slotEntry);
+            addedFamily = true;
+        }
+        if (addedFamily) InvalidateFamilySlotIndex();
+
+        // Keep family cache bounded without paying full compaction every slide.
+        if (familyMergeCooldown_ == 0 || seg1FamilySlots_.size() > 1024)
+        {
+            MergeCurrentWindowFamilies();
+            familyMergeCooldown_ = 6;
+        }
+        else
+        {
+            --familyMergeCooldown_;
+        }
+        ResetSlidePrefetchState();
+        activeWindowStartId_ = WrapSegmentIdToRange(activeWindowStartId_ + 1, totalSegmentCount_);
+        if (activeWindowStartId_ <= 0) return false;
+        activeWindowHead_ = (activeWindowHead_ + 1) % windowCount;
+        PrewarmNextSegmentLod8();
+    }
+
+    segmentsReady_ = !segmentRenderers_.empty();
+    segmentHandles_ = BuildSegmentHandleTable();
+    const int32_t endId = WrapSegmentIdToRange(
+        activeWindowStartId_ + static_cast<int32_t>(segmentRenderers_.size()) - 1,
+        totalSegmentCount_);
+    bool winFreeValid = false;
+    const size_t winFree = GetHighWorkRamFreeBytesSafe(&winFreeValid);
+    SRL::Debug::Print(1, 14, "WIN %d..%d n:%u free:%u ok:%u",
+                      activeWindowStartId_,
+                      endId,
+                      static_cast<unsigned>(segmentRenderers_.size()),
+                      static_cast<unsigned>(winFree),
+                      winFreeValid ? 1u : 0u);
+    return segmentsReady_;
+}
+
+void TrackSystem::PrewarmNextSegmentLod8()
+{
+    if (totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
+    bool freeValid = false;
+    const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+    if (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u))) return;
+    const size_t windowCount = segmentRenderers_.size();
+    const int32_t preloadId = WrapSegmentIdToRange(
+        activeWindowStartId_ + static_cast<int32_t>(windowCount),
+        totalSegmentCount_);
+    if (preloadId <= 0) return;
+
+    static std::vector<uint16_t> sPrewarmFamilies{};
+    sPrewarmFamilies.clear();
+    if (slidePrefetchSegmentId_ == preloadId && !slidePrefetchFamilyIds_.empty())
+    {
+        sPrewarmFamilies = slidePrefetchFamilyIds_;
+    }
+    else if (!LoadSdrFamilyIdsForSegment(preloadId, sPrewarmFamilies) || sPrewarmFamilies.empty())
+    {
+        return;
+    }
+
+    // Keep prewarm bounded to reduce per-slide spikes.
+    const uint16_t texCount = SRL::VDP1::GetTextureCount();
+    const bool nearHeapLimit = texCount >= static_cast<uint16_t>(SRL_MAX_TEXTURES - 96);
+    const size_t remainingUploadBudget =
+        (textureUploadsThisFrame_ < kTextureUploadsBudgetPerFrame)
+            ? static_cast<size_t>(kTextureUploadsBudgetPerFrame - textureUploadsThisFrame_)
+            : 0u;
+    const size_t kPrewarmFamilyCapPerSlide = nearHeapLimit ? 1u : 2u;
+    const size_t prewarmCap = std::min(kPrewarmFamilyCapPerSlide, remainingUploadBudget);
+    if (prewarmCap == 0) return;
+    size_t warmed = 0;
+    for (size_t i = 0; i < sPrewarmFamilies.size(); ++i)
+    {
+        const uint16_t fam = sPrewarmFamilies[i];
+        if (fam == 0) continue;
+
+        Seg1FamilySlotEntry* slotEntry = FindFamilySlot(seg1FamilySlots_, fam);
+        if (!slotEntry)
+        {
+            Seg1FamilySlotEntry init{};
+            init.familyId = fam;
+            init.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+            seg1FamilySlots_.push_back(init);
+            InvalidateFamilySlotIndex();
+            slotEntry = &seg1FamilySlots_.back();
+        }
+        if (!slotEntry) continue;
+        if (slotEntry->lodSlots[0] != No_Texture && IsVdp1TextureSlotLive(slotEntry->lodSlots[0])) continue;
+
+        if (EnsureFamilyLodSlotLoaded(seg1FamilySlots_, fam, 0))
+        {
+            ++warmed;
+            if (warmed >= prewarmCap) break;
+        }
+    }
+}
+
+void TrackSystem::MergeCurrentWindowFamilies()
+{
+    std::vector<Seg1FamilySlotEntry> currentWindowFamilies{};
+    if (!BuildTrackFamilyLodSlots(currentWindowFamilies)) return;
+
+    if (seg1FamilySlots_.empty())
+    {
+        seg1FamilySlots_ = std::move(currentWindowFamilies);
+        InvalidateFamilySlotIndex();
+        return;
+    }
+
+    // Keep cache bounded to current window families while preserving live slots
+    // from the previous frame to reduce churn and avoid unbounded growth.
+    std::vector<Seg1FamilySlotEntry> nextFamilies = currentWindowFamilies;
+    for (auto& family : nextFamilies)
+    {
+        Seg1FamilySlotEntry* old = FindFamilySlot(seg1FamilySlots_, family.familyId);
+        if (!old) continue;
+        for (size_t li = 0; li < old->lodSlots.size(); ++li)
+        {
+            if (!IsVdp1TextureSlotLive(old->lodSlots[li]) && IsVdp1TextureSlotLive(family.lodSlots[li]))
+            {
+                old->lodSlots[li] = family.lodSlots[li];
+            }
+            if (IsVdp1TextureSlotLive(old->lodSlots[li]) && !IsVdp1TextureSlotLive(family.lodSlots[li]))
+            {
+                family.lodSlots[li] = old->lodSlots[li];
+            }
+        }
+    }
+    seg1FamilySlots_.swap(nextFamilies);
+    InvalidateFamilySlotIndex();
+}
+
+bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosition,
+                                                       const Vector3D& trackOffset)
+{
+    if (!segmentsReady_ || totalSegmentCount_ == 0) return false;
+    if (segmentCenterCatalog_.empty()) return false;
+    if (activeWindowSwitchCooldown_ > 0)
+    {
+        --activeWindowSwitchCooldown_;
+        return false;
+    }
+
+    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    if (startId <= 0) return false;
+    const int32_t nextId = WrapSegmentIdToRange(startId + 1, totalSegmentCount_);
+    if (nextId <= 0) return false;
+
+    const Vector3D currentCenter = segmentCenterCatalog_[static_cast<size_t>(startId - 1)] + trackOffset;
+    const Vector3D nextCenter = segmentCenterCatalog_[static_cast<size_t>(nextId - 1)] + trackOffset;
+    const SRL::Math::Types::Fxp curDx = (currentCenter.X - worldPosition.X).Abs();
+    const SRL::Math::Types::Fxp curDz = (currentCenter.Z - worldPosition.Z).Abs();
+    const SRL::Math::Types::Fxp nextDx = (nextCenter.X - worldPosition.X).Abs();
+    const SRL::Math::Types::Fxp nextDz = (nextCenter.Z - worldPosition.Z).Abs();
+    const SRL::Math::Types::Fxp currentScore = curDx + curDz;
+    const SRL::Math::Types::Fxp nextScore = nextDx + nextDz;
+
+    // Advance only when the car clearly crossed into the next segment.
+    const SRL::Math::Types::Fxp crossingHysteresis = SRL::Math::Types::Fxp::BuildRaw(2 << 16);
+    if ((nextScore + crossingHysteresis) < currentScore)
+    {
+        if (!SlideActiveSegmentWindowForward(1))
+        {
+            activeWindowSwitchCooldown_ = 12;
+            return false;
+        }
+        activeWindowSwitchCooldown_ = 0;
+        return true;
+    }
+
+    return false;
+}
+
+void TrackSystem::ResetInitializationState()
 {
     ready_ = false;
     segmentsReady_ = false;
     coordinatorReady_ = false;
     fixedVisibleSegmentCap_ = 1;
+    totalSegmentCount_ = 0;
+    activeWindowStartId_ = 1;
+    activeWindowHead_ = 0;
+    activeWindowSwitchCooldown_ = 0;
+    segmentCenterCatalog_.clear();
     seg1ComponentEnabled_ = false;
     seg1ComponentVerts_.clear();
     seg1ComponentFaces_.clear();
     seg1ComponentAttrs_.clear();
     seg1FaceFamilyIds_.clear();
     seg1FamilySlots_.clear();
+    InvalidateFamilySlotIndex();
+    familyMergeCooldown_ = 0;
     for (auto& v : seg1RendererFaceSlotsByLod_) v.clear();
     seg1RendererLodReady_ = false;
     seg1SingleFaceSwapReady_ = false;
@@ -3363,96 +4719,54 @@ bool TrackSystem::Initialize(const Config& config)
     segmentEntries_.clear();
     segmentRenderers_.clear();
     segmentHandles_.clear();
+    slideScratchRenderer_.reset();
+    ResetSlidePrefetchState();
+    trackTextureHeapBase_ = 0;
+    trackTextureHeapBaseValid_ = false;
+    trackTextureRecycleCount_ = 0;
+    textureUploadsThisFrame_ = 0;
     soakMonitor_.Reset();
+}
 
+size_t TrackSystem::ResolveInitialLoadLimit(const Config& config) const
+{
     // Test mode: keep the loaded catalog aligned with the configured visible segment budget
     // so we can isolate experiments on SEG_001 only. The full-catalog path stays available
     // behind this switch for future broader texture-mapping validation.
     constexpr bool kBuildFullCatalogForTextureMapping = false;
-    const size_t loadLimit =
-        kBuildFullCatalogForTextureMapping
-            ? kTrackSegmentLimit
-            : ((config.initialSegments == 0)
-                   ? kTrackSegmentLimit
-                   : std::min<size_t>(config.initialSegments, kTrackSegmentLimit));
-    fixedVisibleSegmentCap_ = std::max<uint32_t>(1u, static_cast<uint32_t>(loadLimit));
-    segmentEntries_.reserve(loadLimit);
-    segmentRenderers_.reserve(loadLimit);
+    if (kBuildFullCatalogForTextureMapping) return kTrackSegmentLimit;
+    if (config.initialSegments == 0) return kTrackSegmentLimit;
+    return std::min<size_t>(config.initialSegments, kTrackSegmentLimit);
+}
 
-    // Build runtime draw packages with contiguous SDR segments.
-    // Requested package size is capped by a Work RAM safety guard.
-    // For stability, keep packages small enough to avoid large merged batches.
-    constexpr size_t kRequestedSegmentsPerDrawPackage = 1;
-    const size_t segmentsPerDrawPackage = ComputeSafeSegmentsPerPackage(kRequestedSegmentsPerDrawPackage);
-    size_t builtCount = 0;
-    constexpr size_t kHighWorkRamReserveBytes = 96u * 1024u;
-    for (size_t sid = 1; sid <= loadLimit; )
-    {
-        const size_t maxCount = std::min(segmentsPerDrawPackage, (loadLimit - sid + 1));
-        size_t chosenCount = maxCount;
-        size_t chosenEnd = sid;
-        size_t batchEstimatedBytes = 0;
-        size_t hwrFreeBytes = 0;
-        bool admitted = false;
+void TrackSystem::PrepareInitialSegmentPackages(size_t loadLimit)
+{
+    const uint32_t desiredCap = std::max<uint32_t>(1u, static_cast<uint32_t>(loadLimit));
+    fixedVisibleSegmentCap_ =
+        std::min<uint32_t>(desiredCap,
+                           std::max<uint32_t>(1u, static_cast<uint32_t>(totalSegmentCount_)));
+    (void)RebuildActiveSegmentWindow(1, fixedVisibleSegmentCap_);
+    TryPrefetchUpcomingSegment();
+    SRL::Debug::Print(1, 28, "DBG build tag:TS29B segs:%lu", (unsigned long)segmentEntries_.size());
+}
 
-        while (chosenCount > 0)
-        {
-            const size_t testEnd = sid + chosenCount - 1;
-            if (CanAdmitSdrBatchInHighWorkRam(sid, testEnd, kHighWorkRamReserveBytes, batchEstimatedBytes, hwrFreeBytes))
-            {
-                admitted = true;
-                chosenEnd = testEnd;
-                break;
-            }
-            --chosenCount;
-        }
-
-        if (!admitted)
-        {
-            SRL::Debug::Print(1, 11, "PKG stop HWR sid:%u need:%u free:%u",
-                              static_cast<unsigned>(sid),
-                              static_cast<unsigned>(batchEstimatedBytes),
-                              static_cast<unsigned>(hwrFreeBytes));
-            break;
-        }
-
-        std::vector<TrackSegmentEntry> batchEntries{};
-        batchEntries.reserve(chosenCount);
-        for (size_t id = sid; id <= chosenEnd; ++id)
-        {
-            batchEntries.push_back({ static_cast<int>(id), {} });
-            segmentEntries_.push_back({ static_cast<int>(id), {} });
-        }
-
-        auto built = BuildSegmentRenderers(batchEntries);
-        if (!built.empty())
-        {
-            SRL::Debug::Print(1, 11, "PKG add id:%u..%u", (unsigned)sid, (unsigned)chosenEnd);
-            segmentRenderers_.push_back(std::move(built[0]));
-            ++builtCount;
-        }
-        sid = chosenEnd + 1;
-    }
-    SRL::Debug::Print(1, 13, "Track pkg built %u segs:%u", unsigned(builtCount), unsigned(segmentEntries_.size()));
-    SRL::Debug::Print(1, 28, "DBG build tag:TS29A segs:%lu", (unsigned long)segmentEntries_.size());
-    segmentsReady_ = !segmentRenderers_.empty();
-    segmentHandles_ = BuildSegmentHandleTable();
-
-    (void)config.useSlave; // stability mode: always use synchronous/double-buffer producer
-
+void TrackSystem::ConfigureCoordinatorAndBudget(const Config& config)
+{
     // Safety guard: cap draws by configured visible segments.
+    const uint32_t kSegmentCap = static_cast<uint32_t>(kTrackSegmentLimit);
     const uint32_t kSafeTrackDrawsPerFrame =
         std::min<uint32_t>(
             std::max<uint32_t>(1u, config.initialSegments),
-            static_cast<uint32_t>(kTrackSegmentLimit));
+            kSegmentCap);
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::Config coordinatorConfig{};
     coordinatorConfig.budget.maxTrackSegments =
         std::min<uint32_t>(
-            std::min<uint32_t>(config.initialSegments, static_cast<uint32_t>(kTrackSegmentLimit)),
+            std::min<uint32_t>(config.initialSegments, kSegmentCap),
             kSafeTrackDrawsPerFrame);
     coordinatorConfig.budget.maxTrackMeshes = config.initialMeshes;
     coordinatorConfig.budget.maxTrackFaces = config.initialFaces;
-    coordinatorConfig.chunkCapacity = kTrackSegmentLimit;
+    coordinatorConfig.chunkCapacity =
+        std::max<size_t>(1u, static_cast<size_t>(coordinatorConfig.budget.maxTrackSegments));
 
     coordinatorReady_ = coordinator_.Initialize(coordinatorConfig);
     if (!coordinatorReady_)
@@ -3465,7 +4779,7 @@ bool TrackSystem::Initialize(const Config& config)
         std::min<uint32_t>(std::max<uint32_t>(1, config.minSegments), kSafeTrackDrawsPerFrame);
     const uint32_t maxSegmentsRequested =
         std::min<uint32_t>(std::max<uint32_t>(minSegmentsRequested, config.initialSegments), kSafeTrackDrawsPerFrame);
-    const uint32_t maxSegmentsCap = static_cast<uint32_t>(kTrackSegmentLimit);
+    const uint32_t maxSegmentsCap = kSegmentCap;
     adaptiveBudgetLimits.minSegments = std::min<uint32_t>(minSegmentsRequested, maxSegmentsCap);
     adaptiveBudgetLimits.maxSegments = std::min<uint32_t>(maxSegmentsRequested, maxSegmentsCap);
     // Lock mesh/face budget to configured startup values to avoid runtime shrink.
@@ -3474,7 +4788,10 @@ bool TrackSystem::Initialize(const Config& config)
     adaptiveBudgetLimits.minFaces = std::max<uint32_t>(1000u, config.initialFaces);
     adaptiveBudgetLimits.maxFaces = adaptiveBudgetLimits.minFaces;
     budgetController_ = AdaptiveTrackBudgetController(adaptiveBudgetLimits);
+}
 
+void TrackSystem::LogInitialSegmentDiagnostics() const
+{
     if (!segmentsReady_)
     {
         SRL::Debug::Print(1, 28, "Track rendering skipped: segments missing");
@@ -3484,76 +4801,118 @@ bool TrackSystem::Initialize(const Config& config)
         }
     }
 
-    if (!segmentRenderers_.empty())
+    if (segmentRenderers_.empty()) return;
+
+    char ids[64]{};
+    size_t idsLen = 0;
+    const size_t count = std::min(segmentRenderers_.size(), size_t(3));
+    for (size_t i = 0; i < count; ++i)
     {
-        char ids[64]{};
-        size_t idsLen = 0;
-        const size_t count = std::min(segmentRenderers_.size(), size_t(3));
-        for (size_t i = 0; i < count; ++i)
+        char tmp[16]{};
+        std::snprintf(tmp, sizeof(tmp), "%d", segmentRenderers_[i].id);
+        const size_t n = strlen(tmp);
+        if (idsLen + n + 2 < sizeof(ids))
         {
-            char tmp[16]{};
-            std::snprintf(tmp, sizeof(tmp), "%d", segmentRenderers_[i].id);
-            const size_t n = strlen(tmp);
-            if (idsLen + n + 2 < sizeof(ids))
+            memcpy(ids + idsLen, tmp, n);
+            idsLen += n;
+            if (i + 1 < count)
             {
-                memcpy(ids + idsLen, tmp, n);
-                idsLen += n;
-                if (i + 1 < count)
-                {
-                    ids[idsLen++] = ',';
-                    ids[idsLen] = '\0';
-                }
+                ids[idsLen++] = ',';
+                ids[idsLen] = '\0';
             }
         }
-        SRL::Debug::Print(1, 29, "DBG build tag:TS27A near(%lu):%s", (unsigned long)count, ids);
     }
+    SRL::Debug::Print(1, 29, "DBG build tag:TS27A near(%lu):%s", (unsigned long)count, ids);
+}
 
+void TrackSystem::ApplyInitialSdrFamilySlots()
+{
     // Build the initial per batch face slots from SDR family ids.
+    constexpr bool kEnableMat8FixedIntegration = true;
+    if (!kEnableMat8FixedIntegration) return;
+
+    unsigned matOk = 0;
+    unsigned matFail = 0;
+    std::vector<Seg1FamilySlotEntry> familyLodSlots{};
+    if (!BuildTrackFamilyLodSlots(familyLodSlots))
     {
-        constexpr bool kEnableMat8FixedIntegration = true;
-        if (kEnableMat8FixedIntegration)
+        SRL::Debug::Print(1, 19, "SDR lod build fail");
+        return;
+    }
+
+    // Preserve already uploaded slot ids when the active segment window slides.
+    if (!seg1FamilySlots_.empty())
+    {
+        for (auto& target : familyLodSlots)
         {
-            unsigned matOk = 0;
-            unsigned matFail = 0;
-            std::vector<Seg1FamilySlotEntry> familyLodSlots{};
-            if (!BuildTrackFamilyLodSlots(familyLodSlots))
+            for (const auto& current : seg1FamilySlots_)
             {
-                SRL::Debug::Print(1, 19, "SDR lod build fail");
-            }
-            else
-            {
-                seg1FamilySlots_ = familyLodSlots;
-                size_t logicalRank = 0;
-                for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+                if (current.familyId != target.familyId) continue;
+                for (size_t li = 0; li < target.lodSlots.size(); ++li)
                 {
-                    auto& seg = segmentRenderers_[i];
-                    if (!seg.renderer) { ++matFail; continue; }
-
-                    SegmentComponent::Blob unusedMatBlob{};
-                    SegmentComponent::Loader::MatView unusedMatView{};
-                    if (!BuildSegmentLodState(seg, unusedMatBlob, unusedMatView, familyLodSlots))
+                    if (target.lodSlots[li] == No_Texture && current.lodSlots[li] != No_Texture)
                     {
-                        ++matFail;
-                        continue;
+                        target.lodSlots[li] = current.lodSlots[li];
                     }
-
-                    if (!RebuildSegmentFaceSlotsForBaseRank(seg, logicalRank, familyLodSlots))
-                    {
-                        ++matFail;
-                        logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
-                        continue;
-                    }
-                    (void)seg.renderer->ApplyFaceTextureSlotsGlobal(seg.lodState.currentFaceSlots);
-                    seg.lodState.currentBaseRank = static_cast<int16_t>(logicalRank);
-                    seg.lodState.currentLodIndex = 0xFE;
-                    logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
-                    ++matOk;
                 }
-
-                SRL::Debug::Print(1, 20, "SDR ok:%u fail:%u fam:%u", matOk, matFail, (unsigned)familyLodSlots.size());
+                break;
             }
         }
     }
+
+    size_t logicalRank = 0;
+    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+    {
+        auto& seg = segmentRenderers_[i];
+        if (!seg.renderer)
+        {
+            ++matFail;
+            continue;
+        }
+
+        SegmentComponent::Blob unusedMatBlob{};
+        SegmentComponent::Loader::MatView unusedMatView{};
+        if (!BuildSegmentLodState(seg, unusedMatBlob, unusedMatView, familyLodSlots))
+        {
+            ++matFail;
+            continue;
+        }
+
+        if (!RebuildSegmentFaceSlotsForBaseRank(seg, logicalRank, familyLodSlots))
+        {
+            ++matFail;
+            logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
+            continue;
+        }
+        (void)seg.renderer->ApplyFaceTextureSlotsGlobal(seg.lodState.currentFaceSlots);
+        seg.lodState.currentBaseRank = static_cast<int16_t>(logicalRank);
+        seg.lodState.currentLodIndex = 0xFE;
+        logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
+        ++matOk;
+    }
+
+    // Keep slots scoped to the currently active streamed window.
+    seg1FamilySlots_ = familyLodSlots;
+    InvalidateFamilySlotIndex();
+    SRL::Debug::Print(1, 20, "SDR ok:%u fail:%u fam:%u", matOk, matFail, (unsigned)familyLodSlots.size());
+}
+
+bool TrackSystem::Initialize(const Config& config)
+{
+    ResetInitializationState();
+    if (!BuildSegmentCenterCatalog())
+    {
+        SRL::Debug::Print(1, 28, "Track catalog missing");
+        return false;
+    }
+    const size_t loadLimit = ResolveInitialLoadLimit(config);
+    PrepareInitialSegmentPackages(loadLimit);
+    CaptureTrackTextureHeapBase();
+
+    (void)config.useSlave; // stability mode: always use synchronous/double-buffer producer
+    ConfigureCoordinatorAndBudget(config);
+    LogInitialSegmentDiagnostics();
+    ApplyInitialSdrFamilySlots();
 
     // Keep the normal multi segment render path active even when only one segment
     // is visible, so single segment tests match the production flow.
@@ -3812,8 +5171,7 @@ bool TrackSystem::Initialize(const Config& config)
                     }
                 }
 
-                seg1FamilySlots_.clear();
-                seg1FamilySlots_.reserve(familyIdsUsedCount);
+                InitializeFamilySlots(seg1FamilySlots_, familyIdsUsed, familyIdsUsedCount);
                 size_t texLoaded = 0;
                 size_t texFail = 0;
                 size_t texMissFamily = 0;
@@ -3824,92 +5182,10 @@ bool TrackSystem::Initialize(const Config& config)
                 int texLastUnresolvedLod = 0;
                 int texLastRecoveredDstLod = 0;
                 int texLastRecoveredSrcLod = 0;
-                for (size_t u = 0; u < familyIdsUsedCount; ++u)
-                {
-                    Seg1FamilySlotEntry slotEntry{};
-                    slotEntry.familyId = static_cast<uint16_t>(familyIdsUsed[u]);
-                    slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
-                    seg1FamilySlots_.push_back(slotEntry);
-                }
 
                 auto loadTexbankToCart = [&](size_t li) -> bool
                 {
-                    auto& bank = seg1Texbanks_[li];
-                    if (bank.cartPtr && bank.size > 0 && !bank.entries.empty()) return true;
-                    bank = {};
-                    bank.lod = lodValues[li];
-
-                    char n0[40]{}, n1[40]{}, n2[28]{}, n3[28]{}, n4[24]{}, n5[24]{}, n6[24]{}, n7[24]{}, n8[24]{}, n9[24]{}, n10[28]{}, n11[28]{};
-                    std::snprintf(n0, sizeof(n0), "CD/DATA/TEXBANK_%d.BIN", bank.lod);
-                    std::snprintf(n1, sizeof(n1), "CD/DATA/TEXBANK_%d.BIN;1", bank.lod);
-                    std::snprintf(n2, sizeof(n2), "DATA/TEXBANK_%d.BIN", bank.lod);
-                    std::snprintf(n3, sizeof(n3), "DATA/TEXBANK_%d.BIN;1", bank.lod);
-                    std::snprintf(n4, sizeof(n4), "TEXBANK_%d.BIN", bank.lod);
-                    std::snprintf(n5, sizeof(n5), "TEXBANK_%d.BIN;1", bank.lod);
-                    std::snprintf(n6, sizeof(n6), "texbank_%d.bin", bank.lod);
-                    std::snprintf(n7, sizeof(n7), "texbank_%d.bin;1", bank.lod);
-                    std::snprintf(n8, sizeof(n8), "TBK%d.BIN", bank.lod);
-                    std::snprintf(n9, sizeof(n9), "TBK%d.BIN;1", bank.lod);
-                    std::snprintf(n10, sizeof(n10), "DATA/TBK%d.BIN", bank.lod);
-                    std::snprintf(n11, sizeof(n11), "DATA/TBK%d.BIN;1", bank.lod);
-                    const char* cands[] = { n0, n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11 };
-
-                    SRL::Cd::File f(nullptr);
-                    bool found = false;
-                    for (size_t i = 0; i < sizeof(cands) / sizeof(cands[0]); ++i)
-                    {
-                        SRL::Cd::File probe(cands[i]);
-                        if (probe.Exists() && probe.Size.Bytes > 0)
-                        {
-                            f = probe;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found || f.Size.Bytes <= 0) return false;
-                    if (!f.Open()) return false;
-
-                    const uint32_t bytes = static_cast<uint32_t>(f.Size.Bytes);
-                    void* mem = SRL::Memory::CartRam::Malloc(bytes);
-                    if (!mem) return false;
-                    const int32_t read = f.Read(static_cast<int32_t>(bytes), mem);
-                    if (read <= 0 || static_cast<uint32_t>(read) > bytes)
-                    {
-                        SRL::Memory::CartRam::Free(mem);
-                        return false;
-                    }
-                    bank.cartPtr = mem;
-                    bank.size = static_cast<uint32_t>(read);
-
-                    const uint8_t* p = static_cast<const uint8_t*>(bank.cartPtr);
-                    if (bank.size < 20) return false;
-                    const uint32_t magic = ReadLe32(p + 0);
-                    const uint16_t ver = ReadLe16(p + 4);
-                    const uint16_t lod = ReadLe16(p + 6);
-                    const uint32_t count = ReadLe32(p + 8);
-                    const uint32_t dataOff = ReadLe32(p + 12);
-                    (void)ver;
-                    if (magic != 0x314B4254 || lod != static_cast<uint16_t>(bank.lod)) return false;
-                    const uint32_t entryBase = 20;
-                    const uint32_t entrySize = 16;
-                    if (entryBase + count * entrySize > bank.size) return false;
-                    if (dataOff > bank.size) return false;
-
-                    bank.entries.clear();
-                    bank.entries.reserve(count);
-                    for (uint32_t i = 0; i < count; ++i)
-                    {
-                        const uint32_t o = entryBase + i * entrySize;
-                        Seg1TexbankEntry e{};
-                        e.familyId = static_cast<uint16_t>(ReadLe32(p + o + 0));
-                        e.offset = ReadLe32(p + o + 4);
-                        e.size = ReadLe32(p + o + 8);
-                        if (e.offset + e.size <= bank.size)
-                        {
-                            bank.entries.push_back(e);
-                        }
-                    }
-                    return !bank.entries.empty();
+                    return LoadSeg1TexbankIndexToCart(li, lodValues[li]);
                 };
 
                 for (size_t li = 0; li < 4; ++li)
@@ -3919,69 +5195,34 @@ bool TrackSystem::Initialize(const Config& config)
                         texFail += familyIdsUsedCount;
                         continue;
                     }
-                    const auto& bank = seg1Texbanks_[li];
-                    const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
 
                     for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
                     {
                         const uint16_t fam = seg1FamilySlots_[u].familyId;
-                        bool loadedForRequestedLod = false;
+                        bool sawMissingFamily = false;
                         bool sawDecodeFail = false;
                         bool sawUploadFail = false;
-                        bool sawMissingFamily = false;
+                        int loadedFromLodValue = 0;
+                        const bool loadedForRequestedLod = TryLoadFamilyLodSlot(seg1FamilySlots_[u],
+                                                                                 static_cast<uint8_t>(li),
+                                                                                 /*fallbackToLowerLods*/true,
+                                                                                 /*fallbackToHigherLods*/false,
+                                                                                 &sawMissingFamily,
+                                                                                 &sawDecodeFail,
+                                                                                 &sawUploadFail,
+                                                                                 &loadedFromLodValue);
 
-                        for (int fallbackLi = static_cast<int>(li); fallbackLi >= 0; --fallbackLi)
+                        if (loadedForRequestedLod)
                         {
-                            if (!loadTexbankToCart(static_cast<size_t>(fallbackLi))) continue;
-                            const auto& fallbackBank = seg1Texbanks_[static_cast<size_t>(fallbackLi)];
-                            const uint8_t* fallbackBytes = static_cast<const uint8_t*>(fallbackBank.cartPtr);
-                            if (!fallbackBytes) continue;
-
-                            const Seg1TexbankEntry* entry = nullptr;
-                            for (const auto& e : fallbackBank.entries)
+                            ++texLoaded;
+                            if (loadedFromLodValue != lodValues[li])
                             {
-                                if (e.familyId == fam) { entry = &e; break; }
-                            }
-                            if (!entry)
-                            {
-                                sawMissingFamily = true;
-                                continue;
-                            }
-
-                            DecodedTgaTexture decoded{};
-                            if (!DecodePalettedTgaMemory(fallbackBytes + entry->offset, entry->size, decoded))
-                            {
-                                sawDecodeFail = true;
-                                if (fallbackLi == static_cast<int>(li))
-                                {
-                                    SRL::Debug::Print(1, 17, "S1 DEC fail f:%u l:%d", (unsigned)fam, lodValues[li]);
-                                }
-                                continue;
-                            }
-
-                            const int32_t slot = UploadDecodedTextureToVdp1(decoded);
-                            if (slot >= 0)
-                            {
-                                seg1FamilySlots_[u].lodSlots[li] = static_cast<uint16_t>(slot);
-                                ++texLoaded;
-                                if (fallbackLi != static_cast<int>(li))
-                                {
-                                    ++texFallbackRecovered;
-                                    texLastRecoveredDstLod = lodValues[li];
-                                    texLastRecoveredSrcLod = lodValues[fallbackLi];
-                                }
-                                loadedForRequestedLod = true;
-                                break;
-                            }
-
-                            sawUploadFail = true;
-                            if (fallbackLi == static_cast<int>(li))
-                            {
-                                SRL::Debug::Print(1, 17, "S1 UP fail f:%u l:%d", (unsigned)fam, lodValues[li]);
+                                ++texFallbackRecovered;
+                                texLastRecoveredDstLod = lodValues[li];
+                                texLastRecoveredSrcLod = loadedFromLodValue;
                             }
                         }
-
-                        if (!loadedForRequestedLod)
+                        else
                         {
                             ++texFail;
                             texLastUnresolvedFam = fam;
@@ -4199,15 +5440,7 @@ bool TrackSystem::Initialize(const Config& config)
                             const uint16_t fam = static_cast<uint16_t>(mb.materialId);
                             if (fam == 0) continue;
                             uint16_t slot = No_Texture;
-                            for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
-                            {
-                                if (seg1FamilySlots_[u].familyId == fam)
-                                {
-                                    slot = seg1FamilySlots_[u].lodSlots[li];
-                                    break;
-                                }
-                            }
-                            if (slot != No_Texture)
+                            if (TryGetFamilyLodSlot(seg1FamilySlots_, fam, static_cast<uint8_t>(li), slot))
                             {
                                 slots[fi] = static_cast<int32_t>(slot);
                                 ++mappedFaces;
@@ -4223,15 +5456,7 @@ bool TrackSystem::Initialize(const Config& config)
                                 const uint16_t fam = static_cast<uint16_t>(map1ForSeg.faceFamily[fi]);
                                 if (fam == 0) continue;
                                 uint16_t slot = No_Texture;
-                                for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
-                                {
-                                    if (seg1FamilySlots_[u].familyId == fam)
-                                    {
-                                        slot = seg1FamilySlots_[u].lodSlots[li];
-                                        break;
-                                    }
-                                }
-                                if (slot != No_Texture)
+                                if (TryGetFamilyLodSlot(seg1FamilySlots_, fam, static_cast<uint8_t>(li), slot))
                                 {
                                     slots[fi] = static_cast<int32_t>(slot);
                                     ++mappedFaces;
@@ -4317,14 +5542,10 @@ bool TrackSystem::Initialize(const Config& config)
                         if (fam > 0)
                         {
                             uint16_t slot = No_Texture;
-                            for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
-                            {
-                                if (seg1FamilySlots_[u].familyId == static_cast<uint16_t>(fam))
-                                {
-                                    slot = seg1FamilySlots_[u].lodSlots[seg1CurrentLodIndex_];
-                                    break;
-                                }
-                            }
+                            (void)TryGetFamilyLodSlot(seg1FamilySlots_,
+                                                      static_cast<uint16_t>(fam),
+                                                      seg1CurrentLodIndex_,
+                                                      slot);
                             if (slot != No_Texture)
                             {
                                 texIndex = slot;
@@ -4410,94 +5631,11 @@ bool TrackSystem::Initialize(const Config& config)
                     int familyIdsUsed[512]{};
                     const size_t familyIdsUsedCount = BuildUniqueUsedFamilies(map1.faceFamily, familyIdsUsed, 512);
 
-                    seg1FamilySlots_.clear();
-                    seg1FamilySlots_.reserve(familyIdsUsedCount);
-                    for (size_t u = 0; u < familyIdsUsedCount; ++u)
-                    {
-                        Seg1FamilySlotEntry slotEntry{};
-                        slotEntry.familyId = static_cast<uint16_t>(familyIdsUsed[u]);
-                        slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
-                        seg1FamilySlots_.push_back(slotEntry);
-                    }
+                    InitializeFamilySlots(seg1FamilySlots_, familyIdsUsed, familyIdsUsedCount);
 
                     auto loadTexbankToCart = [&](size_t li) -> bool
                     {
-                        auto& bank = seg1Texbanks_[li];
-                        if (bank.cartPtr && bank.size > 0 && !bank.entries.empty()) return true;
-                        bank = {};
-                        bank.lod = lodValues[li];
-
-                        char n0[40]{}, n1[40]{}, n2[28]{}, n3[28]{}, n4[24]{}, n5[24]{}, n6[24]{}, n7[24]{}, n8[24]{}, n9[24]{}, n10[28]{}, n11[28]{};
-                        std::snprintf(n0, sizeof(n0), "CD/DATA/TEXBANK_%d.BIN", bank.lod);
-                        std::snprintf(n1, sizeof(n1), "CD/DATA/TEXBANK_%d.BIN;1", bank.lod);
-                        std::snprintf(n2, sizeof(n2), "DATA/TEXBANK_%d.BIN", bank.lod);
-                        std::snprintf(n3, sizeof(n3), "DATA/TEXBANK_%d.BIN;1", bank.lod);
-                        std::snprintf(n4, sizeof(n4), "TEXBANK_%d.BIN", bank.lod);
-                        std::snprintf(n5, sizeof(n5), "TEXBANK_%d.BIN;1", bank.lod);
-                        std::snprintf(n6, sizeof(n6), "texbank_%d.bin", bank.lod);
-                        std::snprintf(n7, sizeof(n7), "texbank_%d.bin;1", bank.lod);
-                        std::snprintf(n8, sizeof(n8), "TBK%d.BIN", bank.lod);
-                        std::snprintf(n9, sizeof(n9), "TBK%d.BIN;1", bank.lod);
-                        std::snprintf(n10, sizeof(n10), "DATA/TBK%d.BIN", bank.lod);
-                        std::snprintf(n11, sizeof(n11), "DATA/TBK%d.BIN;1", bank.lod);
-                        const char* cands[] = { n0, n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11 };
-
-                        SRL::Cd::File f(nullptr);
-                        bool found = false;
-                        for (size_t i = 0; i < sizeof(cands) / sizeof(cands[0]); ++i)
-                        {
-                            SRL::Cd::File probe(cands[i]);
-                            if (probe.Exists() && probe.Size.Bytes > 0)
-                            {
-                                f = probe;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found || f.Size.Bytes <= 0) return false;
-                        if (!f.Open()) return false;
-
-                        const uint32_t bytes = static_cast<uint32_t>(f.Size.Bytes);
-                        void* mem = SRL::Memory::CartRam::Malloc(bytes);
-                        if (!mem) return false;
-                        const int32_t read = f.Read(static_cast<int32_t>(bytes), mem);
-                        if (read <= 0 || static_cast<uint32_t>(read) > bytes)
-                        {
-                            SRL::Memory::CartRam::Free(mem);
-                            return false;
-                        }
-                        bank.cartPtr = mem;
-                        bank.size = static_cast<uint32_t>(read);
-
-                        const uint8_t* p = static_cast<const uint8_t*>(bank.cartPtr);
-                        if (bank.size < 20) return false;
-                        const uint32_t magic = ReadLe32(p + 0);
-                        const uint16_t ver = ReadLe16(p + 4);
-                        const uint16_t lod = ReadLe16(p + 6);
-                        const uint32_t count = ReadLe32(p + 8);
-                        const uint32_t dataOff = ReadLe32(p + 12);
-                        (void)ver;
-                        if (magic != 0x314B4254 || lod != static_cast<uint16_t>(bank.lod)) return false;
-                        const uint32_t entryBase = 20;
-                        const uint32_t entrySize = 16;
-                        if (entryBase + count * entrySize > bank.size) return false;
-                        if (dataOff > bank.size) return false;
-
-                        bank.entries.clear();
-                        bank.entries.reserve(count);
-                        for (uint32_t i = 0; i < count; ++i)
-                        {
-                            const uint32_t o = entryBase + i * entrySize;
-                            Seg1TexbankEntry e{};
-                            e.familyId = static_cast<uint16_t>(ReadLe32(p + o + 0));
-                            e.offset = ReadLe32(p + o + 4);
-                            e.size = ReadLe32(p + o + 8);
-                            if (e.offset + e.size <= bank.size)
-                            {
-                                bank.entries.push_back(e);
-                            }
-                        }
-                        return !bank.entries.empty();
+                        return LoadSeg1TexbankIndexToCart(li, lodValues[li]);
                     };
 
                     size_t texLoaded = 0;
@@ -4512,36 +5650,30 @@ bool TrackSystem::Initialize(const Config& config)
                             texFail += familyIdsUsedCount;
                             continue;
                         }
-                        const auto& bank = seg1Texbanks_[li];
-                        const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
 
                         for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
                         {
-                            const uint16_t fam = seg1FamilySlots_[u].familyId;
-                            const Seg1TexbankEntry* entry = nullptr;
-                            for (const auto& e : bank.entries)
+                            bool sawMissingFamily = false;
+                            bool sawDecodeFail = false;
+                            bool sawUploadFail = false;
+                            const bool loaded = TryLoadFamilyLodSlot(seg1FamilySlots_[u],
+                                                                      static_cast<uint8_t>(li),
+                                                                      /*fallbackToLowerLods*/false,
+                                                                      /*fallbackToHigherLods*/false,
+                                                                      &sawMissingFamily,
+                                                                      &sawDecodeFail,
+                                                                      &sawUploadFail,
+                                                                      nullptr);
+                            if (loaded)
                             {
-                                if (e.familyId == fam) { entry = &e; break; }
-                            }
-                            if (!entry) { ++texFail; ++texMissFamily; continue; }
-
-                            DecodedTgaTexture decoded{};
-                            if (!DecodePalettedTgaMemory(bankBytes + entry->offset, entry->size, decoded))
-                            {
-                                ++texFail;
-                                ++texDecodeFail;
-                                continue;
-                            }
-                            const int32_t slot = UploadDecodedTextureToVdp1(decoded);
-                            if (slot >= 0)
-                            {
-                                seg1FamilySlots_[u].lodSlots[li] = static_cast<uint16_t>(slot);
                                 ++texLoaded;
                             }
                             else
                             {
                                 ++texFail;
-                                ++texUploadFail;
+                                if (sawDecodeFail) ++texDecodeFail;
+                                else if (sawUploadFail) ++texUploadFail;
+                                else ++texMissFamily;
                             }
                         }
                     }
@@ -4558,15 +5690,10 @@ bool TrackSystem::Initialize(const Config& config)
                             const uint16_t fam = static_cast<uint16_t>(map1.faceFamily[fi] < 0 ? 0 : map1.faceFamily[fi]);
                             if (fam == 0) continue;
                             uint16_t slot = No_Texture;
-                            for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
+                            if (TryGetFamilyLodSlot(seg1FamilySlots_, fam, static_cast<uint8_t>(li), slot))
                             {
-                                if (seg1FamilySlots_[u].familyId == fam)
-                                {
-                                    slot = seg1FamilySlots_[u].lodSlots[li];
-                                    break;
-                                }
+                                slots[fi] = static_cast<int32_t>(slot);
                             }
-                            if (slot != No_Texture) slots[fi] = static_cast<int32_t>(slot);
                         }
                     }
                     seg1RendererLodReady_ = (rendererFaces > 0 && !seg1FamilySlots_.empty());
@@ -4748,14 +5875,7 @@ bool TrackSystem::Initialize(const Config& config)
             famCount = BuildUniqueUsedFamilies(faceFamily, familyIdsUsed, 512);
             if (seg1FamilySlots_.empty() && famCount > 0)
             {
-                seg1FamilySlots_.reserve(famCount);
-                for (size_t u = 0; u < famCount; ++u)
-                {
-                    Seg1FamilySlotEntry slotEntry{};
-                    slotEntry.familyId = static_cast<uint16_t>(familyIdsUsed[u]);
-                    slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
-                    seg1FamilySlots_.push_back(slotEntry);
-                }
+                InitializeFamilySlots(seg1FamilySlots_, familyIdsUsed, famCount);
             }
         }
 
@@ -4785,61 +5905,51 @@ bool TrackSystem::Initialize(const Config& config)
 
 void TrackSystem::BeginFrame(uint32_t frameId)
 {
+    textureUploadsThisFrame_ = 0;
     coordinator_.BeginFrame(frameId);
 }
 
-void TrackSystem::RenderFrame(bool renderTrack,
-                              const Vector3D& trackOffset,
-                              const Vector3D& lightDirection,
-                              const Vector3D& cameraLocation)
+std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(
+    const Vector3D& trackOffset,
+    const Vector3D& cameraLocation)
 {
-    if (!renderTrack || !ready_)
+    std::vector<SegmentHandle> orderedHandles{};
+    if (segmentRenderers_.empty()) return orderedHandles;
+    const size_t windowCount = segmentRenderers_.size();
+    if (segmentHandles_.empty() || segmentHandles_.size() != windowCount)
     {
-        return;
+        segmentHandles_ = BuildSegmentHandleTable();
     }
-
-    bool segment01Logged = false;
-    bool segment01Prepared = false;
-    std::vector<SegmentHandle> orderedHandles = segmentHandles_;
-    auto depthMetricToCamera = [&](const SegmentRenderEntry* e) -> SRL::Math::Types::Fxp
+    if (segmentHandles_.empty()) return orderedHandles;
+    orderedHandles.reserve(windowCount);
+    for (size_t i = 0; i < windowCount; ++i)
     {
-        if (!e) return SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
-        const Vector3D c = e->center + trackOffset;
-        const auto dx = (c.X - cameraLocation.X).Abs();
-        const auto dz = (c.Z - cameraLocation.Z).Abs();
-        // Overflow-safe depth key for fixed-point on SH2.
-        // Keep monotonic far/near behavior without multiplication.
-        const auto major = (dx > dz) ? dx : dz;
-        const auto minor = (dx > dz) ? dz : dx;
-        return major + minor;
-    };
-    // Keep selection in logical track order so the same SDR cache works for
-    // forward and reverse traversal. A future gameplay flag can flip this.
-    constexpr bool kReverseTrackDirection = false;
-    std::sort(orderedHandles.begin(), orderedHandles.end(),
-        [&](const SegmentHandle& a, const SegmentHandle& b)
+        const SegmentHandle h = segmentHandles_[i];
+        if (!segmentPool_.Resolve(h)) continue;
+        orderedHandles.push_back(h);
+    }
+    if (orderedHandles.empty())
+    {
+        segmentHandles_ = BuildSegmentHandleTable();
+        if (segmentHandles_.empty()) return orderedHandles;
+        for (size_t i = 0; i < windowCount; ++i)
         {
-            const auto* ea = segmentPool_.Resolve(a);
-            const auto* eb = segmentPool_.Resolve(b);
-            if (!ea && !eb) return false;
-            if (!ea) return false;
-            if (!eb) return true;
-            return kReverseTrackDirection ? (ea->id > eb->id) : (ea->id < eb->id);
-        });
-    if (!orderedHandles.empty())
+            const SegmentHandle h = segmentHandles_[i % windowCount];
+            if (!segmentPool_.Resolve(h)) continue;
+            orderedHandles.push_back(h);
+        }
+        if (orderedHandles.empty())
+        {
+            SRL::Debug::Print(1, 23, "TRK vis empty start:%d head:%u n:%u",
+                              activeWindowStartId_,
+                              static_cast<unsigned>(activeWindowHead_),
+                              static_cast<unsigned>(windowCount));
+            return orderedHandles;
+        }
+    }
+    if (orderedHandles.size() > 1 && totalSegmentCount_ > 0)
     {
-        // Deterministic test window: draw the configured package set for this profile.
-        // Keep up to the configured budget for this frame.
-        const size_t keepCount =
-            std::min<size_t>(
-                orderedHandles.size(),
-                static_cast<size_t>(fixedVisibleSegmentCap_));
-        orderedHandles.resize(keepCount);
-        UpdateVisibleSegmentLods(orderedHandles);
-
-        // Draw in camera-space painter order (far -> near).
-        // VDP1 has no Z-buffer for this path, so camera-relative order is required
-        // to avoid distortion when camera rotates around the car.
+        const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
         std::sort(orderedHandles.begin(), orderedHandles.end(),
             [&](const SegmentHandle& a, const SegmentHandle& b)
             {
@@ -4848,17 +5958,54 @@ void TrackSystem::RenderFrame(bool renderTrack,
                 if (!ea && !eb) return false;
                 if (!ea) return false;
                 if (!eb) return true;
-                const auto da = depthMetricToCamera(ea);
-                const auto db = depthMetricToCamera(eb);
-                if (da == db)
-                {
-                    return kReverseTrackDirection ? (ea->id > eb->id) : (ea->id < eb->id);
-                }
-                // far first
-                return da > db;
+                int32_t da = ea->id - startId;
+                int32_t db = eb->id - startId;
+                if (da < 0) da += static_cast<int32_t>(totalSegmentCount_);
+                if (db < 0) db += static_cast<int32_t>(totalSegmentCount_);
+                if (da == db) return ea->id < eb->id;
+                return da < db;
             });
     }
 
+    auto depthMetricToCamera = [&](const SegmentRenderEntry* e) -> SRL::Math::Types::Fxp
+    {
+        if (!e) return SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+        const Vector3D c = e->center + trackOffset;
+        const auto dx = (c.X - cameraLocation.X).Abs();
+        const auto dz = (c.Z - cameraLocation.Z).Abs();
+        const auto major = (dx > dz) ? dx : dz;
+        const auto minor = (dx > dz) ? dz : dx;
+        return major + minor;
+    };
+
+    const size_t keepCount =
+        std::min<size_t>(
+            orderedHandles.size(),
+            static_cast<size_t>(fixedVisibleSegmentCap_));
+    orderedHandles.resize(keepCount);
+    UpdateVisibleSegmentLods(orderedHandles);
+
+    // Draw in camera-space painter order (far -> near).
+    // VDP1 has no Z-buffer for this path, so camera-relative order is required
+    // to avoid distortion when camera rotates around the car.
+    std::sort(orderedHandles.begin(), orderedHandles.end(),
+        [&](const SegmentHandle& a, const SegmentHandle& b)
+        {
+            const auto* ea = segmentPool_.Resolve(a);
+            const auto* eb = segmentPool_.Resolve(b);
+            if (!ea && !eb) return false;
+            if (!ea) return false;
+            if (!eb) return true;
+            const auto da = depthMetricToCamera(ea);
+            const auto db = depthMetricToCamera(eb);
+            if (da == db) return ea->id < eb->id;
+            return da > db; // far first
+        });
+    return orderedHandles;
+}
+
+void TrackSystem::RunSeg1DiagnosticsForFrame()
+{
     // Single-face overwrite probe disabled.
     if (false && seg1SingleFaceSwapReady_ && seg1SingleFaceSwapBaseSlot_ > 0)
     {
@@ -4888,13 +6035,16 @@ void TrackSystem::RenderFrame(bool renderTrack,
         }
     }
 
-    // SEG_001 LOD cycle test: every ~3s swap texture slots among {8,16,32,64}.
-    // Keep this test isolated to true single-segment scenes only.
+    // SEG_001 LOD cycle test (experimental).
+    // Disabled by default to keep texture assignment deterministic in gameplay.
+    constexpr bool kEnableSeg1LodCycleTest = false;
+    constexpr bool kEnableSeg1LodCycleLogs = false;
     const bool isTrueSingleSegmentScene =
         (segmentRenderers_.size() == 1) &&
         (segmentRenderers_[0].logicalSegmentCount == 1) &&
         (segmentRenderers_[0].id == 1);
-    if (isTrueSingleSegmentScene &&
+    if (kEnableSeg1LodCycleTest &&
+        isTrueSingleSegmentScene &&
         (seg1ComponentEnabled_ || seg1RendererLodReady_) &&
         !seg1FamilySlots_.empty())
     {
@@ -4913,20 +6063,12 @@ void TrackSystem::RenderFrame(bool renderTrack,
                     uint16_t slot = No_Texture;
                     if (fam != 0)
                     {
-                        for (size_t u = 0; u < seg1FamilySlots_.size(); ++u)
-                        {
-                            if (seg1FamilySlots_[u].familyId == fam)
-                            {
-                                slot = seg1FamilySlots_[u].lodSlots[seg1CurrentLodIndex_];
-                                break;
-                            }
-                        }
+                        (void)TryGetFamilyLodSlot(seg1FamilySlots_, fam, seg1CurrentLodIndex_, slot);
                     }
 
                     auto& attr = seg1ComponentAttrs_[fi];
                     if (slot != No_Texture)
                     {
-                        // Keep render flags stable and only swap texture slot.
                         attr.Texture = slot;
                         attr.ColorMode = No_Palet;
                     }
@@ -4945,37 +6087,42 @@ void TrackSystem::RenderFrame(bool renderTrack,
                         break;
                     }
                 }
-                SRL::Debug::Print(1, 21, "S1 AP rdr:%u", (unsigned)appliedRenderer);
+                if (kEnableSeg1LodCycleLogs)
+                {
+                    SRL::Debug::Print(1, 21, "S1 AP rdr:%u", (unsigned)appliedRenderer);
+                }
             }
-            else
+            else if (kEnableSeg1LodCycleLogs)
             {
                 SRL::Debug::Print(1, 21, "S1 AP rdr:off");
             }
-            const int lodDbg[4] = { 8, 16, 32, 64 };
-            const unsigned cmpFaces = (unsigned)seg1ComponentAttrs_.size();
-            const unsigned rdrFaces = seg1RendererLodReady_ ? (unsigned)seg1RendererFaceSlotsByLod_[seg1CurrentLodIndex_].size() : 0u;
-            SRL::Debug::Print(1, 22, "S1L c:%u j:%u l:%d r:%u",
-                              (unsigned)seg1TgaPreloadCount_,
-                              (unsigned)seg1TgaJsonOk_,
-                              lodDbg[seg1CurrentLodIndex_], rdrFaces);
+            if (kEnableSeg1LodCycleLogs)
+            {
+                const int lodDbg[4] = { 8, 16, 32, 64 };
+                const unsigned rdrFaces = seg1RendererLodReady_ ? (unsigned)seg1RendererFaceSlotsByLod_[seg1CurrentLodIndex_].size() : 0u;
+                SRL::Debug::Print(1, 22, "S1L c:%u j:%u l:%d r:%u",
+                                  (unsigned)seg1TgaPreloadCount_,
+                                  (unsigned)seg1TgaJsonOk_,
+                                  lodDbg[seg1CurrentLodIndex_], rdrFaces);
+            }
         }
         else
         {
             ++seg1LodFrameCounter_;
         }
     }
-    else
-    {
-        SRL::Debug::Print(1, 22, "S1LI c:%u j:%u f:%u r:%u",
-                          (unsigned)seg1TgaPreloadCount_,
-                          (unsigned)seg1TgaJsonOk_,
-                          (unsigned)seg1FamilySlots_.size(),
-                          seg1RendererLodReady_ ? 1u : 0u);
-    }
+}
 
-    std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};
-    std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountById{};
-
+void TrackSystem::RenderVisibleSegmentOrder(
+    const std::vector<SegmentHandle>& orderedHandles,
+    const Vector3D& trackOffset,
+    const Vector3D& lightDirection,
+    const Vector3D& cameraLocation,
+    std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
+    std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+    bool& segment01Logged,
+    bool& segment01Prepared)
+{
     if (!coordinatorReady_)
     {
         // Fallback render path when coordinator is unavailable.
@@ -4992,13 +6139,6 @@ void TrackSystem::RenderFrame(bool renderTrack,
                 {
                     ++renderedCountById[static_cast<size_t>(sid)];
                 }
-            }
-        }
-        for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
-        {
-            if (renderedCountById[id] > 1)
-            {
-                SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u", (unsigned)id, (unsigned)renderedCountById[id]);
             }
         }
         return;
@@ -5125,6 +6265,42 @@ void TrackSystem::RenderFrame(bool renderTrack,
             result.faces = renderer->LastDrawnFaces();
             return result;
         });
+}
+
+void TrackSystem::RenderFrame(bool renderTrack,
+                              const Vector3D& trackOffset,
+                              const Vector3D& lightDirection,
+                              const Vector3D& cameraLocation,
+                              const Vector3D& carWorldPosition)
+{
+    if (!renderTrack || !ready_)
+    {
+        return;
+    }
+
+    bool segment01Logged = false;
+    bool segment01Prepared = false;
+    const bool windowSlid = UpdateActiveSegmentWindowForPosition(carWorldPosition, trackOffset);
+    if (!windowSlid) TryPrefetchUpcomingSegment();
+    if (ShouldRecycleTrackTextureHeap()) RecycleTrackTextureHeap();
+    std::vector<SegmentHandle> orderedHandles = BuildVisibleSegmentOrder(trackOffset, cameraLocation);
+    if (orderedHandles.empty() && !segmentRenderers_.empty())
+    {
+        // Last safety net: keep rendering possible even after transient handle corruption.
+        segmentHandles_ = BuildSegmentHandleTable();
+        orderedHandles = BuildVisibleSegmentOrder(trackOffset, cameraLocation);
+    }
+    RunSeg1DiagnosticsForFrame();
+    std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};
+    std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountById{};
+    RenderVisibleSegmentOrder(orderedHandles,
+                              trackOffset,
+                              lightDirection,
+                              cameraLocation,
+                              preparedCountById,
+                              renderedCountById,
+                              segment01Logged,
+                              segment01Prepared);
 
     for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
     {
@@ -5146,9 +6322,18 @@ void TrackSystem::EndFrame()
     coordinator_.PresentTelemetry();
     soakMonitor_.Update(ready_, coordinator_.Telemetry());
     soakMonitor_.Present();
+    constexpr bool kEnablePerFrameDebugPrints = false;
+    if (!kEnablePerFrameDebugPrints) return;
     // Work RAM monitor for runtime stability tuning.
     const auto hwr = SRL::Memory::HighWorkRam::GetReport();
     const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+    if (hwr.TotalSize == 0 || hwr.FreeSize > hwr.TotalSize)
+    {
+        SRL::Debug::Print(1, 30, "WR H CORRUPT free:%lu tot:%lu",
+                          static_cast<unsigned long>(hwr.FreeSize),
+                          static_cast<unsigned long>(hwr.TotalSize));
+        return;
+    }
     const unsigned long hwrUsed = static_cast<unsigned long>(hwr.TotalSize - hwr.FreeSize);
     const unsigned long hwrTotal = static_cast<unsigned long>(hwr.TotalSize);
     const unsigned long lwrUsed = static_cast<unsigned long>(lwr.TotalSize - lwr.FreeSize);
@@ -5226,6 +6411,32 @@ bool TrackSystem::FindNearestSegment(const Vector3D& worldPosition,
                                      int32_t& outSegmentId,
                                      Vector3D& outSegmentCenter) const
 {
+    if (!segmentCenterCatalog_.empty())
+    {
+        bool hasCandidate = false;
+        SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+        for (size_t i = 0; i < segmentCenterCatalog_.size(); ++i)
+        {
+            const Vector3D center = segmentCenterCatalog_[i] + trackOffset;
+            const SRL::Math::Types::Fxp dx = (center.X - worldPosition.X).Abs();
+            const SRL::Math::Types::Fxp dz = (center.Z - worldPosition.Z).Abs();
+            const SRL::Math::Types::Fxp score = dx + dz;
+            if (!hasCandidate || score < bestScore)
+            {
+                hasCandidate = true;
+                bestScore = score;
+                outSegmentId = static_cast<int32_t>(i + 1);
+                outSegmentCenter = center;
+            }
+        }
+        if (!hasCandidate)
+        {
+            outSegmentId = -1;
+            outSegmentCenter = Vector3D(0.0, 0.0, 0.0);
+        }
+        return hasCandidate;
+    }
+
     if (segmentRenderers_.empty())
     {
         outSegmentId = -1;
@@ -5261,6 +6472,13 @@ bool TrackSystem::FindSegmentCenterById(const int32_t segmentId,
                                         const Vector3D& trackOffset,
                                         Vector3D& outSegmentCenter) const
 {
+    if (segmentId > 0 &&
+        static_cast<size_t>(segmentId) <= segmentCenterCatalog_.size())
+    {
+        outSegmentCenter = segmentCenterCatalog_[static_cast<size_t>(segmentId - 1)] + trackOffset;
+        return true;
+    }
+
     for (const auto& segment : segmentRenderers_)
     {
         if (segment.id != segmentId)

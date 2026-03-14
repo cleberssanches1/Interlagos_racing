@@ -167,9 +167,18 @@ struct SkyBackground
 
     void Update(int32_t yawDeg, int32_t pitchDeg)
     {
-        if (!loaded || mapWidth.RawValue() == 0)
+        if (!loaded || !tile)
         {
             return;
+        }
+        if (mapWidth.RawValue() == 0 || mapHeight.RawValue() == 0)
+        {
+            auto tileInfo = tile->GetInfo();
+            mapWidth = SRL::Math::Types::Fxp::Convert(tileInfo.MapWidth * (tileInfo.CharSize ? 16 : 8));
+            mapHeight = SRL::Math::Types::Fxp::Convert(tileInfo.MapHeight * (tileInfo.CharSize ? 16 : 8));
+            if (mapWidth.RawValue() == 0) mapWidth = SRL::Math::Types::Fxp::Convert(512);
+            if (mapHeight.RawValue() == 0) mapHeight = SRL::Math::Types::Fxp::Convert(256);
+            SRL::VDP2::NBG0::LoadTilemap(*tile);
         }
 
         drift += driftStep;
@@ -189,6 +198,12 @@ struct SkyBackground
         while (scrollY.RawValue() >= mapHeight.RawValue()) scrollY -= mapHeight;
         while (scrollY.RawValue() < 0) scrollY += mapHeight;
         scroll.Y = scrollY;
+        // Reassert NBG0 state every frame for robustness when other systems touch VDP2.
+        SRL::VDP2::NBG0::SetPriority(SRL::VDP2::Priority::Layer6);
+        SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(SRL::Math::Types::Fxp(1.0f), SRL::Math::Types::Fxp(1.0f));
+        SRL::VDP2::NBG0::SetScale(skyScale);
+        SRL::VDP2::NBG0::ScrollEnable();
+        SRL::VDP2::NBG1::ScrollDisable();
         SRL::VDP2::NBG0::SetPosition(scroll);
     }
 };

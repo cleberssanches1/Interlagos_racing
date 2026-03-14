@@ -138,6 +138,273 @@ static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, b
     return pipe;
 }
 
+static void RefreshCarModelMetrics(ModelObject* carPtr,
+                                   bool& outCarWasSmooth,
+                                   bool& outIsSmoothMesh,
+                                   uint32_t& outFaceCount,
+                                   uint32_t& outVertexCount,
+                                   uint32_t& outMeshCount)
+{
+    outCarWasSmooth = carPtr ? carPtr->IsSmooth() : false;
+    outIsSmoothMesh = outCarWasSmooth;
+    outFaceCount = carPtr ? carPtr->GetFaceCount() : 0;
+    outVertexCount = carPtr ? carPtr->GetVertexCount() : 0;
+    outMeshCount = carPtr ? carPtr->GetMeshCount() : 0;
+}
+
+static void ValidateCarTextureSlots(ModelObject* carPtr, uint32_t meshCount, bool isSmoothMesh);
+
+static void SyncLoadedCarState(ModelObject* carPtr,
+                               bool carValid,
+                               bool logCar,
+                               bool& outCarWasSmooth,
+                               bool& outIsSmoothMesh,
+                               uint32_t& outFaceCount,
+                               uint32_t& outVertexCount,
+                               uint32_t& outMeshCount)
+{
+    RefreshCarModelMetrics(carPtr, outCarWasSmooth, outIsSmoothMesh, outFaceCount, outVertexCount, outMeshCount);
+    if (!carValid && logCar)
+    {
+        MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
+    }
+    ValidateCarTextureSlots(carPtr, outMeshCount, outIsSmoothMesh);
+}
+
+static Vector3D ComputeCarModelCenter(ModelObject* carPtr, uint32_t meshCount, bool isSmoothMesh)
+{
+    Vector3D center(0.0, 0.0, 0.0);
+    if (!carPtr || meshCount == 0) return center;
+
+    Vector3D minCar(32767, 32767, 32767);
+    Vector3D maxCar(-32768, -32768, -32768);
+    for (size_t m = 0; m < meshCount; ++m)
+    {
+        if (isSmoothMesh)
+        {
+            auto* mesh = carPtr->GetMesh<SRL::Types::SmoothMesh>(m);
+            if (!mesh) continue;
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
+            {
+                const auto& p = mesh->Vertices[v];
+                minCar.X = SRL::Math::Min(minCar.X, p.X);
+                minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
+                minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
+                maxCar.X = SRL::Math::Max(maxCar.X, p.X);
+                maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
+                maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
+            }
+        }
+        else
+        {
+            auto* mesh = carPtr->GetMesh<SRL::Types::Mesh>(m);
+            if (!mesh) continue;
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
+            {
+                const auto& p = mesh->Vertices[v];
+                minCar.X = SRL::Math::Min(minCar.X, p.X);
+                minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
+                minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
+                maxCar.X = SRL::Math::Max(maxCar.X, p.X);
+                maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
+                maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
+            }
+        }
+    }
+
+    center.X = (minCar.X + maxCar.X) / 2;
+    center.Y = (minCar.Y + maxCar.Y) / 2;
+    center.Z = (minCar.Z + maxCar.Z) / 2;
+    return center;
+}
+
+static void ComputeCarModelBounds(ModelObject* carPtr,
+                                  uint32_t meshCount,
+                                  bool isSmoothMesh,
+                                  Vector3D& outMin,
+                                  Vector3D& outMax)
+{
+    outMin = Vector3D(32767, 32767, 32767);
+    outMax = Vector3D(-32768, -32768, -32768);
+    if (!carPtr || meshCount == 0) return;
+
+    for (size_t m = 0; m < meshCount; ++m)
+    {
+        if (isSmoothMesh)
+        {
+            auto* mesh = carPtr->GetMesh<SRL::Types::SmoothMesh>(m);
+            if (!mesh) continue;
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
+            {
+                const auto& p = mesh->Vertices[v];
+                outMin.X = SRL::Math::Min(outMin.X, p.X);
+                outMin.Y = SRL::Math::Min(outMin.Y, p.Y);
+                outMin.Z = SRL::Math::Min(outMin.Z, p.Z);
+                outMax.X = SRL::Math::Max(outMax.X, p.X);
+                outMax.Y = SRL::Math::Max(outMax.Y, p.Y);
+                outMax.Z = SRL::Math::Max(outMax.Z, p.Z);
+            }
+        }
+        else
+        {
+            auto* mesh = carPtr->GetMesh<SRL::Types::Mesh>(m);
+            if (!mesh) continue;
+            for (size_t v = 0; v < mesh->VertexCount; ++v)
+            {
+                const auto& p = mesh->Vertices[v];
+                outMin.X = SRL::Math::Min(outMin.X, p.X);
+                outMin.Y = SRL::Math::Min(outMin.Y, p.Y);
+                outMin.Z = SRL::Math::Min(outMin.Z, p.Z);
+                outMax.X = SRL::Math::Max(outMax.X, p.X);
+                outMax.Y = SRL::Math::Max(outMax.Y, p.Y);
+                outMax.Z = SRL::Math::Max(outMax.Z, p.Z);
+            }
+        }
+    }
+}
+
+static void ValidateCarTextureSlots(ModelObject* carPtr, uint32_t meshCount, bool isSmoothMesh)
+{
+    if (!carPtr) return;
+
+    const int32_t firstTexture = carPtr->GetFirstTextureIndex();
+    const size_t texCount = carPtr->GetTextureCount();
+    if (firstTexture >= 0 && texCount > 0)
+    {
+        bool textureSlotError = false;
+        for (size_t mi = 0; mi < meshCount && !textureSlotError; ++mi)
+        {
+            if (isSmoothMesh)
+            {
+                auto* mesh = carPtr->GetMesh<SRL::Types::SmoothMesh>(mi);
+                if (!mesh || mesh->Attributes == nullptr) continue;
+                for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
+                {
+                    const auto& attr = mesh->Attributes[fi];
+                    if (attr.Texture == No_Texture) continue;
+                    if (attr.Texture < firstTexture || attr.Texture >= firstTexture + static_cast<int32_t>(texCount))
+                    {
+                        if constexpr (kCarLogs)
+                        {
+                            MLOG(1, 16, "Car texture slot inv??lido mesh:%lu face:%lu tex:%u outside [%d,%lu)",
+                                 (unsigned long)mi, (unsigned long)fi, (unsigned)attr.Texture, firstTexture, (unsigned long)texCount);
+                        }
+                        textureSlotError = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                auto* mesh = carPtr->GetMesh<SRL::Types::Mesh>(mi);
+                if (!mesh || mesh->Attributes == nullptr) continue;
+                for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
+                {
+                    const auto& attr = mesh->Attributes[fi];
+                    if (attr.Texture == No_Texture) continue;
+                    if (attr.Texture < firstTexture || attr.Texture >= firstTexture + static_cast<int32_t>(texCount))
+                    {
+                        if constexpr (kCarLogs)
+                        {
+                            MLOG(1, 16, "Car texture slot inv??lido mesh:%lu face:%lu tex:%u outside [%d,%lu)",
+                                 (unsigned long)mi, (unsigned long)fi, (unsigned)attr.Texture, firstTexture, (unsigned long)texCount);
+                        }
+                        textureSlotError = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if constexpr (kCarLogs)
+        {
+            if (!textureSlotError)
+            {
+                MLOG(1, 17, "Car texture slots OK first:%d count:%lu", firstTexture, (unsigned long)texCount);
+            }
+        }
+    }
+    else
+    {
+        if constexpr (kCarLogs)
+        {
+            MLOG(1, 17, "Car texture slots indispon??veis primeiro:%d count:%lu", firstTexture, (unsigned long)texCount);
+        }
+    }
+}
+
+static void BuildCarDrawOrder(uint32_t meshCount, std::array<size_t, 5>& outOrder, size_t& outOrderCount)
+{
+    outOrder = {1, 2, 3, 4, 0};
+    if (meshCount == 1)
+    {
+        outOrder = {0, 1, 2, 3, 4};
+        outOrderCount = 1;
+        return;
+    }
+    outOrderCount = (meshCount < 5) ? meshCount : 5;
+}
+
+static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
+                                                    bool enableBg,
+                                                    bool renderTrack,
+                                                    bool renderCar,
+                                                    bool renderAxes,
+                                                    bool trackSystemReady,
+                                                    bool logTrack,
+                                                    bool logCar,
+                                                    bool enableManualGouraudCopy,
+                                                    uint32_t faceCount,
+                                                    uint32_t vertexCount,
+                                                    const Vector3D& trackSegOffset,
+                                                    const Vector3D& modelOffset,
+                                                    const Vector3D& carWorldPosition,
+                                                    const Vector3D& lightDirection,
+                                                    BackgroundManager& bgManager,
+                                                    CameraSystem& cameraSystem,
+                                                    TrackSystem& trackSystem,
+                                                    std::unique_ptr<Game::CarSystem>& carSystem,
+                                                    RenderPipeline& renderPipeline,
+                                                    HudSystem& hudSystem,
+                                                    bool enableRuntimeSimulation,
+                                                    Game::ITrackCollisionQuery* trackCollision,
+                                                    Game::ICarPhysics* carPhysics,
+                                                    Game::IGameplayTick* gameplayTick,
+                                                    Game::IAudioEvents* audioEvents)
+{
+    GameLoopSystem::Context loopContext{};
+    loopContext.cartOkFlag = cartOkFlag;
+    loopContext.enableBg = enableBg;
+    loopContext.renderTrack = renderTrack;
+    loopContext.renderCar = renderCar;
+    loopContext.renderAxes = renderAxes;
+    loopContext.trackSystemReady = trackSystemReady;
+    loopContext.verboseFrameLogs = kVerboseFrameLogs;
+    loopContext.logTrack = logTrack;
+    loopContext.logCar = (logCar && kCarLogs);
+    // Estabilidade: manter apenas um pipeline na Slave por frame (pista).
+    // Simulation/car prepare em Slave junto com producer da pista causa conflito de jobs.
+    loopContext.enableSlaveForCarPrepare = false;
+    loopContext.enableSlaveForSimulation = false;
+    loopContext.enableManualGouraudCopy = enableManualGouraudCopy;
+    loopContext.faceCount = faceCount;
+    loopContext.vertexCount = vertexCount;
+    loopContext.trackSegOffset = trackSegOffset;
+    loopContext.modelOffset = modelOffset;
+    loopContext.carWorldPosition = carWorldPosition;
+    loopContext.lightDirection = lightDirection;
+    loopContext.bgManager = &bgManager;
+    loopContext.cameraSystem = &cameraSystem;
+    loopContext.trackSystem = &trackSystem;
+    loopContext.carSystem = &carSystem;
+    loopContext.renderPipeline = &renderPipeline;
+    loopContext.hudSystem = &hudSystem;
+    loopContext.trackCollision = enableRuntimeSimulation ? trackCollision : nullptr;
+    loopContext.carPhysics = enableRuntimeSimulation ? carPhysics : nullptr;
+    loopContext.gameplayTick = enableRuntimeSimulation ? gameplayTick : nullptr;
+    loopContext.audioEvents = enableRuntimeSimulation ? audioEvents : nullptr;
+    return loopContext;
+}
+
 class GameApp {
 public:
     // Inicializa engine, carrega recursos e executa o loop principal.
@@ -182,9 +449,9 @@ int GameApp::Run()
     // silencia logs do teste HWR
     }
 
-    const bool renderTrack = true; // teste pista
-    const bool renderCar = true; // pista + carro
-    const bool loadCarAfterTrack = true; // pista primeiro, depois carro
+    const bool renderTrack = true; // modo pista: renderiza pista
+    const bool renderCar = true; // ativa renderizacao do CAR1
+    const bool loadCarAfterTrack = true; // mantem fluxo padrao de carga da pista
     const bool enableTrackSlaveProducer = false; // diagnostico: desativa Slave para estabilizar
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
@@ -206,23 +473,17 @@ int GameApp::Run()
 
     ModelObject* carPtr = carPipe.ActiveModel();
     bool carValid = carPipe.Loaded();
-    if (!carValid && logCar)
-    {
-        MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
-    }
 // Se faltar cart, travamos o loop exibindo a mensagem
     bool cartOkFlag = cartOk;
     SRL::Math::Types::Vector3D trackSegOffset(0, 0, 0);
 
-    bool carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
-    bool isSmoothMesh = carWasSmooth; // restaura carregamento smooth
+    bool carWasSmooth = false;
+    bool isSmoothMesh = false;
+    uint32_t faceCount = 0;
+    uint32_t vertexCount = 0;
+    uint32_t meshCount = 0;
+    SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
     // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
-
-    uint32_t faceCount = carPtr ? carPtr->GetFaceCount() : 0;
-
-    uint32_t vertexCount = carPtr ? carPtr->GetVertexCount() : 0;
-
-    uint32_t meshCount = carPtr ? carPtr->GetMeshCount() : 0;
 
     if constexpr (kCarLogs)
     {
@@ -232,77 +493,6 @@ int GameApp::Run()
              vertexCount,
              meshCount,
              isSmoothMesh ? 1 : 0);
-    }
-
-        if (carPtr)
-    {
-        int32_t firstTexture = carPtr->GetFirstTextureIndex();
-        size_t texCount = carPtr->GetTextureCount();
-        if (firstTexture >= 0 && texCount > 0)
-        {
-            bool textureSlotError = false;
-            for (size_t mi = 0; mi < meshCount && !textureSlotError; ++mi)
-            {
-                if (isSmoothMesh)
-                {
-                    auto* mesh = carPtr->GetMesh<SRL::Types::SmoothMesh>(mi);
-                    if (!mesh || mesh->Attributes == nullptr) continue;
-                    for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
-                    {
-                        const auto& attr = mesh->Attributes[fi];
-                        if (attr.Texture != No_Texture)
-                        {
-                            if (attr.Texture < firstTexture || attr.Texture >= firstTexture + static_cast<int32_t>(texCount))
-                            {
-                                if constexpr (kCarLogs)
-                                {
-                                    MLOG(1, 16, "Car texture slot inv??lido mesh:%lu face:%lu tex:%u outside [%d,%lu)",
-                                         (unsigned long)mi, (unsigned long)fi, (unsigned)attr.Texture, firstTexture, (unsigned long)texCount);
-                                }
-                                textureSlotError = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    auto* mesh = carPtr->GetMesh<SRL::Types::Mesh>(mi);
-                    if (!mesh || mesh->Attributes == nullptr) continue;
-                    for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
-                    {
-                        const auto& attr = mesh->Attributes[fi];
-                        if (attr.Texture != No_Texture)
-                        {
-                            if (attr.Texture < firstTexture || attr.Texture >= firstTexture + static_cast<int32_t>(texCount))
-                            {
-                                if constexpr (kCarLogs)
-                                {
-                                    MLOG(1, 16, "Car texture slot inv??lido mesh:%lu face:%lu tex:%u outside [%d,%lu)",
-                                         (unsigned long)mi, (unsigned long)fi, (unsigned)attr.Texture, firstTexture, (unsigned long)texCount);
-                                }
-                                textureSlotError = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if constexpr (kCarLogs)
-            {
-                if (!textureSlotError)
-                {
-            MLOG(1, 17, "Car texture slots OK first:%d count:%lu", firstTexture, (unsigned long)texCount);
-                }
-            }
-        }
-        else
-        {
-            if constexpr (kCarLogs)
-            {
-                MLOG(1, 17, "Car texture slots indispon??veis primeiro:%d count:%lu", firstTexture, (unsigned long)texCount);
-            }
-        }
     }
 
     // Simple frustum
@@ -366,49 +556,7 @@ int GameApp::Run()
 
 
     // Center of model from bounds to keep imported cars in camera view.
-    Vector3D modelCenter = Vector3D(0.0, 0.0, 0.0);
-    if (carPtr && meshCount > 0)
-    {
-        SRL::Math::Types::Vector3D minCar = Vector3D(32767, 32767, 32767);
-        SRL::Math::Types::Vector3D maxCar = Vector3D(-32768, -32768, -32768);
-        for (size_t m = 0; m < meshCount; ++m)
-        {
-            if (isSmoothMesh)
-            {
-                auto* mesh = carPtr->template GetMesh<SRL::Types::SmoothMesh>(m);
-                if (!mesh) continue;
-                for (size_t v = 0; v < mesh->VertexCount; ++v)
-                {
-                    const auto& p = mesh->Vertices[v];
-                    minCar.X = SRL::Math::Min(minCar.X, p.X);
-                    minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
-                    minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
-                    maxCar.X = SRL::Math::Max(maxCar.X, p.X);
-                    maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
-                    maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
-                }
-            }
-            else
-            {
-                auto* mesh = carPtr->template GetMesh<SRL::Types::Mesh>(m);
-                if (!mesh) continue;
-                for (size_t v = 0; v < mesh->VertexCount; ++v)
-                {
-                    const auto& p = mesh->Vertices[v];
-                    minCar.X = SRL::Math::Min(minCar.X, p.X);
-                    minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
-                    minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
-                    maxCar.X = SRL::Math::Max(maxCar.X, p.X);
-                    maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
-                    maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
-                }
-            }
-        }
-        modelCenter = Vector3D(
-            (minCar.X + maxCar.X) / 2,
-            (minCar.Y + maxCar.Y) / 2,
-            (minCar.Z + maxCar.Z) / 2);
-    }
+    Vector3D modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     Vector3D carWorldPosition(0.0, 0.0, 0.0);
 
@@ -417,9 +565,9 @@ int GameApp::Run()
     TrackSystem::Config trackConfig{};
     trackConfig.initialSegments = 20;
     trackConfig.minSegments = 20;
-    // Conservative track budget to keep VDP1 command list stable with car rendering enabled.
+    // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
-    trackConfig.initialFaces = 5000;
+    trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
@@ -458,60 +606,10 @@ int GameApp::Run()
         carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
-        carWasSmooth = carPtr ? carPtr->IsSmooth() : false;
-        isSmoothMesh = carWasSmooth;
-        faceCount = carPtr ? carPtr->GetFaceCount() : 0;
-        vertexCount = carPtr ? carPtr->GetVertexCount() : 0;
-        meshCount = carPtr ? carPtr->GetMeshCount() : 0;
-        if (!carValid && logCar)
-        {
-            MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
-        }
+        SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
 
         // Recompute model center now that car was loaded after track textures.
-        modelCenter = Vector3D(0.0, 0.0, 0.0);
-        if (carPtr && meshCount > 0)
-        {
-            SRL::Math::Types::Vector3D minCar = Vector3D(32767, 32767, 32767);
-            SRL::Math::Types::Vector3D maxCar = Vector3D(-32768, -32768, -32768);
-            for (size_t m = 0; m < meshCount; ++m)
-            {
-                if (isSmoothMesh)
-                {
-                    auto* mesh = carPtr->template GetMesh<SRL::Types::SmoothMesh>(m);
-                    if (!mesh) continue;
-                    for (size_t v = 0; v < mesh->VertexCount; ++v)
-                    {
-                        const auto& p = mesh->Vertices[v];
-                        minCar.X = SRL::Math::Min(minCar.X, p.X);
-                        minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
-                        minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
-                        maxCar.X = SRL::Math::Max(maxCar.X, p.X);
-                        maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
-                        maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
-                    }
-                }
-                else
-                {
-                    auto* mesh = carPtr->template GetMesh<SRL::Types::Mesh>(m);
-                    if (!mesh) continue;
-                    for (size_t v = 0; v < mesh->VertexCount; ++v)
-                    {
-                        const auto& p = mesh->Vertices[v];
-                        minCar.X = SRL::Math::Min(minCar.X, p.X);
-                        minCar.Y = SRL::Math::Min(minCar.Y, p.Y);
-                        minCar.Z = SRL::Math::Min(minCar.Z, p.Z);
-                        maxCar.X = SRL::Math::Max(maxCar.X, p.X);
-                        maxCar.Y = SRL::Math::Max(maxCar.Y, p.Y);
-                        maxCar.Z = SRL::Math::Max(maxCar.Z, p.Z);
-                    }
-                }
-            }
-            modelCenter = Vector3D(
-                (minCar.X + maxCar.X) / 2,
-                (minCar.Y + maxCar.Y) / 2,
-                (minCar.Z + maxCar.Z) / 2);
-        }
+        modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);
         modelOffset = Vector3D(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     }
     if (renderTrack && renderCar && forceSolidCarWhenTrack && carValid && carPtr)
@@ -563,17 +661,9 @@ int GameApp::Run()
 
     // Car draw order: adapt to mesh count.
     // For single-mesh cars, always draw mesh 0.
-    std::array<size_t, 5> drawOrder = {1, 2, 3, 4, 0};
+    std::array<size_t, 5> drawOrder{};
     size_t orderCount = 0;
-    if (meshCount == 1)
-    {
-        drawOrder = {0, 1, 2, 3, 4};
-        orderCount = 1;
-    }
-    else
-    {
-        orderCount = (meshCount < 5) ? meshCount : 5;
-    }
+    BuildCarDrawOrder(meshCount, drawOrder, orderCount);
 
     Game::CarSystem::Config carConfig{};
     carConfig.modelCenter = modelCenter;
@@ -595,72 +685,9 @@ int GameApp::Run()
     }
     RenderPipeline renderPipeline;
     // Compute bounds for debugging
-
-    SRL::Math::Types::Vector3D minV = Vector3D(32767, 32767, 32767);
-
-    SRL::Math::Types::Vector3D maxV = Vector3D(-32768, -32768, -32768);
-
-    for (size_t m = 0; m < meshCount; ++m)
-
-    {
-
-        if (isSmoothMesh)
-
-        {
-
-            auto* mesh = carPtr ? carPtr->template GetMesh<SRL::Types::SmoothMesh>(m) : nullptr;
-
-            for (size_t v = 0; v < mesh->VertexCount; ++v)
-
-            {
-
-                const auto& p = mesh->Vertices[v];
-
-                minV.X = SRL::Math::Min(minV.X, p.X);
-
-                minV.Y = SRL::Math::Min(minV.Y, p.Y);
-
-                minV.Z = SRL::Math::Min(minV.Z, p.Z);
-
-                maxV.X = SRL::Math::Max(maxV.X, p.X);
-
-                maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
-
-                maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
-
-            }
-
-        }
-
-        else
-
-        {
-
-            auto* mesh = carPtr ? carPtr->template GetMesh<SRL::Types::Mesh>(m) : nullptr;
-
-            for (size_t v = 0; v < mesh->VertexCount; ++v)
-
-            {
-
-                const auto& p = mesh->Vertices[v];
-
-                minV.X = SRL::Math::Min(minV.X, p.X);
-
-                minV.Y = SRL::Math::Min(minV.Y, p.Y);
-
-                minV.Z = SRL::Math::Min(minV.Z, p.Z);
-
-                maxV.X = SRL::Math::Max(maxV.X, p.X);
-
-                maxV.Y = SRL::Math::Max(maxV.Y, p.Y);
-
-                maxV.Z = SRL::Math::Max(maxV.Z, p.Z);
-
-            }
-
-        }
-
-    }
+    SRL::Math::Types::Vector3D minV{};
+    SRL::Math::Types::Vector3D maxV{};
+    ComputeCarModelBounds(carPtr, meshCount, isSmoothMesh, minV, maxV);
 
 
 
@@ -673,37 +700,32 @@ int GameApp::Run()
     // Safety mode: keep runtime simulation disabled while stabilizing render path.
     const bool enableRuntimeSimulation = false;
 
-    GameLoopSystem::Context loopContext{};
-    loopContext.cartOkFlag = &cartOkFlag;
-    loopContext.enableBg = enableBg;
-    loopContext.renderTrack = renderTrack;
-    loopContext.renderCar = renderCar;
-    loopContext.renderAxes = renderAxes;
-    loopContext.trackSystemReady = trackSystemReady;
-    loopContext.verboseFrameLogs = kVerboseFrameLogs;
-    loopContext.logTrack = logTrack;
-    loopContext.logCar = (logCar && kCarLogs);
-    // Estabilidade: manter apenas um pipeline na Slave por frame (pista).
-    // Simulation/car prepare em Slave junto com producer da pista causa conflito de jobs.
-    loopContext.enableSlaveForCarPrepare = false;
-    loopContext.enableSlaveForSimulation = false;
-    loopContext.enableManualGouraudCopy = enableSmoothLighting;
-    loopContext.faceCount = faceCount;
-    loopContext.vertexCount = vertexCount;
-    loopContext.trackSegOffset = trackSegOffset;
-    loopContext.modelOffset = modelOffset;
-    loopContext.carWorldPosition = carWorldPosition;
-    loopContext.lightDirection = lightDirection;
-    loopContext.bgManager = &bgManager;
-    loopContext.cameraSystem = &cameraSystem;
-    loopContext.trackSystem = &trackSystem;
-    loopContext.carSystem = &carSystem;
-    loopContext.renderPipeline = &renderPipeline;
-    loopContext.hudSystem = &hudSystem;
-    loopContext.trackCollision = enableRuntimeSimulation ? static_cast<Game::ITrackCollisionQuery*>(&trackCollision) : nullptr;
-    loopContext.carPhysics = enableRuntimeSimulation ? static_cast<Game::ICarPhysics*>(&carPhysics) : nullptr;
-    loopContext.gameplayTick = enableRuntimeSimulation ? static_cast<Game::IGameplayTick*>(&gameplayTick) : nullptr;
-    loopContext.audioEvents = enableRuntimeSimulation ? static_cast<Game::IAudioEvents*>(&audioEvents) : nullptr;
+    GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
+                                                               enableBg,
+                                                               renderTrack,
+                                                               renderCar,
+                                                               renderAxes,
+                                                               trackSystemReady,
+                                                               logTrack,
+                                                               logCar,
+                                                               enableSmoothLighting,
+                                                               faceCount,
+                                                               vertexCount,
+                                                               trackSegOffset,
+                                                               modelOffset,
+                                                               carWorldPosition,
+                                                               lightDirection,
+                                                               bgManager,
+                                                               cameraSystem,
+                                                               trackSystem,
+                                                               carSystem,
+                                                               renderPipeline,
+                                                               hudSystem,
+                                                               enableRuntimeSimulation,
+                                                               static_cast<Game::ITrackCollisionQuery*>(&trackCollision),
+                                                               static_cast<Game::ICarPhysics*>(&carPhysics),
+                                                               static_cast<Game::IGameplayTick*>(&gameplayTick),
+                                                               static_cast<Game::IAudioEvents*>(&audioEvents));
 
     GameLoopSystem gameLoop(loopContext);
     AppState::Set(AppState::Stage::LoopStart, 0);

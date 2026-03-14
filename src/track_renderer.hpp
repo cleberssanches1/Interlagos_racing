@@ -9,6 +9,7 @@
 #include <vector>
 #include <cstdint>
 #include <algorithm>
+#include <utility>
 
 struct ModelBounds
 {
@@ -173,13 +174,24 @@ public:
                                      const std::vector<SRL::Types::Polygon>& faces,
                                      const std::vector<SRL::Types::Attribute>& attrs)
     {
+        // Keep compatibility for existing callers and route through move-based path.
+        std::vector<SRL::Math::Types::Vector3D> vertsCopy = verts;
+        std::vector<SRL::Types::Polygon> facesCopy = faces;
+        std::vector<SRL::Types::Attribute> attrsCopy = attrs;
+        return InitializeFromComponentData(std::move(vertsCopy), std::move(facesCopy), std::move(attrsCopy));
+    }
+
+    bool InitializeFromComponentData(std::vector<SRL::Math::Types::Vector3D>&& verts,
+                                     std::vector<SRL::Types::Polygon>&& faces,
+                                     std::vector<SRL::Types::Attribute>&& attrs)
+    {
         Reset();
         if (verts.empty() || faces.empty() || attrs.size() != faces.size()) return false;
 
         componentMode_ = true;
-        componentVerts_ = verts;
-        componentFaces_ = faces;
-        componentAttrs_ = attrs;
+        componentVerts_ = std::move(verts);
+        componentFaces_ = std::move(faces);
+        componentAttrs_ = std::move(attrs);
         hasTrack_ = true;
         isSmooth_ = false;
         meshCount_ = 1;
@@ -208,6 +220,64 @@ public:
         meshBytes_.assign(1, memStats_.bytes);
         meshMap_.assign(1, 0);
         trackOffset_ = {};
+        return true;
+    }
+
+    // Rebuild component mesh by swapping caller-owned buffers.
+    // This keeps old allocations alive in caller scratch vectors, enabling
+    // deterministic reuse across streamed segment updates.
+    bool InitializeFromComponentDataRecycled(std::vector<SRL::Math::Types::Vector3D>& verts,
+                                             std::vector<SRL::Types::Polygon>& faces,
+                                             std::vector<SRL::Types::Attribute>& attrs)
+    {
+        if (verts.empty() || faces.empty() || attrs.size() != faces.size()) return false;
+
+        if (trackObj_)
+        {
+            delete trackObj_;
+            trackObj_ = nullptr;
+        }
+
+        componentMode_ = true;
+        hasTrack_ = true;
+        isSmooth_ = false;
+        path_ = nullptr;
+        startMeshIdx_ = 0;
+        trackOffset_ = {};
+        lastDrawnFaces_ = 0;
+        lastDrawnMeshes_ = 0;
+        smoothCache_.clear();
+        flatCache_.clear();
+
+        componentVerts_.swap(verts);
+        componentFaces_.swap(faces);
+        componentAttrs_.swap(attrs);
+
+        meshCount_ = 1;
+        faceCount_ = static_cast<uint32_t>(componentFaces_.size());
+        vertexCount_ = static_cast<uint32_t>(componentVerts_.size());
+        memStats_.verts = vertexCount_;
+        memStats_.faces = faceCount_;
+        memStats_.bytes = static_cast<uint32_t>(componentVerts_.size() * sizeof(SRL::Math::Types::Vector3D) +
+                                                componentFaces_.size() * sizeof(SRL::Types::Polygon) +
+                                                componentAttrs_.size() * sizeof(SRL::Types::Attribute));
+
+        SRL::Math::Types::Vector3D minv(32767, 32767, 32767);
+        SRL::Math::Types::Vector3D maxv(-32768, -32768, -32768);
+        for (const auto& v : componentVerts_)
+        {
+            minv.X = SRL::Math::Min(minv.X, v.X);
+            minv.Y = SRL::Math::Min(minv.Y, v.Y);
+            minv.Z = SRL::Math::Min(minv.Z, v.Z);
+            maxv.X = SRL::Math::Max(maxv.X, v.X);
+            maxv.Y = SRL::Math::Max(maxv.Y, v.Y);
+            maxv.Z = SRL::Math::Max(maxv.Z, v.Z);
+        }
+        bounds_.min = minv;
+        bounds_.max = maxv;
+        meshCenters_.assign(1, (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+        meshBytes_.assign(1, memStats_.bytes);
+        meshMap_.assign(1, 0);
         return true;
     }
 
@@ -837,7 +907,9 @@ public:
                 const int32_t slot = faceTextureSlots[i];
                 if (slot < 0) continue;
                 if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
-                applyAttrTexture(componentAttrs_[i], static_cast<uint16_t>(slot));
+                const uint16_t slotU16 = static_cast<uint16_t>(slot);
+                if (SRL::VDP1::Metadata[slotU16].Texture == nullptr) continue;
+                applyAttrTexture(componentAttrs_[i], slotU16);
                 ++applied;
             }
             return applied;
@@ -856,7 +928,9 @@ public:
                 const int32_t slot = faceTextureSlots[globalFace];
                 if (slot < 0) continue;
                 if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
-                applyAttrTexture(mesh->Attributes[fi], static_cast<uint16_t>(slot));
+                const uint16_t slotU16 = static_cast<uint16_t>(slot);
+                if (SRL::VDP1::Metadata[slotU16].Texture == nullptr) continue;
+                applyAttrTexture(mesh->Attributes[fi], slotU16);
                 ++applied;
             }
         };
@@ -889,6 +963,8 @@ public:
     {
         size_t applied = 0;
         if (slot == No_Texture) return 0;
+        if (slot >= SRL_MAX_TEXTURES) return 0;
+        if (SRL::VDP1::Metadata[slot].Texture == nullptr) return 0;
 
         auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t actualSlot)
         {
@@ -1012,6 +1088,12 @@ public:
         }
     }
 
+    // Release CPU-side buffers so streamed windows do not accumulate peak sizes.
+    void RecycleRuntimeState()
+    {
+        Reset();
+    }
+
     ~TrackRenderer()
     {
         Reset();
@@ -1055,12 +1137,12 @@ private:
     {
         if (trackObj_) { delete trackObj_; trackObj_ = nullptr; }
         componentMode_ = false;
-        componentVerts_.clear();
-        componentFaces_.clear();
-        componentAttrs_.clear();
-        meshCenters_.clear();
-        meshBytes_.clear();
-        meshMap_.clear();
+        decltype(componentVerts_)().swap(componentVerts_);
+        decltype(componentFaces_)().swap(componentFaces_);
+        decltype(componentAttrs_)().swap(componentAttrs_);
+        decltype(meshCenters_)().swap(meshCenters_);
+        decltype(meshBytes_)().swap(meshBytes_);
+        decltype(meshMap_)().swap(meshMap_);
         meshCount_ = 0;
         faceCount_ = 0;
         vertexCount_ = 0;
@@ -1072,8 +1154,8 @@ private:
         startMeshIdx_ = 0;
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        smoothCache_.clear();
-        flatCache_.clear();
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
     }
     // Ensure a mesh has a cached copy with forced attributes for flat lighting.
     void EnsureCached(size_t idx)

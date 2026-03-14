@@ -13,8 +13,8 @@ SRL_USE_SGL_SOUND_DRIVER = 1    # Set to 1 if you want to use SGL sound driver, 
 SRL_ENABLE_FREQ_ANALYSIS = 1    # Set to 1 if you want to enable frequency analysis for CD audio, this will load a DSP program into effect slot 1, SGL sound driver must be enabled
 
 # SGL configuration
-SGL_MAX_VERTICES = 50000        # Number of vertices that can be used
-SGL_MAX_POLYGONS = 10000        # Number of polygons that can be used
+SGL_MAX_VERTICES = 2200         # Keep SGL work area below TransList (0x060FB800)
+SGL_MAX_POLYGONS = 1700         # Values above this overflow WORK_AREA and corrupt TransList/stack
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 

@@ -234,139 +234,81 @@ inline TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCoun
     return res;
 }
 
-inline TrackSerializedCopy SerializeTrackToCart(const char* path, size_t chunkSize)
-{
-    TrackSerializedCopy result{};
-    SRL::Cd::File file(path);
-    if (!file.Exists())
-    {
-        SRL::Debug::Print(1, 3, "Track serialize fail (missing): %s", path);
-        return result;
-    }
-
-    if (!file.Open())
-    {
-        SRL::Debug::Print(1, 3, "Track serialize fail (open): %s", path);
-        return result;
-    }
-
-    size_t desiredSize = static_cast<size_t>(std::max<int32_t>(0, file.Size.Bytes));
-    size_t freeBefore = SRL::Memory::CartRam::GetFreeSpace();
-    size_t maxCartSize = SRL::Memory::CartRam::GetSize();
-    size_t allocSize = std::min({desiredSize > 0 ? desiredSize : maxCartSize, freeBefore, maxCartSize});
-    if (allocSize == 0)
-    {
-        SRL::Debug::Print(1, 3, "Track serialize fail (no cart space) %s desired:%u free:%u", path, (unsigned)desiredSize, (unsigned)freeBefore);
-        return result;
-    }
-
-    void* cartBuffer = SRL::Memory::CartRam::Malloc(allocSize);
-    if (!cartBuffer)
-    {
-        SRL::Debug::Print(1, 3, "Track serialize fail (malloc): %s sz:%u", path, (unsigned)allocSize);
-        return result;
-    }
-
-    std::vector<uint8_t> tempBuffer(std::min(chunkSize, allocSize));
-    size_t written = 0;
-    bool overflow = false;
-    while (written < allocSize)
-    {
-        int32_t toRead = static_cast<int32_t>(std::min(tempBuffer.size(), allocSize - written));
-        if (toRead <= 0) break;
-
-        int32_t read = file.Read(toRead, tempBuffer.data());
-        if (read < 0)
-        {
-            SRL::Memory::CartRam::Free(cartBuffer);
-            SRL::Debug::Print(1, 3, "Track serialize fail (read error): %s", path);
-            return result;
-        }
-        if (read == 0)
-        {
-            break;
-        }
-
-        slDMACopy(tempBuffer.data(), reinterpret_cast<uint8_t*>(cartBuffer) + written, static_cast<size_t>(read));
-        written += static_cast<size_t>(read);
-    }
-
-    if (written == allocSize)
-    {
-        int32_t extra = file.Read(1, tempBuffer.data());
-        if (extra > 0)
-        {
-            overflow = true;
-        }
-    }
-
-    if (overflow)
-    {
-        SRL::Memory::CartRam::Free(cartBuffer);
-        SRL::Debug::Print(1, 3, "Track serialize fail (overflow): %s desired:%u alloc:%u", path, (unsigned)desiredSize, (unsigned)allocSize);
-        return result;
-    }
-
-    int32_t hwrAfter = SRL::Memory::CartRam::GetFreeSpace();
-    result.cartPtr = cartBuffer;
-    result.size = written;
-    result.hwrDelta = static_cast<int32_t>(freeBefore - hwrAfter);
-    SRL::Debug::Print(1, 4, "Track serialized OK: %s cart:%08lx copied:%u delta:%d", path, (unsigned long)cartBuffer, (unsigned)written, result.hwrDelta);
-    return result;
-}
-
 struct TrackSegmentCopy
 {
     void* cartPtr = nullptr;
     size_t size = 0;
 };
 
-inline TrackSegmentCopy CopyTrackSegmentToCart(const char* path, size_t chunkSize = 0x4000)
+enum class CartCopyError
 {
-    TrackSegmentCopy result{};
+    None = 0,
+    Missing,
+    OpenFail,
+    NoSpace,
+    MallocFail,
+    ReadError,
+    ShortRead,
+    Overflow
+};
+
+struct CartCopyToRamResult
+{
+    CartCopyError error = CartCopyError::None;
+    void* cartPtr = nullptr;
+    size_t desiredSize = 0;
+    size_t allocSize = 0;
+    size_t written = 0;
+    size_t freeBefore = 0;
+    int32_t hwrDelta = 0;
+};
+
+inline CartCopyToRamResult CopyCdFileToCartRam(const char* path, size_t chunkSize)
+{
+    CartCopyToRamResult result{};
     SRL::Cd::File file(path);
     if (!file.Exists())
     {
-        SRL::Debug::Print(1, 3, "Segment copy fail (missing): %s", path);
+        result.error = CartCopyError::Missing;
         return result;
     }
 
     if (!file.Open())
     {
-        SRL::Debug::Print(1, 3, "Segment copy fail (open): %s", path);
+        result.error = CartCopyError::OpenFail;
         return result;
     }
 
-    size_t desiredSize = static_cast<size_t>(std::max<int32_t>(0, file.Size.Bytes));
-    size_t freeBefore = SRL::Memory::CartRam::GetFreeSpace();
-    size_t maxCartSize = SRL::Memory::CartRam::GetSize();
-    size_t allocSize = std::min({ desiredSize > 0 ? desiredSize : maxCartSize, freeBefore, maxCartSize });
-    if (allocSize == 0)
+    result.desiredSize = static_cast<size_t>(std::max<int32_t>(0, file.Size.Bytes));
+    result.freeBefore = SRL::Memory::CartRam::GetFreeSpace();
+    const size_t maxCartSize = SRL::Memory::CartRam::GetSize();
+    result.allocSize = std::min({ result.desiredSize > 0 ? result.desiredSize : maxCartSize,
+                                  result.freeBefore,
+                                  maxCartSize });
+    if (result.allocSize == 0)
     {
-        SRL::Debug::Print(1, 3, "Segment copy fail (no cart space) %s desired:%u free:%u", path, (unsigned)desiredSize, (unsigned)freeBefore);
+        result.error = CartCopyError::NoSpace;
         return result;
     }
 
-    void* cartBuffer = SRL::Memory::CartRam::Malloc(allocSize);
+    void* cartBuffer = SRL::Memory::CartRam::Malloc(result.allocSize);
     if (!cartBuffer)
     {
-        SRL::Debug::Print(1, 3, "Segment copy fail (malloc): %s sz:%u", path, (unsigned)allocSize);
+        result.error = CartCopyError::MallocFail;
         return result;
     }
 
-    std::vector<uint8_t> tempBuffer(std::min(chunkSize, allocSize));
-    size_t written = 0;
-    bool overflow = false;
-    while (written < allocSize)
+    std::vector<uint8_t> tempBuffer(std::min(chunkSize, result.allocSize));
+    while (result.written < result.allocSize)
     {
-        int32_t toRead = static_cast<int32_t>(std::min(tempBuffer.size(), allocSize - written));
+        const int32_t toRead = static_cast<int32_t>(std::min(tempBuffer.size(), result.allocSize - result.written));
         if (toRead <= 0) break;
 
-        int32_t read = file.Read(toRead, tempBuffer.data());
+        const int32_t read = file.Read(toRead, tempBuffer.data());
         if (read < 0)
         {
             SRL::Memory::CartRam::Free(cartBuffer);
-            SRL::Debug::Print(1, 3, "Segment copy fail (read error): %s", path);
+            result.error = CartCopyError::ReadError;
             return result;
         }
         if (read == 0)
@@ -374,28 +316,111 @@ inline TrackSegmentCopy CopyTrackSegmentToCart(const char* path, size_t chunkSiz
             break;
         }
 
-        slDMACopy(tempBuffer.data(), reinterpret_cast<uint8_t*>(cartBuffer) + written, static_cast<size_t>(read));
-        written += static_cast<size_t>(read);
+        slDMACopy(tempBuffer.data(), reinterpret_cast<uint8_t*>(cartBuffer) + result.written, static_cast<size_t>(read));
+        result.written += static_cast<size_t>(read);
     }
 
-    if (written == allocSize)
-    {
-        int32_t extra = file.Read(1, tempBuffer.data());
-        if (extra > 0)
-        {
-            overflow = true;
-        }
-    }
-
-    if (overflow)
+    if (result.written < result.allocSize)
     {
         SRL::Memory::CartRam::Free(cartBuffer);
-        SRL::Debug::Print(1, 3, "Segment copy fail (overflow): %s desired:%u alloc:%u", path, (unsigned)desiredSize, (unsigned)allocSize);
+        result.error = CartCopyError::ShortRead;
         return result;
     }
 
+    if (result.written == result.allocSize)
+    {
+        const int32_t extra = file.Read(1, tempBuffer.data());
+        if (extra > 0)
+        {
+            SRL::Memory::CartRam::Free(cartBuffer);
+            result.error = CartCopyError::Overflow;
+            return result;
+        }
+    }
+
     result.cartPtr = cartBuffer;
-    result.size = written;
-    SRL::Debug::Print(1, 4, "Segment copied: %s cart:%08lx size:%u", path, (unsigned long)cartBuffer, (unsigned)written);
+    result.hwrDelta = static_cast<int32_t>(result.freeBefore - SRL::Memory::CartRam::GetFreeSpace());
+    result.error = CartCopyError::None;
+    return result;
+}
+
+inline TrackSerializedCopy SerializeTrackToCart(const char* path, size_t chunkSize)
+{
+    TrackSerializedCopy result{};
+    const CartCopyToRamResult copy = CopyCdFileToCartRam(path, chunkSize);
+    switch (copy.error)
+    {
+    case CartCopyError::None:
+        result.cartPtr = copy.cartPtr;
+        result.size = copy.written;
+        result.hwrDelta = copy.hwrDelta;
+        SRL::Debug::Print(1, 4, "Track serialized OK: %s cart:%08lx copied:%u delta:%d",
+                          path, (unsigned long)copy.cartPtr, (unsigned)copy.written, copy.hwrDelta);
+        return result;
+    case CartCopyError::Missing:
+        SRL::Debug::Print(1, 3, "Track serialize fail (missing): %s", path);
+        return result;
+    case CartCopyError::OpenFail:
+        SRL::Debug::Print(1, 3, "Track serialize fail (open): %s", path);
+        return result;
+    case CartCopyError::NoSpace:
+        SRL::Debug::Print(1, 3, "Track serialize fail (no cart space) %s desired:%u free:%u",
+                          path, (unsigned)copy.desiredSize, (unsigned)copy.freeBefore);
+        return result;
+    case CartCopyError::MallocFail:
+        SRL::Debug::Print(1, 3, "Track serialize fail (malloc): %s sz:%u", path, (unsigned)copy.allocSize);
+        return result;
+    case CartCopyError::ReadError:
+        SRL::Debug::Print(1, 3, "Track serialize fail (read error): %s", path);
+        return result;
+    case CartCopyError::ShortRead:
+        SRL::Debug::Print(1, 3, "Track serialize fail (short read): %s read:%u expected:%u",
+                          path, (unsigned)copy.written, (unsigned)copy.allocSize);
+        return result;
+    case CartCopyError::Overflow:
+        SRL::Debug::Print(1, 3, "Track serialize fail (overflow): %s desired:%u alloc:%u",
+                          path, (unsigned)copy.desiredSize, (unsigned)copy.allocSize);
+        return result;
+    }
+    return result;
+}
+
+inline TrackSegmentCopy CopyTrackSegmentToCart(const char* path, size_t chunkSize = 0x4000)
+{
+    TrackSegmentCopy result{};
+    const CartCopyToRamResult copy = CopyCdFileToCartRam(path, chunkSize);
+    switch (copy.error)
+    {
+    case CartCopyError::None:
+        result.cartPtr = copy.cartPtr;
+        result.size = copy.written;
+        SRL::Debug::Print(1, 4, "Segment copied: %s cart:%08lx size:%u",
+                          path, (unsigned long)copy.cartPtr, (unsigned)copy.written);
+        return result;
+    case CartCopyError::Missing:
+        SRL::Debug::Print(1, 3, "Segment copy fail (missing): %s", path);
+        return result;
+    case CartCopyError::OpenFail:
+        SRL::Debug::Print(1, 3, "Segment copy fail (open): %s", path);
+        return result;
+    case CartCopyError::NoSpace:
+        SRL::Debug::Print(1, 3, "Segment copy fail (no cart space) %s desired:%u free:%u",
+                          path, (unsigned)copy.desiredSize, (unsigned)copy.freeBefore);
+        return result;
+    case CartCopyError::MallocFail:
+        SRL::Debug::Print(1, 3, "Segment copy fail (malloc): %s sz:%u", path, (unsigned)copy.allocSize);
+        return result;
+    case CartCopyError::ReadError:
+        SRL::Debug::Print(1, 3, "Segment copy fail (read error): %s", path);
+        return result;
+    case CartCopyError::ShortRead:
+        SRL::Debug::Print(1, 3, "Segment copy fail (short read): %s read:%u expected:%u",
+                          path, (unsigned)copy.written, (unsigned)copy.allocSize);
+        return result;
+    case CartCopyError::Overflow:
+        SRL::Debug::Print(1, 3, "Segment copy fail (overflow): %s desired:%u alloc:%u",
+                          path, (unsigned)copy.desiredSize, (unsigned)copy.allocSize);
+        return result;
+    }
     return result;
 }
