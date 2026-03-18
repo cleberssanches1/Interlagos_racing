@@ -283,6 +283,62 @@ public:
         return true;
     }
 
+    template <typename VertVecT, typename FaceVecT, typename AttrVecT>
+    bool InitializeFromComponentDataCopied(const VertVecT& verts,
+                                           const FaceVecT& faces,
+                                           const AttrVecT& attrs)
+    {
+        if (verts.empty() || faces.empty() || attrs.size() != faces.size()) return false;
+
+        if (trackObj_)
+        {
+            delete trackObj_;
+            trackObj_ = nullptr;
+        }
+
+        componentMode_ = true;
+        hasTrack_ = true;
+        isSmooth_ = false;
+        path_ = nullptr;
+        startMeshIdx_ = 0;
+        trackOffset_ = {};
+        lastDrawnFaces_ = 0;
+        lastDrawnMeshes_ = 0;
+        smoothCache_.clear();
+        flatCache_.clear();
+
+        componentVerts_.assign(verts.begin(), verts.end());
+        componentFaces_.assign(faces.begin(), faces.end());
+        componentAttrs_.assign(attrs.begin(), attrs.end());
+
+        meshCount_ = 1;
+        faceCount_ = static_cast<uint32_t>(componentFaces_.size());
+        vertexCount_ = static_cast<uint32_t>(componentVerts_.size());
+        memStats_.verts = vertexCount_;
+        memStats_.faces = faceCount_;
+        memStats_.bytes = static_cast<uint32_t>(componentVerts_.size() * sizeof(SRL::Math::Types::Vector3D) +
+                                                componentFaces_.size() * sizeof(SRL::Types::Polygon) +
+                                                componentAttrs_.size() * sizeof(SRL::Types::Attribute));
+
+        SRL::Math::Types::Vector3D minv(32767, 32767, 32767);
+        SRL::Math::Types::Vector3D maxv(-32768, -32768, -32768);
+        for (const auto& v : componentVerts_)
+        {
+            minv.X = SRL::Math::Min(minv.X, v.X);
+            minv.Y = SRL::Math::Min(minv.Y, v.Y);
+            minv.Z = SRL::Math::Min(minv.Z, v.Z);
+            maxv.X = SRL::Math::Max(maxv.X, v.X);
+            maxv.Y = SRL::Math::Max(maxv.Y, v.Y);
+            maxv.Z = SRL::Math::Max(maxv.Z, v.Z);
+        }
+        bounds_.min = minv;
+        bounds_.max = maxv;
+        meshCenters_.assign(1, (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16));
+        meshBytes_.assign(1, memStats_.bytes);
+        meshMap_.assign(1, 0);
+        return true;
+    }
+
     // Draw a limited set of meshes using one of the rendering backends (original, SGL direct or 2D debug).
     void Render(SRL::Math::Types::Vector3D light, const SRL::Math::Types::Vector3D& /*cameraPos*/)
     {

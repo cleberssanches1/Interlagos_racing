@@ -78,17 +78,17 @@ struct TrackRuntimePackCache
 struct RdrBuildScratch
 {
     SegmentRuntimeDraw::Blob blob{};
-    std::vector<SRL::Math::Types::Vector3D> verts{};
-    std::vector<SRL::Types::Polygon> faces{};
-    std::vector<SRL::Types::Attribute> attrs{};
+    TrackLowWorkVector<SRL::Math::Types::Vector3D> verts{};
+    TrackLowWorkVector<SRL::Types::Polygon> faces{};
+    TrackLowWorkVector<SRL::Types::Attribute> attrs{};
 };
 
 struct SdrBuildScratch
 {
     SegmentDrawReady::Blob blob{};
-    std::vector<SRL::Math::Types::Vector3D> verts{};
-    std::vector<SRL::Types::Polygon> faces{};
-    std::vector<SRL::Types::Attribute> attrs{};
+    TrackLowWorkVector<SRL::Math::Types::Vector3D> verts{};
+    TrackLowWorkVector<SRL::Types::Polygon> faces{};
+    TrackLowWorkVector<SRL::Types::Attribute> attrs{};
 };
 
 struct BdrBatchBuildResult
@@ -128,6 +128,9 @@ static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
 // - disable destructive texture/palette release while racing
 // This isolates runtime lifetime bugs from the offline asset pipeline.
 static constexpr bool kEnableTrackRuntimeStabilization = true;
+static constexpr bool kEnableSafeModeSingleRenderBackend = false;
+static constexpr uint8_t kSafeModeRenderBackendId = 1; // 0:Scene3D 1:SglDirect 2:Vdp1
+static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
 
 static int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount)
 {
@@ -153,6 +156,18 @@ static size_t GetHighWorkRamFreeBytesSafe(bool* outValid = nullptr)
     const bool valid = (report.TotalSize > 0u) && (report.FreeSize <= report.TotalSize);
     if (outValid) *outValid = valid;
     return valid ? report.FreeSize : 0u;
+}
+
+template <typename KeyT>
+static size_t FindScratchKeyIndex(const std::array<KeyT, kSegmentFamilyDedupScratchCap>& keys,
+                                  size_t count,
+                                  KeyT key)
+{
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (keys[i] == key) return i;
+    }
+    return kSegmentFamilyDedupScratchCap;
 }
 
 template <typename SlotT>
@@ -296,12 +311,12 @@ static void TrimRuntimeBlobScratchCaches(bool aggressive)
         ResetBlobBytes(g_sdrBuildScratch.blob);
         ResetBlobBytes(g_rdrFamilyIdsScratch);
         ResetBlobBytes(g_sdrFamilyIdsScratch);
-        std::vector<Vector3D>{}.swap(g_rdrBuildScratch.verts);
-        std::vector<Vector3D>{}.swap(g_sdrBuildScratch.verts);
-        std::vector<SRL::Types::Polygon>{}.swap(g_rdrBuildScratch.faces);
-        std::vector<SRL::Types::Polygon>{}.swap(g_sdrBuildScratch.faces);
-        std::vector<SRL::Types::Attribute>{}.swap(g_rdrBuildScratch.attrs);
-        std::vector<SRL::Types::Attribute>{}.swap(g_sdrBuildScratch.attrs);
+        decltype(g_rdrBuildScratch.verts){}.swap(g_rdrBuildScratch.verts);
+        decltype(g_sdrBuildScratch.verts){}.swap(g_sdrBuildScratch.verts);
+        decltype(g_rdrBuildScratch.faces){}.swap(g_rdrBuildScratch.faces);
+        decltype(g_sdrBuildScratch.faces){}.swap(g_sdrBuildScratch.faces);
+        decltype(g_rdrBuildScratch.attrs){}.swap(g_rdrBuildScratch.attrs);
+        decltype(g_sdrBuildScratch.attrs){}.swap(g_sdrBuildScratch.attrs);
         return;
     }
 
@@ -378,8 +393,9 @@ static bool TryRepairRendererState(TrackRenderer& renderer)
 static void ConfigureStreamedRendererDefaults(TrackRenderer& renderer)
 {
     renderer.SetUseOriginal(false);
-    renderer.SetSglDirect(false);
-    renderer.SetVdp1Commands(false);
+    const bool safeSingleBackend = kEnableTrackRuntimeStabilization && kEnableSafeModeSingleRenderBackend;
+    renderer.SetSglDirect(safeSingleBackend && kSafeModeRenderBackendId == 1u);
+    renderer.SetVdp1Commands(safeSingleBackend && kSafeModeRenderBackendId == 2u);
     renderer.SetDirect2D(false);
     renderer.SetForceDoubleSided(false);
     renderer.SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
@@ -3040,7 +3056,7 @@ static bool BuildRendererFromRdr(int segmentId,
         attrs.push_back(attr);
     }
 
-    const bool ok = renderer.InitializeFromComponentDataRecycled(verts, faces, attrs);
+    const bool ok = renderer.InitializeFromComponentDataCopied(verts, faces, attrs);
     if (!ok)
     {
         SRL::Debug::Print(1, 15, "RDR init cmp fail %03d", segmentId);
@@ -3200,7 +3216,7 @@ static bool BuildRendererFromSdr(int segmentId,
         attrs.push_back(BuildSdrBaseAttr(sa));
     }
 
-    const bool ok = renderer.InitializeFromComponentDataRecycled(verts, faces, attrs);
+    const bool ok = renderer.InitializeFromComponentDataCopied(verts, faces, attrs);
     if (!ok)
     {
         SRL::Debug::Print(1, 15, "SDR init cmp fail %03d", segmentId);
@@ -5480,26 +5496,17 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
 
     const size_t faceCount = entry.lodState.faceFamilyIds.size();
     entry.lodState.currentFaceSlots.assign(faceCount, -1);
-    std::vector<uint16_t> seenFamilies{};
-    std::vector<int16_t> seenSlots{};
-    seenFamilies.reserve(32);
-    seenSlots.reserve(32);
+    std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
+    std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
+    size_t seenCount = 0;
 
     for (size_t fi = 0; fi < faceCount; ++fi)
     {
         const uint16_t fam = entry.lodState.faceFamilyIds[fi];
         if (fam == 0) continue;
 
-        size_t cached = static_cast<size_t>(-1);
-        for (size_t i = 0; i < seenFamilies.size(); ++i)
-        {
-            if (seenFamilies[i] == fam)
-            {
-                cached = i;
-                break;
-            }
-        }
-        if (cached != static_cast<size_t>(-1))
+        const size_t cached = FindScratchKeyIndex(seenFamilies, seenCount, fam);
+        if (cached != kSegmentFamilyDedupScratchCap)
         {
             entry.lodState.currentFaceSlots[fi] = seenSlots[cached];
             continue;
@@ -5513,8 +5520,12 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
             resolved = static_cast<int16_t>(slot);
             entry.lodState.currentFaceSlots[fi] = resolved;
         }
-        seenFamilies.push_back(fam);
-        seenSlots.push_back(resolved);
+        if (seenCount < kSegmentFamilyDedupScratchCap)
+        {
+            seenFamilies[seenCount] = fam;
+            seenSlots[seenCount] = resolved;
+            ++seenCount;
+        }
     }
 
     return true;
@@ -5529,10 +5540,9 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
 
     const size_t faceCount = entry.lodState.faceFamilyIds.size();
     entry.lodState.currentFaceSlots.assign(faceCount, -1);
-    std::vector<uint16_t> seenFamilies{};
-    std::vector<int16_t> seenSlots{};
-    seenFamilies.reserve(32);
-    seenSlots.reserve(32);
+    std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
+    std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
+    size_t seenCount = 0;
 
     const bool hasRankOffsets = entry.lodState.faceRankOffsets.size() == faceCount;
     for (size_t fi = 0; fi < faceCount; ++fi)
@@ -5543,16 +5553,8 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
         const size_t rank = baseRank + (hasRankOffsets ? static_cast<size_t>(entry.lodState.faceRankOffsets[fi]) : 0u);
         const uint8_t lodIndex = ResolveSegmentLodIndexByRank(rank);
         const uint16_t key = static_cast<uint16_t>((static_cast<uint16_t>(lodIndex) << 12) | (fam & 0x0FFFu));
-        size_t cached = static_cast<size_t>(-1);
-        for (size_t i = 0; i < seenFamilies.size(); ++i)
-        {
-            if (seenFamilies[i] == key)
-            {
-                cached = i;
-                break;
-            }
-        }
-        if (cached != static_cast<size_t>(-1))
+        const size_t cached = FindScratchKeyIndex(seenFamilies, seenCount, key);
+        if (cached != kSegmentFamilyDedupScratchCap)
         {
             entry.lodState.currentFaceSlots[fi] = seenSlots[cached];
             continue;
@@ -5566,8 +5568,12 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
             resolved = static_cast<int16_t>(slot);
             entry.lodState.currentFaceSlots[fi] = resolved;
         }
-        seenFamilies.push_back(key);
-        seenSlots.push_back(resolved);
+        if (seenCount < kSegmentFamilyDedupScratchCap)
+        {
+            seenFamilies[seenCount] = key;
+            seenSlots[seenCount] = resolved;
+            ++seenCount;
+        }
     }
 
     return true;
@@ -6982,12 +6988,12 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             const bool previousHasPerFaceRankOffsets = slot.lodState.hasPerFaceRankOffsets;
             const uint8_t previousCurrentLodIndex = slot.lodState.currentLodIndex;
             const int16_t previousCurrentBaseRank = slot.lodState.currentBaseRank;
-            TrackLowWorkU16Vector previousFaceFamilyIds{};
-            TrackLowWorkU8Vector previousFaceRankOffsets{};
-            std::vector<int16_t> previousFaceSlots{};
-            previousFaceFamilyIds.swap(slot.lodState.faceFamilyIds);
-            previousFaceRankOffsets.swap(slot.lodState.faceRankOffsets);
-            previousFaceSlots.swap(slot.lodState.currentFaceSlots);
+            slideRollbackFamilyIdsScratch_.clear();
+            slideRollbackFaceRankOffsetsScratch_.clear();
+            slideRollbackFaceSlotsScratch_.clear();
+            slideRollbackFamilyIdsScratch_.swap(slot.lodState.faceFamilyIds);
+            slideRollbackFaceRankOffsetsScratch_.swap(slot.lodState.faceRankOffsets);
+            slideRollbackFaceSlotsScratch_.swap(slot.lodState.currentFaceSlots);
             const int32_t previousMetaId = meta.id;
             auto rollbackIncomingBuild = [&]()
             {
@@ -7090,9 +7096,9 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
                 slot.lodState.hasPerFaceRankOffsets = previousHasPerFaceRankOffsets;
                 slot.lodState.currentLodIndex = previousCurrentLodIndex;
                 slot.lodState.currentBaseRank = previousCurrentBaseRank;
-                slot.lodState.faceFamilyIds.swap(previousFaceFamilyIds);
-                slot.lodState.faceRankOffsets.swap(previousFaceRankOffsets);
-                slot.lodState.currentFaceSlots.swap(previousFaceSlots);
+                slot.lodState.faceFamilyIds.swap(slideRollbackFamilyIdsScratch_);
+                slot.lodState.faceRankOffsets.swap(slideRollbackFaceRankOffsetsScratch_);
+                slot.lodState.currentFaceSlots.swap(slideRollbackFaceSlotsScratch_);
                 meta.id = previousMetaId;
                 if (slot.renderer && !slot.lodState.currentFaceSlots.empty())
                 {
@@ -7621,10 +7627,9 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
             ? entry.lodState.currentLodIndex
             : 0u;
 
-        std::vector<uint16_t> seenFamilies{};
-        std::vector<int16_t> seenSlots{};
-        seenFamilies.reserve(16);
-        seenSlots.reserve(16);
+        std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
+        std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
+        size_t seenCount = 0;
         for (size_t fi = 0; fi < entry.lodState.faceFamilyIds.size(); ++fi)
         {
             const uint16_t fam = entry.lodState.faceFamilyIds[fi];
@@ -7633,19 +7638,20 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
                 (fi < entry.lodState.currentFaceSlots.size()) ? entry.lodState.currentFaceSlots[fi] : -1;
             markSlotUsed(slotHint);
 
-            bool seen = false;
-            for (size_t si = 0; si < seenFamilies.size(); ++si)
+            const size_t seenIndex = FindScratchKeyIndex(seenFamilies, seenCount, fam);
+            if (seenIndex != kSegmentFamilyDedupScratchCap)
             {
-                if (seenFamilies[si] != fam) continue;
-                if (seenSlots[si] < 0 && slotHint >= 0) seenSlots[si] = slotHint;
-                seen = true;
-                break;
+                if (seenSlots[seenIndex] < 0 && slotHint >= 0) seenSlots[seenIndex] = slotHint;
+                continue;
             }
-            if (seen) continue;
-            seenFamilies.push_back(fam);
-            seenSlots.push_back(slotHint);
+            if (seenCount < kSegmentFamilyDedupScratchCap)
+            {
+                seenFamilies[seenCount] = fam;
+                seenSlots[seenCount] = static_cast<int16_t>(slotHint);
+                ++seenCount;
+            }
         }
-        for (size_t si = 0; si < seenFamilies.size(); ++si)
+        for (size_t si = 0; si < seenCount; ++si)
         {
             addRef(seenFamilies[si], seenSlots[si], fallbackLodIndex);
         }
@@ -7653,10 +7659,9 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
 
     if (!slidePrefetchFamilyIds_.empty())
     {
-        std::vector<uint16_t> seenFamilies{};
-        std::vector<int16_t> seenSlots{};
-        seenFamilies.reserve(16);
-        seenSlots.reserve(16);
+        std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
+        std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
+        size_t seenCount = 0;
         for (size_t fi = 0; fi < slidePrefetchFamilyIds_.size(); ++fi)
         {
             const uint16_t fam = slidePrefetchFamilyIds_[fi];
@@ -7665,19 +7670,20 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
                 (fi < slidePrefetchFaceSlots_.size()) ? slidePrefetchFaceSlots_[fi] : -1;
             markSlotUsed(slotHint);
 
-            bool seen = false;
-            for (size_t si = 0; si < seenFamilies.size(); ++si)
+            const size_t seenIndex = FindScratchKeyIndex(seenFamilies, seenCount, fam);
+            if (seenIndex != kSegmentFamilyDedupScratchCap)
             {
-                if (seenFamilies[si] != fam) continue;
-                if (seenSlots[si] < 0 && slotHint >= 0) seenSlots[si] = slotHint;
-                seen = true;
-                break;
+                if (seenSlots[seenIndex] < 0 && slotHint >= 0) seenSlots[seenIndex] = slotHint;
+                continue;
             }
-            if (seen) continue;
-            seenFamilies.push_back(fam);
-            seenSlots.push_back(slotHint);
+            if (seenCount < kSegmentFamilyDedupScratchCap)
+            {
+                seenFamilies[seenCount] = fam;
+                seenSlots[seenCount] = static_cast<int16_t>(slotHint);
+                ++seenCount;
+            }
         }
-        for (size_t si = 0; si < seenFamilies.size(); ++si)
+        for (size_t si = 0; si < seenCount; ++si)
         {
             addRef(seenFamilies[si], seenSlots[si], 0u);
         }
@@ -7950,6 +7956,8 @@ void TrackSystem::ResetInitializationState()
     trackedCarSegmentId_ = 1;
     trackedCarSegmentValid_ = false;
     observedCarSegmentId_ = -1;
+    lastLapWrapProbeSegmentId_ = -1;
+    lapWrapScrubCooldown_ = 0;
     segmentCenterCatalog_.clear();
     seg1ComponentEnabled_ = false;
     seg1ComponentVerts_.clear();
@@ -9256,6 +9264,14 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     runtimeSafeSkippedThisFrame_ = 0;
     runtimeSafeNoDrawThisFrame_ = 0;
     runtimeSafeReappliedThisFrame_ = 0;
+    phaseHwrBeforeStream_ = 0;
+    phaseHwrAfterStream_ = 0;
+    phaseHwrAfterDraw_ = 0;
+    phaseHwrEnd_ = 0;
+    phaseLwrBeforeStream_ = 0;
+    phaseLwrAfterStream_ = 0;
+    phaseLwrAfterDraw_ = 0;
+    phaseLwrEnd_ = 0;
     if (kEnableTrackRuntimeStabilization && segmentsReady_ && totalSegmentCount_ > 0)
     {
         const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
@@ -9552,12 +9568,13 @@ void TrackSystem::RenderVisibleSegmentOrder(
         {
             RefreshFamilyWorkingSet(false);
         }
-        std::vector<SegmentRenderEntry*> orderedEntries{};
-        orderedEntries.reserve(segmentRenderers_.size());
+        std::array<SegmentRenderEntry*, kTrackSegmentLimit> orderedEntries{};
+        size_t orderedCount = 0;
         for (auto& entry : segmentRenderers_)
         {
             if (!entry.renderer) continue;
-            orderedEntries.push_back(&entry);
+            if (orderedCount >= orderedEntries.size()) break;
+            orderedEntries[orderedCount++] = &entry;
         }
 
         auto depthMetricToCamera = [&](const SegmentRenderEntry* e) -> SRL::Math::Types::Fxp
@@ -9571,7 +9588,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
             return major + minor;
         };
 
-        std::sort(orderedEntries.begin(), orderedEntries.end(),
+        std::sort(orderedEntries.begin(), orderedEntries.begin() + static_cast<std::ptrdiff_t>(orderedCount),
             [&](const SegmentRenderEntry* a, const SegmentRenderEntry* b)
             {
                 if (!a && !b) return false;
@@ -9593,7 +9610,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
             });
 
         const size_t limit = std::min<size_t>(
-            orderedEntries.size(),
+            orderedCount,
             std::max<size_t>(1u, static_cast<size_t>(fixedVisibleSegmentCap_)));
         size_t renderedEntries = 0;
         for (size_t i = 0; i < limit; ++i)
@@ -9833,6 +9850,13 @@ void TrackSystem::RenderFrame(bool renderTrack,
         return;
     }
 
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        phaseHwrBeforeStream_ = static_cast<uint32_t>(hwr.FreeSize);
+        phaseLwrBeforeStream_ = static_cast<uint32_t>(lwr.FreeSize);
+    }
+
     bool segment01Logged = false;
     bool segment01Prepared = false;
     const bool windowSlid = UpdateActiveSegmentWindowForPosition(carWorldPosition, trackOffset);
@@ -9852,6 +9876,12 @@ void TrackSystem::RenderFrame(bool renderTrack,
         orderedHandles = BuildVisibleSegmentOrder(trackOffset, cameraLocation);
     }
     RefreshFamilyWorkingSet(false);
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        phaseHwrAfterStream_ = static_cast<uint32_t>(hwr.FreeSize);
+        phaseLwrAfterStream_ = static_cast<uint32_t>(lwr.FreeSize);
+    }
     RunSeg1DiagnosticsForFrame();
     std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};
     std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountById{};
@@ -9873,6 +9903,13 @@ void TrackSystem::RenderFrame(bool renderTrack,
         {
             SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u", (unsigned)id, (unsigned)renderedCountById[id]);
         }
+    }
+
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        phaseHwrAfterDraw_ = static_cast<uint32_t>(hwr.FreeSize);
+        phaseLwrAfterDraw_ = static_cast<uint32_t>(lwr.FreeSize);
     }
 
     (void)segment01Prepared;
@@ -9897,6 +9934,25 @@ void TrackSystem::EndFrame()
                       static_cast<unsigned>(runtimeSafeSkippedThisFrame_),
                       static_cast<unsigned>(runtimeSafeNoDrawThisFrame_),
                       static_cast<unsigned>(runtimeSafeReappliedThisFrame_));
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        phaseHwrEnd_ = static_cast<uint32_t>(hwr.FreeSize);
+        phaseLwrEnd_ = static_cast<uint32_t>(lwr.FreeSize);
+    }
+    SRL::Debug::Print(1, 21, "RT mem b:%u s:%u d:%u e:%u bk:%u",
+                      static_cast<unsigned>(phaseHwrBeforeStream_),
+                      static_cast<unsigned>(phaseHwrAfterStream_),
+                      static_cast<unsigned>(phaseHwrAfterDraw_),
+                      static_cast<unsigned>(phaseHwrEnd_),
+                      static_cast<unsigned>(kEnableTrackRuntimeStabilization && kEnableSafeModeSingleRenderBackend
+                          ? kSafeModeRenderBackendId
+                          : 0u));
+    SRL::Debug::Print(1, 22, "RT lwr b:%u s:%u d:%u e:%u",
+                      static_cast<unsigned>(phaseLwrBeforeStream_),
+                      static_cast<unsigned>(phaseLwrAfterStream_),
+                      static_cast<unsigned>(phaseLwrAfterDraw_),
+                      static_cast<unsigned>(phaseLwrEnd_));
     ReleaseUnusedFamilyResourcesEndFrame();
     EmitFamilyWorkingSetTelemetry();
     constexpr bool kEnablePerFrameDebugPrints = false;
