@@ -40,6 +40,8 @@ if ([string]::IsNullOrWhiteSpace($scriptDir)) {
 $script:exportScript = Join-Path $scriptDir "export_nya_with_segments_json.ps1"
 $script:componentScript = Join-Path $scriptDir "generate_segment_component.ps1"
 $script:sdrScript = Join-Path $scriptDir "generate_segment_draw_ready.ps1"
+$script:rdrScript = Join-Path $scriptDir "generate_segment_runtime_draw.ps1"
+$script:trkRdrPackScript = Join-Path $scriptDir "generate_track_runtime_pack.ps1"
 $script:bdrScript = Join-Path $scriptDir "generate_batch_draw_ready.ps1"
 $script:texbanksScript = Join-Path $scriptDir "generate_texbanks.ps1"
 $script:seg1FamScript = Join-Path $scriptDir "build_seg1_facefam_bin.ps1"
@@ -51,6 +53,7 @@ $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
 if (-not (Test-Path -LiteralPath $script:sdrScript)) { throw "Script nao encontrado: $script:sdrScript" }
+if (-not (Test-Path -LiteralPath $script:rdrScript)) { throw "Script nao encontrado: $script:rdrScript" }
 if (-not (Test-Path -LiteralPath $script:bdrScript)) { throw "Script nao encontrado: $script:bdrScript" }
 if (-not (Test-Path -LiteralPath $script:texbanksScript)) { throw "Script nao encontrado: $script:texbanksScript" }
 if (-not (Test-Path -LiteralPath $script:seg1FamScript)) { throw "Script nao encontrado: $script:seg1FamScript" }
@@ -103,7 +106,7 @@ function Get-SegmentsMapSource {
             return $path
         }
     }
-    throw "Nao foi possivel localizar uma fonte valida para segments_map no diretorio $MapDir."
+    return $null
 }
 
 if ($RebuildSegmentsMap) {
@@ -111,8 +114,13 @@ if ($RebuildSegmentsMap) {
 }
 else {
     $sourceMap = Get-SegmentsMapSource -MapDir $PackageDir
-    Copy-Item -LiteralPath $sourceMap -Destination $jsonPath -Force
-    Write-Host ("segments_map.json atualizado a partir de {0}" -f $sourceMap)
+    if ([string]::IsNullOrWhiteSpace($sourceMap)) {
+        Write-Host "Nenhuma fonte antiga de segments_map encontrada; mantendo o arquivo gerado na exportacao."
+    }
+    else {
+        Copy-Item -LiteralPath $sourceMap -Destination $jsonPath -Force
+        Write-Host ("segments_map.json atualizado a partir de {0}" -f $sourceMap)
+    }
 }
 
 Write-Host "=== Etapa 3/7: Gerar GEO/MAT para cada LOD ==="
@@ -221,7 +229,13 @@ Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 ==="
     -Lod 8 `
     -AllSegments
 
-Write-Host "=== Etapa 3.6/7: Gerar batches draw-ready BDR1 ==="
+Write-Host "=== Etapa 3.6/7: Gerar blobs runtime RDR1 ==="
+& $script:rdrScript `
+    -DataDir $PackageDir `
+    -OutDir $PackageDir `
+    -AllSegments
+
+Write-Host "=== Etapa 3.7/7: Gerar batches draw-ready BDR1 ==="
 & $script:bdrScript `
     -DataDir $PackageDir `
     -OutDir $PackageDir `
@@ -335,6 +349,11 @@ Write-Host "=== Etapa 7/7: Empacotar por tipo (*.BIN) incluindo imagens ==="
     -ManifestDir $PackageDir `
     -IncludeTga
 
+Write-Host "=== Etapa 7.1/7: Gerar pack runtime dedicado TRKRDR.BIN ==="
+& $script:trkRdrPackScript `
+    -DataDir $PackageDir `
+    -OutPath (Join-Path $CdDataDir "TRKRDR.BIN")
+
 Write-Host "=== Limpeza: Remover auxiliares de cd/data ==="
 Remove-CdDataAuxFiles -TargetDirs $targetDirs
 
@@ -344,6 +363,7 @@ $expectedCount = $expectedSegmentIds.Count
 
 $geoCountLong = @(Get-ChildItem -Path $PackageDir -File -Filter "SEG_*.GEO").Count
 $geoCountShort = @(Get-ChildItem -Path $PackageDir -File -Filter "S???.GEO").Count
+$rdrCount = @(Get-ChildItem -Path $PackageDir -File -Filter "S???.RDR").Count
 $matCountLong = @(Get-ChildItem -Path $PackageDir -File -Filter "SEG_*.MAT").Count
 $matCountShort = @(Get-ChildItem -Path $PackageDir -File -Filter "S???M*.MAT").Count
 $geoCount = [Math]::Max($geoCountLong, $geoCountShort)
@@ -363,6 +383,8 @@ $hasTgaCompat = Test-Path -LiteralPath $tgaCompatPath
 $hasSeg1Fam = Test-Path -LiteralPath $seg1FamPath
 $hasPacksManifest = Test-Path -LiteralPath $packsManifestPath
 $hasGeoBin = Test-Path -LiteralPath (Join-Path $CdDataDir "GEO.BIN")
+$hasRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "RDR.BIN")
+$hasTrkRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDR.BIN")
 $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
@@ -370,6 +392,7 @@ $hasMat64Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT64.BIN")
 
 Write-Host ("EXPECTED SEGMENTS: {0}" -f $expectedCount)
 Write-Host ("FOUND GEO         : {0} (long:{1} short:{2})" -f $geoCount, $geoCountLong, $geoCountShort)
+Write-Host ("FOUND RDR         : {0}" -f $rdrCount)
 Write-Host ("FOUND MAT         : {0} (long:{1} short:{2})" -f $matCount, $matCountLong, $matCountShort)
 Write-Host ("FOUND TEXBANK BIN : {0} (legacy:{1} short:{2})" -f $texbankCount, $texbankCountLegacy, $texbankCountShort)
 Write-Host ("HAS segments_map  : {0}" -f $hasSegmentsMap)
@@ -377,6 +400,8 @@ Write-Host ("HAS manifest      : {0}" -f $hasTexManifest)
 Write-Host ("HAS TGA compat    : {0}" -f $hasTgaCompat)
 Write-Host ("HAS S001FAM.BIN   : {0}" -f $hasSeg1Fam)
 Write-Host ("HAS GEO.BIN       : {0}" -f $hasGeoBin)
+Write-Host ("HAS RDR.BIN       : {0}" -f $hasRdrBin)
+Write-Host ("HAS TRKRDR.BIN    : {0}" -f $hasTrkRdrBin)
 Write-Host ("HAS MAT8.BIN      : {0}" -f $hasMat8Bin)
 Write-Host ("HAS MAT16.BIN     : {0}" -f $hasMat16Bin)
 Write-Host ("HAS MAT32.BIN     : {0}" -f $hasMat32Bin)
@@ -385,6 +410,7 @@ Write-Host ("HAS packs manifest: {0}" -f $hasPacksManifest)
 
 $validationErrors = New-Object System.Collections.Generic.List[string]
 if ($geoCount -lt $expectedCount) { $validationErrors.Add(("GEO insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $geoCount)) | Out-Null }
+if ($rdrCount -lt $expectedCount) { $validationErrors.Add(("RDR insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $rdrCount)) | Out-Null }
 if ($matCount -lt $expectedCount) { $validationErrors.Add(("MAT insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $matCount)) | Out-Null }
 if ($texbankCount -lt 4) { $validationErrors.Add(("TEXBANK_*.BIN insuficiente: esperado>=4, encontrado={0}" -f $texbankCount)) | Out-Null }
 if (-not $hasSegmentsMap) { $validationErrors.Add("segments_map.json ausente em pacote_rancing") | Out-Null }
@@ -392,6 +418,8 @@ if (-not $hasTexManifest) { $validationErrors.Add("texbanks_manifest.json ausent
 if (-not $hasTgaCompat) { $validationErrors.Add("tga_compat_report.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasSeg1Fam) { $validationErrors.Add("S001FAM.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasGeoBin) { $validationErrors.Add("GEO.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasRdrBin) { $validationErrors.Add("RDR.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasTrkRdrBin) { $validationErrors.Add("TRKRDR.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat8Bin) { $validationErrors.Add("MAT8.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat16Bin) { $validationErrors.Add("MAT16.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }

@@ -176,7 +176,7 @@ private:
         }
         if (input.yHeld && input.rightHeld && !rightHeldPrev_)
         {
-            if (autoLapStepUnits_ < 12) ++autoLapStepUnits_;
+            if (autoLapStepUnits_ < 36) ++autoLapStepUnits_;
             SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
         }
         yHeldPrev_ = input.yHeld;
@@ -198,6 +198,7 @@ private:
             const auto& simOut = simOutput_[simCompletedIdx_];
             context_.carWorldPosition = simOut.outWorldPosition;
             carYawDeg_ = simOut.outYawDeg;
+            latestActiveSegmentId_ = simOut.frameState.activeSegmentId;
         }
         if (carPrepareJobInFlight_ && carPrepareTask_.IsDone())
         {
@@ -285,6 +286,7 @@ private:
         }
         context_.carWorldPosition = frameState.carWorldPosition;
         carYawDeg_ = frameState.carYawDeg;
+        latestActiveSegmentId_ = frameState.activeSegmentId;
     }
 
     void ScheduleCarPrepareIfEnabled()
@@ -395,6 +397,7 @@ private:
         if (context_.trackSystemReady && context_.renderTrack)
         {
             AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
+            context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
             context_.trackSystem->RenderFrame(true,
                                              context_.trackSegOffset,
                                              context_.lightDirection,
@@ -467,9 +470,7 @@ private:
         }
         if (autoLapRouteIds_.size() < 2 || autoLapRouteCenters_.size() < 2) return;
 
-        // Keep car ride height stable during autopilot.
-        // Segment center Y is not a reliable asphalt height reference.
-        const auto fixedY = ioCarWorldPosition.Y;
+        const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-3 << 16);
 
         if (!autoLapRouteInitialized_)
         {
@@ -489,14 +490,15 @@ private:
                     break;
                 }
             }
-            autoLapRouteIndex_ = bestIdx;
+            autoLapRouteIndex_ = static_cast<uint16_t>(bestIdx);
             ioCarWorldPosition.X = autoLapRouteCenters_[autoLapRouteIndex_].X;
             ioCarWorldPosition.Z = autoLapRouteCenters_[autoLapRouteIndex_].Z;
-            ioCarWorldPosition.Y = fixedY;
+            ioCarWorldPosition.Y = autoLapRouteCenters_[autoLapRouteIndex_].Y + rideHeight;
             autoLapRouteInitialized_ = true;
         }
 
-        const size_t nextIndex = (autoLapRouteIndex_ + 1u) % autoLapRouteCenters_.size();
+        const SRL::Math::Types::Vector3D& currentCenter = autoLapRouteCenters_[autoLapRouteIndex_];
+        const uint16_t nextIndex = static_cast<uint16_t>((static_cast<size_t>(autoLapRouteIndex_) + 1u) % autoLapRouteCenters_.size());
         const SRL::Math::Types::Vector3D& nextCenter = autoLapRouteCenters_[nextIndex];
 
         // Move from current car position to next segment center.
@@ -512,16 +514,32 @@ private:
         const int64_t moveZ64 = (static_cast<int64_t>(ndz) * static_cast<int64_t>(stepRaw)) / maxAxis;
         ioCarWorldPosition.X += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveX64));
         ioCarWorldPosition.Z += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveZ64));
-        ioCarWorldPosition.Y = fixedY;
 
         // Advance route when the car reaches next center.
         const int32_t tx = nextCenter.X.RawValue() - ioCarWorldPosition.X.RawValue();
         const int32_t tz = nextCenter.Z.RawValue() - ioCarWorldPosition.Z.RawValue();
         const int32_t atx = (tx < 0) ? -tx : tx;
         const int32_t atz = (tz < 0) ? -tz : tz;
+        const int32_t totalDx = nextCenter.X.RawValue() - currentCenter.X.RawValue();
+        const int32_t totalDz = nextCenter.Z.RawValue() - currentCenter.Z.RawValue();
+        const int32_t totalAdx = (totalDx < 0) ? -totalDx : totalDx;
+        const int32_t totalAdz = (totalDz < 0) ? -totalDz : totalDz;
+        const int32_t totalAxis = (totalAdx > totalAdz) ? totalAdx : totalAdz;
+        if (totalAxis > 0)
+        {
+            const int32_t remAxis = (atx > atz) ? atx : atz;
+            const int32_t alphaRaw = ((totalAxis - remAxis) << 16) / totalAxis;
+            const auto alpha = SRL::Math::Types::Fxp::BuildRaw(std::clamp<int32_t>(alphaRaw, 0, (1 << 16)));
+            ioCarWorldPosition.Y = currentCenter.Y + ((nextCenter.Y - currentCenter.Y) * alpha) + rideHeight;
+        }
+        else
+        {
+            ioCarWorldPosition.Y = nextCenter.Y + rideHeight;
+        }
         if (atx <= (8 << 16) && atz <= (8 << 16))
         {
             autoLapRouteIndex_ = nextIndex;
+            ioCarWorldPosition.Y = nextCenter.Y + rideHeight;
         }
 
         if (nAdx >= nAdz)
@@ -654,6 +672,7 @@ private:
     uint8_t carPrepareWriteIdx_ = 0;
     uint8_t carPrepareInFlightIdx_ = 0;
     uint8_t carPrepareCompletedIdx_ = 0;
+    int16_t latestActiveSegmentId_ = -1;
     SRL::Math::Types::Vector3D lastValidCarRenderPos_{
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
@@ -667,12 +686,12 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
     bool autoLapTestEnabled_ = true;
-    int32_t autoLapTargetSegmentId_ = 1;
-    int16_t autoLapStepUnits_ = 2;
+    int16_t autoLapTargetSegmentId_ = 1;
+    int16_t autoLapStepUnits_ = 6;
     bool autoLapRouteInitialized_ = false;
     bool autoLapRouteBuilt_ = false;
-    size_t autoLapRouteIndex_ = 0;
-    std::vector<int32_t> autoLapRouteIds_{};
+    uint16_t autoLapRouteIndex_ = 0;
+    std::vector<int16_t> autoLapRouteIds_{};
     std::vector<SRL::Math::Types::Vector3D> autoLapRouteCenters_{};
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;

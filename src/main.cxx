@@ -421,6 +421,19 @@ int GameApp::Run()
     slIntFunction(SafeVblankNoEvent);
     AppState::PresentOverlay(2);
 
+    auto PrintBootRam = [](int row, const char* tag)
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        const auto crt = SRL::Memory::CartRam::GetReport();
+        SRL::Debug::Print(0, row, "%s hf:%lu lf:%lu cf:%lu",
+                          tag,
+                          static_cast<unsigned long>(hwr.FreeSize),
+                          static_cast<unsigned long>(lwr.FreeSize),
+                          static_cast<unsigned long>(crt.FreeSize));
+    };
+    PrintBootRam(0, "RAM boot");
+
     const bool logCar = kCarLogs;
     const bool logTrack = false;
     // Log inicial simples do Cart e HWR
@@ -463,7 +476,7 @@ int GameApp::Run()
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
     };
-    const bool useCartCopyPipeline = true; // cart -> WRAM -> VDP1
+    const bool useCartCopyPipeline = false; // cart -> VDP1
     AppState::Set(AppState::Stage::CarLoad, 0);
     CarPipeline carPipe{};
     if (renderCar && !loadCarAfterTrack)
@@ -535,6 +548,7 @@ int GameApp::Run()
         bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
         // log removido
     }
+    PrintBootRam(1, "RAM bg  ");
 
     // Camera system owns camera state, tuning and input workflow.
     CameraSystem cameraSystem;
@@ -571,6 +585,7 @@ int GameApp::Run()
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
+    PrintBootRam(2, "RAM trk ");
     if (enableBg && !bgReady)
     {
         SRL::Cd::ChangeDir((const char*)0);
@@ -607,6 +622,7 @@ int GameApp::Run()
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
         SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
+        PrintBootRam(3, "RAM car ");
 
         // Recompute model center now that car was loaded after track textures.
         modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);

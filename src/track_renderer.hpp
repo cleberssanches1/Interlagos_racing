@@ -9,6 +9,8 @@
 #include <vector>
 #include <cstdint>
 #include <algorithm>
+#include <limits>
+#include <type_traits>
 #include <utility>
 
 struct ModelBounds
@@ -809,13 +811,43 @@ public:
     SRL::Math::Types::Vector3D Offset() const { return trackOffset_; }
     void SetOffset(const SRL::Math::Types::Vector3D& offset) { trackOffset_ = offset; }
     MemoryStats MemStats() const { return memStats_; }
+    uint32_t RetainedBytes() const
+    {
+        uint64_t bytes = 0;
+        bytes += CapacityBytes(componentVerts_);
+        bytes += CapacityBytes(componentFaces_);
+        bytes += CapacityBytes(componentAttrs_);
+        bytes += CapacityBytes(meshCenters_);
+        bytes += CapacityBytes(meshMap_);
+        bytes += CapacityBytes(meshBytes_);
+        bytes += CapacityBytes(smoothCache_);
+        bytes += CapacityBytes(flatCache_);
+        for (const auto& c : smoothCache_)
+        {
+            bytes += CapacityBytes(c.verts);
+            bytes += CapacityBytes(c.faces);
+            bytes += CapacityBytes(c.attrs);
+            bytes += CapacityBytes(c.normals);
+        }
+        for (const auto& c : flatCache_)
+        {
+            bytes += CapacityBytes(c.verts);
+            bytes += CapacityBytes(c.faces);
+            bytes += CapacityBytes(c.attrs);
+        }
+        return (bytes > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()))
+            ? std::numeric_limits<uint32_t>::max()
+            : static_cast<uint32_t>(bytes);
+    }
     uint32_t LastDrawnFaces() const { return lastDrawnFaces_; }
     uint32_t LastDrawnMeshes() const { return lastDrawnMeshes_; }
 
     // Export per-face texture slot in global face order (mesh0 face0..N, mesh1...).
     // Untextured faces are returned as -1.
-    void CollectFaceTextureSlotsGlobal(std::vector<int32_t>& out) const
+    template <typename SlotT>
+    void CollectFaceTextureSlotsGlobal(std::vector<SlotT>& out) const
     {
+        static_assert(std::is_integral_v<SlotT>, "SlotT must be integral");
         out.clear();
         if (componentMode_)
         {
@@ -823,7 +855,7 @@ public:
             for (const auto& a : componentAttrs_)
             {
                 const uint16_t tex = a.Texture;
-                out.push_back((tex == No_Texture) ? -1 : static_cast<int32_t>(tex));
+                out.push_back((tex == No_Texture) ? static_cast<SlotT>(-1) : static_cast<SlotT>(tex));
             }
             return;
         }
@@ -835,13 +867,13 @@ public:
             if (!mesh) return;
             if (!mesh->Attributes)
             {
-                for (size_t fi = 0; fi < mesh->FaceCount; ++fi) out.push_back(-1);
+                for (size_t fi = 0; fi < mesh->FaceCount; ++fi) out.push_back(static_cast<SlotT>(-1));
                 return;
             }
             for (size_t fi = 0; fi < mesh->FaceCount; ++fi)
             {
                 const uint16_t tex = mesh->Attributes[fi].Texture;
-                out.push_back((tex == No_Texture) ? -1 : static_cast<int32_t>(tex));
+                out.push_back((tex == No_Texture) ? static_cast<SlotT>(-1) : static_cast<SlotT>(tex));
             }
         };
 
@@ -857,8 +889,10 @@ public:
 
     // Remap textures by global face order (mesh0 face0..N, mesh1 face0..N...).
     // faceTextureSlots[globalFaceIndex] = VDP1 texture slot to assign.
-    size_t ApplyFaceTextureSlotsGlobal(const std::vector<int32_t>& faceTextureSlots)
+    template <typename SlotT>
+    size_t ApplyFaceTextureSlotsGlobal(const std::vector<SlotT>& faceTextureSlots)
     {
+        static_assert(std::is_integral_v<SlotT>, "SlotT must be integral");
         auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t slot)
         {
             attr.Texture = slot;
@@ -904,7 +938,7 @@ public:
             const size_t n = std::min(componentAttrs_.size(), faceTextureSlots.size());
             for (size_t i = 0; i < n; ++i)
             {
-                const int32_t slot = faceTextureSlots[i];
+                const int32_t slot = static_cast<int32_t>(faceTextureSlots[i]);
                 if (slot < 0) continue;
                 if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
                 const uint16_t slotU16 = static_cast<uint16_t>(slot);
@@ -925,7 +959,7 @@ public:
             for (size_t fi = 0; fi < mesh->FaceCount; ++fi, ++globalFace)
             {
                 if (globalFace >= faceTextureSlots.size()) continue;
-                const int32_t slot = faceTextureSlots[globalFace];
+                const int32_t slot = static_cast<int32_t>(faceTextureSlots[globalFace]);
                 if (slot < 0) continue;
                 if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
                 const uint16_t slotU16 = static_cast<uint16_t>(slot);
@@ -1100,6 +1134,13 @@ public:
     }
 
 private:
+    template <typename VecT>
+    static uint64_t CapacityBytes(const VecT& v)
+    {
+        using T = typename VecT::value_type;
+        return static_cast<uint64_t>(v.capacity()) * static_cast<uint64_t>(sizeof(T));
+    }
+
     // Compute global bounds of all meshes.
     ModelBounds ComputeBounds(ModelObject& model, bool isSmooth)
     {

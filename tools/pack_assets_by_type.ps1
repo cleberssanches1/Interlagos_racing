@@ -94,6 +94,7 @@ function Build-Pack {
 $groups = [ordered]@{
     GEO   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???.GEO" | Sort-Object Name | ForEach-Object FullName))
     SDR   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???.SDR" | Sort-Object Name | ForEach-Object FullName))
+    RDR   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???.RDR" | Sort-Object Name | ForEach-Object FullName))
     BDR   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "B*.BDR" | Sort-Object Name | ForEach-Object FullName))
     MAT8  = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M8.MAT" | Sort-Object Name | ForEach-Object FullName))
     MAT16 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M16.MAT" | Sort-Object Name | ForEach-Object FullName))

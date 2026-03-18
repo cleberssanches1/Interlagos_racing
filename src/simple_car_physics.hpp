@@ -35,7 +35,8 @@ public:
         }
 
         const SRL::Math::Types::Fxp absSpeed = speed_.Abs();
-        ioFrameState.speedProxy = (absSpeed * SRL::Math::Types::Fxp::BuildRaw(100 << 16)).As<int16_t>();
+        ioFrameState.speedProxy =
+            ((absSpeed / kMaxForwardSpeed) * SRL::Math::Types::Fxp::BuildRaw(kTargetTopSpeedKmh << 16)).As<int16_t>();
 
         if (ioFrameState.steering != 0 && absSpeed > kMinSteerSpeed)
         {
@@ -66,6 +67,8 @@ public:
     }
 
 private:
+    static constexpr int16_t kTargetTopSpeedKmh = 250;
+
     static SRL::Math::Types::Fxp NormalizePercent(int16_t value)
     {
         const int16_t clamped = std::clamp<int16_t>(value, static_cast<int16_t>(-100), static_cast<int16_t>(100));
@@ -103,11 +106,11 @@ private:
 
     SRL::Math::Types::Fxp speed_ = SRL::Math::Types::Fxp::BuildRaw(0);
 
-    static constexpr SRL::Math::Types::Fxp kAccelPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00000B85);      // ~0.045
+    static constexpr SRL::Math::Types::Fxp kAccelPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00000CCC);      // ~0.050
     static constexpr SRL::Math::Types::Fxp kBrakePerFrame = SRL::Math::Types::Fxp::BuildRaw(0x0000147B);      // ~0.080
     static constexpr SRL::Math::Types::Fxp kDragPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x000003D7);       // ~0.015
     static constexpr SRL::Math::Types::Fxp kIdleDampingPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x0000020C);// ~0.008
-    static constexpr SRL::Math::Types::Fxp kMaxForwardSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00024000);    // 2.25
+    static constexpr SRL::Math::Types::Fxp kMaxForwardSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00028000);    // 2.50 ~= 250 km/h proxy
     static constexpr SRL::Math::Types::Fxp kMaxReverseSpeed = SRL::Math::Types::Fxp::BuildRaw(-0x00006000);   // -0.375
     static constexpr SRL::Math::Types::Fxp kMinSteerSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00000A3D);      // ~0.04
     static constexpr SRL::Math::Types::Fxp kSteerDegreesPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00011EB8);// ~1.12

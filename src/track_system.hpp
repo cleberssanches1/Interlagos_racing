@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 #define DOXYGEN 1
@@ -20,6 +21,55 @@
 #include "track_renderer.hpp"
 #include "track_segment_pool.hpp"
 
+template <typename T, SRL::Memory::Zone ZoneValue>
+struct TrackZoneAllocator
+{
+    using value_type = T;
+    using propagate_on_container_move_assignment = std::true_type;
+    using is_always_equal = std::true_type;
+
+    TrackZoneAllocator() noexcept = default;
+
+    template <typename U>
+    TrackZoneAllocator(const TrackZoneAllocator<U, ZoneValue>&) noexcept {}
+
+    T* allocate(std::size_t n)
+    {
+        if (n == 0) return nullptr;
+        return static_cast<T*>(SRL::Memory::Malloc(n * sizeof(T), ZoneValue));
+    }
+
+    void deallocate(T* p, std::size_t) noexcept
+    {
+        SRL::Memory::Free(p);
+    }
+
+    template <typename U>
+    struct rebind
+    {
+        using other = TrackZoneAllocator<U, ZoneValue>;
+    };
+};
+
+template <typename T, typename U, SRL::Memory::Zone ZoneValue>
+inline bool operator==(const TrackZoneAllocator<T, ZoneValue>&,
+                       const TrackZoneAllocator<U, ZoneValue>&) noexcept
+{
+    return true;
+}
+
+template <typename T, typename U, SRL::Memory::Zone ZoneValue>
+inline bool operator!=(const TrackZoneAllocator<T, ZoneValue>&,
+                       const TrackZoneAllocator<U, ZoneValue>&) noexcept
+{
+    return false;
+}
+
+template <typename T>
+using TrackLowWorkVector = std::vector<T, TrackZoneAllocator<T, SRL::Memory::Zone::LWRam>>;
+using TrackLowWorkU16Vector = TrackLowWorkVector<uint16_t>;
+using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
+
 class TrackSystem
 {
 public:
@@ -28,8 +78,8 @@ public:
     struct Config
     {
         // Initial visible segment count before adaptive budget tuning.
-        uint32_t initialSegments = 30;
-        uint32_t minSegments = 19;
+        uint16_t initialSegments = 30;
+        uint16_t minSegments = 19;
         uint32_t initialMeshes = 128;
         uint32_t initialFaces = 32000;
         bool useSlave = true;
@@ -47,6 +97,7 @@ public:
                      const SRL::Math::Types::Vector3D& lightDirection,
                      const SRL::Math::Types::Vector3D& cameraLocation,
                      const SRL::Math::Types::Vector3D& carWorldPosition);
+    void SetObservedCarSegmentId(int32_t segmentId) { observedCarSegmentId_ = segmentId; }
 
     // Present telemetry and update adaptive budget targets for next frame.
     void EndFrame();
@@ -71,7 +122,7 @@ public:
 private:
     struct TrackSegmentEntry
     {
-        int id = 0;
+        int16_t id = 0;
         TrackSegmentCopy copy;
     };
 
@@ -83,12 +134,12 @@ private:
             bool hasPerFaceRankOffsets = false;
             uint8_t currentLodIndex = 0xFF; // 0:8, 1:16, 2:32, 3:64
             int16_t currentBaseRank = -1;
-            std::vector<uint16_t> faceFamilyIds{};
-            std::vector<uint8_t> faceRankOffsets{};
-            std::vector<int32_t> currentFaceSlots{};
+            TrackLowWorkU16Vector faceFamilyIds{};
+            TrackLowWorkU8Vector faceRankOffsets{};
+            std::vector<int16_t> currentFaceSlots{};
         };
 
-        int id = 0;
+        int16_t id = 0;
         uint8_t logicalSegmentCount = 0;
         std::unique_ptr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
@@ -96,13 +147,15 @@ private:
     };
     struct RawSegmentEntry
     {
-        int id = 0;
+        int16_t id = 0;
         TrackSegmentCopy copy{};
     };
     struct Seg1FamilySlotEntry
     {
         uint16_t familyId = 0;
         std::array<uint16_t, 4> lodSlots{{0, 0, 0, 0}}; // 0:8, 1:16, 2:32, 3:64
+        std::array<uint16_t, 4> workingRefs{{0, 0, 0, 0}};
+        std::array<uint8_t, 4> unusedFrames{{0, 0, 0, 0}};
     };
     struct Seg1TexbankEntry
     {
@@ -112,10 +165,10 @@ private:
     };
     struct Seg1TexbankCart
     {
-        int lod = 8;
+        int16_t lod = 8;
         void* cartPtr = nullptr;
         uint32_t size = 0;
-        std::vector<Seg1TexbankEntry> entries{};
+        TrackLowWorkVector<Seg1TexbankEntry> entries{};
     };
     struct Seg1TgaCartEntry
     {
@@ -123,6 +176,14 @@ private:
         void* cartPtr = nullptr;
         uint32_t size = 0;
     };
+
+    using SegmentEntryVector = TrackLowWorkVector<TrackSegmentEntry>;
+    using RawSegmentVector = TrackLowWorkVector<RawSegmentEntry>;
+    using CenterCatalogVector = TrackLowWorkVector<SRL::Math::Types::Vector3D>;
+    using FamilyIdCatalogVector = TrackLowWorkU16Vector;
+    using FamilyIdVector = TrackLowWorkU16Vector;
+    using FaceRankOffsetVector = TrackLowWorkU8Vector;
+    using FamilySlotVector = TrackLowWorkVector<Seg1FamilySlotEntry>;
 
     using SegmentPool = TrackSegmentPool<kTrackSegmentLimit, SegmentRenderEntry>;
     using SegmentHandle = SegmentPool::Handle;
@@ -139,14 +200,14 @@ private:
                                         size_t& outCount);
     void InvalidateFamilySlotIndex() const;
     void RebuildFamilySlotIndex() const;
-    void InitializeFamilySlots(std::vector<Seg1FamilySlotEntry>& outSlots,
+    void InitializeFamilySlots(FamilySlotVector& outSlots,
                                const int* familyIds,
                                size_t count) const;
-    void InitializeFamilySlots(std::vector<Seg1FamilySlotEntry>& outSlots,
-                               const std::vector<uint16_t>& familyIds) const;
-    Seg1FamilySlotEntry* FindFamilySlot(std::vector<Seg1FamilySlotEntry>& familySlots, uint16_t familyId);
-    const Seg1FamilySlotEntry* FindFamilySlot(const std::vector<Seg1FamilySlotEntry>& familySlots, uint16_t familyId) const;
-    bool TryGetFamilyLodSlot(const std::vector<Seg1FamilySlotEntry>& familySlots,
+    void InitializeFamilySlots(FamilySlotVector& outSlots,
+                               const FamilyIdCatalogVector& familyIds) const;
+    Seg1FamilySlotEntry* FindFamilySlot(FamilySlotVector& familySlots, uint16_t familyId);
+    const Seg1FamilySlotEntry* FindFamilySlot(const FamilySlotVector& familySlots, uint16_t familyId) const;
+    bool TryGetFamilyLodSlot(const FamilySlotVector& familySlots,
                              uint16_t familyId,
                              uint8_t lodIndex,
                              uint16_t& outSlot) const;
@@ -159,41 +220,59 @@ private:
                               bool* outSawDecodeFail,
                               bool* outSawUploadFail,
                               int* outLoadedFromLodValue);
+    bool PreloadFullTrackFamilyLodCache();
     // Build per family texture slots for all lod levels used by segment renderers.
-    bool BuildTrackFamilyLodSlots(std::vector<Seg1FamilySlotEntry>& outSlots);
+    bool BuildTrackFamilyLodSlots(FamilySlotVector& outSlots);
     // Build per face slot tables for one segment renderer across all lod levels.
     bool BuildSegmentLodState(SegmentRenderEntry& entry,
                               const SegmentComponent::Blob& matBlob,
                               const SegmentComponent::Loader::MatView& matView,
-                              std::vector<Seg1FamilySlotEntry>& familySlots);
+                              FamilySlotVector& familySlots);
     // Rebuild one segment face slot table on demand for the selected lod band.
     bool RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
                                        uint8_t lodIndex,
-                                       std::vector<Seg1FamilySlotEntry>& familySlots);
+                                       FamilySlotVector& familySlots);
     // Rebuild one batch face slot table using the first logical rank carried by that batch.
     bool RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
                                             size_t baseRank,
-                                            std::vector<Seg1FamilySlotEntry>& familySlots);
+                                            FamilySlotVector& familySlots);
     // Upload one family texture slot only when a lod band actually needs it.
-    bool EnsureFamilyLodSlotLoaded(std::vector<Seg1FamilySlotEntry>& familySlots,
+    bool EnsureFamilyLodSlotLoaded(FamilySlotVector& familySlots,
                                    uint16_t familyId,
                                    uint8_t lodIndex);
+    bool RebuildSafeSegmentEntry(SegmentRenderEntry& entry);
     // Resolve the target lod band for a visible segment rank near the camera.
     uint8_t ResolveSegmentLodIndexByRank(size_t rank) const;
     // Apply lod changes only for segments whose desired band changed.
     void UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles);
     bool BuildSegmentCenterCatalog();
-    bool RebuildActiveSegmentWindow(int32_t startSegmentId, size_t loadLimit);
-    bool SlideActiveSegmentWindowForward(size_t stepCount);
+    bool RebuildActiveSegmentWindow(int32_t startSegmentId, size_t loadLimit, int8_t direction);
+    bool SlideActiveSegmentWindow(size_t stepCount, int8_t direction);
     void PrewarmNextSegmentLod8();
     void ResetSlidePrefetchState();
+    bool BuildSegmentIntoPrefetch(int32_t segmentId);
+    bool BuildSegmentIntoRenderer(int32_t segmentId,
+                                  TrackRenderer& renderer,
+                                  SRL::Math::Types::Vector3D& outCenter,
+                                  FamilyIdVector& outFamilyIds);
     bool BuildSegmentIntoSlideScratch(int32_t segmentId,
                                       SRL::Math::Types::Vector3D& outCenter,
-                                      std::vector<uint16_t>& outFamilyIds);
+                                      FamilyIdVector& outFamilyIds);
     void TryPrefetchUpcomingSegment();
+    void PrimeRuntimeScratchCapacities();
     void CaptureTrackTextureHeapBase();
+    bool RebuildTrackTextureResidencyForWindow();
     bool ShouldRecycleTrackTextureHeap() const;
     void RecycleTrackTextureHeap();
+    uint32_t EstimateWorkRamRetainedBytes() const;
+    uint32_t EstimateLowWorkRamRetainedBytes() const;
+    bool TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFreeDelta);
+    bool ValidateAndRepairWindowState();
+    void EmitWorkRamLivePointersTelemetry();
+    void RunWorkRamMaintenance(bool windowSlid);
+    void RefreshFamilyWorkingSet(bool releaseUnused);
+    void ReleaseUnusedFamilyResourcesEndFrame();
+    void EmitFamilyWorkingSetTelemetry() const;
     void MergeCurrentWindowFamilies();
     bool UpdateActiveSegmentWindowForPosition(const SRL::Math::Types::Vector3D& worldPosition,
                                               const SRL::Math::Types::Vector3D& trackOffset);
@@ -212,8 +291,8 @@ private:
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);
     TrackSegmentCopy CopySegmentById(size_t id);
-    std::vector<TrackSegmentEntry> CopyAllTrackSegments(size_t maxSegments);
-    std::vector<SegmentRenderEntry> BuildSegmentRenderers(std::vector<TrackSegmentEntry>& entries);
+    SegmentEntryVector CopyAllTrackSegments(size_t maxSegments);
+    std::vector<SegmentRenderEntry> BuildSegmentRenderers(SegmentEntryVector& entries);
     std::vector<SegmentHandle> BuildSegmentHandleTable();
     void ResetInitializationState();
     size_t ResolveInitialLoadLimit(const Config& config) const;
@@ -257,38 +336,69 @@ private:
     bool ready_ = false;
     bool segmentsReady_ = false;
     bool coordinatorReady_ = false;
-    uint32_t fixedVisibleSegmentCap_ = 1;
+    uint16_t fixedVisibleSegmentCap_ = 1;
     uint16_t totalSegmentCount_ = 0;
-    int32_t activeWindowStartId_ = 1;
-    size_t activeWindowHead_ = 0;
+    int16_t activeWindowStartId_ = 1;
+    uint16_t activeWindowHead_ = 0;
+    int8_t windowDirection_ = 1;
     uint8_t activeWindowSwitchCooldown_ = 0;
-    std::vector<SRL::Math::Types::Vector3D> segmentCenterCatalog_{};
+    int16_t targetWindowStartId_ = 1;
+    int16_t trackedCarSegmentId_ = 1;
+    bool trackedCarSegmentValid_ = false;
+    int16_t observedCarSegmentId_ = -1;
+    CenterCatalogVector segmentCenterCatalog_{};
     std::unique_ptr<TrackRenderer> slideScratchRenderer_{};
-    int32_t slidePrefetchSegmentId_ = -1;
+    FamilyIdVector slideIncomingFamilyIdsScratch_{};
+    FaceRankOffsetVector slideIncomingFaceRankOffsetsScratch_{};
+    std::vector<int16_t> slideIncomingFaceSlotsScratch_{};
+    int16_t slidePrefetchSegmentId_ = -1;
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
-    std::vector<uint16_t> slidePrefetchFamilyIds_{};
+    FamilyIdVector slidePrefetchFamilyIds_{};
+    std::vector<int16_t> slidePrefetchFaceSlots_{};
+    std::unique_ptr<TrackRenderer> slidePrefetchRenderer_{};
+    bool slidePrefetchLod8Ready_ = false;
     uint16_t trackTextureHeapBase_ = 0;
     bool trackTextureHeapBaseValid_ = false;
     uint16_t trackTextureRecycleCount_ = 0;
     uint8_t textureUploadsThisFrame_ = 0;
-    static constexpr uint8_t kTextureUploadsBudgetPerFrame = 8;
+    static constexpr uint8_t kTextureUploadsBudgetPerFrame = 4;
+    uint8_t runtimeRdrBuildsThisFrame_ = 0;
+    uint8_t runtimeSdrBuildsThisFrame_ = 0;
+    uint8_t runtimeFaceRemapsThisFrame_ = 0;
+    uint8_t runtimeSlidesThisFrame_ = 0;
+    uint8_t runtimeSlideStallsThisFrame_ = 0;
+    uint8_t runtimePrefetchHitsThisFrame_ = 0;
+    uint8_t runtimePrefetchMissesThisFrame_ = 0;
+    uint8_t runtimeLodSegmentUpdatesThisFrame_ = 0;
+    uint8_t runtimeSafeRenderedThisFrame_ = 0;
+    uint8_t runtimeSafeSkippedThisFrame_ = 0;
+    uint8_t runtimeSafeNoDrawThisFrame_ = 0;
+    uint8_t runtimeSafeReappliedThisFrame_ = 0;
+    uint8_t prewarmCooldown_ = 0;
+    uint8_t workRamTrimCooldown_ = 0;
+    uint8_t workRamTelemetryCooldown_ = 0;
+    uint16_t workRamRepairCount_ = 0;
+    bool fullTrackFamilyCacheReady_ = false;
+    size_t lastWindowFreeBytes_ = 0;
+    bool lastWindowFreeValid_ = false;
     mutable std::array<int16_t, 4096> familySlotIndex_{};
     mutable bool familySlotIndexDirty_ = true;
     uint8_t familyMergeCooldown_ = 0;
+    std::array<uint8_t, SRL_MAX_TEXTURES> usedTextureSlotsThisFrame_{};
 
-    std::vector<TrackSegmentEntry> segmentEntries_{};
-    std::vector<RawSegmentEntry> rawSegmentCatalog_{};
+    SegmentEntryVector segmentEntries_{};
+    RawSegmentVector rawSegmentCatalog_{};
     std::vector<SegmentRenderEntry> segmentRenderers_{};
     bool seg1ComponentEnabled_ = false;
     SRL::Math::Types::Vector3D seg1ComponentCenter_{};
     std::vector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
     std::vector<SRL::Types::Polygon> seg1ComponentFaces_{};
     std::vector<SRL::Types::Attribute> seg1ComponentAttrs_{};
-    std::vector<uint16_t> seg1FaceFamilyIds_{};
-    std::vector<Seg1FamilySlotEntry> seg1FamilySlots_{};
+    FamilyIdCatalogVector seg1FaceFamilyIds_{};
+    FamilySlotVector seg1FamilySlots_{};
     std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
-    std::vector<Seg1TgaCartEntry> seg1TgaCatalog_{};
-    std::array<std::vector<int32_t>, 4> seg1RendererFaceSlotsByLod_{};
+    TrackLowWorkVector<Seg1TgaCartEntry> seg1TgaCatalog_{};
+    std::array<std::vector<int16_t>, 4> seg1RendererFaceSlotsByLod_{};
     uint16_t seg1TgaPreloadCount_ = 0;
     uint16_t seg1TgaAttemptCount_ = 0;
     uint16_t seg1TgaFailCount_ = 0;
@@ -298,17 +408,17 @@ private:
     bool seg1SingleFaceSwapUseAlt_ = false;
     uint16_t seg1SingleFaceSwapCounter_ = 0;
     uint16_t seg1SingleFaceSwapFrames_ = 180; // ~3s @60fps
-    int32_t seg1SingleFaceSwapFace_ = -1;
-    int32_t seg1SingleFaceSwapBaseSlot_ = -1;
-    int32_t seg1SingleFaceSwapAltSlot_ = -1;
-    std::vector<int32_t> seg1SingleFaceSlots_{};
+    int16_t seg1SingleFaceSwapFace_ = -1;
+    int16_t seg1SingleFaceSwapBaseSlot_ = -1;
+    int16_t seg1SingleFaceSwapAltSlot_ = -1;
+    std::vector<int16_t> seg1SingleFaceSlots_{};
     uint8_t seg1CurrentLodIndex_ = 0;
     uint16_t seg1LodFrameCounter_ = 0;
     uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)
     SegmentPool segmentPool_{};
     std::vector<SegmentHandle> segmentHandles_{};
     std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};
-    DoubleBufferedTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};
+    SlaveTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit> coordinator_{producer_};
     AdaptiveTrackBudgetController budgetController_{};
     SoakMonitor soakMonitor_{};
