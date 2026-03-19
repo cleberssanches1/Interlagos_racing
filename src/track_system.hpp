@@ -243,6 +243,12 @@ private:
     bool RebuildSafeSegmentEntry(SegmentRenderEntry& entry);
     // Resolve the target lod band for a visible segment rank near the camera.
     uint8_t ResolveSegmentLodIndexByRank(size_t rank) const;
+    bool TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) const;
+    bool HasPendingStabilizedWindowLodChanges() const;
+    bool ApplyStabilizedLodForLogicalRank(size_t logicalRank);
+    void UpdateStabilizedWindowLodBoundaries();
+    void UpdateStabilizedWindowLodBands();
+    void ProcessPendingStabilizedWindowLodChanges(uint8_t maxUpdates);
     // Apply lod changes only for segments whose desired band changed.
     void UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles);
     bool BuildSegmentCenterCatalog();
@@ -367,6 +373,7 @@ private:
     uint16_t trackTextureRecycleCount_ = 0;
     uint8_t textureUploadsThisFrame_ = 0;
     static constexpr uint8_t kTextureUploadsBudgetPerFrame = 4;
+    uint8_t GetTextureUploadBudgetPerFrame() const;
     uint8_t runtimeRdrBuildsThisFrame_ = 0;
     uint8_t runtimeSdrBuildsThisFrame_ = 0;
     uint8_t runtimeFaceRemapsThisFrame_ = 0;

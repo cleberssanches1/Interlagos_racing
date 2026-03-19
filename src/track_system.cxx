@@ -128,6 +128,7 @@ static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
 // - disable destructive texture/palette release while racing
 // This isolates runtime lifetime bugs from the offline asset pipeline.
 static constexpr bool kEnableTrackRuntimeStabilization = true;
+static constexpr bool kEnableTrackLodBandsInStabilization = true;
 static constexpr bool kEnableSafeModeSingleRenderBackend = false;
 static constexpr uint8_t kSafeModeRenderBackendId = 1; // 0:Scene3D 1:SglDirect 2:Vdp1
 static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
@@ -5274,7 +5275,8 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
 bool TrackSystem::PreloadFullTrackFamilyLodCache()
 {
     const int lodValues[4] = { 8, 16, 32, 64 };
-    const size_t loadBankCount = kEnableTrackRuntimeStabilization ? 1u : seg1Texbanks_.size();
+    const bool useAllLodBanks = !kEnableTrackRuntimeStabilization || kEnableTrackLodBandsInStabilization;
+    const size_t loadBankCount = useAllLodBanks ? seg1Texbanks_.size() : 1u;
     for (size_t li = 0; li < loadBankCount; ++li)
     {
         if (!LoadSeg1TexbankIndexToCart(li, lodValues[li]))
@@ -5338,33 +5340,37 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
     InvalidateFamilySlotIndex();
     fullTrackFamilyCacheReady_ = !seg1FamilySlots_.empty();
 
-    unsigned loadedLod8 = 0;
-    unsigned failedLod8 = 0;
+    std::array<unsigned, 4> loadedLodCounts{};
+    std::array<unsigned, 4> failedLodCounts{};
     if (fullTrackFamilyCacheReady_ && kEnableTrackRuntimeStabilization)
     {
         const bool savedReady = ready_;
         const uint8_t savedTextureUploads = textureUploadsThisFrame_;
         ready_ = false;
         textureUploadsThisFrame_ = 0;
+        const uint8_t preloadLodCount = 1u;
         for (auto& family : seg1FamilySlots_)
         {
-            bool sawMissingFamily = false;
-            bool sawDecodeFail = false;
-            bool sawUploadFail = false;
-            if (TryLoadFamilyLodSlot(family,
-                                     0,
-                                     /*fallbackToLowerLods*/false,
-                                     /*fallbackToHigherLods*/false,
-                                     &sawMissingFamily,
-                                     &sawDecodeFail,
-                                     &sawUploadFail,
-                                     nullptr))
+            for (uint8_t preloadLodIndex = 0; preloadLodIndex < preloadLodCount; ++preloadLodIndex)
             {
-                ++loadedLod8;
-            }
-            else
-            {
-                ++failedLod8;
+                bool sawMissingFamily = false;
+                bool sawDecodeFail = false;
+                bool sawUploadFail = false;
+                if (TryLoadFamilyLodSlot(family,
+                                         preloadLodIndex,
+                                         /*fallbackToLowerLods*/false,
+                                         /*fallbackToHigherLods*/false,
+                                         &sawMissingFamily,
+                                         &sawDecodeFail,
+                                         &sawUploadFail,
+                                         nullptr))
+                {
+                    ++loadedLodCounts[preloadLodIndex];
+                }
+                else
+                {
+                    ++failedLodCounts[preloadLodIndex];
+                }
             }
         }
         ready_ = savedReady;
@@ -5374,16 +5380,23 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
     const auto cart = SRL::Memory::CartRam::GetReport();
     const auto hwr = SRL::Memory::HighWorkRam::GetReport();
     const auto lwr = SRL::Memory::LowWorkRam::GetReport();
-    SRL::Debug::Print(1, 21, "TRK fam catalog fam:%u banks:%u l8:%u fail:%u",
+    SRL::Debug::Print(1, 21, "TRK fam catalog fam:%u b:%u 8:%u/%u 16:%u/%u",
                       static_cast<unsigned>(seg1FamilySlots_.size()),
                       static_cast<unsigned>(loadBankCount),
-                      loadedLod8,
-                      failedLod8);
-    SRL::Debug::Print(1, 22, "TRK mem hb:%u lb:%u cf:%u",
+                      loadedLodCounts[0],
+                      failedLodCounts[0],
+                      loadedLodCounts[1],
+                      failedLodCounts[1]);
+    SRL::Debug::Print(1, 22, "TRK fam lod32:%u/%u 64:%u/%u",
+                      loadedLodCounts[2],
+                      failedLodCounts[2],
+                      loadedLodCounts[3],
+                      failedLodCounts[3]);
+    SRL::Debug::Print(1, 23, "TRK mem hb:%u lb:%u cf:%u",
                       static_cast<unsigned>(EstimateWorkRamRetainedBytes()),
                       static_cast<unsigned>(EstimateLowWorkRamRetainedBytes()),
                       static_cast<unsigned>(cart.FreeSize));
-    SRL::Debug::Print(1, 23, "TRK ram hf:%u lf:%u     ",
+    SRL::Debug::Print(1, 24, "TRK ram hf:%u lf:%u     ",
                       static_cast<unsigned>(hwr.FreeSize),
                       static_cast<unsigned>(lwr.FreeSize));
     return fullTrackFamilyCacheReady_;
@@ -5472,11 +5485,13 @@ bool TrackSystem::EnsureFamilyLodSlotLoaded(FamilySlotVector& familySlots,
     if (!slotEntry) return false;
     const uint16_t existing = slotEntry->lodSlots[lodIndex];
     if (existing != No_Texture && IsVdp1TextureSlotLive(existing)) return true;
-    if (ready_ && textureUploadsThisFrame_ >= kTextureUploadsBudgetPerFrame) return false;
+    if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
+    const bool requireExactLod =
+        kEnableTrackRuntimeStabilization && kEnableTrackLodBandsInStabilization;
     const bool loaded = TryLoadFamilyLodSlot(*slotEntry,
                                              lodIndex,
-                                             /*fallbackToLowerLods*/true,
-                                             /*fallbackToHigherLods*/true,
+                                             /*fallbackToLowerLods*/!requireExactLod,
+                                             /*fallbackToHigherLods*/!requireExactLod,
                                              nullptr,
                                              nullptr,
                                              nullptr,
@@ -5584,6 +5599,24 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     if (!entry.renderer) return false;
     if (entry.id <= 0) return false;
 
+    uint8_t desiredLodIndex = 0u;
+    if (kEnableTrackLodBandsInStabilization)
+    {
+        size_t logicalRank = 0;
+        if (TryGetWindowLogicalRank(entry.id, logicalRank))
+        {
+            desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        }
+        else if (entry.lodState.currentLodIndex <= 3u)
+        {
+            desiredLodIndex = entry.lodState.currentLodIndex;
+        }
+    }
+    else if (entry.lodState.currentLodIndex <= 3u)
+    {
+        desiredLodIndex = entry.lodState.currentLodIndex;
+    }
+
     Vector3D rebuiltCenter(0.0, 0.0, 0.0);
     FamilyIdVector rebuiltFamilyIds{};
     if (!BuildSegmentIntoRenderer(entry.id, *entry.renderer, rebuiltCenter, rebuiltFamilyIds)) return false;
@@ -5611,20 +5644,47 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     entry.lodState.faceFamilyIds = std::move(rebuiltFamilyIds);
     entry.lodState.faceRankOffsets.assign(entry.lodState.faceFamilyIds.size(), 0u);
     entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
-    if (!RebuildSegmentFaceSlotsForLod(entry, 0, seg1FamilySlots_)) return false;
-    if (HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots, &entry.lodState.faceFamilyIds))
+    std::vector<int16_t> previousFaceSlots = entry.lodState.currentFaceSlots;
+    bool rebuilt = false;
+    uint8_t appliedLodIndex = desiredLodIndex;
+    for (int lodIndex = static_cast<int>(desiredLodIndex); lodIndex >= 0; --lodIndex)
     {
+        entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
+        if (!RebuildSegmentFaceSlotsForLod(entry, static_cast<uint8_t>(lodIndex), seg1FamilySlots_))
+        {
+            continue;
+        }
+        if (HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots, &entry.lodState.faceFamilyIds))
+        {
+            continue;
+        }
+        rebuilt = true;
+        appliedLodIndex = static_cast<uint8_t>(lodIndex);
+        break;
+    }
+    if (!rebuilt)
+    {
+        entry.lodState.currentFaceSlots.swap(previousFaceSlots);
         return false;
     }
     (void)entry.renderer->ApplyFaceTextureSlotsGlobal(entry.lodState.currentFaceSlots);
-    entry.lodState.currentLodIndex = 0;
+    entry.lodState.currentLodIndex = appliedLodIndex;
     return IsRendererStateIntegral(*entry.renderer);
 }
 
 // Map a near to far rank into the current fixed lod bands for track rendering.
+uint8_t TrackSystem::GetTextureUploadBudgetPerFrame() const
+{
+    if (kEnableTrackRuntimeStabilization && kEnableTrackLodBandsInStabilization)
+    {
+        return 64u;
+    }
+    return kTextureUploadsBudgetPerFrame;
+}
+
 uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
 {
-    if (kEnableTrackRuntimeStabilization)
+    if (kEnableTrackRuntimeStabilization && !kEnableTrackLodBandsInStabilization)
     {
         (void)rank;
         return 0; // correctness-first path: keep the active window in 8x8 only
@@ -5640,10 +5700,331 @@ uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
     return 0;                      // keep 8x8 beyond rank 19
 }
 
+bool TrackSystem::TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) const
+{
+    outRank = 0;
+    if (segmentRenderers_.empty() || totalSegmentCount_ == 0) return false;
+    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    if (startId <= 0) return false;
+    const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
+    for (size_t logicalRank = 0; logicalRank < segmentRenderers_.size(); ++logicalRank)
+    {
+        const int32_t expectedId = WrapSegmentIdToRange(
+            startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
+                               : -static_cast<int32_t>(logicalRank)),
+            totalSegmentCount_);
+        if (expectedId != segmentId) continue;
+        outRank = logicalRank;
+        return true;
+    }
+    return false;
+}
+
+bool TrackSystem::HasPendingStabilizedWindowLodChanges() const
+{
+    if (!kEnableTrackRuntimeStabilization || !kEnableTrackLodBandsInStabilization) return false;
+    if (segmentRenderers_.empty() || totalSegmentCount_ == 0) return false;
+
+    for (const auto& entry : segmentRenderers_)
+    {
+        if (!entry.renderer || !entry.lodState.ready) continue;
+        size_t logicalRank = 0;
+        if (!TryGetWindowLogicalRank(entry.id, logicalRank)) continue;
+        const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+        if (!entry.lodState.hasPerFaceRankOffsets)
+        {
+            if (entry.lodState.currentLodIndex != desiredLodIndex) return true;
+        }
+        else
+        {
+            if (entry.lodState.currentLodIndex != desiredLodIndex ||
+                entry.lodState.currentBaseRank != desiredBaseRank)
+            {
+                return true;
+            }
+        }
+        if (HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
+                                               &entry.lodState.faceFamilyIds))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool TrackSystem::ApplyStabilizedLodForLogicalRank(size_t logicalRank)
+{
+    if (!kEnableTrackRuntimeStabilization || !kEnableTrackLodBandsInStabilization) return true;
+    if (segmentRenderers_.empty() || totalSegmentCount_ == 0) return false;
+
+    const size_t windowCount = segmentRenderers_.size();
+    if (logicalRank >= windowCount) return true;
+
+    FamilySlotVector& familySlots = seg1FamilySlots_;
+    const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
+    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    if (startId <= 0) return false;
+
+    const int32_t segmentId = WrapSegmentIdToRange(
+        startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
+                           : -static_cast<int32_t>(logicalRank)),
+        totalSegmentCount_);
+    if (segmentId <= 0) return false;
+
+    SegmentRenderEntry* entry = nullptr;
+    for (auto& candidate : segmentRenderers_)
+    {
+        if (candidate.id != segmentId) continue;
+        entry = &candidate;
+        break;
+    }
+    if (!entry || !entry->renderer || !entry->lodState.ready) return false;
+
+    const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+    const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+
+    if (!entry->lodState.hasPerFaceRankOffsets)
+    {
+        if (entry->lodState.currentLodIndex == desiredLodIndex &&
+            !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                &entry->lodState.faceFamilyIds))
+        {
+            return true;
+        }
+        if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
+
+        std::vector<int16_t> previousFaceSlots = entry->lodState.currentFaceSlots;
+        const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
+        const int16_t previousBaseRank = entry->lodState.currentBaseRank;
+        if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, familySlots) ||
+            HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                               &entry->lodState.faceFamilyIds))
+        {
+            entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+            entry->lodState.currentLodIndex = previousLodIndex;
+            entry->lodState.currentBaseRank = previousBaseRank;
+            return false;
+        }
+
+        (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+        ++runtimeFaceRemapsThisFrame_;
+        ++runtimeLodSegmentUpdatesThisFrame_;
+        entry->lodState.currentLodIndex = desiredLodIndex;
+        entry->lodState.currentBaseRank = -1;
+        return true;
+    }
+
+    if (entry->lodState.currentBaseRank == desiredBaseRank &&
+        entry->lodState.currentLodIndex == desiredLodIndex &&
+        !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                            &entry->lodState.faceFamilyIds))
+    {
+        return true;
+    }
+    if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
+
+    std::vector<int16_t> previousFaceSlots = entry->lodState.currentFaceSlots;
+    const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
+    const int16_t previousBaseRank = entry->lodState.currentBaseRank;
+    if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots) ||
+        HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                           &entry->lodState.faceFamilyIds))
+    {
+        entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+        entry->lodState.currentLodIndex = previousLodIndex;
+        entry->lodState.currentBaseRank = previousBaseRank;
+        return false;
+    }
+
+    (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+    ++runtimeFaceRemapsThisFrame_;
+    ++runtimeLodSegmentUpdatesThisFrame_;
+    entry->lodState.currentBaseRank = desiredBaseRank;
+    entry->lodState.currentLodIndex = desiredLodIndex;
+    return true;
+}
+
+void TrackSystem::UpdateStabilizedWindowLodBoundaries()
+{
+    if (!kEnableTrackRuntimeStabilization || !kEnableTrackLodBandsInStabilization) return;
+    if (segmentRenderers_.empty()) return;
+
+    static constexpr std::array<size_t, 4> kForwardBoundaryRanks{{3u, 8u, 13u, 19u}};
+    static constexpr std::array<size_t, 4> kBackwardBoundaryRanks{{0u, 4u, 9u, 14u}};
+    const auto& boundaryRanks = (windowDirection_ >= 0) ? kForwardBoundaryRanks : kBackwardBoundaryRanks;
+    // Promotions must close inside the slide event. If the first pass only
+    // uploads some family slots, give the same four boundaries a couple of
+    // extra passes before we leave the slide. This avoids per-frame churn.
+    constexpr uint8_t kBoundaryPassCount = 3u;
+    for (uint8_t pass = 0; pass < kBoundaryPassCount; ++pass)
+    {
+        bool anyApplied = false;
+        for (size_t i = 0; i < boundaryRanks.size(); ++i)
+        {
+            if (ApplyStabilizedLodForLogicalRank(boundaryRanks[i]))
+            {
+                anyApplied = true;
+            }
+        }
+        if (!anyApplied) break;
+        if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) break;
+    }
+}
+
+void TrackSystem::ProcessPendingStabilizedWindowLodChanges(uint8_t maxUpdates)
+{
+    if (!kEnableTrackRuntimeStabilization || !kEnableTrackLodBandsInStabilization) return;
+    if (segmentRenderers_.empty() || totalSegmentCount_ == 0) return;
+    if (maxUpdates == 0) return;
+
+    uint8_t appliedUpdates = 0u;
+    for (size_t logicalRank = 0;
+         logicalRank < segmentRenderers_.size() && appliedUpdates < maxUpdates;
+         ++logicalRank)
+    {
+        const int32_t segmentId = WrapSegmentIdToRange(
+            activeWindowStartId_ + (windowDirection_ >= 0
+                ? static_cast<int32_t>(logicalRank)
+                : -static_cast<int32_t>(logicalRank)),
+            totalSegmentCount_);
+        if (segmentId <= 0) continue;
+
+        SegmentRenderEntry* entry = nullptr;
+        for (auto& candidate : segmentRenderers_)
+        {
+            if (candidate.id != segmentId) continue;
+            entry = &candidate;
+            break;
+        }
+        if (!entry || !entry->renderer || !entry->lodState.ready) continue;
+
+        const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+        const bool needsUpdate = entry->lodState.hasPerFaceRankOffsets
+            ? (entry->lodState.currentLodIndex != desiredLodIndex ||
+               entry->lodState.currentBaseRank != desiredBaseRank ||
+               HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                  &entry->lodState.faceFamilyIds))
+            : (entry->lodState.currentLodIndex != desiredLodIndex ||
+               HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                  &entry->lodState.faceFamilyIds));
+        if (!needsUpdate) continue;
+
+        if (ApplyStabilizedLodForLogicalRank(logicalRank))
+        {
+            ++appliedUpdates;
+        }
+    }
+}
+
+void TrackSystem::UpdateStabilizedWindowLodBands()
+{
+    if (!kEnableTrackRuntimeStabilization || !kEnableTrackLodBandsInStabilization) return;
+    if (segmentRenderers_.empty() || totalSegmentCount_ == 0) return;
+
+    FamilySlotVector& familySlots = seg1FamilySlots_;
+    const size_t windowCount = segmentRenderers_.size();
+    const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
+    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    if (startId <= 0) return;
+
+    for (size_t logicalRank = 0; logicalRank < windowCount; ++logicalRank)
+    {
+        const int32_t segmentId = WrapSegmentIdToRange(
+            startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
+                               : -static_cast<int32_t>(logicalRank)),
+            totalSegmentCount_);
+        if (segmentId <= 0) continue;
+
+        SegmentRenderEntry* entry = nullptr;
+        for (auto& candidate : segmentRenderers_)
+        {
+            if (candidate.id != segmentId) continue;
+            entry = &candidate;
+            break;
+        }
+        if (!entry || !entry->renderer || !entry->lodState.ready) continue;
+
+        const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+
+        if (!entry->lodState.hasPerFaceRankOffsets)
+        {
+            if (entry->lodState.currentLodIndex == desiredLodIndex &&
+                !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                    &entry->lodState.faceFamilyIds))
+            {
+                continue;
+            }
+            if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) continue;
+
+            std::vector<int16_t> previousFaceSlots = entry->lodState.currentFaceSlots;
+            const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
+            const int16_t previousBaseRank = entry->lodState.currentBaseRank;
+            if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, familySlots))
+            {
+                entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+                entry->lodState.currentLodIndex = previousLodIndex;
+                entry->lodState.currentBaseRank = previousBaseRank;
+                continue;
+            }
+            if (HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                   &entry->lodState.faceFamilyIds))
+            {
+                entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+                entry->lodState.currentLodIndex = previousLodIndex;
+                entry->lodState.currentBaseRank = previousBaseRank;
+                continue;
+            }
+            (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+            ++runtimeFaceRemapsThisFrame_;
+            ++runtimeLodSegmentUpdatesThisFrame_;
+            entry->lodState.currentLodIndex = desiredLodIndex;
+            entry->lodState.currentBaseRank = -1;
+            continue;
+        }
+
+        if (entry->lodState.currentBaseRank == desiredBaseRank &&
+            entry->lodState.currentLodIndex == desiredLodIndex &&
+            !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                &entry->lodState.faceFamilyIds))
+        {
+            continue;
+        }
+        if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) continue;
+
+        std::vector<int16_t> previousFaceSlots = entry->lodState.currentFaceSlots;
+        const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
+        const int16_t previousBaseRank = entry->lodState.currentBaseRank;
+        if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots))
+        {
+            entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+            entry->lodState.currentLodIndex = previousLodIndex;
+            entry->lodState.currentBaseRank = previousBaseRank;
+            continue;
+        }
+        if (HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                               &entry->lodState.faceFamilyIds))
+        {
+            entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+            entry->lodState.currentLodIndex = previousLodIndex;
+            entry->lodState.currentBaseRank = previousBaseRank;
+            continue;
+        }
+        (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+        ++runtimeFaceRemapsThisFrame_;
+        ++runtimeLodSegmentUpdatesThisFrame_;
+        entry->lodState.currentBaseRank = desiredBaseRank;
+        entry->lodState.currentLodIndex = desiredLodIndex;
+    }
+}
+
 // Apply lod changes only when a visible segment crosses a band boundary.
 void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles)
 {
-    if (kEnableTrackRuntimeStabilization)
+    if (kEnableTrackRuntimeStabilization && !kEnableTrackLodBandsInStabilization)
     {
         (void)nearToFarHandles;
         return;
@@ -5669,7 +6050,7 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
                 logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
                 continue;
             }
-            if (ready_ && textureUploadsThisFrame_ >= kTextureUploadsBudgetPerFrame)
+            if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame())
             {
                 // Keep current mapping this frame and retry when upload budget resets.
                 logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
@@ -5715,7 +6096,7 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
             continue;
         }
-        if (ready_ && textureUploadsThisFrame_ >= kTextureUploadsBudgetPerFrame)
+        if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame())
         {
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
             continue;
@@ -5883,6 +6264,25 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
             break;
         }
 
+        if (kEnableTrackRuntimeStabilization && kEnableTrackLodBandsInStabilization)
+        {
+            SegmentRenderEntry& builtEntry = built[0];
+            const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalSid);
+            const bool remapOk = !builtEntry.lodState.hasPerFaceRankOffsets
+                ? RebuildSegmentFaceSlotsForLod(builtEntry, desiredLodIndex, seg1FamilySlots_)
+                : RebuildSegmentFaceSlotsForBaseRank(builtEntry, logicalSid, seg1FamilySlots_);
+            if (remapOk &&
+                !HasMissingRequiredFaceTextureSlots(builtEntry.lodState.currentFaceSlots,
+                                                   &builtEntry.lodState.faceFamilyIds))
+            {
+                (void)builtEntry.renderer->ApplyFaceTextureSlotsGlobal(builtEntry.lodState.currentFaceSlots);
+                builtEntry.lodState.currentLodIndex = desiredLodIndex;
+                builtEntry.lodState.currentBaseRank = builtEntry.lodState.hasPerFaceRankOffsets
+                    ? static_cast<int16_t>(logicalSid)
+                    : -1;
+            }
+        }
+
         // Keep metadata aligned with successfully built renderers.
         segmentEntries_.push_back({ batchEntries.front().id, {} });
         segmentRenderers_.push_back(std::move(built[0]));
@@ -5922,6 +6322,10 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
                       static_cast<unsigned>(segmentEntries_.size()),
                       activeWindowStartId_,
                       static_cast<unsigned>(totalSegmentCount_));
+    if (kEnableTrackRuntimeStabilization && kEnableTrackLodBandsInStabilization)
+    {
+        (void)RebuildTrackTextureResidencyForWindow();
+    }
     return segmentsReady_;
 }
 
@@ -6269,7 +6673,10 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow()
         }
     }
 
-    bool success = true;
+    bool structuralFailure = false;
+    bool remapFailure = false;
+    int32_t firstFailedSegmentId = -1;
+    uint8_t firstFailedLodIndex = 0u;
     size_t logicalRank = 0;
     for (size_t rank = 0; rank < segmentRenderers_.size(); ++rank)
     {
@@ -6280,7 +6687,7 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow()
             totalSegmentCount_);
         if (segmentId <= 0)
         {
-            success = false;
+            structuralFailure = true;
             break;
         }
 
@@ -6295,11 +6702,14 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow()
         }
         if (!entry || !entry->renderer || !entry->lodState.ready || entry->lodState.faceFamilyIds.empty())
         {
-            success = false;
+            structuralFailure = true;
             break;
         }
 
         const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        std::vector<int16_t> previousFaceSlots = entry->lodState.currentFaceSlots;
+        const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
+        const int16_t previousBaseRank = entry->lodState.currentBaseRank;
         const bool remapOk = !entry->lodState.hasPerFaceRankOffsets
             ? RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, seg1FamilySlots_)
             : RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, seg1FamilySlots_);
@@ -6307,12 +6717,22 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow()
             HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                &entry->lodState.faceFamilyIds))
         {
-            success = false;
-            break;
+            entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+            entry->lodState.currentLodIndex = previousLodIndex;
+            entry->lodState.currentBaseRank = previousBaseRank;
+            if (!remapFailure)
+            {
+                remapFailure = true;
+                firstFailedSegmentId = segmentId;
+                firstFailedLodIndex = desiredLodIndex;
+            }
+            logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
+            continue;
         }
 
         (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
         ++runtimeFaceRemapsThisFrame_;
+        ++runtimeLodSegmentUpdatesThisFrame_;
         entry->lodState.currentLodIndex = desiredLodIndex;
         entry->lodState.currentBaseRank = entry->lodState.hasPerFaceRankOffsets
             ? static_cast<int16_t>(logicalRank)
@@ -6323,9 +6743,16 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow()
     ready_ = savedReady;
     textureUploadsThisFrame_ = savedTextureUploads;
 
-    if (!success)
+    if (structuralFailure)
     {
         return false;
+    }
+
+    if (remapFailure)
+    {
+        SRL::Debug::Print(1, 22, "TRK lod fail id:%d l:%u",
+                          firstFailedSegmentId,
+                          static_cast<unsigned>(firstFailedLodIndex));
     }
 
     if (!kEnableTrackRuntimeStabilization)
@@ -6762,7 +7189,7 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
                               static_cast<int>(freeDelta),
                               static_cast<unsigned>(GetHighWorkRamFreeBytesSafe()));
         }
-        if (trimmed || criticalLowMemory)
+        if (!kEnableTrackRuntimeStabilization && (trimmed || criticalLowMemory))
         {
             (void)ValidateAndRepairWindowState();
             EmitWorkRamLivePointersTelemetry();
@@ -7128,6 +7555,10 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             {
                 activeWindowHead_ = dropIdx % windowCount;
             }
+            if (kEnableTrackLodBandsInStabilization)
+            {
+                (void)RebuildTrackTextureResidencyForWindow();
+            }
             RefreshFamilyWorkingSet(false);
             segmentHandles_ = BuildSegmentHandleTable();
             ++runtimeSlidesThisFrame_;
@@ -7156,7 +7587,10 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             int32_t freeDelta = 0;
             if (TrimWorkRamRetainedCapacities(true, &freeDelta))
             {
-                (void)ValidateAndRepairWindowState();
+                if (!kEnableTrackRuntimeStabilization)
+                {
+                    (void)ValidateAndRepairWindowState();
+                }
                 SRL::Debug::Print(1, 12, "PKG slide trim df:%d free:%u",
                                   static_cast<int>(freeDelta),
                                   static_cast<unsigned>(GetHighWorkRamFreeBytesSafe()));
@@ -7477,8 +7911,8 @@ void TrackSystem::PrewarmNextSegmentLod8()
     const uint16_t texCount = SRL::VDP1::GetTextureCount();
     const bool nearHeapLimit = texCount >= static_cast<uint16_t>(SRL_MAX_TEXTURES - 96);
     const size_t remainingUploadBudget =
-        (textureUploadsThisFrame_ < kTextureUploadsBudgetPerFrame)
-            ? static_cast<size_t>(kTextureUploadsBudgetPerFrame - textureUploadsThisFrame_)
+        (textureUploadsThisFrame_ < GetTextureUploadBudgetPerFrame())
+            ? static_cast<size_t>(GetTextureUploadBudgetPerFrame() - textureUploadsThisFrame_)
             : 0u;
     const size_t kPrewarmFamilyCapPerSlide = nearHeapLimit ? 1u : 2u;
     const size_t prewarmCap = std::min(kPrewarmFamilyCapPerSlide, remainingUploadBudget);
@@ -7749,6 +8183,14 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
     uint16_t liveSlots = 0;
     std::array<uint16_t, 4> lodFamilies{{0, 0, 0, 0}};
     std::array<uint16_t, 4> lodRefs{{0, 0, 0, 0}};
+    std::array<uint16_t, 4> segmentBands{{0, 0, 0, 0}};
+
+    for (const auto& entry : segmentRenderers_)
+    {
+        if (!entry.renderer || !entry.lodState.ready) continue;
+        if (entry.lodState.currentLodIndex > 3u) continue;
+        ++segmentBands[entry.lodState.currentLodIndex];
+    }
 
     for (size_t i = 0; i < seg1FamilySlots_.size(); ++i)
     {
@@ -7776,6 +8218,11 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
                       static_cast<unsigned>(lodRefs[2]),
                       static_cast<unsigned>(lodFamilies[3]),
                       static_cast<unsigned>(lodRefs[3]));
+    SRL::Debug::Print(1, 16, "TRK band 8:%u 16:%u 32:%u 64:%u",
+                      static_cast<unsigned>(segmentBands[0]),
+                      static_cast<unsigned>(segmentBands[1]),
+                      static_cast<unsigned>(segmentBands[2]),
+                      static_cast<unsigned>(segmentBands[3]));
     SRL::Debug::Print(1, 17, "TRK pal 16:%u 64:%u 128:%u 256:%u",
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal16)),
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal64)),
@@ -9395,8 +9842,6 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(
             orderedHandles.size(),
             static_cast<size_t>(fixedVisibleSegmentCap_));
     orderedHandles.resize(keepCount);
-    UpdateVisibleSegmentLods(orderedHandles);
-
     // Draw in camera-space painter order (far -> near).
     // VDP1 has no Z-buffer for this path, so camera-relative order is required
     // to avoid distortion when camera rotates around the car.
@@ -9564,10 +10009,6 @@ void TrackSystem::RenderVisibleSegmentOrder(
 {
     if (kEnableTrackRuntimeStabilization)
     {
-        if (ValidateAndRepairWindowState())
-        {
-            RefreshFamilyWorkingSet(false);
-        }
         std::array<SegmentRenderEntry*, kTrackSegmentLimit> orderedEntries{};
         size_t orderedCount = 0;
         for (auto& entry : segmentRenderers_)
@@ -9637,18 +10078,89 @@ void TrackSystem::RenderVisibleSegmentOrder(
                 &entry->lodState.faceFamilyIds);
             if (missingSlots > 0)
             {
-                const bool remapped = RebuildSegmentFaceSlotsForLod(*entry, 0, seg1FamilySlots_);
+                uint8_t repairLodIndex = 0u;
+                int16_t repairBaseRank = -1;
+                size_t logicalRank = 0;
+                const bool hasLogicalRank =
+                    kEnableTrackLodBandsInStabilization &&
+                    TryGetWindowLogicalRank(entry->id, logicalRank);
+                if (kEnableTrackLodBandsInStabilization)
+                {
+                    if (hasLogicalRank)
+                    {
+                        repairLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+                        repairBaseRank = static_cast<int16_t>(logicalRank);
+                    }
+                    else if (entry->lodState.currentLodIndex <= 3u)
+                    {
+                        repairLodIndex = entry->lodState.currentLodIndex;
+                    }
+                }
+                std::vector<int16_t> previousFaceSlots = entry->lodState.currentFaceSlots;
+                const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
+                const int16_t previousBaseRank = entry->lodState.currentBaseRank;
+
+                bool remapped = false;
+                uint8_t appliedLodIndex = repairLodIndex;
+                int16_t appliedBaseRank = repairBaseRank;
+                if (entry->lodState.hasPerFaceRankOffsets)
+                {
+                    if (hasLogicalRank)
+                    {
+                        remapped = RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, seg1FamilySlots_) &&
+                                   !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                                      &entry->lodState.faceFamilyIds);
+                        if (!remapped)
+                        {
+                            entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+                            entry->lodState.currentLodIndex = previousLodIndex;
+                            entry->lodState.currentBaseRank = previousBaseRank;
+                        }
+                    }
+                }
+                else
+                {
+                    for (int lodAttempt = static_cast<int>(repairLodIndex); lodAttempt >= 0; --lodAttempt)
+                    {
+                        entry->lodState.currentFaceSlots.assign(entry->lodState.faceFamilyIds.size(), -1);
+                        if (!RebuildSegmentFaceSlotsForLod(*entry,
+                                                           static_cast<uint8_t>(lodAttempt),
+                                                           seg1FamilySlots_))
+                        {
+                            continue;
+                        }
+                        if (HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                               &entry->lodState.faceFamilyIds))
+                        {
+                            continue;
+                        }
+                        remapped = true;
+                        appliedLodIndex = static_cast<uint8_t>(lodAttempt);
+                        appliedBaseRank = -1;
+                        break;
+                    }
+                    if (!remapped)
+                    {
+                        entry->lodState.currentFaceSlots.swap(previousFaceSlots);
+                        entry->lodState.currentLodIndex = previousLodIndex;
+                        entry->lodState.currentBaseRank = previousBaseRank;
+                    }
+                }
                 if (remapped)
                 {
                     (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
-                    entry->lodState.currentLodIndex = 0;
+                    entry->lodState.currentLodIndex = appliedLodIndex;
+                    entry->lodState.currentBaseRank = appliedBaseRank;
                     ++runtimeSafeReappliedThisFrame_;
                 }
                 if (!remapped ||
                     CountMissingOrDeadRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                                &entry->lodState.faceFamilyIds) > 0)
                 {
-                    if (!RebuildSafeSegmentEntry(*entry))
+                    const bool previousStillUsable =
+                        !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                            &entry->lodState.faceFamilyIds);
+                    if (!previousStillUsable && !RebuildSafeSegmentEntry(*entry))
                     {
                         SRL::Debug::Print(1, 21, "TRK slot miss id:%d m:%u",
                                           entry->id,
