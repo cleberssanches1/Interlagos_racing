@@ -69,6 +69,7 @@ template <typename T>
 using TrackLowWorkVector = std::vector<T, TrackZoneAllocator<T, SRL::Memory::Zone::LWRam>>;
 using TrackLowWorkU16Vector = TrackLowWorkVector<uint16_t>;
 using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
+using TrackLowWorkI16Vector = TrackLowWorkVector<int16_t>;
 
 class TrackSystem
 {
@@ -148,10 +149,10 @@ private:
             bool workingSetCacheDirty = true;
             TrackLowWorkU16Vector faceFamilyIds{};
             TrackLowWorkU8Vector faceRankOffsets{};
-            std::vector<int16_t> currentFaceSlots{};
+            TrackLowWorkI16Vector currentFaceSlots{};
             TrackLowWorkU16Vector workingSetFamilies{};
             TrackLowWorkU8Vector workingSetLodIndices{};
-            std::vector<int16_t> workingSetSlots{};
+            TrackLowWorkI16Vector workingSetSlots{};
         };
 
         int16_t id = 0;
@@ -197,7 +198,7 @@ private:
         int16_t segmentId = -1;
         uint8_t desiredLodIndex = 0xFF;
         int16_t desiredBaseRank = -1;
-        std::vector<int16_t> preparedFaceSlots{};
+        TrackLowWorkI16Vector preparedFaceSlots{};
     };
     struct SlideBackBuffer
     {
@@ -209,7 +210,7 @@ private:
         int16_t nextStartId = 1;
         SRL::Math::Types::Vector3D incomingCenter{};
         TrackLowWorkU16Vector incomingFamilyIds{};
-        std::vector<int16_t> incomingFaceSlots{};
+        TrackLowWorkI16Vector incomingFaceSlots{};
         uint8_t incomingResidentLodIndex = 0xFF;
         int16_t incomingResidentBaseRank = -1;
         std::array<SlideBoundaryUpdate, 4> boundaryUpdates{};
@@ -291,7 +292,7 @@ private:
     bool ResolveBestEffortFaceSlots(const FamilyIdVector& faceFamilyIds,
                                     uint8_t preferredLodIndex,
                                     FamilySlotVector& familySlots,
-                                    std::vector<int16_t>& outFaceSlots,
+                                    TrackLowWorkI16Vector& outFaceSlots,
                                     bool tryLoadFallback = false,
                                     bool bypassUploadBudget = false);
     bool RebuildSafeSegmentEntry(SegmentRenderEntry& entry);
@@ -314,12 +315,12 @@ private:
     bool ResolvePreparedFaceSlotsForLod(const SegmentRenderEntry& entry,
                                         uint8_t lodIndex,
                                         FamilySlotVector& familySlots,
-                                        std::vector<int16_t>& outFaceSlots,
+                                        TrackLowWorkI16Vector& outFaceSlots,
                                         bool bypassUploadBudget = false);
     bool ResolvePreparedFaceSlotsForBaseRank(const SegmentRenderEntry& entry,
                                              size_t baseRank,
                                              FamilySlotVector& familySlots,
-                                             std::vector<int16_t>& outFaceSlots,
+                                             TrackLowWorkI16Vector& outFaceSlots,
                                              bool bypassUploadBudget = false);
     bool ApplyStabilizedLodForLogicalRank(size_t logicalRank);
     void UpdateStabilizedWindowLodBoundaries();
@@ -444,15 +445,15 @@ private:
     std::unique_ptr<TrackRenderer> slideScratchRenderer_{};
     FamilyIdVector slideIncomingFamilyIdsScratch_{};
     FaceRankOffsetVector slideIncomingFaceRankOffsetsScratch_{};
-    std::vector<int16_t> slideIncomingFaceSlotsScratch_{};
+    TrackLowWorkI16Vector slideIncomingFaceSlotsScratch_{};
     FamilyIdVector slideRollbackFamilyIdsScratch_{};
     FaceRankOffsetVector slideRollbackFaceRankOffsetsScratch_{};
-    std::vector<int16_t> slideRollbackFaceSlotsScratch_{};
+    TrackLowWorkI16Vector slideRollbackFaceSlotsScratch_{};
     SlideBackBuffer slideBackBuffer_{};
     int16_t slidePrefetchSegmentId_ = -1;
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
     FamilyIdVector slidePrefetchFamilyIds_{};
-    std::vector<int16_t> slidePrefetchFaceSlots_{};
+    TrackLowWorkI16Vector slidePrefetchFaceSlots_{};
     std::unique_ptr<TrackRenderer> slidePrefetchRenderer_{};
     bool slidePrefetchLod8Ready_ = false;
     uint16_t trackTextureHeapBase_ = 0;
@@ -531,14 +532,14 @@ private:
     std::vector<SegmentRenderEntry> segmentRenderers_{};
     bool seg1ComponentEnabled_ = false;
     SRL::Math::Types::Vector3D seg1ComponentCenter_{};
-    std::vector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
-    std::vector<SRL::Types::Polygon> seg1ComponentFaces_{};
-    std::vector<SRL::Types::Attribute> seg1ComponentAttrs_{};
+    TrackLowWorkVector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
+    TrackLowWorkVector<SRL::Types::Polygon> seg1ComponentFaces_{};
+    TrackLowWorkVector<SRL::Types::Attribute> seg1ComponentAttrs_{};
     FamilyIdCatalogVector seg1FaceFamilyIds_{};
     FamilySlotVector seg1FamilySlots_{};
     std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
     TrackLowWorkVector<Seg1TgaCartEntry> seg1TgaCatalog_{};
-    std::array<std::vector<int16_t>, 4> seg1RendererFaceSlotsByLod_{};
+    std::array<TrackLowWorkI16Vector, 4> seg1RendererFaceSlotsByLod_{};
     uint16_t seg1TgaPreloadCount_ = 0;
     uint16_t seg1TgaAttemptCount_ = 0;
     uint16_t seg1TgaFailCount_ = 0;
@@ -551,7 +552,7 @@ private:
     int16_t seg1SingleFaceSwapFace_ = -1;
     int16_t seg1SingleFaceSwapBaseSlot_ = -1;
     int16_t seg1SingleFaceSwapAltSlot_ = -1;
-    std::vector<int16_t> seg1SingleFaceSlots_{};
+    TrackLowWorkI16Vector seg1SingleFaceSlots_{};
     uint8_t seg1CurrentLodIndex_ = 0;
     uint16_t seg1LodFrameCounter_ = 0;
     uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)

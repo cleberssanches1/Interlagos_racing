@@ -56,7 +56,9 @@ struct BackgroundManager
         if (!loaded && cachedPathCount > 0)
         {
             ++retryTicks;
-            if ((retryTicks % 30u) == 0u)
+            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+            constexpr size_t kMinRetryHwrBytes = 64u * 1024u;
+            if (hwr.FreeSize >= kMinRetryHwrBytes && (retryTicks % 30u) == 0u)
             {
                 loaded = env.Load(cachedPaths.data(), cachedPathCount);
                 // log removido

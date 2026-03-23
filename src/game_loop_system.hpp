@@ -66,23 +66,29 @@ public:
             AppState::Set(AppState::Stage::LoopFrameBegin, frameCounter_);
             AppState::PresentOverlay(2);
             if (!ValidateFramePreconditions()) continue;
+            hwrStageTrace_ = {};
+            hwrStageTrace_.begin = CurrentHighWorkRamFreeBytes();
 
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
 
             Game::GameplayFrameState frameState = BuildGameplayFrameState(input);
             ExecuteGameplayFrame(frameState);
+            hwrStageTrace_.gameplay = CurrentHighWorkRamFreeBytes();
 
             if (autoLapTestEnabled_)
             {
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
             }
+            hwrStageTrace_.autoLap = CurrentHighWorkRamFreeBytes();
 
             ScheduleCarPrepareIfEnabled();
             UpdateBackground();
+            hwrStageTrace_.background = CurrentHighWorkRamFreeBytes();
 
             const CameraFrameState camera = ResolveCameraFrameState();
             UpdateHud(camera);
+            hwrStageTrace_.hud = CurrentHighWorkRamFreeBytes();
             RenderFrame(camera);
             RenderAxes();
 
@@ -91,6 +97,56 @@ public:
     }
 
 private:
+    struct HwrStageTrace
+    {
+        uint32_t begin = 0;
+        uint32_t gameplay = 0;
+        uint32_t autoLap = 0;
+        uint32_t background = 0;
+        uint32_t hud = 0;
+        uint32_t track = 0;
+        uint32_t car = 0;
+        uint32_t finish = 0;
+    };
+
+    static uint32_t CurrentHighWorkRamFreeBytes()
+    {
+        return static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetReport().FreeSize);
+    }
+
+    void MaybeLogHighWorkRamTrace()
+    {
+        constexpr uint32_t kLowFreeThresholdBytes = 8u * 1024u;
+        constexpr uint32_t kLargeDropThresholdBytes = 32u * 1024u;
+        const uint32_t begin = hwrStageTrace_.begin;
+        const uint32_t finish = hwrStageTrace_.finish;
+        if (hwrTraceCooldownFrames_ > 0u)
+        {
+            --hwrTraceCooldownFrames_;
+        }
+
+        const bool lowFree = finish <= kLowFreeThresholdBytes;
+        const bool largeDrop = begin > finish && (begin - finish) >= kLargeDropThresholdBytes;
+        if (!lowFree && !largeDrop) return;
+        if (hwrTraceCooldownFrames_ > 0u) return;
+
+        const auto report = SRL::Memory::HighWorkRam::GetReport();
+        SRL::Debug::Print(1, 17, "GH1 b:%u g:%u a:%u bg:%u",
+                          static_cast<unsigned>(hwrStageTrace_.begin),
+                          static_cast<unsigned>(hwrStageTrace_.gameplay),
+                          static_cast<unsigned>(hwrStageTrace_.autoLap),
+                          static_cast<unsigned>(hwrStageTrace_.background));
+        SRL::Debug::Print(1, 18, "GH2 h:%u t:%u c:%u f:%u",
+                          static_cast<unsigned>(hwrStageTrace_.hud),
+                          static_cast<unsigned>(hwrStageTrace_.track),
+                          static_cast<unsigned>(hwrStageTrace_.car),
+                          static_cast<unsigned>(hwrStageTrace_.finish));
+        SRL::Debug::Print(1, 19, "GH3 ub:%u fb:%u",
+                          static_cast<unsigned>(report.UsedBlocks),
+                          static_cast<unsigned>(report.FreeBlocks));
+        hwrTraceCooldownFrames_ = 15u;
+    }
+
     // Validate world position before rendering to avoid invalid transform collapse.
     static bool IsFiniteCarPos(const SRL::Math::Types::Vector3D& p)
     {
@@ -391,6 +447,8 @@ private:
         if (!camera.ready)
         {
             SRL::Debug::Print(1, 23, "CAM wait snapshot");
+            hwrStageTrace_.track = CurrentHighWorkRamFreeBytes();
+            hwrStageTrace_.car = hwrStageTrace_.track;
             return;
         }
 
@@ -412,10 +470,12 @@ private:
                                              context_.carWorldPosition);
             context_.trackSystem->EndFrame();
         }
+        hwrStageTrace_.track = CurrentHighWorkRamFreeBytes();
 
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
         RenderCar(camera);
+        hwrStageTrace_.car = CurrentHighWorkRamFreeBytes();
     }
 
     void RenderAxes()
@@ -446,6 +506,8 @@ private:
         const uint32_t submittedCarFaces = CanRenderCar() ? context_.faceCount : 0;
 
         ++frameCounter_;
+        hwrStageTrace_.finish = CurrentHighWorkRamFreeBytes();
+        MaybeLogHighWorkRamTrace();
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
                                                       context_.logTrack,
                                                       context_.logCar,
@@ -886,9 +948,11 @@ private:
     bool autoLapRouteInitialized_ = false;
     bool autoLapRouteBuilt_ = false;
     uint16_t autoLapRouteIndex_ = 0;
-    std::vector<int16_t> autoLapRouteIds_{};
-    std::vector<SRL::Math::Types::Vector3D> autoLapRouteCenters_{};
-    std::array<std::vector<SRL::Math::Types::Vector3D>, 3> autoLapGuideLines_{};
+    TrackLowWorkVector<int16_t> autoLapRouteIds_{};
+    TrackLowWorkVector<SRL::Math::Types::Vector3D> autoLapRouteCenters_{};
+    std::array<TrackLowWorkVector<SRL::Math::Types::Vector3D>, 3> autoLapGuideLines_{};
+    HwrStageTrace hwrStageTrace_{};
+    uint16_t hwrTraceCooldownFrames_ = 0;
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;

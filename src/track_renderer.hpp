@@ -13,6 +13,54 @@
 #include <type_traits>
 #include <utility>
 
+template <typename T, SRL::Memory::Zone ZoneValue>
+struct TrackRendererZoneAllocator
+{
+    using value_type = T;
+    using propagate_on_container_move_assignment = std::true_type;
+    using is_always_equal = std::true_type;
+
+    TrackRendererZoneAllocator() noexcept = default;
+
+    template <typename U>
+    TrackRendererZoneAllocator(const TrackRendererZoneAllocator<U, ZoneValue>&) noexcept {}
+
+    T* allocate(std::size_t n)
+    {
+        if (n == 0) return nullptr;
+        return static_cast<T*>(SRL::Memory::Malloc(n * sizeof(T), ZoneValue));
+    }
+
+    void deallocate(T* p, std::size_t) noexcept
+    {
+        SRL::Memory::Free(p);
+    }
+
+    template <typename U>
+    struct rebind
+    {
+        using other = TrackRendererZoneAllocator<U, ZoneValue>;
+    };
+};
+
+template <typename T, typename U, SRL::Memory::Zone ZoneValue>
+inline bool operator==(const TrackRendererZoneAllocator<T, ZoneValue>&,
+                       const TrackRendererZoneAllocator<U, ZoneValue>&) noexcept
+{
+    return true;
+}
+
+template <typename T, typename U, SRL::Memory::Zone ZoneValue>
+inline bool operator!=(const TrackRendererZoneAllocator<T, ZoneValue>&,
+                       const TrackRendererZoneAllocator<U, ZoneValue>&) noexcept
+{
+    return false;
+}
+
+template <typename T>
+using TrackRendererLowWorkVector =
+    std::vector<T, TrackRendererZoneAllocator<T, SRL::Memory::Zone::LWRam>>;
+
 struct ModelBounds
 {
     SRL::Math::Types::Vector3D min{SRL::Math::Types::Fxp::BuildRaw(32767 << 16),
@@ -26,6 +74,13 @@ struct ModelBounds
 class TrackRenderer
 {
 public:
+    using MeshCenterVector = TrackRendererLowWorkVector<SRL::Math::Types::Vector3D>;
+    using MeshMapVector = TrackRendererLowWorkVector<uintptr_t>;
+    using MeshByteVector = TrackRendererLowWorkVector<size_t>;
+    using ComponentVertVector = TrackRendererLowWorkVector<SRL::Math::Types::Vector3D>;
+    using ComponentFaceVector = TrackRendererLowWorkVector<SRL::Types::Polygon>;
+    using ComponentAttrVector = TrackRendererLowWorkVector<SRL::Types::Attribute>;
+
     struct MemoryStats
     {
         uint32_t bytes = 0;
@@ -157,6 +212,8 @@ public:
             meshCenters_[m] = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
         }
 
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
         if (isSmooth_)
         {
             smoothCache_.assign(meshCount_, {});
@@ -191,9 +248,18 @@ public:
         if (verts.empty() || faces.empty() || attrs.size() != faces.size()) return false;
 
         componentMode_ = true;
-        componentVerts_ = std::move(verts);
-        componentFaces_ = std::move(faces);
-        componentAttrs_ = std::move(attrs);
+        ComponentVertVector vertsMoved(
+            std::make_move_iterator(verts.begin()),
+            std::make_move_iterator(verts.end()));
+        ComponentFaceVector facesMoved(
+            std::make_move_iterator(faces.begin()),
+            std::make_move_iterator(faces.end()));
+        ComponentAttrVector attrsMoved(
+            std::make_move_iterator(attrs.begin()),
+            std::make_move_iterator(attrs.end()));
+        componentVerts_.swap(vertsMoved);
+        componentFaces_.swap(facesMoved);
+        componentAttrs_.swap(attrsMoved);
         hasTrack_ = true;
         isSmooth_ = false;
         meshCount_ = 1;
@@ -225,12 +291,14 @@ public:
         return true;
     }
 
-    // Rebuild component mesh by swapping caller-owned buffers.
-    // This keeps old allocations alive in caller scratch vectors, enabling
-    // deterministic reuse across streamed segment updates.
-    bool InitializeFromComponentDataRecycled(std::vector<SRL::Math::Types::Vector3D>& verts,
-                                             std::vector<SRL::Types::Polygon>& faces,
-                                             std::vector<SRL::Types::Attribute>& attrs)
+    // Rebuild component mesh by transferring caller-owned buffers when possible.
+    // For matching std::vector allocators we swap in-place; for other vector
+    // types (for example TrackLowWorkVector) we move elements into fresh
+    // std::vector storage and clear the source to release scratch RAM.
+    template <typename VertVecT, typename FaceVecT, typename AttrVecT>
+    bool InitializeFromComponentDataRecycled(VertVecT& verts,
+                                             FaceVecT& faces,
+                                             AttrVecT& attrs)
     {
         if (verts.empty() || faces.empty() || attrs.size() != faces.size()) return false;
 
@@ -248,12 +316,50 @@ public:
         trackOffset_ = {};
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        smoothCache_.clear();
-        flatCache_.clear();
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
 
-        componentVerts_.swap(verts);
-        componentFaces_.swap(faces);
-        componentAttrs_.swap(attrs);
+        if constexpr (std::is_same_v<VertVecT, decltype(componentVerts_)>)
+        {
+            componentVerts_.swap(verts);
+        }
+        else
+        {
+            ComponentVertVector vertsMoved(
+                std::make_move_iterator(verts.begin()),
+                std::make_move_iterator(verts.end()));
+            componentVerts_.swap(vertsMoved);
+            verts.clear();
+            VertVecT{}.swap(verts);
+        }
+
+        if constexpr (std::is_same_v<FaceVecT, decltype(componentFaces_)>)
+        {
+            componentFaces_.swap(faces);
+        }
+        else
+        {
+            ComponentFaceVector facesMoved(
+                std::make_move_iterator(faces.begin()),
+                std::make_move_iterator(faces.end()));
+            componentFaces_.swap(facesMoved);
+            faces.clear();
+            FaceVecT{}.swap(faces);
+        }
+
+        if constexpr (std::is_same_v<AttrVecT, decltype(componentAttrs_)>)
+        {
+            componentAttrs_.swap(attrs);
+        }
+        else
+        {
+            ComponentAttrVector attrsMoved(
+                std::make_move_iterator(attrs.begin()),
+                std::make_move_iterator(attrs.end()));
+            componentAttrs_.swap(attrsMoved);
+            attrs.clear();
+            AttrVecT{}.swap(attrs);
+        }
 
         meshCount_ = 1;
         faceCount_ = static_cast<uint32_t>(componentFaces_.size());
@@ -304,12 +410,12 @@ public:
         trackOffset_ = {};
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        smoothCache_.clear();
-        flatCache_.clear();
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
 
-        std::vector<SRL::Math::Types::Vector3D> vertsCopy(verts.begin(), verts.end());
-        std::vector<SRL::Types::Polygon> facesCopy(faces.begin(), faces.end());
-        std::vector<SRL::Types::Attribute> attrsCopy(attrs.begin(), attrs.end());
+        ComponentVertVector vertsCopy(verts.begin(), verts.end());
+        ComponentFaceVector facesCopy(faces.begin(), faces.end());
+        ComponentAttrVector attrsCopy(attrs.begin(), attrs.end());
         componentVerts_.swap(vertsCopy);
         componentFaces_.swap(facesCopy);
         componentAttrs_.swap(attrsCopy);
@@ -390,7 +496,7 @@ public:
             tmp.Attributes = const_cast<SRL::Types::Attribute*>(componentAttrs_.data());
             if (forceDoubleSided_)
             {
-                std::vector<SRL::Types::Attribute> attrs = componentAttrs_;
+                ComponentAttrVector attrs = componentAttrs_;
                 for (auto& a : attrs) a.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
                 tmp.Attributes = attrs.data();
                 SRL::Scene3D::DrawMesh(tmp);
@@ -873,12 +979,6 @@ public:
     uint32_t RetainedBytes() const
     {
         uint64_t bytes = 0;
-        bytes += CapacityBytes(componentVerts_);
-        bytes += CapacityBytes(componentFaces_);
-        bytes += CapacityBytes(componentAttrs_);
-        bytes += CapacityBytes(meshCenters_);
-        bytes += CapacityBytes(meshMap_);
-        bytes += CapacityBytes(meshBytes_);
         bytes += CapacityBytes(smoothCache_);
         bytes += CapacityBytes(flatCache_);
         for (const auto& c : smoothCache_)
@@ -929,11 +1029,18 @@ public:
         return compacted;
     }
 
+    void ReleaseMeshCaches()
+    {
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
+    }
+
     // Export per-face texture slot in global face order (mesh0 face0..N, mesh1...).
     // Untextured faces are returned as -1.
-    template <typename SlotT>
-    void CollectFaceTextureSlotsGlobal(std::vector<SlotT>& out) const
+    template <typename SlotContainer>
+    void CollectFaceTextureSlotsGlobal(SlotContainer& out) const
     {
+        using SlotT = typename SlotContainer::value_type;
         static_assert(std::is_integral_v<SlotT>, "SlotT must be integral");
         out.clear();
         if (componentMode_)
@@ -976,9 +1083,10 @@ public:
 
     // Remap textures by global face order (mesh0 face0..N, mesh1 face0..N...).
     // faceTextureSlots[globalFaceIndex] = VDP1 texture slot to assign.
-    template <typename SlotT>
-    size_t ApplyFaceTextureSlotsGlobal(const std::vector<SlotT>& faceTextureSlots)
+    template <typename SlotContainer>
+    size_t ApplyFaceTextureSlotsGlobal(const SlotContainer& faceTextureSlots)
     {
+        using SlotT = typename SlotContainer::value_type;
         static_assert(std::is_integral_v<SlotT>, "SlotT must be integral");
         auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t slot)
         {
@@ -1072,18 +1180,20 @@ public:
         }
 
         // Refresh custom caches if they are used later.
-        smoothCache_.clear();
-        flatCache_.clear();
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
         if (isSmooth_) smoothCache_.assign(meshCount_, {});
         else flatCache_.assign(meshCount_, {});
 
         return applied;
     }
 
-    template <typename SlotT, typename PrevSlotT>
-    size_t ApplyFaceTextureSlotsGlobalChanged(const std::vector<SlotT>& faceTextureSlots,
-                                              const std::vector<PrevSlotT>& previousFaceTextureSlots)
+    template <typename SlotContainer, typename PrevSlotContainer>
+    size_t ApplyFaceTextureSlotsGlobalChanged(const SlotContainer& faceTextureSlots,
+                                              const PrevSlotContainer& previousFaceTextureSlots)
     {
+        using SlotT = typename SlotContainer::value_type;
+        using PrevSlotT = typename PrevSlotContainer::value_type;
         static_assert(std::is_integral_v<SlotT>, "SlotT must be integral");
         static_assert(std::is_integral_v<PrevSlotT>, "PrevSlotT must be integral");
         if (faceTextureSlots.size() != previousFaceTextureSlots.size())
@@ -1235,8 +1345,8 @@ public:
             }
         }
 
-        smoothCache_.clear();
-        flatCache_.clear();
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
         if (isSmooth_) smoothCache_.assign(meshCount_, {});
         else flatCache_.assign(meshCount_, {});
 
@@ -1319,8 +1429,8 @@ public:
             for (size_t i = 0; i < meshCount_; ++i) applyMesh(trackObj_->GetMesh<SRL::Types::Mesh>(i));
         }
 
-        smoothCache_.clear();
-        flatCache_.clear();
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
         if (isSmooth_) smoothCache_.assign(meshCount_, {});
         else flatCache_.assign(meshCount_, {});
 
@@ -1335,7 +1445,7 @@ public:
         return meshCenters_[idx];
     }
     // Rendering configuration helpers.
-    const std::vector<size_t>& MeshBytes() const { return meshBytes_; }
+    const MeshByteVector& MeshBytes() const { return meshBytes_; }
     void SetScale(const SRL::Math::Types::Fxp& s) { trackScale_ = s; }
     void SetStartMesh(size_t idx) { startMeshIdx_ = (idx < meshCount_) ? idx : 0; }
     void SetDirect2D(bool v) { useDirect2D_ = v; }
@@ -1343,7 +1453,7 @@ public:
     void SetVdp1Commands(bool v) { useVdp1Commands_ = v; }
     void SetUseOriginal(bool v) { useOriginal_ = v; }
     void SetForceDoubleSided(bool v) { forceDoubleSided_ = v; }
-    const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
+    const MeshCenterVector& MeshCenters() const { return meshCenters_; }
     bool GetMeshStats(size_t idx, uint32_t& faces, uint32_t& verts) const
     {
         if (componentMode_)
@@ -1545,9 +1655,9 @@ private:
     SRL::Math::Types::Vector3D trackOffset_;
     ModelBounds bounds_{};
     const char* path_ = nullptr;
-    std::vector<SRL::Math::Types::Vector3D> meshCenters_;
-    std::vector<uintptr_t> meshMap_;
-    std::vector<size_t> meshBytes_;
+    MeshCenterVector meshCenters_;
+    MeshMapVector meshMap_;
+    MeshByteVector meshBytes_;
     MemoryStats memStats_{};
     bool devMode_ = true;
     uint32_t lastDrawnFaces_ = 0;
@@ -1563,9 +1673,9 @@ private:
     bool useOriginal_ = true;
     bool forceDoubleSided_ = false;
     bool componentMode_ = false;
-    std::vector<SRL::Math::Types::Vector3D> componentVerts_{};
-    std::vector<SRL::Types::Polygon> componentFaces_{};
-    std::vector<SRL::Types::Attribute> componentAttrs_{};
+    ComponentVertVector componentVerts_{};
+    ComponentFaceVector componentFaces_{};
+    ComponentAttrVector componentAttrs_{};
 
     struct SmoothCache {
         bool valid = false;
