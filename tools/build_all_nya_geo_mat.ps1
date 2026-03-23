@@ -48,6 +48,7 @@ $script:seg1FamScript = Join-Path $scriptDir "build_seg1_facefam_bin.ps1"
 $script:packByTypeScript = Join-Path $scriptDir "pack_assets_by_type.ps1"
 $script:copyRenScript = Join-Path $scriptDir "copy_ren_textures_to_data.ps1"
 $script:updateSegmentsMapScript = Join-Path $scriptDir "update_segments_map_with_renamed_textures.ps1"
+$script:canonicalizeSegmentsMapScript = Join-Path $scriptDir "canonicalize_segments_map_texture_families.ps1"
 $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
@@ -60,6 +61,7 @@ if (-not (Test-Path -LiteralPath $script:seg1FamScript)) { throw "Script nao enc
 if (-not (Test-Path -LiteralPath $script:packByTypeScript)) { throw "Script nao encontrado: $script:packByTypeScript" }
 if (-not (Test-Path -LiteralPath $script:copyRenScript)) { throw "Script nao encontrado: $script:copyRenScript" }
 if (-not (Test-Path -LiteralPath $script:updateSegmentsMapScript)) { throw "Script nao encontrado: $script:updateSegmentsMapScript" }
+if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
 
 Write-Host "=== Etapa 1/3: Exportar NYA + segments_map.json ==="
@@ -122,6 +124,105 @@ else {
         Write-Host ("segments_map.json atualizado a partir de {0}" -f $sourceMap)
     }
 }
+
+Write-Host "=== Etapa 2.5/7: Canonizar aliases de textura no segments_map ==="
+& $script:canonicalizeSegmentsMapScript `
+    -SegmentsMapPath $jsonPath
+
+function Test-SegmentsMapFamilyReferences {
+    param(
+        [string]$SegmentsMapPath
+    )
+
+    $json = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    if ($null -eq $json) {
+        throw "Nao foi possivel carregar o segments_map para validacao: $SegmentsMapPath"
+    }
+
+    $knownFamilyIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($family in @($json.textureFamilies)) {
+        if ($null -eq $family) { continue }
+        [void]$knownFamilyIds.Add([int]$family.id)
+    }
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $seenErrors = New-Object 'System.Collections.Generic.HashSet[string]'
+    $emitError = {
+        param([string]$Message)
+        if ($seenErrors.Add($Message)) {
+            $errors.Add($Message) | Out-Null
+        }
+    }
+
+    foreach ($segment in @($json.segments)) {
+        if ($null -eq $segment) { continue }
+        $segmentId = [int]$segment.id
+
+        foreach ($familyId in @($segment.faceTextureFamily)) {
+            $fid = [int]$familyId
+            if ($fid -le 0 -or $knownFamilyIds.Contains($fid)) { continue }
+            & $emitError ("seg {0}: faceTextureFamily -> familyId {1} inexistente" -f $segmentId, $fid)
+        }
+
+        foreach ($rle in @($segment.faceTextureFamilyRle)) {
+            if ($null -eq $rle -or -not ($rle.PSObject.Properties.Name -contains "familyId")) { continue }
+            $fid = [int]$rle.familyId
+            if ($fid -le 0 -or $knownFamilyIds.Contains($fid)) { continue }
+            & $emitError ("seg {0}: faceTextureFamilyRle -> familyId {1} inexistente" -f $segmentId, $fid)
+        }
+
+        if ($segment.PSObject.Properties.Name -contains "faces" -and $segment.faces) {
+            foreach ($face in @($segment.faces)) {
+                if ($null -eq $face -or -not ($face.PSObject.Properties.Name -contains "familyId")) { continue }
+                $fid = [int]$face.familyId
+                if ($fid -le 0 -or $knownFamilyIds.Contains($fid)) { continue }
+                & $emitError ("seg {0}: faces[].familyId -> {1} inexistente" -f $segmentId, $fid)
+            }
+        }
+
+        if ($segment.PSObject.Properties.Name -contains "meshes" -and $segment.meshes) {
+            foreach ($mesh in @($segment.meshes)) {
+                if ($null -eq $mesh -or -not ($mesh.PSObject.Properties.Name -contains "textureFamilies")) { continue }
+                foreach ($familyId in @($mesh.textureFamilies)) {
+                    $fid = [int]$familyId
+                    if ($fid -le 0 -or $knownFamilyIds.Contains($fid)) { continue }
+                    & $emitError ("seg {0}: meshes[].textureFamilies -> familyId {1} inexistente" -f $segmentId, $fid)
+                }
+            }
+        }
+    }
+
+    if ($errors.Count -gt 0) {
+        Write-Host "Falha de consistencia em segments_map.json:"
+        $errors | Select-Object -First 32 | ForEach-Object { Write-Host (" - " + $_) }
+        if ($errors.Count -gt 32) {
+            Write-Host (" - ... mais {0} erro(s)" -f ($errors.Count - 32))
+        }
+        throw "segments_map.json contem referencias a familyId inexistente(s)."
+    }
+
+    Write-Host ("segments_map refs OK: segs={0} families={1}" -f @($json.segments).Count, @($json.textureFamilies).Count)
+}
+
+Write-Host "=== Etapa 2.6/7: Renomear/copiar texturas com sufixo ==="
+& $script:copyRenScript `
+    -DataDir $PackageDir `
+    -TextOutDir $CdDataDir `
+    -ResultDir $ResultDir
+
+Write-Host "=== Etapa 2.7/7: Atualizar segments_map com texturas renomeadas ==="
+$renManifestPath = Join-Path $PackageDir "ren_textures_copy_map.json"
+& $script:updateSegmentsMapScript `
+    -SegmentsMapPath $jsonPath `
+    -RenManifestPath $renManifestPath `
+    -ResultDir $ResultDir
+
+Write-Host "=== Etapa 2.8/7: Recanonizar families apos remap de texturas ==="
+& $script:canonicalizeSegmentsMapScript `
+    -SegmentsMapPath $jsonPath
+
+Write-Host "=== Etapa 2.9/7: Validar referencias de familyId no segments_map ==="
+Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
 
 Write-Host "=== Etapa 3/7: Gerar GEO/MAT para cada LOD ==="
 $lodDirs = @(
@@ -242,19 +343,7 @@ Write-Host "=== Etapa 3.7/7: Gerar batches draw-ready BDR1 ==="
     -BatchSize 2 `
     -AllBatches
 
-Write-Host "=== Etapa 4/6: Renomear/copiar texturas com sufixo ==="
-& $script:copyRenScript `
-    -DataDir $PackageDir `
-    -TextOutDir $CdDataDir
-
-Write-Host "=== Etapa 4.5: Atualizar segments_map com texturas renomeadas ==="
-$renManifestPath = Join-Path $PackageDir "ren_textures_copy_map.json"
-& $script:updateSegmentsMapScript `
-    -SegmentsMapPath $jsonPath `
-    -RenManifestPath $renManifestPath `
-    -ResultDir $ResultDir
-
-Write-Host "=== Etapa 4.6: Minificar segments_map.json ==="
+Write-Host "=== Etapa 4/7: Minificar segments_map.json ==="
 & python $script:minifyJsonScript $jsonPath
 
 function Copy-SegmentsMapShortNames {
@@ -322,7 +411,7 @@ function Remove-CdDataAuxFiles {
     }
 }
 
-Write-Host "=== Etapa 4.7: Criar aliases 8.3 para segments_map ==="
+Write-Host "=== Etapa 4.1/7: Criar aliases 8.3 para segments_map ==="
 $upperCdDir = Join-Path (Split-Path -Parent $CdDataDir) "CD\DATA"
 $targetDirs = @($CdDataDir)
 if ($upperCdDir -ne $CdDataDir) { $targetDirs += $upperCdDir }
@@ -445,6 +534,8 @@ if ($RebuildSegmentsMap) {
         -TexWidth $TexWidth `
         -TexHeight $TexHeight `
         -TexPadWidth $TexPadWidth
+    Write-Host "=== Validando segments_map final apos rebuild ==="
+    Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
     Write-Host "=== Minificando segments_map final apos rebuild ==="
     & python $script:minifyJsonScript $jsonPath
     Write-Host "=== Recriando aliases 8.3 apos rebuild final ==="

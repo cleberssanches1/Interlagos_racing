@@ -307,9 +307,12 @@ public:
         smoothCache_.clear();
         flatCache_.clear();
 
-        componentVerts_.assign(verts.begin(), verts.end());
-        componentFaces_.assign(faces.begin(), faces.end());
-        componentAttrs_.assign(attrs.begin(), attrs.end());
+        std::vector<SRL::Math::Types::Vector3D> vertsCopy(verts.begin(), verts.end());
+        std::vector<SRL::Types::Polygon> facesCopy(faces.begin(), faces.end());
+        std::vector<SRL::Types::Attribute> attrsCopy(attrs.begin(), attrs.end());
+        componentVerts_.swap(vertsCopy);
+        componentFaces_.swap(facesCopy);
+        componentAttrs_.swap(attrsCopy);
 
         meshCount_ = 1;
         faceCount_ = static_cast<uint32_t>(componentFaces_.size());
@@ -898,6 +901,34 @@ public:
     uint32_t LastDrawnFaces() const { return lastDrawnFaces_; }
     uint32_t LastDrawnMeshes() const { return lastDrawnMeshes_; }
 
+    bool CompactRuntimeState(bool aggressive = false)
+    {
+        bool compacted = false;
+        compacted |= CompactVectorSlack(componentVerts_, componentVerts_.size(), aggressive);
+        compacted |= CompactVectorSlack(componentFaces_, componentFaces_.size(), aggressive);
+        compacted |= CompactVectorSlack(componentAttrs_, componentAttrs_.size(), aggressive);
+        compacted |= CompactVectorSlack(meshCenters_, meshCenters_.size(), aggressive);
+        compacted |= CompactVectorSlack(meshMap_, meshMap_.size(), aggressive);
+        compacted |= CompactVectorSlack(meshBytes_, meshBytes_.size(), aggressive);
+
+        for (auto& c : smoothCache_)
+        {
+            compacted |= CompactVectorSlack(c.verts, c.verts.size(), aggressive);
+            compacted |= CompactVectorSlack(c.faces, c.faces.size(), aggressive);
+            compacted |= CompactVectorSlack(c.attrs, c.attrs.size(), aggressive);
+            compacted |= CompactVectorSlack(c.normals, c.normals.size(), aggressive);
+        }
+        for (auto& c : flatCache_)
+        {
+            compacted |= CompactVectorSlack(c.verts, c.verts.size(), aggressive);
+            compacted |= CompactVectorSlack(c.faces, c.faces.size(), aggressive);
+            compacted |= CompactVectorSlack(c.attrs, c.attrs.size(), aggressive);
+        }
+        compacted |= CompactVectorSlack(smoothCache_, smoothCache_.size(), aggressive);
+        compacted |= CompactVectorSlack(flatCache_, flatCache_.size(), aggressive);
+        return compacted;
+    }
+
     // Export per-face texture slot in global face order (mesh0 face0..N, mesh1...).
     // Untextured faces are returned as -1.
     template <typename SlotT>
@@ -1049,6 +1080,169 @@ public:
         return applied;
     }
 
+    template <typename SlotT, typename PrevSlotT>
+    size_t ApplyFaceTextureSlotsGlobalChanged(const std::vector<SlotT>& faceTextureSlots,
+                                              const std::vector<PrevSlotT>& previousFaceTextureSlots)
+    {
+        static_assert(std::is_integral_v<SlotT>, "SlotT must be integral");
+        static_assert(std::is_integral_v<PrevSlotT>, "PrevSlotT must be integral");
+        if (faceTextureSlots.size() != previousFaceTextureSlots.size())
+        {
+            return ApplyFaceTextureSlotsGlobal(faceTextureSlots);
+        }
+
+        auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t slot)
+        {
+            attr.Texture = slot;
+            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+
+            const auto& meta = SRL::VDP1::Metadata[slot];
+            uint16_t colorMode = CL32KRGB;
+            uint16_t palette = No_Palet;
+            switch (meta.ColorMode)
+            {
+            case SRL::CRAM::TextureColorMode::Paletted256:
+                colorMode = CL256Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 8);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted128:
+                colorMode = CL128Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 7);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted64:
+                colorMode = CL64Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 6);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted16:
+                colorMode = CL16Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 4);
+                break;
+            default:
+                colorMode = CL32KRGB;
+                palette = No_Palet;
+                break;
+            }
+
+            attr.Sort = static_cast<uint8_t>((attr.Sort & ~0x1Cu) | ((texturedDir >> 16) & 0x1Cu));
+            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk)) | colorMode;
+            attr.Display = static_cast<uint16_t>((attr.Display & ~0x00C0u) | ((texturedDir >> 24) & 0x00C0u));
+            attr.ColorMode = palette;
+            attr.Direction = static_cast<uint16_t>(texturedDir & 0x003Fu);
+        };
+
+        auto attrMatchesTexture = [&](const SRL::Types::Attribute& attr, uint16_t slot) -> bool
+        {
+            if (attr.Texture != slot) return false;
+
+            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+            const auto& meta = SRL::VDP1::Metadata[slot];
+            uint16_t colorMode = CL32KRGB;
+            uint16_t palette = No_Palet;
+            switch (meta.ColorMode)
+            {
+            case SRL::CRAM::TextureColorMode::Paletted256:
+                colorMode = CL256Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 8);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted128:
+                colorMode = CL128Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 7);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted64:
+                colorMode = CL64Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 6);
+                break;
+            case SRL::CRAM::TextureColorMode::Paletted16:
+                colorMode = CL16Bnk;
+                palette = static_cast<uint16_t>(meta.PaletteId << 4);
+                break;
+            default:
+                colorMode = CL32KRGB;
+                palette = No_Palet;
+                break;
+            }
+
+            const uint8_t sortBits = static_cast<uint8_t>((texturedDir >> 16) & 0x1Cu);
+            const uint16_t displayBits = static_cast<uint16_t>((texturedDir >> 24) & 0x00C0u);
+            const uint16_t maskedDisplay =
+                static_cast<uint16_t>(attr.Display & (CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk));
+            return maskedDisplay == colorMode &&
+                   attr.ColorMode == palette &&
+                   static_cast<uint16_t>(attr.Direction & 0x003Fu) == static_cast<uint16_t>(texturedDir & 0x003Fu) &&
+                   static_cast<uint8_t>(attr.Sort & 0x1Cu) == sortBits &&
+                   static_cast<uint16_t>(attr.Display & 0x00C0u) == displayBits;
+        };
+
+        if (componentMode_)
+        {
+            size_t applied = 0;
+            const size_t n = std::min(componentAttrs_.size(), faceTextureSlots.size());
+            for (size_t i = 0; i < n; ++i)
+            {
+                const int32_t slot = static_cast<int32_t>(faceTextureSlots[i]);
+                if (slot < 0) continue;
+                if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
+                const uint16_t slotU16 = static_cast<uint16_t>(slot);
+                if (SRL::VDP1::Metadata[slotU16].Texture == nullptr) continue;
+                if (static_cast<int32_t>(faceTextureSlots[i]) == static_cast<int32_t>(previousFaceTextureSlots[i]) &&
+                    attrMatchesTexture(componentAttrs_[i], slotU16))
+                {
+                    continue;
+                }
+                applyAttrTexture(componentAttrs_[i], slotU16);
+                ++applied;
+            }
+            return applied;
+        }
+        if (!trackObj_) return 0;
+        size_t applied = 0;
+        size_t globalFace = 0;
+
+        auto applyMesh = [&](auto* mesh)
+        {
+            if (!mesh || !mesh->Attributes) { globalFace += mesh ? mesh->FaceCount : 0; return; }
+            for (size_t fi = 0; fi < mesh->FaceCount; ++fi, ++globalFace)
+            {
+                if (globalFace >= faceTextureSlots.size()) continue;
+                const int32_t slot = static_cast<int32_t>(faceTextureSlots[globalFace]);
+                if (slot < 0) continue;
+                if (slot >= static_cast<int32_t>(SRL_MAX_TEXTURES)) continue;
+                const uint16_t slotU16 = static_cast<uint16_t>(slot);
+                if (SRL::VDP1::Metadata[slotU16].Texture == nullptr) continue;
+                if (static_cast<int32_t>(faceTextureSlots[globalFace]) ==
+                    static_cast<int32_t>(previousFaceTextureSlots[globalFace]) &&
+                    attrMatchesTexture(mesh->Attributes[fi], slotU16))
+                {
+                    continue;
+                }
+                applyAttrTexture(mesh->Attributes[fi], slotU16);
+                ++applied;
+            }
+        };
+
+        if (isSmooth_)
+        {
+            for (size_t i = 0; i < meshCount_; ++i)
+            {
+                applyMesh(trackObj_->GetMesh<SRL::Types::SmoothMesh>(i));
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < meshCount_; ++i)
+            {
+                applyMesh(trackObj_->GetMesh<SRL::Types::Mesh>(i));
+            }
+        }
+
+        smoothCache_.clear();
+        flatCache_.clear();
+        if (isSmooth_) smoothCache_.assign(meshCount_, {});
+        else flatCache_.assign(meshCount_, {});
+
+        return applied;
+    }
+
     size_t ForceTextureAll(uint16_t slot)
     {
         size_t applied = 0;
@@ -1190,6 +1384,28 @@ public:
     }
 
 private:
+    template <typename VecT>
+    static bool CompactVectorSlack(VecT& v, size_t keepCapacityElements, bool aggressive)
+    {
+        using T = typename VecT::value_type;
+        const size_t desired = std::max(keepCapacityElements, v.size());
+        if (v.capacity() <= desired) return false;
+
+        const size_t slackElements = v.capacity() - desired;
+        const size_t slackBytes = slackElements * sizeof(T);
+        if (!aggressive)
+        {
+            if (v.capacity() <= (desired * 2u + 8u)) return false;
+            if (slackBytes < (2u * 1024u)) return false;
+        }
+
+        VecT compact{};
+        compact.reserve(desired);
+        compact.insert(compact.end(), v.begin(), v.end());
+        v.swap(compact);
+        return true;
+    }
+
     template <typename VecT>
     static uint64_t CapacityBytes(const VecT& v)
     {

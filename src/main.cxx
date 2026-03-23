@@ -622,7 +622,8 @@ int GameApp::Run()
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
         SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
-        PrintBootRam(3, "RAM car ");
+        // Boot-time RAM snapshot for car load disabled to keep runtime HUD focused
+        // on track streaming and slide diagnostics.
 
         // Recompute model center now that car was loaded after track textures.
         modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);

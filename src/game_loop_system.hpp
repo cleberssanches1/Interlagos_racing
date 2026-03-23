@@ -1,7 +1,10 @@
 #pragma once
 
+#include <array>
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <srl.hpp>
 #include <srl_slave.hpp>
@@ -12,6 +15,7 @@
 #include "car_system.hpp"
 #include "hud_system.hpp"
 #include "interfaces.hpp"
+#include "path_nya_loader.hpp"
 #include "render_pipeline.hpp"
 #include "track_system.hpp"
 
@@ -393,11 +397,14 @@ private:
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
 
+        if (context_.trackSystemReady && context_.renderTrack)
+        {
+            context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
+        }
         context_.trackSystem->BeginFrame(frameCounter_);
         if (context_.trackSystemReady && context_.renderTrack)
         {
             AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
-            context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
             context_.trackSystem->RenderFrame(true,
                                              context_.trackSegOffset,
                                              context_.lightDirection,
@@ -458,7 +465,9 @@ private:
         SRL::Core::Synchronize();
     }
 
-    // Advance car through segment centers for full lap streaming test.
+    // Advance car through the preferred route. When PATH.NYA is available and
+    // populated, the middle line drives the player route; otherwise we fall
+    // back to the segment-center path.
     void UpdateAutoLapRoute(const Context& context,
                             SRL::Math::Types::Vector3D& ioCarWorldPosition,
                             int32_t& ioCarYawDeg)
@@ -468,33 +477,38 @@ private:
         {
             BuildAutoLapRoute(context);
         }
-        if (autoLapRouteIds_.size() < 2 || autoLapRouteCenters_.size() < 2) return;
+        if (autoLapRouteCenters_.size() < 2) return;
 
         const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-3 << 16);
 
         if (!autoLapRouteInitialized_)
         {
-            int32_t nearestId = -1;
-            SRL::Math::Types::Vector3D nearestCenter{};
-            if (!context.trackSystem->FindNearestSegment(ioCarWorldPosition, context.trackSegOffset, nearestId, nearestCenter) ||
-                nearestId <= 0)
+            size_t bestIdx = 0u;
+            bool foundRoutePoint = false;
+            SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+            for (size_t i = 0; i < autoLapRouteCenters_.size(); ++i)
             {
-                return;
-            }
-            size_t bestIdx = 0;
-            for (size_t i = 0; i < autoLapRouteIds_.size(); ++i)
-            {
-                if (autoLapRouteIds_[i] == nearestId)
+                const auto& routePoint = autoLapRouteCenters_[i];
+                const auto dx = (routePoint.X - ioCarWorldPosition.X).Abs();
+                const auto dz = (routePoint.Z - ioCarWorldPosition.Z).Abs();
+                const auto score = dx + dz;
+                if (!foundRoutePoint || score < bestScore)
                 {
                     bestIdx = i;
-                    break;
+                    bestScore = score;
+                    foundRoutePoint = true;
                 }
             }
+            if (!foundRoutePoint) return;
             autoLapRouteIndex_ = static_cast<uint16_t>(bestIdx);
             ioCarWorldPosition.X = autoLapRouteCenters_[autoLapRouteIndex_].X;
             ioCarWorldPosition.Z = autoLapRouteCenters_[autoLapRouteIndex_].Z;
             ioCarWorldPosition.Y = autoLapRouteCenters_[autoLapRouteIndex_].Y + rideHeight;
             autoLapRouteInitialized_ = true;
+            if (!autoLapRouteIds_.empty() && autoLapRouteIndex_ < autoLapRouteIds_.size())
+            {
+                latestActiveSegmentId_ = autoLapRouteIds_[autoLapRouteIndex_];
+            }
         }
 
         const SRL::Math::Types::Vector3D& currentCenter = autoLapRouteCenters_[autoLapRouteIndex_];
@@ -542,6 +556,11 @@ private:
             ioCarWorldPosition.Y = nextCenter.Y + rideHeight;
         }
 
+        if (!autoLapRouteIds_.empty() && autoLapRouteIndex_ < autoLapRouteIds_.size())
+        {
+            latestActiveSegmentId_ = autoLapRouteIds_[autoLapRouteIndex_];
+        }
+
         if (nAdx >= nAdz)
         {
             ioCarYawDeg = (ndx >= 0) ? 90 : 270;
@@ -552,12 +571,188 @@ private:
         }
     }
 
-    // Build deterministic segment route ordered by segment id.
+    static bool ReadCdBinaryFile(const char* path, std::vector<uint8_t>& outBytes)
+    {
+        outBytes.clear();
+        if (!path || path[0] == '\0') return false;
+
+        SRL::Cd::File f(path);
+        if (!f.Exists() || f.Size.Bytes <= 0) return false;
+        if (!f.Open()) return false;
+
+        const size_t size = static_cast<size_t>(std::max<int32_t>(0, f.Size.Bytes));
+        if (size == 0u) return false;
+
+        outBytes.resize(size);
+        size_t totalRead = 0u;
+        while (totalRead < size)
+        {
+            const int32_t want = static_cast<int32_t>(std::min<size_t>(2048u, size - totalRead));
+            const int32_t got = f.Read(want, outBytes.data() + totalRead);
+            if (got <= 0) break;
+            totalRead += static_cast<size_t>(got);
+            if (got < want) break;
+        }
+
+        if (totalRead != size)
+        {
+            outBytes.clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    bool LoadAutoLapGuideLines()
+    {
+        for (size_t i = 0; i < autoLapGuideLines_.size(); ++i)
+        {
+            autoLapGuideLines_[i].clear();
+        }
+
+        const char* candidates[] = {
+            "CD/DATA/PATH.NYA",
+            "CD/DATA/PATH.NYA;1",
+            "cd/data/PATH.NYA",
+            "cd/data/PATH.NYA;1",
+            "PATH.NYA",
+            "PATH.NYA;1",
+        };
+
+        std::vector<uint8_t> bytes{};
+        bool loaded = false;
+        for (size_t i = 0; i < (sizeof(candidates) / sizeof(candidates[0])); ++i)
+        {
+            if (!ReadCdBinaryFile(candidates[i], bytes)) continue;
+            loaded = true;
+            break;
+        }
+        if (!loaded) return false;
+
+        PathNya::ParseResult parsed{};
+        if (!PathNya::Parse(bytes.data(), bytes.size(), parsed))
+        {
+            SRL::Debug::Print(1, 23, "AUTO PATH parse fail sz:%u",
+                              static_cast<unsigned>(bytes.size()));
+            return false;
+        }
+
+        for (size_t lineIndex = 0; lineIndex < autoLapGuideLines_.size(); ++lineIndex)
+        {
+            const auto& srcLine = parsed.lines[lineIndex];
+            auto& dstLine = autoLapGuideLines_[lineIndex];
+            dstLine.reserve(srcLine.size());
+            for (size_t pointIndex = 0; pointIndex < srcLine.size(); ++pointIndex)
+            {
+                const auto& srcPoint = srcLine[pointIndex];
+                dstLine.push_back(SRL::Math::Types::Vector3D(
+                    SRL::Math::Types::Fxp::BuildRaw(srcPoint.xRaw),
+                    SRL::Math::Types::Fxp::BuildRaw(srcPoint.yRaw),
+                    SRL::Math::Types::Fxp::BuildRaw(srcPoint.zRaw)));
+            }
+        }
+
+        SRL::Debug::Print(1, 23, "AUTO PATH v:%u l0:%u l1:%u l2:%u",
+                          static_cast<unsigned>(parsed.version),
+                          static_cast<unsigned>(autoLapGuideLines_[0].size()),
+                          static_cast<unsigned>(autoLapGuideLines_[1].size()),
+                          static_cast<unsigned>(autoLapGuideLines_[2].size()));
+        return true;
+    }
+
+    bool BuildAutoLapRouteFromPathGuide(const Context& context)
+    {
+        if (!LoadAutoLapGuideLines()) return false;
+        const auto& middleLine = autoLapGuideLines_[1];
+        if (middleLine.size() < 2u)
+        {
+            SRL::Debug::Print(1, 24, "AUTO PATH mid empty");
+            return false;
+        }
+
+        autoLapRouteCenters_.reserve(middleLine.size());
+        autoLapRouteIds_.reserve(middleLine.size());
+
+        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
+        if (segmentCount <= 0) return false;
+
+        auto scoreToSegmentId = [&](const SRL::Math::Types::Vector3D& point,
+                                    int32_t segmentId) -> SRL::Math::Types::Fxp
+        {
+            SRL::Math::Types::Vector3D center{};
+            if (!context.trackSystem->FindSegmentCenterById(segmentId, context.trackSegOffset, center))
+            {
+                return SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+            }
+            return (center.X - point.X).Abs() + (center.Z - point.Z).Abs();
+        };
+
+        auto wrapSegmentId = [&](int32_t segmentId) -> int32_t
+        {
+            int32_t normalized = (segmentId - 1) % segmentCount;
+            if (normalized < 0) normalized += segmentCount;
+            return normalized + 1;
+        };
+
+        int32_t mappedSegmentId = -1;
+        for (size_t i = 0; i < middleLine.size(); ++i)
+        {
+            const SRL::Math::Types::Vector3D routePoint = middleLine[i] + context.trackSegOffset;
+            autoLapRouteCenters_.push_back(routePoint);
+
+            int32_t bestSegmentId = -1;
+            SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+            if (mappedSegmentId <= 0)
+            {
+                for (int32_t segmentId = 1; segmentId <= segmentCount; ++segmentId)
+                {
+                    const auto score = scoreToSegmentId(routePoint, segmentId);
+                    if (bestSegmentId > 0 && !(score < bestScore)) continue;
+                    bestSegmentId = segmentId;
+                    bestScore = score;
+                }
+            }
+            else
+            {
+                // The exported PATH guide has fewer points than the full segment catalog,
+                // so some consecutive guide points legitimately advance by up to ~5 segments.
+                // Keep the search forward-biased, but wide enough to avoid freezing the
+                // mapping on the current segment near the end of the lap.
+                static constexpr int32_t kBackSearch = 2;
+                static constexpr int32_t kForwardSearch = 8;
+                for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
+                {
+                    const int32_t segmentId = wrapSegmentId(mappedSegmentId + delta);
+                    const auto score = scoreToSegmentId(routePoint, segmentId);
+                    if (bestSegmentId > 0 && !(score < bestScore)) continue;
+                    bestSegmentId = segmentId;
+                    bestScore = score;
+                }
+            }
+
+            if (bestSegmentId <= 0) return false;
+            mappedSegmentId = bestSegmentId;
+            autoLapRouteIds_.push_back(static_cast<int16_t>(mappedSegmentId));
+        }
+        return !autoLapRouteCenters_.empty() &&
+               autoLapRouteCenters_.size() == autoLapRouteIds_.size();
+    }
+
+    // Build preferred route for the player car.
     void BuildAutoLapRoute(const Context& context)
     {
         autoLapRouteIds_.clear();
         autoLapRouteCenters_.clear();
         if (!context.trackSystem) return;
+
+        if (BuildAutoLapRouteFromPathGuide(context))
+        {
+            autoLapRouteBuilt_ = true;
+            autoLapRouteInitialized_ = false;
+            return;
+        }
+
+        SRL::Debug::Print(1, 24, "AUTO PATH fallback seg centers");
 
         SRL::Math::Types::Vector3D c{};
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
@@ -693,6 +888,7 @@ private:
     uint16_t autoLapRouteIndex_ = 0;
     std::vector<int16_t> autoLapRouteIds_{};
     std::vector<SRL::Math::Types::Vector3D> autoLapRouteCenters_{};
+    std::array<std::vector<SRL::Math::Types::Vector3D>, 3> autoLapGuideLines_{};
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;

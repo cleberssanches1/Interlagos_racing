@@ -97,7 +97,7 @@ public:
                      const SRL::Math::Types::Vector3D& lightDirection,
                      const SRL::Math::Types::Vector3D& cameraLocation,
                      const SRL::Math::Types::Vector3D& carWorldPosition);
-    void SetObservedCarSegmentId(int32_t segmentId) { observedCarSegmentId_ = segmentId; }
+    void SetObservedCarSegmentId(int32_t segmentId);
 
     // Present telemetry and update adaptive budget targets for next frame.
     void EndFrame();
@@ -120,6 +120,13 @@ public:
     uint32_t MaxSegmentVertexCount() const;
 
 private:
+    enum class MemoryPressureLevel : uint8_t
+    {
+        Normal = 0,
+        Pressure = 1,
+        Critical = 2,
+    };
+
     struct TrackSegmentEntry
     {
         int16_t id = 0;
@@ -132,11 +139,19 @@ private:
         {
             bool ready = false;
             bool hasPerFaceRankOffsets = false;
+            // Resident state currently visible in the renderer.
             uint8_t currentLodIndex = 0xFF; // 0:8, 1:16, 2:32, 3:64
             int16_t currentBaseRank = -1;
+            // Desired state derived from the logical rank in the sliding window.
+            uint8_t desiredLodIndex = 0xFF;
+            int16_t desiredBaseRank = -1;
+            bool workingSetCacheDirty = true;
             TrackLowWorkU16Vector faceFamilyIds{};
             TrackLowWorkU8Vector faceRankOffsets{};
             std::vector<int16_t> currentFaceSlots{};
+            TrackLowWorkU16Vector workingSetFamilies{};
+            TrackLowWorkU8Vector workingSetLodIndices{};
+            std::vector<int16_t> workingSetSlots{};
         };
 
         int16_t id = 0;
@@ -175,6 +190,29 @@ private:
         char name[64]{};
         void* cartPtr = nullptr;
         uint32_t size = 0;
+    };
+    struct SlideBoundaryUpdate
+    {
+        bool active = false;
+        int16_t segmentId = -1;
+        uint8_t desiredLodIndex = 0xFF;
+        int16_t desiredBaseRank = -1;
+        std::vector<int16_t> preparedFaceSlots{};
+    };
+    struct SlideBackBuffer
+    {
+        bool ready = false;
+        int8_t direction = 1;
+        size_t dropIdx = 0;
+        int16_t incomingSegmentId = -1;
+        int16_t outgoingSegmentId = -1;
+        int16_t nextStartId = 1;
+        SRL::Math::Types::Vector3D incomingCenter{};
+        TrackLowWorkU16Vector incomingFamilyIds{};
+        std::vector<int16_t> incomingFaceSlots{};
+        uint8_t incomingResidentLodIndex = 0xFF;
+        int16_t incomingResidentBaseRank = -1;
+        std::array<SlideBoundaryUpdate, 4> boundaryUpdates{};
     };
 
     using SegmentEntryVector = TrackLowWorkVector<TrackSegmentEntry>;
@@ -231,30 +269,75 @@ private:
     // Rebuild one segment face slot table on demand for the selected lod band.
     bool RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
                                        uint8_t lodIndex,
-                                       FamilySlotVector& familySlots);
+                                       FamilySlotVector& familySlots,
+                                       bool bypassUploadBudget = false);
     // Rebuild one batch face slot table using the first logical rank carried by that batch.
     bool RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
                                             size_t baseRank,
-                                            FamilySlotVector& familySlots);
+                                            FamilySlotVector& familySlots,
+                                            bool bypassUploadBudget = false);
     // Upload one family texture slot only when a lod band actually needs it.
     bool EnsureFamilyLodSlotLoaded(FamilySlotVector& familySlots,
                                    uint16_t familyId,
-                                   uint8_t lodIndex);
+                                   uint8_t lodIndex,
+                                   bool bypassUploadBudget = false);
+    bool TryGetBestFamilyLodSlot(FamilySlotVector& familySlots,
+                                 uint16_t familyId,
+                                 uint8_t preferredLodIndex,
+                                 uint16_t& outSlot,
+                                 uint8_t* outResolvedLodIndex = nullptr,
+                                 bool tryLoadFallback = false,
+                                 bool bypassUploadBudget = false);
+    bool ResolveBestEffortFaceSlots(const FamilyIdVector& faceFamilyIds,
+                                    uint8_t preferredLodIndex,
+                                    FamilySlotVector& familySlots,
+                                    std::vector<int16_t>& outFaceSlots,
+                                    bool tryLoadFallback = false,
+                                    bool bypassUploadBudget = false);
     bool RebuildSafeSegmentEntry(SegmentRenderEntry& entry);
     // Resolve the target lod band for a visible segment rank near the camera.
     uint8_t ResolveSegmentLodIndexByRank(size_t rank) const;
     bool TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) const;
+    void RebuildActiveWindowLookupTables();
+    void InvalidateActiveWindowLookupTables();
+    SegmentRenderEntry* FindWindowEntryByIdFast(int32_t segmentId);
+    const SegmentRenderEntry* FindWindowEntryByIdFast(int32_t segmentId) const;
+    void UpdateDesiredStabilizedWindowLodTargets();
+    void InvalidateEntryWorkingSetCache(SegmentRenderEntry& entry);
+    bool RebuildEntryWorkingSetCache(SegmentRenderEntry& entry);
+    void RebuildUsedTextureSlotFlagsFromWorkingRefs();
+    uint32_t GetStrictPendingLodPriority(size_t logicalRank) const;
     bool HasPendingStabilizedWindowLodChanges() const;
+    void ResetPendingStabilizedLodRanks();
+    void QueuePendingStabilizedLodRank(size_t logicalRank);
+    void SeedPendingStabilizedLodRanksForWindow();
+    bool ResolvePreparedFaceSlotsForLod(const SegmentRenderEntry& entry,
+                                        uint8_t lodIndex,
+                                        FamilySlotVector& familySlots,
+                                        std::vector<int16_t>& outFaceSlots,
+                                        bool bypassUploadBudget = false);
+    bool ResolvePreparedFaceSlotsForBaseRank(const SegmentRenderEntry& entry,
+                                             size_t baseRank,
+                                             FamilySlotVector& familySlots,
+                                             std::vector<int16_t>& outFaceSlots,
+                                             bool bypassUploadBudget = false);
     bool ApplyStabilizedLodForLogicalRank(size_t logicalRank);
     void UpdateStabilizedWindowLodBoundaries();
     void UpdateStabilizedWindowLodBands();
     void ProcessPendingStabilizedWindowLodChanges(uint8_t maxUpdates);
+    void ResetSlideBackBuffer();
+    bool PrepareStabilizedSlideBackBuffer(size_t dropIdx,
+                                          int8_t direction,
+                                          int32_t nextId,
+                                          int32_t nextStartId);
+    bool CommitStabilizedSlideBackBuffer();
     // Apply lod changes only for segments whose desired band changed.
     void UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles);
     bool BuildSegmentCenterCatalog();
     bool RebuildActiveSegmentWindow(int32_t startSegmentId, size_t loadLimit, int8_t direction);
     bool SlideActiveSegmentWindow(size_t stepCount, int8_t direction);
     void PrewarmNextSegmentLod8();
+    void PrewarmUpcomingBoundaryLods();
     void ResetSlidePrefetchState();
     bool BuildSegmentIntoPrefetch(int32_t segmentId);
     bool BuildSegmentIntoRenderer(int32_t segmentId,
@@ -269,12 +352,15 @@ private:
     void CaptureTrackTextureHeapBase();
     bool RebuildTrackTextureResidencyForWindow();
     bool ShouldRecycleTrackTextureHeap() const;
+    bool ShouldCompactTrackTextureHeapInStabilization() const;
     void RecycleTrackTextureHeap();
     uint32_t EstimateWorkRamRetainedBytes() const;
     uint32_t EstimateLowWorkRamRetainedBytes() const;
     bool TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFreeDelta);
     bool ValidateAndRepairWindowState();
     void EmitWorkRamLivePointersTelemetry();
+    MemoryPressureLevel ClassifyMemoryPressure(size_t freeBytes, bool freeValid) const;
+    uint16_t ReleaseTrackFamilyResourcesImmediate(MemoryPressureLevel level);
     void RunWorkRamMaintenance(bool windowSlid);
     void RefreshFamilyWorkingSet(bool releaseUnused);
     void ReleaseUnusedFamilyResourcesEndFrame();
@@ -362,6 +448,7 @@ private:
     FamilyIdVector slideRollbackFamilyIdsScratch_{};
     FaceRankOffsetVector slideRollbackFaceRankOffsetsScratch_{};
     std::vector<int16_t> slideRollbackFaceSlotsScratch_{};
+    SlideBackBuffer slideBackBuffer_{};
     int16_t slidePrefetchSegmentId_ = -1;
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
     FamilyIdVector slidePrefetchFamilyIds_{};
@@ -386,6 +473,14 @@ private:
     uint8_t runtimeSafeSkippedThisFrame_ = 0;
     uint8_t runtimeSafeNoDrawThisFrame_ = 0;
     uint8_t runtimeSafeReappliedThisFrame_ = 0;
+    uint16_t sh2MasterStreamTicksThisFrame_ = 0;
+    uint16_t sh2MasterDrawTicksThisFrame_ = 0;
+    uint16_t sh2MasterFrameTicksThisFrame_ = 0;
+    uint16_t sh2MasterMaintenanceTicksThisFrame_ = 0;
+    uint16_t sh2MasterWindowTicksThisFrame_ = 0;
+    uint16_t sh2MasterPrefetchTicksThisFrame_ = 0;
+    uint16_t sh2MasterLodTicksThisFrame_ = 0;
+    uint16_t sh2MasterWorkingSetTicksThisFrame_ = 0;
     uint32_t phaseHwrBeforeStream_ = 0;
     uint32_t phaseHwrAfterStream_ = 0;
     uint32_t phaseHwrAfterDraw_ = 0;
@@ -394,17 +489,42 @@ private:
     uint32_t phaseLwrAfterStream_ = 0;
     uint32_t phaseLwrAfterDraw_ = 0;
     uint32_t phaseLwrEnd_ = 0;
+    int16_t slideHwrTraceSegmentId_ = -1;
+    uint8_t slideHwrTraceFlags_ = 0;
+    uint32_t slideHwrTraceCheck_ = 0;
+    uint32_t slideHwrTraceAfterTrim_ = 0;
+    uint32_t slideHwrTraceAfterResetPrefetch_ = 0;
+    uint32_t slideHwrTraceAfterBuildPrefetch_ = 0;
+    uint32_t slideHwrTraceAfterPrepare_ = 0;
+    uint32_t slideHwrTraceAfterCommit_ = 0;
     uint8_t prewarmCooldown_ = 0;
+    uint8_t boundaryPrewarmCooldown_ = 0;
+    uint8_t textureHeapCompactCooldown_ = 0;
     uint8_t workRamTrimCooldown_ = 0;
+    uint8_t workRamWindowRebuildCooldown_ = 0;
     uint8_t workRamTelemetryCooldown_ = 0;
+    uint8_t lodDegradeCooldown_ = 0;
+    uint8_t pendingLodCursor_ = 0;
+    uint8_t pendingLodFrameCooldown_ = 0;
+    std::array<uint8_t, kTrackSegmentLimit> pendingLodRetryCooldowns_{};
     uint16_t workRamRepairCount_ = 0;
+    uint16_t releasedNowSlotsThisFrame_ = 0;
+    uint16_t releasedEndFrameSlotsThisFrame_ = 0;
+    uint16_t releasedPrefetchNowThisFrame_ = 0;
+    uint8_t memoryPressureLevelThisFrame_ = 0;
     bool fullTrackFamilyCacheReady_ = false;
     size_t lastWindowFreeBytes_ = 0;
     bool lastWindowFreeValid_ = false;
+    bool activeWindowLookupDirty_ = true;
+    bool familyWorkingSetDirty_ = true;
+    std::array<uint8_t, kTrackSegmentLimit> pendingLodRankFlags_{};
+    bool pendingLodWorkExists_ = false;
     mutable std::array<int16_t, 4096> familySlotIndex_{};
     mutable bool familySlotIndexDirty_ = true;
     uint8_t familyMergeCooldown_ = 0;
     std::array<uint8_t, SRL_MAX_TEXTURES> usedTextureSlotsThisFrame_{};
+    TrackLowWorkVector<int16_t> activeWindowEntryIndexBySegmentId_{};
+    TrackLowWorkVector<int16_t> activeWindowLogicalRankBySegmentId_{};
 
     SegmentEntryVector segmentEntries_{};
     RawSegmentVector rawSegmentCatalog_{};

@@ -181,14 +181,7 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
     res.estBytes += (uint32_t)(res.faceCount * (sizeof(SRL::Types::Polygon) + sizeof(SRL::Types::Attribute)));
     if (res.isSmooth) res.estBytes += (uint32_t)(res.vertexCount * sizeof(SRL::Math::Types::Vector3D));
 
-    if (res.loaded)
-    {
-        SRL::Debug::Print(0, 4, "Car ok m:%u f:%u v:%u sm:%d", res.car ? (unsigned)res.car->GetMeshCount() : 0, (unsigned)res.faceCount, (unsigned)res.vertexCount, res.isSmooth ? 1 : 0);
-        SRL::Debug::Print(0, 5, "Car CRT delta:%d ptr:%08lx", res.hwrDelta, (unsigned long)res.meshPtr);
-        SRL::Debug::Print(0, 6, "Car est bytes:%u", (unsigned)res.estBytes);
-        SRL::Debug::Print(0, 7, "Car cart ok free:%d", (int)res.freeAfter);
-    }
-    else
+    if (!res.loaded)
     {
         SRL::Debug::Print(0, 7, "Carro nao carregou (meshes/faces zero)");
     }

@@ -7,6 +7,7 @@
 
 #include <srl_slave.hpp>
 
+#include "sh2_frt_profiler.hpp"
 #include "track_draw_list.hpp"
 
 // Runtime counters to inspect producer behavior across frames.
@@ -23,6 +24,8 @@ struct TrackDrawProducerStats
     uint32_t slaveReenabledCount = 0;
     uint32_t safeModeTriggers = 0;
     uint32_t safeModeFrames = 0;
+    uint16_t slaveLastJobTicks = 0;
+    uint16_t slaveMaxJobTicks = 0;
     bool jobInFlight = false;
     bool slaveDisabledByTimeout = false;
     bool safeModeActive = false;
@@ -199,21 +202,27 @@ private:
             target_ = target;
         }
 
+        uint16_t LastTicks() const { return lastTicks_; }
+
     private:
         // Execute list build on Slave SH2.
         void Do() override
         {
             if (!data_ || !target_) return;
+            Sh2FrtProfiler::EnsureInitialized();
+            const uint16_t startTicks = Sh2FrtProfiler::Now();
             target_->Clear();
             for (uint16_t i = 0; i < data_->count; ++i)
             {
                 target_->Push(data_->items[i]);
             }
+            lastTicks_ = Sh2FrtProfiler::Elapsed(startTicks, Sh2FrtProfiler::Now());
             CompilerFence();
         }
 
         const BuildJobData* data_ = nullptr;
         TrackDrawList<Handle, Capacity>* target_ = nullptr;
+        volatile uint16_t lastTicks_ = 0;
     };
 
     static void ApplyJob(const BuildJobData& data, TrackDrawList<Handle, Capacity>& target)
@@ -246,6 +255,11 @@ private:
         }
         disableSlaveWhenIdle_ = false;
         stats_.jobInFlight = false;
+        stats_.slaveLastJobTicks = task_.LastTicks();
+        if (stats_.slaveLastJobTicks > stats_.slaveMaxJobTicks)
+        {
+            stats_.slaveMaxJobTicks = stats_.slaveLastJobTicks;
+        }
         SwapBuffers();
     }
 

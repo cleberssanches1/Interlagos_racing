@@ -52,6 +52,13 @@ function Get-TextureStem([string]$Path) {
     return [System.IO.Path]::GetFileNameWithoutExtension($Path).ToLowerInvariant()
 }
 
+function Normalize-StemKey([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return "" }
+    $stem = Get-TextureStem $Value
+    if ([string]::IsNullOrWhiteSpace($stem)) { return "" }
+    return ([regex]::Replace($stem, '[^a-z0-9]+', ''))
+}
+
 function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [object[]]$Families) {
     $directTexToFamilyId = @{}
     $materialToFamilyId = @{}
@@ -60,10 +67,24 @@ function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [ob
 
     foreach ($family in @($Families)) {
         if ($null -eq $family) { continue }
-        if (-not ($family.PSObject.Properties.Name -contains "sourceStem")) { continue }
-        $sourceStem = [string]$family.sourceStem
-        if ([string]::IsNullOrWhiteSpace($sourceStem)) { continue }
-        $exactTexToFamilyId[$sourceStem.ToLowerInvariant()] = [uint32]$family.id
+        $familyId = [uint32]$family.id
+        if ($family.PSObject.Properties.Name -contains "sourceStem") {
+            $sourceStem = Normalize-StemKey ([string]$family.sourceStem)
+            if (-not [string]::IsNullOrWhiteSpace($sourceStem)) {
+                $exactTexToFamilyId[$sourceStem] = $familyId
+            }
+        }
+        foreach ($propName in @("variants", "imageFiles")) {
+            if (-not ($family.PSObject.Properties.Name -contains $propName)) { continue }
+            $node = $family.$propName
+            if ($null -eq $node) { continue }
+            foreach ($lodKey in @("8", "16", "32", "64")) {
+                if (-not ($node.PSObject.Properties.Name -contains $lodKey)) { continue }
+                $variantStem = Normalize-StemKey ([string]$node.$lodKey)
+                if ([string]::IsNullOrWhiteSpace($variantStem)) { continue }
+                $exactTexToFamilyId[$variantStem] = $familyId
+            }
+        }
     }
 
     if (-not (Test-Path -LiteralPath $MtlDir)) {
@@ -82,7 +103,7 @@ function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [ob
             if ([string]::IsNullOrWhiteSpace($currentName)) { continue }
             if ($t -notmatch '^(?i)map_Kd\s+(.+)$') { continue }
 
-            $texStem = Get-TextureStem $Matches[1].Trim()
+            $texStem = Normalize-StemKey $Matches[1].Trim()
             if ([string]::IsNullOrWhiteSpace($texStem)) { continue }
             $entries.Add([pscustomobject]@{
                 material = $currentName
@@ -142,10 +163,18 @@ $segNode = $json.segments | Where-Object { [int]$_.id -eq $SegmentId } | Select-
 $familyIdByName = @{}
 foreach ($family in @($json.textureFamilies)) {
     if ($null -eq $family) { continue }
+    $familyId = [uint32]$family.id
     if (-not ($family.PSObject.Properties.Name -contains "name")) { continue }
     $familyName = [string]$family.name
     if ([string]::IsNullOrWhiteSpace($familyName)) { continue }
-    $familyIdByName[$familyName.ToLowerInvariant()] = [uint32]$family.id
+    $familyIdByName[$familyName.ToLowerInvariant()] = $familyId
+    if ($family.PSObject.Properties.Name -contains "aliases" -and $family.aliases) {
+        foreach ($alias in @($family.aliases)) {
+            $aliasName = [string]$alias
+            if ([string]::IsNullOrWhiteSpace($aliasName)) { continue }
+            $familyIdByName[$aliasName.ToLowerInvariant()] = $familyId
+        }
+    }
 }
 $materialAliasToFamilyId = Build-MaterialAliasMap -MtlDir $ObjDir -FamilyIdByName $familyIdByName -Families @($json.textureFamilies)
 $hasSegmentMap = $true
