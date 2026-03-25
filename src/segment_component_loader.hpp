@@ -10,12 +10,13 @@
 #undef DOXYGEN
 
 #include "segment_component_format.hpp"
+#include "track_zone_alloc.hpp"
 
 namespace SegmentComponent
 {
 struct Blob
 {
-    std::vector<uint8_t> bytes{};
+    TrackLowWorkVectorBase<uint8_t> bytes{};
     bool loaded = false;
     size_t size = 0;
 };
@@ -47,7 +48,8 @@ public:
         return static_cast<int32_t>(ReadLe32(p));
     }
 
-    static bool ReadFileHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, FileHeader& out)
+    template <typename ByteVec>
+    static bool ReadFileHeaderLeAt(const ByteVec& bytes, size_t offset, FileHeader& out)
     {
         if (offset + 16 > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -59,7 +61,8 @@ public:
         return true;
     }
 
-    static bool ReadGeoHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, GeoHeader& out)
+    template <typename ByteVec>
+    static bool ReadGeoHeaderLeAt(const ByteVec& bytes, size_t offset, GeoHeader& out)
     {
         if (offset + 8 > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -68,7 +71,8 @@ public:
         return true;
     }
 
-    static bool ReadMatHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, MatHeader& out)
+    template <typename ByteVec>
+    static bool ReadMatHeaderLeAt(const ByteVec& bytes, size_t offset, MatHeader& out)
     {
         if (offset + 4 > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -76,7 +80,8 @@ public:
         return true;
     }
 
-    static bool ReadGeoVertexLeAt(const std::vector<uint8_t>& bytes, size_t offset, GeoVertex& out)
+    template <typename ByteVec>
+    static bool ReadGeoVertexLeAt(const ByteVec& bytes, size_t offset, GeoVertex& out)
     {
         if (offset + 12 > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -86,7 +91,8 @@ public:
         return true;
     }
 
-    static bool ReadGeoFaceLeAt(const std::vector<uint8_t>& bytes, size_t offset, GeoFace& out)
+    template <typename ByteVec>
+    static bool ReadGeoFaceLeAt(const ByteVec& bytes, size_t offset, GeoFace& out)
     {
         if (offset + sizeof(GeoFace) > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -99,7 +105,8 @@ public:
         return true;
     }
 
-    static bool ReadMatFaceBindingLeAt(const std::vector<uint8_t>& bytes, size_t offset, MatFaceBinding& out)
+    template <typename ByteVec>
+    static bool ReadMatFaceBindingLeAt(const ByteVec& bytes, size_t offset, MatFaceBinding& out)
     {
         if (offset + 4 > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -119,7 +126,7 @@ public:
             const size_t sz = static_cast<size_t>(f.Size.Bytes);
             if (sz == 0) continue;
 
-            std::vector<uint8_t> tmp(sz);
+            TrackLowWorkVectorBase<uint8_t> tmp(sz);
             const int32_t read = f.Read(static_cast<int32_t>(sz), tmp.data());
             if (read <= 0) continue;
             if (static_cast<size_t>(read) > sz) continue;
@@ -133,8 +140,8 @@ public:
         return false;
     }
 
-    template <typename T>
-    static bool ReadPodAt(const std::vector<uint8_t>& bytes, size_t offset, T& out)
+    template <typename T, typename ByteVec>
+    static bool ReadPodAt(const ByteVec& bytes, size_t offset, T& out)
     {
         if (offset + sizeof(T) > bytes.size()) return false;
         ::memcpy(&out, bytes.data() + offset, sizeof(T));

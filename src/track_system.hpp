@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #define DOXYGEN 1
@@ -20,56 +21,36 @@
 #include "track_render_coordinator.hpp"
 #include "track_renderer.hpp"
 #include "track_segment_pool.hpp"
-
-template <typename T, SRL::Memory::Zone ZoneValue>
-struct TrackZoneAllocator
-{
-    using value_type = T;
-    using propagate_on_container_move_assignment = std::true_type;
-    using is_always_equal = std::true_type;
-
-    TrackZoneAllocator() noexcept = default;
-
-    template <typename U>
-    TrackZoneAllocator(const TrackZoneAllocator<U, ZoneValue>&) noexcept {}
-
-    T* allocate(std::size_t n)
-    {
-        if (n == 0) return nullptr;
-        return static_cast<T*>(SRL::Memory::Malloc(n * sizeof(T), ZoneValue));
-    }
-
-    void deallocate(T* p, std::size_t) noexcept
-    {
-        SRL::Memory::Free(p);
-    }
-
-    template <typename U>
-    struct rebind
-    {
-        using other = TrackZoneAllocator<U, ZoneValue>;
-    };
-};
-
-template <typename T, typename U, SRL::Memory::Zone ZoneValue>
-inline bool operator==(const TrackZoneAllocator<T, ZoneValue>&,
-                       const TrackZoneAllocator<U, ZoneValue>&) noexcept
-{
-    return true;
-}
-
-template <typename T, typename U, SRL::Memory::Zone ZoneValue>
-inline bool operator!=(const TrackZoneAllocator<T, ZoneValue>&,
-                       const TrackZoneAllocator<U, ZoneValue>&) noexcept
-{
-    return false;
-}
+#include "track_zone_alloc.hpp"
 
 template <typename T>
-using TrackLowWorkVector = std::vector<T, TrackZoneAllocator<T, SRL::Memory::Zone::LWRam>>;
+using TrackLowWorkVector = TrackLowWorkVectorBase<T>;
 using TrackLowWorkU16Vector = TrackLowWorkVector<uint16_t>;
 using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
 using TrackLowWorkI16Vector = TrackLowWorkVector<int16_t>;
+
+template <typename T, SRL::Memory::Zone ZoneValue>
+struct TrackObjectDeleter
+{
+    void operator()(T* ptr) const noexcept
+    {
+        if (!ptr) return;
+        ptr->~T();
+        SRL::Memory::Free(ptr);
+    }
+};
+
+template <typename T, SRL::Memory::Zone ZoneValue, typename... Args>
+std::unique_ptr<T, TrackObjectDeleter<T, ZoneValue>> MakeTrackObjectUnique(Args&&... args)
+{
+    void* mem = SRL::Memory::Malloc(sizeof(T), ZoneValue);
+    if (!mem) return {};
+    T* obj = new (mem) T(std::forward<Args>(args)...);
+    return std::unique_ptr<T, TrackObjectDeleter<T, ZoneValue>>(obj);
+}
+
+template <typename T>
+using TrackLowWorkUniquePtr = std::unique_ptr<T, TrackObjectDeleter<T, SRL::Memory::Zone::LWRam>>;
 
 class TrackSystem
 {
@@ -157,7 +138,7 @@ private:
 
         int16_t id = 0;
         uint8_t logicalSegmentCount = 0;
-        std::unique_ptr<TrackRenderer> renderer;
+        TrackLowWorkUniquePtr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
         SegmentLodState lodState{};
     };
@@ -327,6 +308,10 @@ private:
     void UpdateStabilizedWindowLodBands();
     void ProcessPendingStabilizedWindowLodChanges(uint8_t maxUpdates);
     void ResetSlideBackBuffer();
+    bool ExecuteDeterministicStabilizedSlide(size_t dropIdx,
+                                             int8_t direction,
+                                             int32_t nextId,
+                                             int32_t nextStartId);
     bool PrepareStabilizedSlideBackBuffer(size_t dropIdx,
                                           int8_t direction,
                                           int32_t nextId,
@@ -358,6 +343,9 @@ private:
     uint32_t EstimateWorkRamRetainedBytes() const;
     uint32_t EstimateLowWorkRamRetainedBytes() const;
     bool TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFreeDelta);
+    void AllocateWorkRamEmergencyReserve();
+    void ReleaseWorkRamEmergencyReserve();
+    void ReacquireWorkRamEmergencyReserve();
     bool ValidateAndRepairWindowState();
     void EmitWorkRamLivePointersTelemetry();
     MemoryPressureLevel ClassifyMemoryPressure(size_t freeBytes, bool freeValid) const;
@@ -385,8 +373,8 @@ private:
     const char* ResolveSegmentPath(size_t id);
     TrackSegmentCopy CopySegmentById(size_t id);
     SegmentEntryVector CopyAllTrackSegments(size_t maxSegments);
-    std::vector<SegmentRenderEntry> BuildSegmentRenderers(SegmentEntryVector& entries);
-    std::vector<SegmentHandle> BuildSegmentHandleTable();
+    TrackLowWorkVector<SegmentRenderEntry> BuildSegmentRenderers(SegmentEntryVector& entries);
+    TrackLowWorkVector<SegmentHandle> BuildSegmentHandleTable();
     void ResetInitializationState();
     size_t ResolveInitialLoadLimit(const Config& config) const;
     void PrepareInitialSegmentPackages(size_t loadLimit);
@@ -442,7 +430,7 @@ private:
     int16_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
     CenterCatalogVector segmentCenterCatalog_{};
-    std::unique_ptr<TrackRenderer> slideScratchRenderer_{};
+    TrackLowWorkUniquePtr<TrackRenderer> slideScratchRenderer_{};
     FamilyIdVector slideIncomingFamilyIdsScratch_{};
     FaceRankOffsetVector slideIncomingFaceRankOffsetsScratch_{};
     TrackLowWorkI16Vector slideIncomingFaceSlotsScratch_{};
@@ -454,7 +442,7 @@ private:
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
     FamilyIdVector slidePrefetchFamilyIds_{};
     TrackLowWorkI16Vector slidePrefetchFaceSlots_{};
-    std::unique_ptr<TrackRenderer> slidePrefetchRenderer_{};
+    TrackLowWorkUniquePtr<TrackRenderer> slidePrefetchRenderer_{};
     bool slidePrefetchLod8Ready_ = false;
     uint16_t trackTextureHeapBase_ = 0;
     bool trackTextureHeapBaseValid_ = false;
@@ -509,6 +497,7 @@ private:
     uint8_t pendingLodFrameCooldown_ = 0;
     std::array<uint8_t, kTrackSegmentLimit> pendingLodRetryCooldowns_{};
     uint16_t workRamRepairCount_ = 0;
+    uint16_t workRamEmergencyReserveReleases_ = 0;
     uint16_t releasedNowSlotsThisFrame_ = 0;
     uint16_t releasedEndFrameSlotsThisFrame_ = 0;
     uint16_t releasedPrefetchNowThisFrame_ = 0;
@@ -526,10 +515,12 @@ private:
     std::array<uint8_t, SRL_MAX_TEXTURES> usedTextureSlotsThisFrame_{};
     TrackLowWorkVector<int16_t> activeWindowEntryIndexBySegmentId_{};
     TrackLowWorkVector<int16_t> activeWindowLogicalRankBySegmentId_{};
+    void* workRamEmergencyReserve_ = nullptr;
+    uint32_t workRamEmergencyReserveBytes_ = 0;
 
     SegmentEntryVector segmentEntries_{};
     RawSegmentVector rawSegmentCatalog_{};
-    std::vector<SegmentRenderEntry> segmentRenderers_{};
+    TrackLowWorkVector<SegmentRenderEntry> segmentRenderers_{};
     bool seg1ComponentEnabled_ = false;
     SRL::Math::Types::Vector3D seg1ComponentCenter_{};
     TrackLowWorkVector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
@@ -557,7 +548,7 @@ private:
     uint16_t seg1LodFrameCounter_ = 0;
     uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)
     SegmentPool segmentPool_{};
-    std::vector<SegmentHandle> segmentHandles_{};
+    TrackLowWorkVector<SegmentHandle> segmentHandles_{};
     std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};
     SlaveTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit> coordinator_{producer_};

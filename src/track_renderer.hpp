@@ -6,6 +6,7 @@
 #include "track_sgl_renderer.hpp"
 #include "track_vdp1_renderer.hpp"
 #include "track_serialized.hpp"
+#include "track_zone_alloc.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
@@ -13,53 +14,9 @@
 #include <type_traits>
 #include <utility>
 
-template <typename T, SRL::Memory::Zone ZoneValue>
-struct TrackRendererZoneAllocator
-{
-    using value_type = T;
-    using propagate_on_container_move_assignment = std::true_type;
-    using is_always_equal = std::true_type;
-
-    TrackRendererZoneAllocator() noexcept = default;
-
-    template <typename U>
-    TrackRendererZoneAllocator(const TrackRendererZoneAllocator<U, ZoneValue>&) noexcept {}
-
-    T* allocate(std::size_t n)
-    {
-        if (n == 0) return nullptr;
-        return static_cast<T*>(SRL::Memory::Malloc(n * sizeof(T), ZoneValue));
-    }
-
-    void deallocate(T* p, std::size_t) noexcept
-    {
-        SRL::Memory::Free(p);
-    }
-
-    template <typename U>
-    struct rebind
-    {
-        using other = TrackRendererZoneAllocator<U, ZoneValue>;
-    };
-};
-
-template <typename T, typename U, SRL::Memory::Zone ZoneValue>
-inline bool operator==(const TrackRendererZoneAllocator<T, ZoneValue>&,
-                       const TrackRendererZoneAllocator<U, ZoneValue>&) noexcept
-{
-    return true;
-}
-
-template <typename T, typename U, SRL::Memory::Zone ZoneValue>
-inline bool operator!=(const TrackRendererZoneAllocator<T, ZoneValue>&,
-                       const TrackRendererZoneAllocator<U, ZoneValue>&) noexcept
-{
-    return false;
-}
-
 template <typename T>
 using TrackRendererLowWorkVector =
-    std::vector<T, TrackRendererZoneAllocator<T, SRL::Memory::Zone::LWRam>>;
+    TrackLowWorkVectorBase<T>;
 
 struct ModelBounds
 {
@@ -1679,17 +1636,17 @@ private:
 
     struct SmoothCache {
         bool valid = false;
-        std::vector<SRL::Math::Types::Vector3D> verts;
-        std::vector<SRL::Types::Polygon> faces;
-        std::vector<SRL::Types::Attribute> attrs;
-        std::vector<SRL::Math::Types::Vector3D> normals;
+        TrackRendererLowWorkVector<SRL::Math::Types::Vector3D> verts{};
+        TrackRendererLowWorkVector<SRL::Types::Polygon> faces{};
+        TrackRendererLowWorkVector<SRL::Types::Attribute> attrs{};
+        TrackRendererLowWorkVector<SRL::Math::Types::Vector3D> normals{};
     };
     struct FlatCache {
         bool valid = false;
-        std::vector<SRL::Math::Types::Vector3D> verts;
-        std::vector<SRL::Types::Polygon> faces;
-        std::vector<SRL::Types::Attribute> attrs;
+        TrackRendererLowWorkVector<SRL::Math::Types::Vector3D> verts{};
+        TrackRendererLowWorkVector<SRL::Types::Polygon> faces{};
+        TrackRendererLowWorkVector<SRL::Types::Attribute> attrs{};
     };
-    std::vector<SmoothCache> smoothCache_;
-    std::vector<FlatCache>   flatCache_;
+    TrackRendererLowWorkVector<SmoothCache> smoothCache_{};
+    TrackRendererLowWorkVector<FlatCache>   flatCache_{};
 };

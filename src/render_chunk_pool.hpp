@@ -16,7 +16,8 @@ public:
     {
         Release();
         if (capacity == 0) return false;
-        storage_ = static_cast<Handle*>(SRL::Memory::HighWorkRam::Malloc(sizeof(Handle) * capacity));
+        storage_ = static_cast<Handle*>(SRL::Memory::Malloc(sizeof(Handle) * capacity,
+                                                            SRL::Memory::Zone::LWRam));
         if (!storage_) return false;
         capacity_ = capacity;
         count_ = 0;
@@ -32,7 +33,7 @@ public:
             {
                 storage_[i].~Handle();
             }
-            SRL::Memory::HighWorkRam::Free(storage_);
+            SRL::Memory::Free(storage_);
             storage_ = nullptr;
         }
         capacity_ = 0;
@@ -77,6 +78,14 @@ public:
     size_t ActiveCount() const { return count_; }
     size_t Capacity() const { return capacity_; }
     bool Ready() const { return storage_ != nullptr; }
+    size_t RetainedBytes() const
+    {
+        return 0u;
+    }
+    size_t RetainedBytesLowWork() const
+    {
+        return storage_ ? (capacity_ * sizeof(Handle)) : 0u;
+    }
 
 private:
     Handle* storage_ = nullptr;

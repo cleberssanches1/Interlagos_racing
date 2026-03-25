@@ -5,12 +5,13 @@
 #include <vector>
 
 #include "batch_draw_ready_format.hpp"
+#include "track_zone_alloc.hpp"
 
 namespace BatchDrawReady
 {
 struct Blob
 {
-    std::vector<uint8_t> bytes{};
+    TrackLowWorkVectorBase<uint8_t> bytes{};
     bool loaded = false;
     size_t size = 0;
 };
@@ -49,7 +50,8 @@ public:
         return static_cast<int32_t>(ReadLe32(p));
     }
 
-    static bool ReadHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, HeaderV1& out)
+    template <typename ByteVec>
+    static bool ReadHeaderLeAt(const ByteVec& bytes, size_t offset, HeaderV1& out)
     {
         if (offset + sizeof(HeaderV1) > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;

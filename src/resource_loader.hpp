@@ -7,6 +7,8 @@
 #include "track_renderer.hpp"
 #include "track_serialized.hpp"
 
+static constexpr bool kCarLoadLogs = false;
+
 struct CarLoadResult
 {
     // Pointer to car model allocated in cart RAM (ownership transferred to caller).
@@ -50,7 +52,10 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
     {
         SRL::Cd::File f(path);
         const bool exists = f.Exists() && f.Size.Bytes > 0;
-        SRL::Debug::Print(0, 2, "CAR path:%s ex:%d sz:%ld", path, exists ? 1 : 0, (long)f.Size.Bytes);
+        if constexpr (kCarLoadLogs)
+        {
+            SRL::Debug::Print(0, 2, "CAR path:%s ex:%d sz:%ld", path, exists ? 1 : 0, (long)f.Size.Bytes);
+        }
         if (!exists)
         {
             return false;
@@ -59,7 +64,10 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
         ModelObject candidate(path, gouraudOffset, false, 0, false, forceCart, false);
         if (candidate.GetMeshCount() == 0 || candidate.GetFaceCount() == 0)
         {
-            SRL::Debug::Print(0, 3, "Car stream fail %s -> buffer", path);
+            if constexpr (kCarLoadLogs)
+            {
+                SRL::Debug::Print(0, 3, "Car stream fail %s -> buffer", path);
+            }
             ModelObject bufLoad(path, gouraudOffset, false, 0, false, forceCart, false);
             candidate = std::move(bufLoad);
         }
@@ -137,7 +145,10 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
             {
                 SRL::Cd::File f(name);
                 const bool exists = f.Exists() && f.Size.Bytes > 0;
-                SRL::Debug::Print(0, 2, "CAR raw:%s ex:%d sz:%ld", name, exists ? 1 : 0, (long)f.Size.Bytes);
+                if constexpr (kCarLoadLogs)
+                {
+                    SRL::Debug::Print(0, 2, "CAR raw:%s ex:%d sz:%ld", name, exists ? 1 : 0, (long)f.Size.Bytes);
+                }
                 if (!exists || !f.Open()) continue;
 
                 const size_t size = static_cast<size_t>(f.Size.Bytes);
@@ -145,7 +156,10 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
                 const int32_t read = f.Read(static_cast<int32_t>(size), bytes.data());
                 if (read <= 0 || static_cast<size_t>(read) != size)
                 {
-                    SRL::Debug::Print(0, 3, "CAR raw read fail %s r:%ld", name, (long)read);
+                    if constexpr (kCarLoadLogs)
+                    {
+                        SRL::Debug::Print(0, 3, "CAR raw read fail %s r:%ld", name, (long)read);
+                    }
                     continue;
                 }
 
@@ -159,7 +173,10 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
                         break;
                     }
                 }
-                SRL::Debug::Print(0, 3, "CAR raw parse fail %s", name);
+                if constexpr (kCarLoadLogs)
+                {
+                    SRL::Debug::Print(0, 3, "CAR raw parse fail %s", name);
+                }
             }
 
             SRL::Cd::ChangeDir((const char*)0);
@@ -180,11 +197,6 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
     res.estBytes = (uint32_t)(res.vertexCount * sizeof(SRL::Math::Types::Vector3D));
     res.estBytes += (uint32_t)(res.faceCount * (sizeof(SRL::Types::Polygon) + sizeof(SRL::Types::Attribute)));
     if (res.isSmooth) res.estBytes += (uint32_t)(res.vertexCount * sizeof(SRL::Math::Types::Vector3D));
-
-    if (!res.loaded)
-    {
-        SRL::Debug::Print(0, 7, "Carro nao carregou (meshes/faces zero)");
-    }
 
     return res;
 }

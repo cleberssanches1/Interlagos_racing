@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 #include <srl.hpp>
 
@@ -166,6 +167,20 @@ public:
     const FrameTelemetry& Telemetry() const { return telemetry_; }
     const FrameBudgetUsage& Usage() const { return usage_; }
     const FrameBudget& Budget() const { return config_.budget; }
+    uint32_t RetainedBytes() const
+    {
+        const size_t bytes = chunkPool_.RetainedBytes();
+        return (bytes > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+            ? std::numeric_limits<uint32_t>::max()
+            : static_cast<uint32_t>(bytes);
+    }
+    uint32_t RetainedBytesLowWork() const
+    {
+        const size_t bytes = chunkPool_.RetainedBytesLowWork();
+        return (bytes > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+            ? std::numeric_limits<uint32_t>::max()
+            : static_cast<uint32_t>(bytes);
+    }
 
 private:
     ITrackDrawProducer<Handle, Capacity>& producer_;

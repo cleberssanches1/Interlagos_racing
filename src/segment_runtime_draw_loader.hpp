@@ -5,12 +5,13 @@
 #include <vector>
 
 #include "segment_runtime_draw_format.hpp"
+#include "track_zone_alloc.hpp"
 
 namespace SegmentRuntimeDraw
 {
 struct Blob
 {
-    std::vector<uint8_t> bytes{};
+    TrackLowWorkVectorBase<uint8_t> bytes{};
     bool loaded = false;
     size_t size = 0;
 };
@@ -87,7 +88,8 @@ public:
         return true;
     }
 
-    static bool ReadHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, HeaderV1& out)
+    template <typename ByteVec>
+    static bool ReadHeaderLeAt(const ByteVec& bytes, size_t offset, HeaderV1& out)
     {
         return ReadHeaderLeAt(bytes.data(), bytes.size(), offset, out);
     }
@@ -103,7 +105,8 @@ public:
         return true;
     }
 
-    static bool ReadVertexLeAt(const std::vector<uint8_t>& bytes, size_t offset, Vertex& out)
+    template <typename ByteVec>
+    static bool ReadVertexLeAt(const ByteVec& bytes, size_t offset, Vertex& out)
     {
         return ReadVertexLeAt(bytes.data(), bytes.size(), offset, out);
     }
@@ -126,7 +129,8 @@ public:
         return true;
     }
 
-    static bool ReadFaceLeAt(const std::vector<uint8_t>& bytes, size_t offset, Face& out)
+    template <typename ByteVec>
+    static bool ReadFaceLeAt(const ByteVec& bytes, size_t offset, Face& out)
     {
         return ReadFaceLeAt(bytes.data(), bytes.size(), offset, out);
     }
@@ -146,7 +150,8 @@ public:
         return true;
     }
 
-    static bool ReadAttrLeAt(const std::vector<uint8_t>& bytes, size_t offset, Attr& out)
+    template <typename ByteVec>
+    static bool ReadAttrLeAt(const ByteVec& bytes, size_t offset, Attr& out)
     {
         return ReadAttrLeAt(bytes.data(), bytes.size(), offset, out);
     }
@@ -159,7 +164,8 @@ public:
         return true;
     }
 
-    static bool ReadFamilyIdLeAt(const std::vector<uint8_t>& bytes, size_t offset, uint16_t& out)
+    template <typename ByteVec>
+    static bool ReadFamilyIdLeAt(const ByteVec& bytes, size_t offset, uint16_t& out)
     {
         return ReadFamilyIdLeAt(bytes.data(), bytes.size(), offset, out);
     }

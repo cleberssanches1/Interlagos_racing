@@ -6,12 +6,13 @@
 #include <vector>
 
 #include "segment_draw_ready_format.hpp"
+#include "track_zone_alloc.hpp"
 
 namespace SegmentDrawReady
 {
 struct Blob
 {
-    std::vector<uint8_t> bytes{};
+    TrackLowWorkVectorBase<uint8_t> bytes{};
     bool loaded = false;
     size_t size = 0;
 };
@@ -48,7 +49,8 @@ public:
         return static_cast<int32_t>(ReadLe32(p));
     }
 
-    static bool ReadHeaderLeAt(const std::vector<uint8_t>& bytes, size_t offset, HeaderV1& out)
+    template <typename ByteVec>
+    static bool ReadHeaderLeAt(const ByteVec& bytes, size_t offset, HeaderV1& out)
     {
         if (offset + sizeof(HeaderV1) > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -78,7 +80,8 @@ public:
         return true;
     }
 
-    static bool ReadVertexLeAt(const std::vector<uint8_t>& bytes, size_t offset, Vertex& out)
+    template <typename ByteVec>
+    static bool ReadVertexLeAt(const ByteVec& bytes, size_t offset, Vertex& out)
     {
         if (offset + sizeof(Vertex) > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -88,7 +91,8 @@ public:
         return true;
     }
 
-    static bool ReadFaceLeAt(const std::vector<uint8_t>& bytes, size_t offset, Face& out)
+    template <typename ByteVec>
+    static bool ReadFaceLeAt(const ByteVec& bytes, size_t offset, Face& out)
     {
         if (offset + sizeof(Face) > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -105,7 +109,8 @@ public:
         return true;
     }
 
-    static bool ReadAttrBaseLeAt(const std::vector<uint8_t>& bytes, size_t offset, AttrBase& out)
+    template <typename ByteVec>
+    static bool ReadAttrBaseLeAt(const ByteVec& bytes, size_t offset, AttrBase& out)
     {
         if (offset + sizeof(AttrBase) > bytes.size()) return false;
         const uint8_t* p = bytes.data() + offset;
@@ -120,15 +125,16 @@ public:
         return true;
     }
 
-    static bool ReadFamilyIdLeAt(const std::vector<uint8_t>& bytes, size_t offset, uint16_t& out)
+    template <typename ByteVec>
+    static bool ReadFamilyIdLeAt(const ByteVec& bytes, size_t offset, uint16_t& out)
     {
         if (offset + sizeof(uint16_t) > bytes.size()) return false;
         out = ReadLe16(bytes.data() + offset);
         return true;
     }
 
-    template <typename T>
-    static bool ReadPodAt(const std::vector<uint8_t>& bytes, size_t offset, T& out)
+    template <typename T, typename ByteVec>
+    static bool ReadPodAt(const ByteVec& bytes, size_t offset, T& out)
     {
         if (offset + sizeof(T) > bytes.size()) return false;
         ::memcpy(&out, bytes.data() + offset, sizeof(T));

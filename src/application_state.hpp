@@ -52,9 +52,10 @@ inline void Set(Stage stage, uint32_t frame = 0)
 
 inline void PresentOverlay(uint32_t row = 2)
 {
+    constexpr bool kEnableAppStateOverlay = false;
+    if (!kEnableAppStateOverlay) return;
     SRL::Debug::Print(2, row, "APP stage:%s f:%lu",
                       StageName(static_cast<Stage>(g_stage)),
                       static_cast<unsigned long>(g_stageFrame));
 }
 } // namespace AppState
-
