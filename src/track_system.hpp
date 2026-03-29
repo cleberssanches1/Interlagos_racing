@@ -25,9 +25,12 @@
 
 template <typename T>
 using TrackLowWorkVector = TrackLowWorkVectorBase<T>;
+template <typename T>
+using TrackHighWorkVector = TrackHighWorkVectorBase<T>;
 using TrackLowWorkU16Vector = TrackLowWorkVector<uint16_t>;
 using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
 using TrackLowWorkI16Vector = TrackLowWorkVector<int16_t>;
+using TrackHighWorkI16Vector = TrackHighWorkVector<int16_t>;
 
 template <typename T, SRL::Memory::Zone ZoneValue>
 struct TrackObjectDeleter
@@ -67,6 +70,17 @@ public:
         bool useSlave = true;
     };
 
+    struct LowWorkCategoryBreakdown
+    {
+        uint32_t renderers = 0;
+        uint32_t slotState = 0;
+        uint32_t workingSet = 0;
+        uint32_t familyCache = 0;
+        uint32_t transient = 0;
+        uint32_t metadata = 0;
+        uint32_t total = 0;
+    };
+
     // Load segments, build pools and initialize producer/coordinator state.
     bool Initialize(const Config& config);
 
@@ -100,6 +114,22 @@ public:
     bool HasSmoothSegments() const;
     uint32_t MaxSegmentFaceCount() const;
     uint32_t MaxSegmentVertexCount() const;
+    int32_t LowWorkDrawPrepareDeltaThisFrame() const { return lowWorkDrawPrepareDeltaThisFrame_; }
+    int32_t LowWorkDrawExecuteDeltaThisFrame() const { return lowWorkDrawExecuteDeltaThisFrame_; }
+    int32_t LowWorkDrawOtherDeltaThisFrame() const { return lowWorkDrawOtherDeltaThisFrame_; }
+    int32_t LowWorkDrawFrameDeltaThisFrame() const { return lowWorkDrawFrameDeltaThisFrame_; }
+    uint32_t LowWorkEndFreeBytesThisFrame() const { return phaseLwrEnd_; }
+    uint8_t SlidesThisFrame() const { return runtimeSlidesThisFrame_; }
+    int16_t SlideSegmentIdThisFrame() const { return slideHwrTraceSegmentId_; }
+    LowWorkCategoryBreakdown LowWorkBreakdownThisFrame() const { return lowWorkBreakdownEnd_; }
+    uint16_t StreamTicksThisFrame() const { return sh2MasterStreamTicksThisFrame_; }
+    uint16_t MaintenanceTicksThisFrame() const { return sh2MasterMaintenanceTicksThisFrame_; }
+    uint16_t DrawTicksThisFrame() const { return sh2MasterDrawTicksThisFrame_; }
+    uint16_t FrameTicksThisFrame() const { return sh2MasterFrameTicksThisFrame_; }
+    uint16_t WindowTicksThisFrame() const { return sh2MasterWindowTicksThisFrame_; }
+    uint16_t PrefetchTicksThisFrame() const { return sh2MasterPrefetchTicksThisFrame_; }
+    uint16_t LodTicksThisFrame() const { return sh2MasterLodTicksThisFrame_; }
+    uint16_t WorkingSetTicksThisFrame() const { return sh2MasterWorkingSetTicksThisFrame_; }
 
 private:
     enum class MemoryPressureLevel : uint8_t
@@ -293,15 +323,17 @@ private:
     void ResetPendingStabilizedLodRanks();
     void QueuePendingStabilizedLodRank(size_t logicalRank);
     void SeedPendingStabilizedLodRanksForWindow();
+    template <typename FaceSlotsVecT>
     bool ResolvePreparedFaceSlotsForLod(const SegmentRenderEntry& entry,
                                         uint8_t lodIndex,
                                         FamilySlotVector& familySlots,
-                                        TrackLowWorkI16Vector& outFaceSlots,
+                                        FaceSlotsVecT& outFaceSlots,
                                         bool bypassUploadBudget = false);
+    template <typename FaceSlotsVecT>
     bool ResolvePreparedFaceSlotsForBaseRank(const SegmentRenderEntry& entry,
                                              size_t baseRank,
                                              FamilySlotVector& familySlots,
-                                             TrackLowWorkI16Vector& outFaceSlots,
+                                             FaceSlotsVecT& outFaceSlots,
                                              bool bypassUploadBudget = false);
     bool ApplyStabilizedLodForLogicalRank(size_t logicalRank);
     void UpdateStabilizedWindowLodBoundaries();
@@ -325,7 +357,7 @@ private:
     void PrewarmNextSegmentLod8();
     void PrewarmUpcomingBoundaryLods();
     void ResetSlidePrefetchState();
-    bool BuildSegmentIntoPrefetch(int32_t segmentId);
+    bool BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarmup = true);
     bool BuildSegmentIntoRenderer(int32_t segmentId,
                                   TrackRenderer& renderer,
                                   SRL::Math::Types::Vector3D& outCenter,
@@ -335,6 +367,7 @@ private:
                                       FamilyIdVector& outFamilyIds);
     void TryPrefetchUpcomingSegment();
     void PrimeRuntimeScratchCapacities();
+    void ApplyActiveRendererCapacityFloor(TrackRenderer& renderer);
     void CaptureTrackTextureHeapBase();
     bool RebuildTrackTextureResidencyForWindow();
     bool ShouldRecycleTrackTextureHeap() const;
@@ -342,6 +375,7 @@ private:
     void RecycleTrackTextureHeap();
     uint32_t EstimateWorkRamRetainedBytes() const;
     uint32_t EstimateLowWorkRamRetainedBytes() const;
+    LowWorkCategoryBreakdown CaptureLowWorkBreakdown() const;
     bool TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFreeDelta);
     void AllocateWorkRamEmergencyReserve();
     void ReleaseWorkRamEmergencyReserve();
@@ -355,6 +389,7 @@ private:
     void ReleaseUnusedFamilyResourcesEndFrame();
     void EmitFamilyWorkingSetTelemetry() const;
     void MergeCurrentWindowFamilies();
+    void ValidateStabilizedWindowInvariants();
     bool UpdateActiveSegmentWindowForPosition(const SRL::Math::Types::Vector3D& worldPosition,
                                               const SRL::Math::Types::Vector3D& trackOffset);
     std::vector<SegmentHandle> BuildVisibleSegmentOrder(const SRL::Math::Types::Vector3D& trackOffset,
@@ -429,6 +464,9 @@ private:
     int16_t observedCarSegmentId_ = -1;
     int16_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
+    uint16_t slotFaceCapacityFloor_ = 0;
+    uint16_t rendererVertexCapacityFloor_ = 0;
+    uint16_t rendererFaceCapacityFloor_ = 0;
     CenterCatalogVector segmentCenterCatalog_{};
     TrackLowWorkUniquePtr<TrackRenderer> slideScratchRenderer_{};
     FamilyIdVector slideIncomingFamilyIdsScratch_{};
@@ -437,12 +475,14 @@ private:
     FamilyIdVector slideRollbackFamilyIdsScratch_{};
     FaceRankOffsetVector slideRollbackFaceRankOffsetsScratch_{};
     TrackLowWorkI16Vector slideRollbackFaceSlotsScratch_{};
+    TrackHighWorkI16Vector runtimeRenderFaceSlotsScratch_{};
     SlideBackBuffer slideBackBuffer_{};
     int16_t slidePrefetchSegmentId_ = -1;
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
     FamilyIdVector slidePrefetchFamilyIds_{};
     TrackLowWorkI16Vector slidePrefetchFaceSlots_{};
     TrackLowWorkUniquePtr<TrackRenderer> slidePrefetchRenderer_{};
+    bool slidePrefetchRendererReady_ = false;
     bool slidePrefetchLod8Ready_ = false;
     uint16_t trackTextureHeapBase_ = 0;
     bool trackTextureHeapBaseValid_ = false;
@@ -478,6 +518,11 @@ private:
     uint32_t phaseLwrAfterStream_ = 0;
     uint32_t phaseLwrAfterDraw_ = 0;
     uint32_t phaseLwrEnd_ = 0;
+    LowWorkCategoryBreakdown lowWorkBreakdownEnd_{};
+    int32_t lowWorkDrawPrepareDeltaThisFrame_ = 0;
+    int32_t lowWorkDrawExecuteDeltaThisFrame_ = 0;
+    int32_t lowWorkDrawOtherDeltaThisFrame_ = 0;
+    int32_t lowWorkDrawFrameDeltaThisFrame_ = 0;
     int16_t slideHwrTraceSegmentId_ = -1;
     uint8_t slideHwrTraceFlags_ = 0;
     uint32_t slideHwrTraceCheck_ = 0;
@@ -488,6 +533,7 @@ private:
     uint32_t slideHwrTraceAfterCommit_ = 0;
     uint8_t prewarmCooldown_ = 0;
     uint8_t boundaryPrewarmCooldown_ = 0;
+    uint8_t prefetchRetryCooldown_ = 0;
     uint8_t textureHeapCompactCooldown_ = 0;
     uint8_t workRamTrimCooldown_ = 0;
     uint8_t workRamWindowRebuildCooldown_ = 0;
@@ -528,6 +574,9 @@ private:
     TrackLowWorkVector<SRL::Types::Attribute> seg1ComponentAttrs_{};
     FamilyIdCatalogVector seg1FaceFamilyIds_{};
     FamilySlotVector seg1FamilySlots_{};
+    FamilySlotVector familyMergeCurrentWindowScratch_{};
+    FamilySlotVector familyMergeNextScratch_{};
+    FamilySlotVector slidePrefetchFamilySlotsScratch_{};
     std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
     TrackLowWorkVector<Seg1TgaCartEntry> seg1TgaCatalog_{};
     std::array<TrackLowWorkI16Vector, 4> seg1RendererFaceSlotsByLod_{};

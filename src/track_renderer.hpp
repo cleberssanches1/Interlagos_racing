@@ -936,6 +936,12 @@ public:
     uint32_t RetainedBytes() const
     {
         uint64_t bytes = 0;
+        bytes += CapacityBytes(componentVerts_);
+        bytes += CapacityBytes(componentFaces_);
+        bytes += CapacityBytes(componentAttrs_);
+        bytes += CapacityBytes(meshCenters_);
+        bytes += CapacityBytes(meshMap_);
+        bytes += CapacityBytes(meshBytes_);
         bytes += CapacityBytes(smoothCache_);
         bytes += CapacityBytes(flatCache_);
         for (const auto& c : smoothCache_)
@@ -958,12 +964,37 @@ public:
     uint32_t LastDrawnFaces() const { return lastDrawnFaces_; }
     uint32_t LastDrawnMeshes() const { return lastDrawnMeshes_; }
 
+    void SetRuntimeCapacityFloor(size_t vertexFloor, size_t faceFloor)
+    {
+        componentVertCapacityFloor_ = vertexFloor;
+        componentFaceCapacityFloor_ = faceFloor;
+        if (!componentMode_) return;
+        if (componentVerts_.capacity() < componentVertCapacityFloor_)
+        {
+            componentVerts_.reserve(componentVertCapacityFloor_);
+        }
+        if (componentFaces_.capacity() < componentFaceCapacityFloor_)
+        {
+            componentFaces_.reserve(componentFaceCapacityFloor_);
+        }
+        if (componentAttrs_.capacity() < componentFaceCapacityFloor_)
+        {
+            componentAttrs_.reserve(componentFaceCapacityFloor_);
+        }
+    }
+
     bool CompactRuntimeState(bool aggressive = false)
     {
         bool compacted = false;
-        compacted |= CompactVectorSlack(componentVerts_, componentVerts_.size(), aggressive);
-        compacted |= CompactVectorSlack(componentFaces_, componentFaces_.size(), aggressive);
-        compacted |= CompactVectorSlack(componentAttrs_, componentAttrs_.size(), aggressive);
+        compacted |= CompactVectorSlack(componentVerts_,
+                                        std::max(componentVerts_.size(), componentVertCapacityFloor_),
+                                        aggressive);
+        compacted |= CompactVectorSlack(componentFaces_,
+                                        std::max(componentFaces_.size(), componentFaceCapacityFloor_),
+                                        aggressive);
+        compacted |= CompactVectorSlack(componentAttrs_,
+                                        std::max(componentAttrs_.size(), componentFaceCapacityFloor_),
+                                        aggressive);
         compacted |= CompactVectorSlack(meshCenters_, meshCenters_.size(), aggressive);
         compacted |= CompactVectorSlack(meshMap_, meshMap_.size(), aggressive);
         compacted |= CompactVectorSlack(meshBytes_, meshBytes_.size(), aggressive);
@@ -1517,6 +1548,8 @@ private:
     {
         if (trackObj_) { delete trackObj_; trackObj_ = nullptr; }
         componentMode_ = false;
+        componentVertCapacityFloor_ = 0u;
+        componentFaceCapacityFloor_ = 0u;
         decltype(componentVerts_)().swap(componentVerts_);
         decltype(componentFaces_)().swap(componentFaces_);
         decltype(componentAttrs_)().swap(componentAttrs_);
@@ -1630,6 +1663,8 @@ private:
     bool useOriginal_ = true;
     bool forceDoubleSided_ = false;
     bool componentMode_ = false;
+    size_t componentVertCapacityFloor_ = 0u;
+    size_t componentFaceCapacityFloor_ = 0u;
     ComponentVertVector componentVerts_{};
     ComponentFaceVector componentFaces_{};
     ComponentAttrVector componentAttrs_{};

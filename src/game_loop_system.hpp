@@ -2,8 +2,10 @@
 
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <srl.hpp>
@@ -58,6 +60,12 @@ public:
         : context_(context)
     {}
 
+    static void SetWorkRamDebugTag(SRL::Memory::DebugTag tag)
+    {
+        SRL::Memory::HighWorkRam::SetDebugTag(tag);
+        SRL::Memory::LowWorkRam::SetDebugTag(tag);
+    }
+
     // Run the main frame loop with fixed subsystem ordering.
     int RunForever()
     {
@@ -67,33 +75,39 @@ public:
             AppState::PresentOverlay(2);
             if (!ValidateFramePreconditions()) continue;
             hwrStageTrace_ = {};
-            SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Unknown);
-            hwrStageTrace_.begin = CaptureHighWorkRamSnapshot();
+            lwrStageTrace_ = {};
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
+            hwrStageTrace_.begin = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.begin = MaybeCaptureLowWorkRamSnapshot(true);
 
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
 
-            SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Gameplay);
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::Gameplay);
             Game::GameplayFrameState frameState = BuildGameplayFrameState(input);
             ExecuteGameplayFrame(frameState);
-            hwrStageTrace_.gameplay = CaptureHighWorkRamSnapshot();
+            hwrStageTrace_.gameplay = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.gameplay = MaybeCaptureLowWorkRamSnapshot();
 
             if (autoLapTestEnabled_)
             {
-                SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::AutoLap);
+                SetWorkRamDebugTag(SRL::Memory::DebugTag::AutoLap);
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
             }
-            hwrStageTrace_.autoLap = CaptureHighWorkRamSnapshot();
+            hwrStageTrace_.autoLap = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.autoLap = MaybeCaptureLowWorkRamSnapshot();
 
-            SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Background);
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::Background);
             ScheduleCarPrepareIfEnabled();
             UpdateBackground();
-            hwrStageTrace_.background = CaptureHighWorkRamSnapshot();
+            hwrStageTrace_.background = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.background = MaybeCaptureLowWorkRamSnapshot();
 
             const CameraFrameState camera = ResolveCameraFrameState();
-            SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Hud);
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::Hud);
             UpdateHud(camera);
-            hwrStageTrace_.hud = CaptureHighWorkRamSnapshot();
+            hwrStageTrace_.hud = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.hud = MaybeCaptureLowWorkRamSnapshot();
             RenderFrame(camera);
             RenderAxes();
 
@@ -102,6 +116,10 @@ public:
     }
 
 private:
+    static constexpr bool kEnableDetailedWorkRamTelemetry = false;
+    static constexpr bool kEnableLowWorkFreeOverlay = true;
+    static constexpr uint16_t kLowWorkFreeOverlayCadenceFrames = 8u;
+
     struct HwrStageTrace
     {
         struct Snapshot
@@ -121,11 +139,48 @@ private:
         Snapshot autoLap{};
         Snapshot background{};
         Snapshot hud{};
+        Snapshot trackDraw{};
+        Snapshot trackEnd{};
         Snapshot track{};
         Snapshot car{};
         Snapshot preFinish{};
         Snapshot preSync{};
         Snapshot postSync{};
+    };
+
+    struct LwrStageTrace
+    {
+        struct Snapshot
+        {
+            uint32_t freeBytes = 0;
+            uint32_t payloadBytes = 0;
+            uint32_t overheadBytes = 0;
+            uint32_t freeBlocks = 0;
+            uint32_t largestFreeBytes = 0;
+        };
+
+        Snapshot begin{};
+        Snapshot gameplay{};
+        Snapshot autoLap{};
+        Snapshot background{};
+        Snapshot hud{};
+        Snapshot trackDraw{};
+        Snapshot trackEnd{};
+        Snapshot track{};
+        Snapshot car{};
+        Snapshot preFinish{};
+        Snapshot preSync{};
+        Snapshot postSync{};
+    };
+
+    struct LowWorkTagGroupOverlay
+    {
+        uint32_t initUnknown = 0;
+        uint32_t gameplayAuto = 0;
+        uint32_t ui = 0;
+        uint32_t car = 0;
+        uint32_t track = 0;
+        uint32_t finishSync = 0;
     };
 
     static HwrStageTrace::Snapshot CaptureHighWorkRamSnapshot()
@@ -144,10 +199,67 @@ private:
         return snapshot;
     }
 
+    static LwrStageTrace::Snapshot CaptureLowWorkRamSnapshot(bool detailed = false)
+    {
+        const auto report = SRL::Memory::LowWorkRam::GetReport();
+        LwrStageTrace::Snapshot snapshot{};
+        snapshot.freeBytes = static_cast<uint32_t>(report.FreeSize);
+        if (!detailed)
+        {
+            return snapshot;
+        }
+
+        const uint32_t usedBytes = static_cast<uint32_t>(
+            (report.TotalSize >= report.FreeSize) ? (report.TotalSize - report.FreeSize) : 0u);
+        const uint32_t payloadBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedPayloadBytes());
+        snapshot.payloadBytes = payloadBytes;
+        snapshot.overheadBytes = (usedBytes >= payloadBytes) ? (usedBytes - payloadBytes) : 0u;
+        snapshot.freeBlocks = static_cast<uint32_t>(report.FreeBlocks);
+        snapshot.largestFreeBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetLargestFreeBlockSize());
+        return snapshot;
+    }
+
+    static HwrStageTrace::Snapshot MaybeCaptureHighWorkRamSnapshot()
+    {
+        if constexpr (!kEnableDetailedWorkRamTelemetry)
+        {
+            return {};
+        }
+        return CaptureHighWorkRamSnapshot();
+    }
+
+    static LwrStageTrace::Snapshot MaybeCaptureLowWorkRamSnapshot(bool detailed = false)
+    {
+        if constexpr (!kEnableDetailedWorkRamTelemetry)
+        {
+            (void)detailed;
+            return {};
+        }
+        return CaptureLowWorkRamSnapshot(detailed);
+    }
+
     static int32_t SnapshotLiveDelta(const HwrStageTrace::Snapshot& from,
                                      const HwrStageTrace::Snapshot& to)
     {
         return static_cast<int32_t>(to.liveBytes) - static_cast<int32_t>(from.liveBytes);
+    }
+
+    static int32_t SnapshotFreeDelta(const LwrStageTrace::Snapshot& from,
+                                     const LwrStageTrace::Snapshot& to)
+    {
+        return static_cast<int32_t>(to.freeBytes) - static_cast<int32_t>(from.freeBytes);
+    }
+
+    static int32_t SnapshotPayloadDelta(const LwrStageTrace::Snapshot& from,
+                                        const LwrStageTrace::Snapshot& to)
+    {
+        return static_cast<int32_t>(to.payloadBytes) - static_cast<int32_t>(from.payloadBytes);
+    }
+
+    static int32_t SnapshotOverheadDelta(const LwrStageTrace::Snapshot& from,
+                                         const LwrStageTrace::Snapshot& to)
+    {
+        return static_cast<int32_t>(to.overheadBytes) - static_cast<int32_t>(from.overheadBytes);
     }
 
     void PrintWorkRamUsageRealtime() const
@@ -164,6 +276,214 @@ private:
         SRL::Debug::Print(2, 15, "LWR u:%u f:%u        ",
                           static_cast<unsigned>(lwrUsed),
                           static_cast<unsigned>(lwr.FreeSize));
+    }
+
+    void UpdateLowWorkFreeOverlay()
+    {
+        if constexpr (!kEnableLowWorkFreeOverlay)
+        {
+            return;
+        }
+
+        const bool slideThisFrame =
+            context_.trackSystem &&
+            context_.trackSystemReady &&
+            (context_.trackSystem->SlidesThisFrame() != 0u);
+
+        if (!slideThisFrame)
+        {
+            if (lowWorkFreeOverlayCooldownFrames_ > 0u)
+            {
+                --lowWorkFreeOverlayCooldownFrames_;
+                return;
+            }
+        }
+        lowWorkFreeOverlayCooldownFrames_ = kLowWorkFreeOverlayCadenceFrames;
+
+        uint32_t freeBytes = 0u;
+        uint32_t highFreeBytes = 0u;
+        uint8_t slides = 0u;
+        int16_t slideId = -1;
+        uint16_t trackStreamTicks = 0u;
+        uint16_t trackMaintenanceTicks = 0u;
+        uint16_t trackDrawTicks = 0u;
+        uint16_t trackFrameTicks = 0u;
+        uint16_t trackWindowTicks = 0u;
+        uint16_t trackPrefetchTicks = 0u;
+        uint16_t trackLodTicks = 0u;
+        uint16_t trackWorkingSetTicks = 0u;
+        TrackSystem::LowWorkCategoryBreakdown breakdown{};
+        if (context_.trackSystem && context_.trackSystemReady)
+        {
+            freeBytes = context_.trackSystem->LowWorkEndFreeBytesThisFrame();
+            slides = context_.trackSystem->SlidesThisFrame();
+            slideId = context_.trackSystem->SlideSegmentIdThisFrame();
+            breakdown = context_.trackSystem->LowWorkBreakdownThisFrame();
+            trackStreamTicks = context_.trackSystem->StreamTicksThisFrame();
+            trackMaintenanceTicks = context_.trackSystem->MaintenanceTicksThisFrame();
+            trackDrawTicks = context_.trackSystem->DrawTicksThisFrame();
+            trackFrameTicks = context_.trackSystem->FrameTicksThisFrame();
+            trackWindowTicks = context_.trackSystem->WindowTicksThisFrame();
+            trackPrefetchTicks = context_.trackSystem->PrefetchTicksThisFrame();
+            trackLodTicks = context_.trackSystem->LodTicksThisFrame();
+            trackWorkingSetTicks = context_.trackSystem->WorkingSetTicksThisFrame();
+        }
+        else
+        {
+            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+            freeBytes = static_cast<uint32_t>(lwr.FreeSize);
+        }
+        {
+            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+            highFreeBytes = static_cast<uint32_t>(hwr.FreeSize);
+        }
+
+        const int32_t freeDelta = lowWorkFreeOverlayValid_
+            ? (static_cast<int32_t>(freeBytes) - static_cast<int32_t>(lastLowWorkFreeOverlayBytes_))
+            : 0;
+        lastLowWorkFreeOverlayBytes_ = freeBytes;
+        lowWorkFreeOverlayValid_ = true;
+
+        SRL::Debug::Print(2, 15, "WLWR free:%u df:%d sl:%u id:%d    ",
+                          static_cast<unsigned>(freeBytes),
+                          static_cast<int>(freeDelta),
+                          static_cast<unsigned>(slides),
+                          static_cast<int>(slideId));
+
+        const uint32_t highInitUnknown =
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Init)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Unknown));
+        const uint32_t highGameplayAuto =
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Gameplay)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::AutoLap));
+        const uint32_t highUi =
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Background)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Hud));
+        const uint32_t highCar =
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Car));
+        const uint32_t highTrack =
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackCore)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackPrepare)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackLod)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackTexture)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackBackend));
+        const uint32_t highFinishSync =
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Finish)) +
+            static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Sync));
+
+        SRL::Debug::Print(2, 12, "HWT1 iu:%u ga:%u ui:%u     ",
+                          static_cast<unsigned>(highInitUnknown),
+                          static_cast<unsigned>(highGameplayAuto),
+                          static_cast<unsigned>(highUi));
+        SRL::Debug::Print(2, 13, "HWT2 tr:%u car:%u fs:%u hf:%u",
+                          static_cast<unsigned>(highTrack),
+                          static_cast<unsigned>(highCar),
+                          static_cast<unsigned>(highFinishSync),
+                          static_cast<unsigned>(highFreeBytes));
+
+        lastLowWorkBreakdownOverlay_ = breakdown;
+        lowWorkBreakdownOverlayValid_ = true;
+
+        SRL::Debug::Print(2, 16, "LWC1 r:%u s:%u w:%u       ",
+                          static_cast<unsigned>(breakdown.renderers),
+                          static_cast<unsigned>(breakdown.slotState),
+                          static_cast<unsigned>(breakdown.workingSet));
+        SRL::Debug::Print(2, 17, "LWC2 f:%u t:%u m:%u       ",
+                          static_cast<unsigned>(breakdown.familyCache),
+                          static_cast<unsigned>(breakdown.transient),
+                          static_cast<unsigned>(breakdown.metadata));
+        const uint32_t trackCoreBytes =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackCore));
+        const uint32_t trackPrepareBytes =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackPrepare));
+        const uint32_t trackLodBytes =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackLod));
+        const uint32_t trackTextureBytes =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackTexture));
+        const uint32_t trackBackendBytes =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackBackend));
+        SRL::Debug::Print(2, 18, "LWT1 tc:%u tp:%u tl:%u   ",
+                          static_cast<unsigned>(trackCoreBytes),
+                          static_cast<unsigned>(trackPrepareBytes),
+                          static_cast<unsigned>(trackLodBytes));
+        SRL::Debug::Print(2, 19, "LWT2 tx:%u tb:%u         ",
+                          static_cast<unsigned>(trackTextureBytes),
+                          static_cast<unsigned>(trackBackendBytes));
+
+        LowWorkTagGroupOverlay tagGroups{};
+        tagGroups.initUnknown =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Init)) +
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Unknown));
+        tagGroups.gameplayAuto =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Gameplay)) +
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::AutoLap));
+        tagGroups.ui =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Background)) +
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Hud));
+        tagGroups.car =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Car));
+        tagGroups.track =
+            trackCoreBytes +
+            trackPrepareBytes +
+            trackLodBytes +
+            trackTextureBytes +
+            trackBackendBytes;
+        tagGroups.finishSync =
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Finish)) +
+            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Sync));
+
+        lastLowWorkTagGroupOverlay_ = tagGroups;
+        lowWorkTagGroupOverlayValid_ = true;
+
+        SRL::Debug::Print(2, 20, "LTX1 iu:%u ga:%u ui:%u    ",
+                          static_cast<unsigned>(tagGroups.initUnknown),
+                          static_cast<unsigned>(tagGroups.gameplayAuto),
+                          static_cast<unsigned>(tagGroups.ui));
+        SRL::Debug::Print(2, 21, "LTX2 tr:%u car:%u fs:%u   ",
+                          static_cast<unsigned>(tagGroups.track),
+                          static_cast<unsigned>(tagGroups.car),
+                          static_cast<unsigned>(tagGroups.finishSync));
+
+        const auto lwrReport = SRL::Memory::LowWorkRam::GetReport();
+        const uint32_t usedBytes = static_cast<uint32_t>(
+            (lwrReport.TotalSize >= lwrReport.FreeSize) ? (lwrReport.TotalSize - lwrReport.FreeSize) : 0u);
+        const uint32_t payloadBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedPayloadBytes());
+        const uint32_t overheadBytes = (usedBytes >= payloadBytes) ? (usedBytes - payloadBytes) : 0u;
+        const uint32_t freeBlocks = static_cast<uint32_t>(lwrReport.FreeBlocks);
+
+        const uint32_t knownTaggedBytes =
+            tagGroups.initUnknown +
+            tagGroups.gameplayAuto +
+            tagGroups.ui +
+            tagGroups.car +
+            tagGroups.track +
+            tagGroups.finishSync;
+        const uint32_t invalidTaggedBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesWithInvalidTag());
+        const uint32_t invalidTaggedBlocks = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBlockCountWithInvalidTag());
+
+        lastLowWorkPayloadOverlayBytes_ = payloadBytes;
+        lastLowWorkOverheadOverlayBytes_ = overheadBytes;
+        lastLowWorkFreeBlocksOverlay_ = freeBlocks;
+        lowWorkAllocatorOverlayValid_ = true;
+
+        SRL::Debug::Print(2, 22, "LFO1 py:%u ov:%u fb:%u    ",
+                          static_cast<unsigned>(payloadBytes),
+                          static_cast<unsigned>(overheadBytes),
+                          static_cast<unsigned>(freeBlocks));
+        SRL::Debug::Print(2, 23, "LFO2 kn:%u iv:%u ib:%u   ",
+                          static_cast<unsigned>(knownTaggedBytes),
+                          static_cast<unsigned>(invalidTaggedBytes),
+                          static_cast<unsigned>(invalidTaggedBlocks));
+        SRL::Debug::Print(2, 24, "LTK1 st:%u mw:%u dr:%u fr:%u   ",
+                          static_cast<unsigned>(trackStreamTicks),
+                          static_cast<unsigned>(trackMaintenanceTicks),
+                          static_cast<unsigned>(trackDrawTicks),
+                          static_cast<unsigned>(trackFrameTicks));
+        SRL::Debug::Print(2, 25, "LTK2 w:%u pf:%u ld:%u ws:%u   ",
+                          static_cast<unsigned>(trackWindowTicks),
+                          static_cast<unsigned>(trackPrefetchTicks),
+                          static_cast<unsigned>(trackLodTicks),
+                          static_cast<unsigned>(trackWorkingSetTicks));
     }
 
     void MaybeLogHighWorkRamTrace()
@@ -224,78 +544,38 @@ private:
                           syncAccum,
                           static_cast<unsigned>(hwrStageTrace_.postSync.freeBytes));
         const auto validation = SRL::Memory::LowWorkRam::Validate();
+        const auto lwrReport = SRL::Memory::LowWorkRam::GetReport();
+        const uint32_t lwrUsedBytesDirect = static_cast<uint32_t>(
+            (lwrReport.TotalSize >= lwrReport.FreeSize) ? (lwrReport.TotalSize - lwrReport.FreeSize) : 0u);
         const uint32_t initLiveBytesDirect = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Init));
         const uint32_t unknownLiveBytesDirect = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Unknown));
-        const uint32_t carLiveBytesDirect = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Car));
+        const uint32_t gameplayLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Gameplay));
+        const uint32_t autoLapLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::AutoLap));
         const uint32_t payloadBytesDirect = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedPayloadBytes());
-        const uint32_t visibleTagBytesDirect =
-            initLiveBytesDirect +
-            unknownLiveBytesDirect +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Gameplay)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::AutoLap)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Background)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Hud)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackCore)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackPrepare)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackLod)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackTexture)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackBackend)) +
-            carLiveBytesDirect +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Finish)) +
-            static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Sync));
-        const uint32_t initSmall16Count = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTagAtMost(
-                SRL::Memory::DebugTag::Init, 16u));
-        const uint32_t unknownSmall16Count = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTagAtMost(
-                SRL::Memory::DebugTag::Unknown, 16u));
-        const uint32_t trackCoreBlockCount = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTag(
-                SRL::Memory::DebugTag::TrackCore));
-        const uint32_t trackPrepareBlockCount = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTag(
-                SRL::Memory::DebugTag::TrackPrepare));
-        const uint32_t trackLodBlockCount = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTag(
-                SRL::Memory::DebugTag::TrackLod));
-        const uint32_t trackTextureBlockCount = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTag(
-                SRL::Memory::DebugTag::TrackTexture));
-        const uint32_t trackCoreSmall16Count = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTagAtMost(
-                SRL::Memory::DebugTag::TrackCore, 16u));
-        const uint32_t trackPrepareSmall16Count = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTagAtMost(
-                SRL::Memory::DebugTag::TrackPrepare, 16u));
-        const uint32_t trackLodSmall16Count = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTagAtMost(
-                SRL::Memory::DebugTag::TrackLod, 16u));
-        const uint32_t trackTextureSmall16Count = static_cast<uint32_t>(
-            SRL::Memory::LowWorkRam::GetUsedBlockCountByTagAtMost(
-                SRL::Memory::DebugTag::TrackTexture, 16u));
-        const uint32_t invalidTagCount = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBlockCountWithInvalidTag());
-        const uint32_t invalidTagBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesWithInvalidTag());
+        const uint32_t lwrOverheadBytesDirect =
+            (lwrUsedBytesDirect >= payloadBytesDirect) ? (lwrUsedBytesDirect - payloadBytesDirect) : 0u;
+        const uint32_t trackBackendLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackBackend));
         const uint32_t trackCoreLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackCore));
         const uint32_t trackPrepareLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackPrepare));
         const uint32_t trackLodLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackLod));
         const uint32_t trackTextureLiveBytesLwr = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::TrackTexture));
-        SRL::Debug::Print(2, 20, "LW7 tc:%u tw:%u tl:%u tx:%u",
-                          static_cast<unsigned>(trackCoreLiveBytesLwr),
+        SRL::Debug::Print(2, 20, "LW7 tb:%u tw:%u tl:%u tx:%u",
+                          static_cast<unsigned>(trackBackendLiveBytesLwr),
                           static_cast<unsigned>(trackPrepareLiveBytesLwr),
                           static_cast<unsigned>(trackLodLiveBytesLwr),
                           static_cast<unsigned>(trackTextureLiveBytesLwr));
-        SRL::Debug::Print(2, 21, "LW8 c:%u w:%u l:%u x:%u",
-                          static_cast<unsigned>(trackCoreBlockCount),
-                          static_cast<unsigned>(trackPrepareBlockCount),
-                          static_cast<unsigned>(trackLodBlockCount),
-                          static_cast<unsigned>(trackTextureBlockCount));
+        SRL::Debug::Print(2, 21, "LW8 i:%u u:%u gp:%u au:%u",
+                          static_cast<unsigned>(initLiveBytesDirect),
+                          static_cast<unsigned>(unknownLiveBytesDirect),
+                          static_cast<unsigned>(gameplayLiveBytesLwr),
+                          static_cast<unsigned>(autoLapLiveBytesLwr));
         if (validation.valid)
         {
-            SRL::Debug::Print(2, 22, "LW10 c:%u w:%u l:%u x:%u",
-                              static_cast<unsigned>(trackCoreSmall16Count),
-                              static_cast<unsigned>(trackPrepareSmall16Count),
-                              static_cast<unsigned>(trackLodSmall16Count),
-                              static_cast<unsigned>(trackTextureSmall16Count));
+            SRL::Debug::Print(2, 22, "LW10 py:%u ov:%u lf:%u fb:%u",
+                              static_cast<unsigned>(payloadBytesDirect),
+                              static_cast<unsigned>(lwrOverheadBytesDirect),
+                              static_cast<unsigned>(SRL::Memory::LowWorkRam::GetLargestFreeBlockSize()),
+                              static_cast<unsigned>(lwrReport.FreeBlocks));
         }
         else
         {
@@ -306,6 +586,64 @@ private:
                               static_cast<unsigned>(SRL::Memory::LowWorkRam::GetReport().FreeSize));
         }
         hwrTraceCooldownFrames_ = 15u;
+    }
+
+    void MaybeLogLowWorkRamTrace()
+    {
+        const int32_t gameplayFreeDelta = SnapshotFreeDelta(lwrStageTrace_.begin, lwrStageTrace_.gameplay);
+        const int32_t autoLapFreeDelta = SnapshotFreeDelta(lwrStageTrace_.gameplay, lwrStageTrace_.autoLap);
+        const int32_t backgroundFreeDelta = SnapshotFreeDelta(lwrStageTrace_.autoLap, lwrStageTrace_.background);
+        const int32_t hudFreeDelta = SnapshotFreeDelta(lwrStageTrace_.background, lwrStageTrace_.hud);
+        const int32_t trackDrawFreeDelta = SnapshotFreeDelta(lwrStageTrace_.hud, lwrStageTrace_.trackDraw);
+        const int32_t trackEndFreeDelta = SnapshotFreeDelta(lwrStageTrace_.trackDraw, lwrStageTrace_.trackEnd);
+        const int32_t carFreeDelta = SnapshotFreeDelta(lwrStageTrace_.trackEnd, lwrStageTrace_.car);
+        const int32_t finishFreeDelta = SnapshotFreeDelta(lwrStageTrace_.car, lwrStageTrace_.preSync);
+        const int32_t syncFreeDelta = SnapshotFreeDelta(lwrStageTrace_.preSync, lwrStageTrace_.postSync);
+        const int32_t frameFreeDelta = SnapshotFreeDelta(lwrStageTrace_.begin, lwrStageTrace_.postSync);
+        const int32_t framePayloadDelta = SnapshotPayloadDelta(lwrStageTrace_.begin, lwrStageTrace_.postSync);
+        const int32_t frameOverheadDelta = SnapshotOverheadDelta(lwrStageTrace_.begin, lwrStageTrace_.postSync);
+        const int32_t largestFreeDelta =
+            static_cast<int32_t>(lwrStageTrace_.postSync.largestFreeBytes) -
+            static_cast<int32_t>(lwrStageTrace_.begin.largestFreeBytes);
+        const int32_t freeBlocksDelta =
+            static_cast<int32_t>(lwrStageTrace_.postSync.freeBlocks) -
+            static_cast<int32_t>(lwrStageTrace_.begin.freeBlocks);
+
+        int32_t trackDrawPrepareDelta = 0;
+        int32_t trackDrawExecuteDelta = 0;
+        int32_t trackDrawOtherDelta = 0;
+        int32_t trackDrawFrameDelta = 0;
+        if (context_.trackSystem)
+        {
+            trackDrawPrepareDelta = context_.trackSystem->LowWorkDrawPrepareDeltaThisFrame();
+            trackDrawExecuteDelta = context_.trackSystem->LowWorkDrawExecuteDeltaThisFrame();
+            trackDrawOtherDelta = context_.trackSystem->LowWorkDrawOtherDeltaThisFrame();
+            trackDrawFrameDelta = context_.trackSystem->LowWorkDrawFrameDeltaThisFrame();
+        }
+
+        SRL::Debug::Print(2, 26, "GLW1 gp:%d au:%d bg:%d hd:%d   ",
+                          gameplayFreeDelta,
+                          autoLapFreeDelta,
+                          backgroundFreeDelta,
+                          hudFreeDelta);
+        SRL::Debug::Print(2, 27, "GLW2 td:%d te:%d c:%d f:%d   ",
+                          trackDrawFreeDelta,
+                          trackEndFreeDelta,
+                          carFreeDelta,
+                          finishFreeDelta);
+        SRL::Debug::Print(2, 28, "GLW3 sy:%d fr:%d py:%d ov:%d ",
+                          syncFreeDelta,
+                          frameFreeDelta,
+                          framePayloadDelta,
+                          frameOverheadDelta);
+        SRL::Debug::Print(2, 29, "GLW4 dp:%d dx:%d do:%d df:%d ",
+                          trackDrawPrepareDelta,
+                          trackDrawExecuteDelta,
+                          trackDrawOtherDelta,
+                          trackDrawFrameDelta);
+        SRL::Debug::Print(2, 30, "GLW5 lf:%d fb:%d           ",
+                          largestFreeDelta,
+                          freeBlocksDelta);
     }
 
     // Validate world position before rendering to avoid invalid transform collapse.
@@ -608,8 +946,14 @@ private:
         if (!camera.ready)
         {
             SRL::Debug::Print(1, 23, "CAM wait snapshot");
-            hwrStageTrace_.track = CaptureHighWorkRamSnapshot();
+            hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
+            hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
+            lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
+            hwrStageTrace_.track = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.track = MaybeCaptureLowWorkRamSnapshot();
             hwrStageTrace_.car = hwrStageTrace_.track;
+            lwrStageTrace_.car = lwrStageTrace_.track;
             return;
         }
 
@@ -620,28 +964,41 @@ private:
         {
             context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
         }
-        SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::TrackCore);
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
         context_.trackSystem->BeginFrame(frameCounter_);
         if (context_.trackSystemReady && context_.renderTrack)
         {
             AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
-            SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::TrackPrepare);
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
             context_.trackSystem->RenderFrame(true,
                                              context_.trackSegOffset,
                                              context_.lightDirection,
                                              camera.location,
                                              context_.carWorldPosition);
-            SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::TrackCore);
+            hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
             context_.trackSystem->EndFrame();
+            hwrStageTrace_.trackEnd = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.trackEnd = MaybeCaptureLowWorkRamSnapshot();
         }
-        hwrStageTrace_.track = CaptureHighWorkRamSnapshot();
+        else
+        {
+            hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
+            lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
+            hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
+            lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
+        }
+        hwrStageTrace_.track = hwrStageTrace_.trackEnd;
+        lwrStageTrace_.track = lwrStageTrace_.trackEnd;
 
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
-        SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Car);
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::Car);
         RenderCar(camera);
-        hwrStageTrace_.car = CaptureHighWorkRamSnapshot();
-        SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Unknown);
+        hwrStageTrace_.car = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.car = MaybeCaptureLowWorkRamSnapshot();
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
     }
 
     void RenderAxes()
@@ -672,8 +1029,9 @@ private:
         const uint32_t submittedCarFaces = CanRenderCar() ? context_.faceCount : 0;
 
         ++frameCounter_;
-        hwrStageTrace_.preFinish = CaptureHighWorkRamSnapshot();
-        SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Finish);
+        hwrStageTrace_.preFinish = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.preFinish = MaybeCaptureLowWorkRamSnapshot();
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::Finish);
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
                                                       context_.logTrack,
                                                       context_.logCar,
@@ -689,14 +1047,36 @@ private:
         {
             SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);
         }
-        hwrStageTrace_.preSync = CaptureHighWorkRamSnapshot();
-        SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Sync);
+        hwrStageTrace_.preSync = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.preSync = MaybeCaptureLowWorkRamSnapshot();
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::Sync);
         AppState::Set(AppState::Stage::LoopSync, frameCounter_);
         SRL::Core::Synchronize();
-        hwrStageTrace_.postSync = CaptureHighWorkRamSnapshot();
-        SRL::Memory::HighWorkRam::SetDebugTag(SRL::Memory::DebugTag::Unknown);
-        PrintWorkRamUsageRealtime();
-        MaybeLogHighWorkRamTrace();
+        hwrStageTrace_.postSync = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.postSync = MaybeCaptureLowWorkRamSnapshot(true);
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
+        constexpr bool kEnableWorkRamOverlayTelemetry = kEnableDetailedWorkRamTelemetry;
+        constexpr uint16_t kWorkRamOverlayCadenceFrames = 10u;
+        bool workRamOverlayDue = false;
+        if constexpr (kEnableWorkRamOverlayTelemetry)
+        {
+            if (lwrTraceCooldownFrames_ == 0u)
+            {
+                workRamOverlayDue = true;
+                lwrTraceCooldownFrames_ = kWorkRamOverlayCadenceFrames;
+            }
+            else
+            {
+                --lwrTraceCooldownFrames_;
+            }
+            if (workRamOverlayDue)
+            {
+                PrintWorkRamUsageRealtime();
+                MaybeLogHighWorkRamTrace();
+                MaybeLogLowWorkRamTrace();
+            }
+        }
+        UpdateLowWorkFreeOverlay();
     }
 
     // Advance car through the preferred route. When PATH.NYA is available and
@@ -714,6 +1094,57 @@ private:
         if (autoLapRouteCenters_.size() < 2) return;
 
         const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-3 << 16);
+        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
+        auto wrapSegmentId = [&](int32_t segmentId) -> int32_t
+        {
+            if (segmentCount <= 0) return -1;
+            int32_t normalized = (segmentId - 1) % segmentCount;
+            if (normalized < 0) normalized += segmentCount;
+            return normalized + 1;
+        };
+        auto advanceObservedSegmentToward = [&](int32_t desiredSegmentId)
+        {
+            if (desiredSegmentId <= 0 || segmentCount <= 0)
+            {
+                latestActiveSegmentId_ = desiredSegmentId;
+                return;
+            }
+
+            desiredSegmentId = wrapSegmentId(desiredSegmentId);
+            if (latestActiveSegmentId_ <= 0)
+            {
+                latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
+                return;
+            }
+
+            const int32_t currentSegmentId = wrapSegmentId(latestActiveSegmentId_);
+            if (currentSegmentId <= 0)
+            {
+                latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
+                return;
+            }
+
+            const int32_t total = segmentCount;
+            int32_t forwardDistance = (desiredSegmentId - currentSegmentId) % total;
+            if (forwardDistance < 0) forwardDistance += total;
+            if (forwardDistance == 0)
+            {
+                latestActiveSegmentId_ = static_cast<int16_t>(currentSegmentId);
+                return;
+            }
+
+            if (forwardDistance < (total / 2))
+            {
+                latestActiveSegmentId_ =
+                    static_cast<int16_t>(wrapSegmentId(currentSegmentId + 1));
+                return;
+            }
+
+            // Ignore backward/noisy remaps from the decimated PATH so the
+            // streaming window does not thrash or try to catch up by several
+            // segments in one frame.
+            latestActiveSegmentId_ = static_cast<int16_t>(currentSegmentId);
+        };
 
         if (!autoLapRouteInitialized_)
         {
@@ -741,7 +1172,7 @@ private:
             autoLapRouteInitialized_ = true;
             if (!autoLapRouteIds_.empty() && autoLapRouteIndex_ < autoLapRouteIds_.size())
             {
-                latestActiveSegmentId_ = autoLapRouteIds_[autoLapRouteIndex_];
+                advanceObservedSegmentToward(autoLapRouteIds_[autoLapRouteIndex_]);
             }
         }
 
@@ -792,7 +1223,7 @@ private:
 
         if (!autoLapRouteIds_.empty() && autoLapRouteIndex_ < autoLapRouteIds_.size())
         {
-            latestActiveSegmentId_ = autoLapRouteIds_[autoLapRouteIndex_];
+            advanceObservedSegmentToward(autoLapRouteIds_[autoLapRouteIndex_]);
         }
 
         if (nAdx >= nAdz)
@@ -845,28 +1276,46 @@ private:
         }
 
         const char* candidates[] = {
+            "/CD/DATA/PATH.NYA",
+            "/CD/DATA/PATH.NYA;1",
+            "/DATA/PATH.NYA",
+            "/DATA/PATH.NYA;1",
             "CD/DATA/PATH.NYA",
             "CD/DATA/PATH.NYA;1",
+            "DATA/PATH.NYA",
+            "DATA/PATH.NYA;1",
             "cd/data/PATH.NYA",
             "cd/data/PATH.NYA;1",
+            "data/PATH.NYA",
+            "data/PATH.NYA;1",
+            "/PATH.NYA",
+            "/PATH.NYA;1",
             "PATH.NYA",
             "PATH.NYA;1",
         };
 
         std::vector<uint8_t> bytes{};
         bool loaded = false;
+        const char* loadedCandidate = nullptr;
         for (size_t i = 0; i < (sizeof(candidates) / sizeof(candidates[0])); ++i)
         {
             if (!ReadCdBinaryFile(candidates[i], bytes)) continue;
             loaded = true;
+            loadedCandidate = candidates[i];
             break;
         }
-        if (!loaded) return false;
+        if (!loaded)
+        {
+            SRL::Debug::Print(1, 23, "AUTO PATH read fail");
+            return false;
+        }
 
         PathNya::ParseResult parsed{};
         if (!PathNya::Parse(bytes.data(), bytes.size(), parsed))
         {
-            SRL::Debug::Print(1, 23, "AUTO PATH parse fail sz:%u",
+            SRL::Debug::Print(1, 23, "AUTO PATH parse fail %s",
+                              loadedCandidate ? loadedCandidate : "none");
+            SRL::Debug::Print(1, 24, "AUTO PATH parse sz:%u",
                               static_cast<unsigned>(bytes.size()));
             return false;
         }
@@ -886,7 +1335,9 @@ private:
             }
         }
 
-        SRL::Debug::Print(1, 23, "AUTO PATH v:%u l0:%u l1:%u l2:%u",
+        SRL::Debug::Print(1, 23, "AUTO PATH ok %s",
+                          loadedCandidate ? loadedCandidate : "none");
+        SRL::Debug::Print(1, 24, "AUTO PATH v:%u l0:%u l1:%u l2:%u",
                           static_cast<unsigned>(parsed.version),
                           static_cast<unsigned>(autoLapGuideLines_[0].size()),
                           static_cast<unsigned>(autoLapGuideLines_[1].size()),
@@ -904,11 +1355,15 @@ private:
             return false;
         }
 
-        autoLapRouteCenters_.reserve(middleLine.size());
-        autoLapRouteIds_.reserve(middleLine.size());
-
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         if (segmentCount <= 0) return false;
+
+        const auto simplifiedMiddleLine =
+            SimplifyAutoLapGuideLine(middleLine, static_cast<size_t>(segmentCount));
+        const auto& routeLine = (simplifiedMiddleLine.size() >= 2u) ? simplifiedMiddleLine : middleLine;
+
+        autoLapRouteCenters_.reserve(routeLine.size());
+        autoLapRouteIds_.reserve(routeLine.size());
 
         auto scoreToSegmentId = [&](const SRL::Math::Types::Vector3D& point,
                                     int32_t segmentId) -> SRL::Math::Types::Fxp
@@ -929,9 +1384,9 @@ private:
         };
 
         int32_t mappedSegmentId = -1;
-        for (size_t i = 0; i < middleLine.size(); ++i)
+        for (size_t i = 0; i < routeLine.size(); ++i)
         {
-            const SRL::Math::Types::Vector3D routePoint = middleLine[i] + context.trackSegOffset;
+            const SRL::Math::Types::Vector3D routePoint = routeLine[i] + context.trackSegOffset;
             autoLapRouteCenters_.push_back(routePoint);
 
             int32_t bestSegmentId = -1;
@@ -968,8 +1423,140 @@ private:
             mappedSegmentId = bestSegmentId;
             autoLapRouteIds_.push_back(static_cast<int16_t>(mappedSegmentId));
         }
+        SRL::Debug::Print(1, 25, "AUTO PATH dec raw:%u out:%u",
+                          static_cast<unsigned>(middleLine.size()),
+                          static_cast<unsigned>(routeLine.size()));
         return !autoLapRouteCenters_.empty() &&
                autoLapRouteCenters_.size() == autoLapRouteIds_.size();
+    }
+
+    void ReleaseAutoLapGuideLines()
+    {
+        for (size_t i = 0; i < autoLapGuideLines_.size(); ++i)
+        {
+            using GuideLineVector = std::remove_reference_t<decltype(autoLapGuideLines_[i])>;
+            GuideLineVector{}.swap(autoLapGuideLines_[i]);
+        }
+    }
+
+    static double AutoLapPointSegmentDistanceSqXZ(const SRL::Math::Types::Vector3D& point,
+                                                  const SRL::Math::Types::Vector3D& a,
+                                                  const SRL::Math::Types::Vector3D& b)
+    {
+        const double px = static_cast<double>(point.X.RawValue());
+        const double pz = static_cast<double>(point.Z.RawValue());
+        const double ax = static_cast<double>(a.X.RawValue());
+        const double az = static_cast<double>(a.Z.RawValue());
+        const double bx = static_cast<double>(b.X.RawValue());
+        const double bz = static_cast<double>(b.Z.RawValue());
+
+        const double vx = bx - ax;
+        const double vz = bz - az;
+        const double wx = px - ax;
+        const double wz = pz - az;
+        const double vv = (vx * vx) + (vz * vz);
+        if (vv <= 0.0)
+        {
+            return (wx * wx) + (wz * wz);
+        }
+
+        double t = ((wx * vx) + (wz * vz)) / vv;
+        if (t < 0.0) t = 0.0;
+        if (t > 1.0) t = 1.0;
+
+        const double dx = px - (ax + (vx * t));
+        const double dz = pz - (az + (vz * t));
+        return (dx * dx) + (dz * dz);
+    }
+
+    static TrackLowWorkVector<SRL::Math::Types::Vector3D> SimplifyAutoLapGuideLine(
+        const TrackLowWorkVector<SRL::Math::Types::Vector3D>& input,
+        size_t segmentCount)
+    {
+        TrackLowWorkVector<SRL::Math::Types::Vector3D> output{};
+        if (input.size() <= 2u)
+        {
+            output = input;
+            return output;
+        }
+
+        const size_t targetMaxPoints = std::min<size_t>(
+            std::max<size_t>(segmentCount * 6u, 1536u),
+            2048u);
+        if (input.size() <= targetMaxPoints)
+        {
+            output = input;
+            return output;
+        }
+
+        constexpr double kEpsilonRaw = static_cast<double>(2 << 16);
+        const double epsilonSq = kEpsilonRaw * kEpsilonRaw;
+
+        std::vector<uint8_t> keep(input.size(), 0u);
+        keep.front() = 1u;
+        keep.back() = 1u;
+
+        std::vector<std::pair<size_t, size_t>> stack{};
+        stack.emplace_back(0u, input.size() - 1u);
+        while (!stack.empty())
+        {
+            const auto range = stack.back();
+            stack.pop_back();
+            if (range.second <= range.first + 1u) continue;
+
+            size_t farthestIndex = 0u;
+            double farthestDistSq = -1.0;
+            for (size_t i = range.first + 1u; i < range.second; ++i)
+            {
+                const double distSq =
+                    AutoLapPointSegmentDistanceSqXZ(input[i], input[range.first], input[range.second]);
+                if (distSq <= farthestDistSq) continue;
+                farthestDistSq = distSq;
+                farthestIndex = i;
+            }
+
+            if (farthestDistSq > epsilonSq)
+            {
+                keep[farthestIndex] = 1u;
+                stack.emplace_back(range.first, farthestIndex);
+                stack.emplace_back(farthestIndex, range.second);
+            }
+        }
+
+        output.reserve(std::min(targetMaxPoints, input.size()));
+        for (size_t i = 0; i < input.size(); ++i)
+        {
+            if (keep[i] == 0u) continue;
+            output.push_back(input[i]);
+        }
+
+        if (output.size() <= targetMaxPoints)
+        {
+            return output;
+        }
+
+        TrackLowWorkVector<SRL::Math::Types::Vector3D> capped{};
+        capped.reserve(targetMaxPoints);
+        const size_t lastIndex = output.size() - 1u;
+        for (size_t i = 0; i < targetMaxPoints; ++i)
+        {
+            const size_t srcIndex =
+                (i * lastIndex) / std::max<size_t>(1u, targetMaxPoints - 1u);
+            if (!capped.empty() &&
+                capped.back().X.RawValue() == output[srcIndex].X.RawValue() &&
+                capped.back().Y.RawValue() == output[srcIndex].Y.RawValue() &&
+                capped.back().Z.RawValue() == output[srcIndex].Z.RawValue())
+            {
+                continue;
+            }
+            capped.push_back(output[srcIndex]);
+        }
+
+        if (capped.size() >= 2u)
+        {
+            return capped;
+        }
+        return output;
     }
 
     // Build preferred route for the player car.
@@ -981,11 +1568,13 @@ private:
 
         if (BuildAutoLapRouteFromPathGuide(context))
         {
+            ReleaseAutoLapGuideLines();
             autoLapRouteBuilt_ = true;
             autoLapRouteInitialized_ = false;
             return;
         }
 
+        ReleaseAutoLapGuideLines();
         SRL::Debug::Print(1, 24, "AUTO PATH fallback seg centers");
 
         SRL::Math::Types::Vector3D c{};
@@ -1125,6 +1714,19 @@ private:
     std::array<TrackLowWorkVector<SRL::Math::Types::Vector3D>, 3> autoLapGuideLines_{};
     HwrStageTrace hwrStageTrace_{};
     uint16_t hwrTraceCooldownFrames_ = 0;
+    LwrStageTrace lwrStageTrace_{};
+    uint16_t lwrTraceCooldownFrames_ = 0;
+    uint16_t lowWorkFreeOverlayCooldownFrames_ = 0;
+    uint32_t lastLowWorkFreeOverlayBytes_ = 0;
+    bool lowWorkFreeOverlayValid_ = false;
+    TrackSystem::LowWorkCategoryBreakdown lastLowWorkBreakdownOverlay_{};
+    bool lowWorkBreakdownOverlayValid_ = false;
+    LowWorkTagGroupOverlay lastLowWorkTagGroupOverlay_{};
+    bool lowWorkTagGroupOverlayValid_ = false;
+    uint32_t lastLowWorkPayloadOverlayBytes_ = 0;
+    uint32_t lastLowWorkOverheadOverlayBytes_ = 0;
+    uint32_t lastLowWorkFreeBlocksOverlay_ = 0;
+    bool lowWorkAllocatorOverlayValid_ = false;
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;

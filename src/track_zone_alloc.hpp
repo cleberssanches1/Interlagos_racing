@@ -51,3 +51,7 @@ inline bool operator!=(const TrackZoneAllocator<T, ZoneValue>&,
 template <typename T>
 using TrackLowWorkVectorBase =
     std::vector<T, TrackZoneAllocator<T, SRL::Memory::Zone::LWRam>>;
+
+template <typename T>
+using TrackHighWorkVectorBase =
+    std::vector<T, TrackZoneAllocator<T, SRL::Memory::Zone::HWRam>>;

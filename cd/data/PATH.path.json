@@ -1,0 +1,21 @@
+{
+    "input":  "C:\\Models\\png\\PATH.obj",
+    "output":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\PATH.NYA",
+    "version":  1,
+    "axisMapping":  "ObjAsIs",
+    "lineCount":  3,
+    "lines":  [
+                  {
+                      "name":  "trilha_1",
+                      "pointCount":  4576
+                  },
+                  {
+                      "name":  "trilha_2",
+                      "pointCount":  4576
+                  },
+                  {
+                      "name":  "trilha_3",
+                      "pointCount":  4576
+                  }
+              ]
+}
