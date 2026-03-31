@@ -108,14 +108,16 @@ void CarSystem::TickCommandState()
 
 void CarSystem::Render(int32_t yawDeg)
 {
-    yawDeg_ = ((yawDeg % 360) + 360) % 360;
+    yawDeg_ = NormalizeYawDeg(yawDeg);
     TickCommandState();
 }
 
 void CarSystem::SubmitRender(RenderPipeline& pipeline, bool logStats)
 {
     if (!renderer_) return;
-    SRL::Math::Types::Angle yaw = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(yawDeg_ << 16));
+    const int32_t renderYawDeg = CurrentRenderYawDeg();
+    SRL::Math::Types::Angle yaw =
+        SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(renderYawDeg << 16));
     pipeline.Enqueue(*renderer_, worldPosition_, yaw, logStats);
 }
 } // namespace Game

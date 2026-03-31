@@ -16,8 +16,20 @@ public:
     };
 
     // Update controller state from pad and current camera offset.
-    void Update(SRL::Input::Digital& pad, const Config& cfg, const Vector3D& currentCameraOffset)
+    void Update(SRL::Input::Digital& pad,
+                const Config& cfg,
+                const Vector3D& currentCameraOffset,
+                bool allowOrbitInput = true)
     {
+        if (!allowOrbitInput)
+        {
+            // Force-disable orbit when another system owns X+arrows (camera 2 calibration).
+            active_ = false;
+            orbitDeltaYawDeg_ = 0;
+            xHeldPrev_ = false;
+            return;
+        }
+
         const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
         const bool leftHeld = pad.IsHeld(SRL::Input::Digital::Button::Left);
         const bool rightHeld = pad.IsHeld(SRL::Input::Digital::Button::Right);

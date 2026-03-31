@@ -130,6 +130,8 @@ public:
     uint16_t PrefetchTicksThisFrame() const { return sh2MasterPrefetchTicksThisFrame_; }
     uint16_t LodTicksThisFrame() const { return sh2MasterLodTicksThisFrame_; }
     uint16_t WorkingSetTicksThisFrame() const { return sh2MasterWorkingSetTicksThisFrame_; }
+    void SetRuntimeStatsLogsEnabled(bool enabled) { runtimeStatsLogsEnabled_ = enabled; }
+    bool RuntimeStatsLogsEnabled() const { return runtimeStatsLogsEnabled_; }
 
 private:
     enum class MemoryPressureLevel : uint8_t
@@ -548,6 +550,7 @@ private:
     uint16_t releasedEndFrameSlotsThisFrame_ = 0;
     uint16_t releasedPrefetchNowThisFrame_ = 0;
     uint8_t memoryPressureLevelThisFrame_ = 0;
+    bool runtimeStatsLogsEnabled_ = true;
     bool fullTrackFamilyCacheReady_ = false;
     size_t lastWindowFreeBytes_ = 0;
     bool lastWindowFreeValid_ = false;

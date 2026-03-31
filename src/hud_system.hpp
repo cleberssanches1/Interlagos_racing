@@ -32,6 +32,7 @@ public:
 
     // Print periodic system memory and VDP1 usage logs.
     void PresentPeriodicFrameStats(uint32_t frameCounter,
+                                   bool enableRuntimeStatsLogs,
                                    bool logTrack,
                                    bool logCar,
                                    uint32_t faceCount,
@@ -39,6 +40,8 @@ public:
                                    uint32_t submittedTrackFaces,
                                    uint32_t submittedCarFaces)
     {
+        if (!enableRuntimeStatsLogs) return;
+
         const int32_t hwrFree = SRL::Memory::CartRam::GetFreeSpace();
         const int32_t hwrTotal = 4 * 1024 * 1024;
         const int32_t hwrUsed  = hwrTotal - hwrFree;

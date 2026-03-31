@@ -35,6 +35,7 @@ public:
         bool verboseFrameLogs = false;
         bool logTrack = true;
         bool logCar = false;
+        bool enableRuntimeStatsLogs = true;
         bool enableSlaveForCarPrepare = false;
         bool enableSlaveForSimulation = false;
         bool enableManualGouraudCopy = false;
@@ -93,6 +94,10 @@ public:
             {
                 SetWorkRamDebugTag(SRL::Memory::DebugTag::AutoLap);
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
+                if (context_.cameraSystem)
+                {
+                    context_.cameraSystem->SetCarYawDegrees(carYawDeg_);
+                }
             }
             hwrStageTrace_.autoLap = MaybeCaptureHighWorkRamSnapshot();
             lwrStageTrace_.autoLap = MaybeCaptureLowWorkRamSnapshot();
@@ -116,6 +121,8 @@ public:
     }
 
 private:
+    static constexpr int32_t kAutoLapYawBiasDeg = 0;
+
     static constexpr bool kEnableDetailedWorkRamTelemetry = false;
     static constexpr bool kEnableLowWorkFreeOverlay = true;
     static constexpr uint16_t kLowWorkFreeOverlayCadenceFrames = 8u;
@@ -280,6 +287,11 @@ private:
 
     void UpdateLowWorkFreeOverlay()
     {
+        if (!context_.enableRuntimeStatsLogs)
+        {
+            return;
+        }
+
         if constexpr (!kEnableLowWorkFreeOverlay)
         {
             return;
@@ -670,6 +682,9 @@ private:
         bool bHeld = false;
         bool cHeld = false;
         bool yHeld = false;
+        bool xHeld = false;
+        bool lHeld = false;
+        bool rHeld = false;
         bool leftHeld = false;
         bool rightHeld = false;
     };
@@ -717,26 +732,87 @@ private:
         input.bHeld = pad_.IsHeld(SRL::Input::Digital::Button::B);
         input.cHeld = pad_.IsHeld(SRL::Input::Digital::Button::C);
         input.yHeld = pad_.IsHeld(SRL::Input::Digital::Button::Y);
+        input.xHeld = pad_.IsHeld(SRL::Input::Digital::Button::X);
+        input.lHeld = pad_.IsHeld(SRL::Input::Digital::Button::L);
+        input.rHeld = pad_.IsHeld(SRL::Input::Digital::Button::R);
         input.leftHeld = pad_.IsHeld(SRL::Input::Digital::Button::Left);
         input.rightHeld = pad_.IsHeld(SRL::Input::Digital::Button::Right);
+        const bool xHeld = input.xHeld;
 
-        context_.cameraSystem->UpdateFromPad(pad_, carYawDeg_, orbitState_);
+        int32_t yawForCamera = carYawDeg_;
+        const bool allowManualYawInput = !autoLapTestEnabled_;
+        context_.cameraSystem->UpdateFromPad(pad_, yawForCamera, orbitState_, allowManualYawInput);
+        if (allowManualYawInput)
+        {
+            carYawDeg_ = yawForCamera;
+        }
+
+        if (Game::CarSystem* car = ActiveCarSystem())
+        {
+            if (xHeld)
+            {
+                if (autoLapTestEnabled_)
+                {
+                    // In auto-lap, show dynamic path-driven forward offset.
+                    SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", static_cast<int>(autoLapCurrentOffDeg_));
+                }
+                else
+                {
+                    if (carForwardOffsetRepeatFrames_ > 0) --carForwardOffsetRepeatFrames_;
+                    if (carForwardOffsetRepeatFrames_ == 0)
+                    {
+                        int32_t nextOffsetDeg = car->VisualYawOffsetDegrees();
+                        bool changed = false;
+                        if (input.lHeld)
+                        {
+                            nextOffsetDeg -= 5;
+                            changed = true;
+                        }
+                        if (input.rHeld)
+                        {
+                            nextOffsetDeg += 5;
+                            changed = true;
+                        }
+                        if (changed)
+                        {
+                            car->SetVisualYawOffsetDegrees(nextOffsetDeg);
+                            carForwardOffsetRepeatFrames_ = 2;
+                        }
+                    }
+                    SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", car->VisualYawOffsetDegrees());
+                }
+            }
+            else
+            {
+                carForwardOffsetRepeatFrames_ = 0;
+                SRL::Debug::Print(1, 27, "                    ");
+            }
+        }
+
+        const bool camera2CalibrationActive =
+            xHeld &&
+            context_.cameraSystem &&
+            (context_.cameraSystem->GetChasePreset() == CameraSystem::ChasePreset::ChaseNear);
+        if (camera2CalibrationActive)
+        {
+            // During camera 2 calibration, arrows are reserved for camera offset tuning.
+            // Do not forward left/right as steering input to gameplay/car systems.
+            input.leftHeld = false;
+            input.rightHeld = false;
+        }
         if (input.yHeld && !yHeldPrev_)
         {
             autoLapTestEnabled_ = !autoLapTestEnabled_;
-            autoLapRouteInitialized_ = false;
-            autoLapRouteBuilt_ = false;
-            SRL::Debug::Print(1, 23, "AUTO LAP:%u", autoLapTestEnabled_ ? 1u : 0u);
-        }
-        if (input.yHeld && input.leftHeld && !leftHeldPrev_)
-        {
-            if (autoLapStepUnits_ > 1) --autoLapStepUnits_;
-            SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
-        }
-        if (input.yHeld && input.rightHeld && !rightHeldPrev_)
-        {
-            if (autoLapStepUnits_ < 36) ++autoLapStepUnits_;
-            SRL::Debug::Print(1, 24, "AUTO SPD:%d", static_cast<int>(autoLapStepUnits_));
+            if (autoLapTestEnabled_)
+            {
+                autoLapRouteInitialized_ = false;
+                autoLapRouteBuilt_ = false;
+            }
+            else
+            {
+                autoLapCurrentOffDeg_ = 0;
+            }
+            SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
         }
         yHeldPrev_ = input.yHeld;
         leftHeldPrev_ = input.leftHeld;
@@ -777,17 +853,35 @@ private:
         Game::CarSystem* car = ActiveCarSystem();
         if (car)
         {
-            // Feed command interface for future physics integration.
-            if (input.cHeld) car->Command()->Accelerate();
-            if (input.bHeld) car->Command()->Brake();
-            if (input.leftHeld) car->Command()->SteerLeft();
-            if (input.rightHeld) car->Command()->SteerRight();
-            car->UpdateWheels(input.cHeld, input.bHeld);
+            // Keep car stopped until Y toggles movement on.
+            if (autoLapTestEnabled_)
+            {
+                if (input.cHeld) car->Command()->Accelerate();
+                if (input.bHeld) car->Command()->Brake();
+                if (input.leftHeld) car->Command()->SteerLeft();
+                if (input.rightHeld) car->Command()->SteerRight();
+                car->UpdateWheels(input.cHeld, input.bHeld);
+            }
+            else
+            {
+                car->UpdateWheels(false, true);
+            }
+
             const auto& commands = car->Commands();
-            frameState.throttle = commands.throttle;
-            frameState.steering = commands.steering;
-            frameState.braking = commands.braking;
-            frameState.wheelsSpinning = commands.wheelsSpinning;
+            if (autoLapTestEnabled_)
+            {
+                frameState.throttle = commands.throttle;
+                frameState.steering = commands.steering;
+                frameState.braking = commands.braking;
+                frameState.wheelsSpinning = commands.wheelsSpinning;
+            }
+            else
+            {
+                frameState.throttle = 0;
+                frameState.steering = 0;
+                frameState.braking = false;
+                frameState.wheelsSpinning = false;
+            }
         }
         return frameState;
     }
@@ -1033,6 +1127,7 @@ private:
         lwrStageTrace_.preFinish = MaybeCaptureLowWorkRamSnapshot();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Finish);
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
+                                                      context_.enableRuntimeStatsLogs,
                                                       context_.logTrack,
                                                       context_.logCar,
                                                       context_.faceCount,
@@ -1079,6 +1174,88 @@ private:
         UpdateLowWorkFreeOverlay();
     }
 
+    static int32_t NormalizeYawDeg360(int32_t yawDeg)
+    {
+        yawDeg %= 360;
+        if (yawDeg < 0) yawDeg += 360;
+        return yawDeg;
+    }
+
+    static int32_t NormalizeSignedDeg180(int32_t deg)
+    {
+        deg = NormalizeYawDeg360(deg);
+        if (deg > 180) deg -= 360;
+        return deg;
+    }
+
+    static int32_t ShortestDeltaDeg(int32_t fromDeg, int32_t toDeg)
+    {
+        return NormalizeSignedDeg180(toDeg - fromDeg);
+    }
+
+    static int32_t YawFromDeltaRaw(int32_t deltaXRaw, int32_t deltaZRaw, int32_t fallbackYawDeg)
+    {
+        if (deltaXRaw == 0 && deltaZRaw == 0)
+        {
+            return NormalizeYawDeg360(fallbackYawDeg);
+        }
+
+        // Keep the existing heading convention used by gameplay/car rendering:
+        // 0° = -Z, 90° = +X, 180° = +Z, 270° = -X.
+        const auto angle = SRL::Math::Trigonometry::Atan2(
+            SRL::Math::Types::Fxp::BuildRaw(deltaXRaw),
+            SRL::Math::Types::Fxp::BuildRaw(-deltaZRaw));
+        const auto yawDegFxp = angle.ToDegrees();
+        const int32_t yawDeg = (yawDegFxp.RawValue() + (1 << 15)) >> 16;
+        // Auto-lap uses the car visual forward axis, which is opposite to the
+        // raw path tangent convention used by the movement vector.
+        return NormalizeYawDeg360(yawDeg + kAutoLapYawBiasDeg);
+    }
+
+    static int32_t LerpShortestAngleDeg(int32_t aDeg, int32_t bDeg, int32_t tRaw)
+    {
+        const int32_t clampedTRaw = std::clamp<int32_t>(tRaw, 0, (1 << 16));
+        const int32_t delta = ShortestDeltaDeg(aDeg, bDeg);
+        const int32_t mixed =
+            aDeg + static_cast<int32_t>((static_cast<int64_t>(delta) * clampedTRaw) >> 16);
+        return NormalizeSignedDeg180(mixed);
+    }
+
+    void RebuildAutoLapRouteYawData()
+    {
+        autoLapRouteYawDeg_.clear();
+        autoLapRouteOffDeg_.clear();
+        autoLapRouteBaseYawDeg_ = 0;
+
+        const size_t pointCount = autoLapRouteCenters_.size();
+        if (pointCount < 2u) return;
+
+        autoLapRouteYawDeg_.reserve(pointCount);
+        for (size_t i = 0u; i < pointCount; ++i)
+        {
+            const size_t j = (i + 1u) % pointCount;
+            const int32_t dxRaw =
+                autoLapRouteCenters_[j].X.RawValue() - autoLapRouteCenters_[i].X.RawValue();
+            const int32_t dzRaw =
+                autoLapRouteCenters_[j].Z.RawValue() - autoLapRouteCenters_[i].Z.RawValue();
+            const int32_t fallbackYaw = autoLapRouteYawDeg_.empty()
+                                            ? 0
+                                            : static_cast<int32_t>(autoLapRouteYawDeg_.back());
+            const int32_t yawDeg = YawFromDeltaRaw(dxRaw, dzRaw, fallbackYaw);
+            autoLapRouteYawDeg_.push_back(static_cast<int16_t>(yawDeg));
+        }
+
+        autoLapRouteBaseYawDeg_ = static_cast<int16_t>(autoLapRouteYawDeg_.front());
+        autoLapRouteOffDeg_.reserve(pointCount);
+        for (size_t i = 0u; i < pointCount; ++i)
+        {
+            const int32_t offDeg = ShortestDeltaDeg(
+                static_cast<int32_t>(autoLapRouteBaseYawDeg_),
+                static_cast<int32_t>(autoLapRouteYawDeg_[i]));
+            autoLapRouteOffDeg_.push_back(static_cast<int16_t>(offDeg));
+        }
+    }
+
     // Advance car through the preferred route. When PATH.NYA is available and
     // populated, the middle line drives the player route; otherwise we fall
     // back to the segment-center path.
@@ -1089,10 +1266,14 @@ private:
         if (!context.trackSystem || !context.trackSystemReady) return;
         if (!autoLapRouteBuilt_)
         {
-            BuildAutoLapRoute(context);
+            BuildAutoLapRoute(context, ioCarWorldPosition);
         }
         if (autoLapRouteCenters_.size() < 2) return;
-
+        if (autoLapRouteYawDeg_.size() != autoLapRouteCenters_.size() ||
+            autoLapRouteOffDeg_.size() != autoLapRouteCenters_.size())
+        {
+            RebuildAutoLapRouteYawData();
+        }
         const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-3 << 16);
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         auto wrapSegmentId = [&](int32_t segmentId) -> int32_t
@@ -1165,19 +1346,27 @@ private:
                 }
             }
             if (!foundRoutePoint) return;
+
             autoLapRouteIndex_ = static_cast<uint16_t>(bestIdx);
             ioCarWorldPosition.X = autoLapRouteCenters_[autoLapRouteIndex_].X;
             ioCarWorldPosition.Z = autoLapRouteCenters_[autoLapRouteIndex_].Z;
             ioCarWorldPosition.Y = autoLapRouteCenters_[autoLapRouteIndex_].Y + rideHeight;
             autoLapRouteInitialized_ = true;
+            if (autoLapRouteYawDeg_.size() == autoLapRouteCenters_.size() &&
+                autoLapRouteIndex_ < autoLapRouteYawDeg_.size())
+            {
+                ioCarYawDeg = autoLapRouteYawDeg_[autoLapRouteIndex_];
+            }
             if (!autoLapRouteIds_.empty() && autoLapRouteIndex_ < autoLapRouteIds_.size())
             {
                 advanceObservedSegmentToward(autoLapRouteIds_[autoLapRouteIndex_]);
             }
         }
 
-        const SRL::Math::Types::Vector3D& currentCenter = autoLapRouteCenters_[autoLapRouteIndex_];
-        const uint16_t nextIndex = static_cast<uint16_t>((static_cast<size_t>(autoLapRouteIndex_) + 1u) % autoLapRouteCenters_.size());
+        const size_t routePointCount = autoLapRouteCenters_.size();
+        size_t currentIndex = static_cast<size_t>(autoLapRouteIndex_);
+        size_t nextIndex = (currentIndex + 1u) % routePointCount;
+        const SRL::Math::Types::Vector3D& currentCenter = autoLapRouteCenters_[currentIndex];
         const SRL::Math::Types::Vector3D& nextCenter = autoLapRouteCenters_[nextIndex];
 
         // Move from current car position to next segment center.
@@ -1186,13 +1375,14 @@ private:
         const int32_t nAdx = (ndx < 0) ? -ndx : ndx;
         const int32_t nAdz = (ndz < 0) ? -ndz : ndz;
         const int32_t maxAxis = (nAdx > nAdz) ? nAdx : nAdz;
-        if (maxAxis <= 0) return;
-
-        const int32_t stepRaw = (autoLapStepUnits_ << 16);
-        const int64_t moveX64 = (static_cast<int64_t>(ndx) * static_cast<int64_t>(stepRaw)) / maxAxis;
-        const int64_t moveZ64 = (static_cast<int64_t>(ndz) * static_cast<int64_t>(stepRaw)) / maxAxis;
-        ioCarWorldPosition.X += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveX64));
-        ioCarWorldPosition.Z += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveZ64));
+        if (maxAxis > 0)
+        {
+            const int32_t stepRaw = (autoLapStepUnits_ << 16);
+            const int64_t moveX64 = (static_cast<int64_t>(ndx) * static_cast<int64_t>(stepRaw)) / maxAxis;
+            const int64_t moveZ64 = (static_cast<int64_t>(ndz) * static_cast<int64_t>(stepRaw)) / maxAxis;
+            ioCarWorldPosition.X += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveX64));
+            ioCarWorldPosition.Z += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveZ64));
+        }
 
         // Advance route when the car reaches next center.
         const int32_t tx = nextCenter.X.RawValue() - ioCarWorldPosition.X.RawValue();
@@ -1215,24 +1405,104 @@ private:
         {
             ioCarWorldPosition.Y = nextCenter.Y + rideHeight;
         }
-        if (atx <= (8 << 16) && atz <= (8 << 16))
+
+        auto reachedOrPassedWaypoint = [&](size_t fromIndex, size_t toIndex) -> bool
         {
-            autoLapRouteIndex_ = nextIndex;
-            ioCarWorldPosition.Y = nextCenter.Y + rideHeight;
+            const auto& from = autoLapRouteCenters_[fromIndex];
+            const auto& to = autoLapRouteCenters_[toIndex];
+            const int32_t remX = to.X.RawValue() - ioCarWorldPosition.X.RawValue();
+            const int32_t remZ = to.Z.RawValue() - ioCarWorldPosition.Z.RawValue();
+            const int32_t absRemX = (remX < 0) ? -remX : remX;
+            const int32_t absRemZ = (remZ < 0) ? -remZ : remZ;
+            if (absRemX <= (8 << 16) && absRemZ <= (8 << 16)) return true;
+
+            const int64_t segX = static_cast<int64_t>(to.X.RawValue()) -
+                                 static_cast<int64_t>(from.X.RawValue());
+            const int64_t segZ = static_cast<int64_t>(to.Z.RawValue()) -
+                                 static_cast<int64_t>(from.Z.RawValue());
+            const int64_t toCarX = static_cast<int64_t>(ioCarWorldPosition.X.RawValue()) -
+                                   static_cast<int64_t>(to.X.RawValue());
+            const int64_t toCarZ = static_cast<int64_t>(ioCarWorldPosition.Z.RawValue()) -
+                                   static_cast<int64_t>(to.Z.RawValue());
+            return ((segX * toCarX) + (segZ * toCarZ)) >= 0;
+        };
+
+        for (size_t guard = 0u; guard < 8u; ++guard)
+        {
+            if (!reachedOrPassedWaypoint(currentIndex, nextIndex)) break;
+            currentIndex = nextIndex;
+            nextIndex = (currentIndex + 1u) % routePointCount;
+            ioCarWorldPosition.Y = autoLapRouteCenters_[currentIndex].Y + rideHeight;
         }
+        autoLapRouteIndex_ = static_cast<uint16_t>(currentIndex);
 
         if (!autoLapRouteIds_.empty() && autoLapRouteIndex_ < autoLapRouteIds_.size())
         {
             advanceObservedSegmentToward(autoLapRouteIds_[autoLapRouteIndex_]);
         }
 
-        if (nAdx >= nAdz)
+        const auto normalizeYawDeg = [](int32_t yawDeg) -> int32_t
         {
-            ioCarYawDeg = (ndx >= 0) ? 90 : 270;
+            return NormalizeYawDeg360(yawDeg);
+        };
+        auto yawFromDelta = [&](int32_t deltaXRaw, int32_t deltaZRaw, int32_t fallbackYawDeg) -> int32_t
+        {
+            if (deltaXRaw == 0 && deltaZRaw == 0) return normalizeYawDeg(fallbackYawDeg);
+
+            // Preserve the existing car/model heading convention:
+            // 0° = -Z, 90° = +X, 180° = +Z, 270° = -X.
+            const auto angle = SRL::Math::Trigonometry::Atan2(
+                SRL::Math::Types::Fxp::BuildRaw(deltaXRaw),
+                SRL::Math::Types::Fxp::BuildRaw(-deltaZRaw));
+            const auto yawDegFxp = angle.ToDegrees();
+            const int32_t yawDeg = (yawDegFxp.RawValue() + (1 << 15)) >> 16;
+            return normalizeYawDeg(yawDeg);
+        };
+        const size_t headingA = currentIndex;
+        const size_t headingB = nextIndex;
+        const int32_t segDxRaw = autoLapRouteCenters_[headingB].X.RawValue() -
+                                 autoLapRouteCenters_[headingA].X.RawValue();
+        const int32_t segDzRaw = autoLapRouteCenters_[headingB].Z.RawValue() -
+                                 autoLapRouteCenters_[headingA].Z.RawValue();
+        const int32_t remDxRaw = autoLapRouteCenters_[headingB].X.RawValue() -
+                                 ioCarWorldPosition.X.RawValue();
+        const int32_t remDzRaw = autoLapRouteCenters_[headingB].Z.RawValue() -
+                                 ioCarWorldPosition.Z.RawValue();
+
+        const int32_t segAxis = std::max(std::abs(segDxRaw), std::abs(segDzRaw));
+        const int32_t remAxis = std::max(std::abs(remDxRaw), std::abs(remDzRaw));
+        int32_t segmentProgressRaw = 0;
+        if (segAxis > 0)
+        {
+            segmentProgressRaw = ((segAxis - remAxis) << 16) / segAxis;
+            segmentProgressRaw = std::clamp<int32_t>(segmentProgressRaw, 0, (1 << 16));
+        }
+
+        int32_t targetYawDeg = yawFromDelta(remDxRaw, remDzRaw, ioCarYawDeg);
+        if (autoLapRouteYawDeg_.size() == autoLapRouteCenters_.size() &&
+            autoLapRouteOffDeg_.size() == autoLapRouteCenters_.size() &&
+            !autoLapRouteYawDeg_.empty())
+        {
+            const int32_t offA = autoLapRouteOffDeg_[headingA % autoLapRouteOffDeg_.size()];
+            const int32_t offB = autoLapRouteOffDeg_[headingB % autoLapRouteOffDeg_.size()];
+            const int32_t interpOff = LerpShortestAngleDeg(offA, offB, segmentProgressRaw);
+            targetYawDeg = normalizeYawDeg(static_cast<int32_t>(autoLapRouteBaseYawDeg_) + interpOff);
+        }
+
+        const int32_t maxTurnPerFrameDeg =
+            std::clamp<int32_t>(static_cast<int32_t>(autoLapStepUnits_) * 4, 12, 64);
+        int32_t yawDelta = ShortestDeltaDeg(ioCarYawDeg, targetYawDeg);
+        yawDelta = std::clamp<int32_t>(yawDelta, -maxTurnPerFrameDeg, maxTurnPerFrameDeg);
+        ioCarYawDeg = normalizeYawDeg(ioCarYawDeg + yawDelta);
+        if (autoLapRouteYawDeg_.size() == autoLapRouteCenters_.size() &&
+            !autoLapRouteYawDeg_.empty())
+        {
+            autoLapCurrentOffDeg_ = static_cast<int16_t>(
+                ShortestDeltaDeg(static_cast<int32_t>(autoLapRouteBaseYawDeg_), ioCarYawDeg));
         }
         else
         {
-            ioCarYawDeg = (ndz >= 0) ? 180 : 0;
+            autoLapCurrentOffDeg_ = 0;
         }
     }
 
@@ -1345,22 +1615,48 @@ private:
         return true;
     }
 
-    bool BuildAutoLapRouteFromPathGuide(const Context& context)
+    bool BuildAutoLapRouteFromPathGuide(const Context& context,
+                                        const SRL::Math::Types::Vector3D& referenceCarWorldPosition)
     {
         if (!LoadAutoLapGuideLines()) return false;
-        const auto& middleLine = autoLapGuideLines_[1];
-        if (middleLine.size() < 2u)
+
+        int32_t selectedLineIndex = -1;
+        SRL::Math::Types::Fxp selectedScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+        for (int32_t lineIndex = 0; lineIndex < static_cast<int32_t>(autoLapGuideLines_.size()); ++lineIndex)
         {
-            SRL::Debug::Print(1, 24, "AUTO PATH mid empty");
+            const auto& line = autoLapGuideLines_[lineIndex];
+            if (line.size() < 2u) continue;
+
+            SRL::Math::Types::Fxp lineScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+            for (size_t i = 0; i < line.size(); ++i)
+            {
+                const auto worldPoint = line[i] + context.trackSegOffset;
+                const auto dx = (worldPoint.X - referenceCarWorldPosition.X).Abs();
+                const auto dz = (worldPoint.Z - referenceCarWorldPosition.Z).Abs();
+                const auto score = dx + dz;
+                if (score < lineScore) lineScore = score;
+            }
+
+            if (selectedLineIndex < 0 || lineScore < selectedScore)
+            {
+                selectedLineIndex = lineIndex;
+                selectedScore = lineScore;
+            }
+        }
+        if (selectedLineIndex < 0)
+        {
+            SRL::Debug::Print(1, 24, "AUTO PATH line empty");
             return false;
         }
+        autoLapSelectedGuideLine_ = static_cast<int8_t>(selectedLineIndex);
+        const auto& selectedLine = autoLapGuideLines_[static_cast<size_t>(selectedLineIndex)];
 
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         if (segmentCount <= 0) return false;
 
         const auto simplifiedMiddleLine =
-            SimplifyAutoLapGuideLine(middleLine, static_cast<size_t>(segmentCount));
-        const auto& routeLine = (simplifiedMiddleLine.size() >= 2u) ? simplifiedMiddleLine : middleLine;
+            SimplifyAutoLapGuideLine(selectedLine, static_cast<size_t>(segmentCount));
+        const auto& routeLine = (simplifiedMiddleLine.size() >= 2u) ? simplifiedMiddleLine : selectedLine;
 
         autoLapRouteCenters_.reserve(routeLine.size());
         autoLapRouteIds_.reserve(routeLine.size());
@@ -1407,8 +1703,8 @@ private:
                 // so some consecutive guide points legitimately advance by up to ~5 segments.
                 // Keep the search forward-biased, but wide enough to avoid freezing the
                 // mapping on the current segment near the end of the lap.
-                static constexpr int32_t kBackSearch = 2;
-                static constexpr int32_t kForwardSearch = 8;
+                static constexpr int32_t kBackSearch = 0;
+                static constexpr int32_t kForwardSearch = 12;
                 for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
                 {
                     const int32_t segmentId = wrapSegmentId(mappedSegmentId + delta);
@@ -1423,11 +1719,51 @@ private:
             mappedSegmentId = bestSegmentId;
             autoLapRouteIds_.push_back(static_cast<int16_t>(mappedSegmentId));
         }
-        SRL::Debug::Print(1, 25, "AUTO PATH dec raw:%u out:%u",
-                          static_cast<unsigned>(middleLine.size()),
+
+        // If PATH points were exported in reverse order, the car will turn in
+        // the opposite direction at curves. Normalize to forward segment flow.
+        int32_t directionScore = 0;
+        if (autoLapRouteIds_.size() >= 2u)
+        {
+            for (size_t i = 0; i < autoLapRouteIds_.size(); ++i)
+            {
+                const int32_t fromId = autoLapRouteIds_[i];
+                const int32_t toId = autoLapRouteIds_[(i + 1u) % autoLapRouteIds_.size()];
+                if (fromId <= 0 || toId <= 0) continue;
+                int32_t forwardDelta = (toId - fromId) % segmentCount;
+                if (forwardDelta < 0) forwardDelta += segmentCount;
+                if (forwardDelta == 0) continue;
+                if (forwardDelta <= (segmentCount / 2))
+                {
+                    ++directionScore;
+                }
+                else
+                {
+                    --directionScore;
+                }
+            }
+        }
+
+        if (directionScore < 0)
+        {
+            std::reverse(autoLapRouteCenters_.begin(), autoLapRouteCenters_.end());
+            std::reverse(autoLapRouteIds_.begin(), autoLapRouteIds_.end());
+            SRL::Debug::Print(1, 26, "AUTO PATH dir:REV fix");
+        }
+        else
+        {
+            SRL::Debug::Print(1, 26, "AUTO PATH dir:FWD");
+        }
+
+        SRL::Debug::Print(1, 25, "AUTO PATH l:%d raw:%u out:%u",
+                          static_cast<int>(selectedLineIndex),
+                          static_cast<unsigned>(selectedLine.size()),
                           static_cast<unsigned>(routeLine.size()));
+        RebuildAutoLapRouteYawData();
         return !autoLapRouteCenters_.empty() &&
-               autoLapRouteCenters_.size() == autoLapRouteIds_.size();
+               autoLapRouteCenters_.size() == autoLapRouteIds_.size() &&
+               autoLapRouteCenters_.size() == autoLapRouteYawDeg_.size() &&
+               autoLapRouteCenters_.size() == autoLapRouteOffDeg_.size();
     }
 
     void ReleaseAutoLapGuideLines()
@@ -1560,13 +1896,18 @@ private:
     }
 
     // Build preferred route for the player car.
-    void BuildAutoLapRoute(const Context& context)
+    void BuildAutoLapRoute(const Context& context,
+                           const SRL::Math::Types::Vector3D& referenceCarWorldPosition)
     {
         autoLapRouteIds_.clear();
         autoLapRouteCenters_.clear();
+        autoLapRouteYawDeg_.clear();
+        autoLapRouteOffDeg_.clear();
+        autoLapRouteBaseYawDeg_ = 0;
+        autoLapSelectedGuideLine_ = -1;
         if (!context.trackSystem) return;
 
-        if (BuildAutoLapRouteFromPathGuide(context))
+        if (BuildAutoLapRouteFromPathGuide(context, referenceCarWorldPosition))
         {
             ReleaseAutoLapGuideLines();
             autoLapRouteBuilt_ = true;
@@ -1585,6 +1926,7 @@ private:
             autoLapRouteIds_.push_back(id);
             autoLapRouteCenters_.push_back(c);
         }
+        RebuildAutoLapRouteYawData();
         autoLapRouteBuilt_ = !autoLapRouteIds_.empty();
         autoLapRouteInitialized_ = false;
     }
@@ -1703,7 +2045,7 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
-    bool autoLapTestEnabled_ = true;
+    bool autoLapTestEnabled_ = false;
     int16_t autoLapTargetSegmentId_ = 1;
     int16_t autoLapStepUnits_ = 6;
     bool autoLapRouteInitialized_ = false;
@@ -1711,6 +2053,11 @@ private:
     uint16_t autoLapRouteIndex_ = 0;
     TrackLowWorkVector<int16_t> autoLapRouteIds_{};
     TrackLowWorkVector<SRL::Math::Types::Vector3D> autoLapRouteCenters_{};
+    TrackLowWorkVector<int16_t> autoLapRouteYawDeg_{};
+    TrackLowWorkVector<int16_t> autoLapRouteOffDeg_{};
+    int16_t autoLapRouteBaseYawDeg_ = 0;
+    int16_t autoLapCurrentOffDeg_ = 0;
+    int8_t autoLapSelectedGuideLine_ = -1;
     std::array<TrackLowWorkVector<SRL::Math::Types::Vector3D>, 3> autoLapGuideLines_{};
     HwrStageTrace hwrStageTrace_{};
     uint16_t hwrTraceCooldownFrames_ = 0;
@@ -1730,4 +2077,5 @@ private:
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;
+    uint8_t carForwardOffsetRepeatFrames_ = 0u;
 };

@@ -41,6 +41,8 @@ using namespace SRL::Math::Types;
 constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 constexpr bool kVerboseFrameLogs = false;
+// Telemetria de runtime (RAM/VDP/slide): desligada por padrão.
+constexpr bool kEnableRuntimeStatsLogs = false;
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
 static const char* FindExistingPath(const char* const* paths, size_t count);
@@ -352,6 +354,7 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     bool trackSystemReady,
                                                     bool logTrack,
                                                     bool logCar,
+                                                    bool enableRuntimeStatsLogs,
                                                     bool enableManualGouraudCopy,
                                                     uint32_t faceCount,
                                                     uint32_t vertexCount,
@@ -381,6 +384,7 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.verboseFrameLogs = kVerboseFrameLogs;
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
+    loopContext.enableRuntimeStatsLogs = enableRuntimeStatsLogs;
     // Estabilidade: manter apenas um pipeline na Slave por frame (pista).
     // Simulation/car prepare em Slave junto com producer da pista causa conflito de jobs.
     loopContext.enableSlaveForCarPrepare = false;
@@ -432,10 +436,13 @@ int GameApp::Run()
                           static_cast<unsigned long>(lwr.FreeSize),
                           static_cast<unsigned long>(crt.FreeSize));
     };
-    PrintBootRam(0, "RAM boot");
+    if constexpr (kEnableRuntimeStatsLogs)
+    {
+        PrintBootRam(0, "RAM boot");
+    }
 
     const bool logCar = kCarLogs;
-    const bool logTrack = false;
+    const bool logTrack = kEnableRuntimeStatsLogs;
     // Log inicial simples do Cart e HWR
     auto crep = SRL::Memory::CartRam::GetReport();
     // SRL::Debug::Print(0, 0, "CRT ok:%d free:%d total:%d", crep.TotalSize > 0 ? 1 : 0, (int)crep.FreeSize, (int)crep.TotalSize);
@@ -462,8 +469,8 @@ int GameApp::Run()
     // silencia logs do teste HWR
     }
 
-    const bool renderTrack = true; // modo pista: renderiza pista
-    const bool renderCar = true; // ativa renderizacao do CAR1
+    const bool renderTrack = true; // pista habilitada
+    const bool renderCar = true; // carro habilitado
     const bool loadCarAfterTrack = true; // mantem fluxo padrao de carga da pista
     const bool enableTrackSlaveProducer = false; // diagnostico: desativa Slave para estabilizar
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
@@ -517,8 +524,10 @@ int GameApp::Run()
 
 
     // Sky via VDP2 (componente reutilizavel)
-
-    SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 0, 31)); // fallback azul
+    // Camada base (back screen) em azul celeste.
+    SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 31, 31));
+    // Mantem configuracao padrao de prioridades da engine para evitar ocultar NBG3/HUD.
+    SRL::VDP2::NBG3::SetPriority(SRL::VDP2::Priority::Layer7);
 
 
 
@@ -527,28 +536,25 @@ int GameApp::Run()
     BackgroundManager bgManager;
     bool bgReady = false;
     const char* skyPaths[] = {
-        "CD/SKYBOX_1.TGA",
-        "CD/SKYBOX_1.TGA;1",
-        "CD/DATA/SKYBOX_1.TGA",
-        "CD/DATA/SKYBOX_1.TGA;1",
-        "cd/skybox_1.tga",
-        "cd/skybox_1.tga;1",
-        "cd/data/skybox_1.tga",
-        "cd/data/skybox_1.tga;1",
-        "DATA/SKYBOX_1.TGA",
-        "DATA/SKYBOX_1.TGA;1",
-        "SKYBOX_1.TGA",
-        "SKYBOX_1.TGA;1",
-        "skybox_1.tga",
-        "skybox_1.tga;1"
+        // Ordem de preferência: assets já validados no projeto.
+               
+        "cd/data/SKY1.TGA",
+        "cd/data/SKY1.tga",
+        "cd/data/sky1.tga",       
+        "data/SKY1.TGA",
+        "SKY1.TGA",       
+        "SKY1.TGA;1"
     };
+    const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
     if (enableBg)
     {
         SRL::Cd::ChangeDir((const char*)0);
-        bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
-        // log removido
+        bgReady = bgManager.Init(skyPaths, skyPathCount);
     }
-    PrintBootRam(1, "RAM bg  ");
+    if constexpr (kEnableRuntimeStatsLogs)
+    {
+        PrintBootRam(1, "RAM bg  ");
+    }
 
     // Camera system owns camera state, tuning and input workflow.
     CameraSystem cameraSystem;
@@ -576,6 +582,7 @@ int GameApp::Run()
 
     AppState::Set(AppState::Stage::TrackInit, 0);
     TrackSystem trackSystem;
+    trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
     trackConfig.initialSegments = 20;
     trackConfig.minSegments = 20;
@@ -585,22 +592,28 @@ int GameApp::Run()
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
-    PrintBootRam(2, "RAM trk ");
-    if (enableBg && !bgReady)
+    if constexpr (kEnableRuntimeStatsLogs)
     {
-        SRL::Cd::ChangeDir((const char*)0);
-        bgReady = bgManager.Init(skyPaths, sizeof(skyPaths) / sizeof(skyPaths[0]));
-        // log removido
+        PrintBootRam(2, "RAM trk ");
+    }
+    if (enableBg)
+    {
+        if (!bgManager.loaded)
+        {
+            SRL::Cd::ChangeDir((const char*)0);
+            const bool bgReadyAfterTrack = bgManager.Init(skyPaths, skyPathCount);
+            bgReady = bgReady || bgReadyAfterTrack;
+        }
     }
     if (renderTrack && trackSystemReady)
     {
         Vector3D seg01Center(0.0, 0.0, 0.0);
         if (trackSystem.FindSegmentCenterById(1, trackSegOffset, seg01Center))
         {
-            // Keep spawn Y stable; segment Y center may vary with imported data.
+            // Spawn aligned to segment 1 center.
             carWorldPosition.X = seg01Center.X;
             carWorldPosition.Z = seg01Center.Z;
-            carWorldPosition.Y = SRL::Math::Types::Fxp::BuildRaw(0);
+            carWorldPosition.Y = seg01Center.Y;
             // Car spawn debug log disabled to keep on-screen diagnostics concise.
         }
     }
@@ -705,6 +718,12 @@ int GameApp::Run()
     SRL::Math::Types::Vector3D minV{};
     SRL::Math::Types::Vector3D maxV{};
     ComputeCarModelBounds(carPtr, meshCount, isSmoothMesh, minV, maxV);
+    {
+        // Camera 2 calibration baseline requested:
+        // CAM2 off x:0 y:-20 z:-144
+        constexpr int16_t kCam2BehindUnits = 190;
+        cameraSystem.SetChaseNearFollowDistance(kCam2BehindUnits);
+    }
 
 
 
@@ -725,6 +744,7 @@ int GameApp::Run()
                                                                trackSystemReady,
                                                                logTrack,
                                                                logCar,
+                                                               kEnableRuntimeStatsLogs,
                                                                enableSmoothLighting,
                                                                faceCount,
                                                                vertexCount,

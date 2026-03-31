@@ -64,12 +64,31 @@ public:
     // IRenderInstance
     MeshRenderer* Renderer() override { return renderer_.get(); }
     Vector3D Position() const override { return worldPosition_; }
-    Angle Yaw() const override { return Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(yawDeg_ << 16)); }
+    Angle Yaw() const override { return Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(CurrentRenderYawDeg() << 16)); }
     const char* Name() const override { return name_; }
 
-    void SetYawDegrees(int32_t yawDeg) { yawDeg_ = yawDeg; }
+    void SetYawDegrees(int32_t yawDeg) { yawDeg_ = NormalizeYawDeg(yawDeg); }
+    void SetVisualYawOffsetDegrees(int32_t offsetDeg) { visualYawOffsetDeg_ = NormalizeSignedYawDeg(offsetDeg); }
+    int32_t VisualYawOffsetDegrees() const { return visualYawOffsetDeg_; }
 
 private:
+    static int32_t NormalizeYawDeg(int32_t yawDeg)
+    {
+        yawDeg %= 360;
+        if (yawDeg < 0) yawDeg += 360;
+        return yawDeg;
+    }
+    static int32_t NormalizeSignedYawDeg(int32_t yawDeg)
+    {
+        yawDeg = NormalizeYawDeg(yawDeg);
+        if (yawDeg > 180) yawDeg -= 360;
+        return yawDeg;
+    }
+    int32_t CurrentRenderYawDeg() const
+    {
+        return NormalizeYawDeg(yawDeg_ + visualYawOffsetDeg_);
+    }
+
     struct CarCommandAdapter : Game::ICarCommand
     {
         Vector3D* position;
@@ -105,6 +124,7 @@ private:
     Config config_;
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};
+    int32_t visualYawOffsetDeg_{0};
     char name_[32]{};
 };
 } // namespace Game

@@ -276,46 +276,91 @@ public:
         decltype(smoothCache_)().swap(smoothCache_);
         decltype(flatCache_)().swap(flatCache_);
 
-        if constexpr (std::is_same_v<VertVecT, decltype(componentVerts_)>)
+        const bool reuseReservedStorage =
+            componentVertCapacityFloor_ > 0u || componentFaceCapacityFloor_ > 0u;
+
+        if (reuseReservedStorage)
         {
-            componentVerts_.swap(verts);
-        }
-        else
-        {
-            ComponentVertVector vertsMoved(
-                std::make_move_iterator(verts.begin()),
-                std::make_move_iterator(verts.end()));
-            componentVerts_.swap(vertsMoved);
+            componentVerts_.clear();
+            componentFaces_.clear();
+            componentAttrs_.clear();
+            if (componentVerts_.capacity() < std::max(componentVertCapacityFloor_,
+                                                      static_cast<size_t>(verts.size())))
+            {
+                componentVerts_.reserve(std::max(componentVertCapacityFloor_,
+                                                 static_cast<size_t>(verts.size())));
+            }
+            if (componentFaces_.capacity() < std::max(componentFaceCapacityFloor_,
+                                                      static_cast<size_t>(faces.size())))
+            {
+                componentFaces_.reserve(std::max(componentFaceCapacityFloor_,
+                                                 static_cast<size_t>(faces.size())));
+            }
+            if (componentAttrs_.capacity() < std::max(componentFaceCapacityFloor_,
+                                                      static_cast<size_t>(attrs.size())))
+            {
+                componentAttrs_.reserve(std::max(componentFaceCapacityFloor_,
+                                                 static_cast<size_t>(attrs.size())));
+            }
+            componentVerts_.insert(componentVerts_.end(),
+                                   std::make_move_iterator(verts.begin()),
+                                   std::make_move_iterator(verts.end()));
+            componentFaces_.insert(componentFaces_.end(),
+                                   std::make_move_iterator(faces.begin()),
+                                   std::make_move_iterator(faces.end()));
+            componentAttrs_.insert(componentAttrs_.end(),
+                                   std::make_move_iterator(attrs.begin()),
+                                   std::make_move_iterator(attrs.end()));
             verts.clear();
-            VertVecT{}.swap(verts);
-        }
-
-        if constexpr (std::is_same_v<FaceVecT, decltype(componentFaces_)>)
-        {
-            componentFaces_.swap(faces);
-        }
-        else
-        {
-            ComponentFaceVector facesMoved(
-                std::make_move_iterator(faces.begin()),
-                std::make_move_iterator(faces.end()));
-            componentFaces_.swap(facesMoved);
             faces.clear();
+            attrs.clear();
+            VertVecT{}.swap(verts);
             FaceVecT{}.swap(faces);
-        }
-
-        if constexpr (std::is_same_v<AttrVecT, decltype(componentAttrs_)>)
-        {
-            componentAttrs_.swap(attrs);
+            AttrVecT{}.swap(attrs);
         }
         else
         {
-            ComponentAttrVector attrsMoved(
-                std::make_move_iterator(attrs.begin()),
-                std::make_move_iterator(attrs.end()));
-            componentAttrs_.swap(attrsMoved);
-            attrs.clear();
-            AttrVecT{}.swap(attrs);
+            if constexpr (std::is_same_v<VertVecT, decltype(componentVerts_)>)
+            {
+                componentVerts_.swap(verts);
+            }
+            else
+            {
+                ComponentVertVector vertsMoved(
+                    std::make_move_iterator(verts.begin()),
+                    std::make_move_iterator(verts.end()));
+                componentVerts_.swap(vertsMoved);
+                verts.clear();
+                VertVecT{}.swap(verts);
+            }
+
+            if constexpr (std::is_same_v<FaceVecT, decltype(componentFaces_)>)
+            {
+                componentFaces_.swap(faces);
+            }
+            else
+            {
+                ComponentFaceVector facesMoved(
+                    std::make_move_iterator(faces.begin()),
+                    std::make_move_iterator(faces.end()));
+                componentFaces_.swap(facesMoved);
+                faces.clear();
+                FaceVecT{}.swap(faces);
+            }
+
+            if constexpr (std::is_same_v<AttrVecT, decltype(componentAttrs_)>)
+            {
+                componentAttrs_.swap(attrs);
+            }
+            else
+            {
+                ComponentAttrVector attrsMoved(
+                    std::make_move_iterator(attrs.begin()),
+                    std::make_move_iterator(attrs.end()));
+                componentAttrs_.swap(attrsMoved);
+                attrs.clear();
+                AttrVecT{}.swap(attrs);
+            }
         }
 
         meshCount_ = 1;
@@ -370,12 +415,44 @@ public:
         decltype(smoothCache_)().swap(smoothCache_);
         decltype(flatCache_)().swap(flatCache_);
 
-        ComponentVertVector vertsCopy(verts.begin(), verts.end());
-        ComponentFaceVector facesCopy(faces.begin(), faces.end());
-        ComponentAttrVector attrsCopy(attrs.begin(), attrs.end());
-        componentVerts_.swap(vertsCopy);
-        componentFaces_.swap(facesCopy);
-        componentAttrs_.swap(attrsCopy);
+        const bool reuseReservedStorage =
+            componentVertCapacityFloor_ > 0u || componentFaceCapacityFloor_ > 0u;
+        if (reuseReservedStorage)
+        {
+            componentVerts_.clear();
+            componentFaces_.clear();
+            componentAttrs_.clear();
+            if (componentVerts_.capacity() < std::max(componentVertCapacityFloor_,
+                                                      static_cast<size_t>(verts.size())))
+            {
+                componentVerts_.reserve(std::max(componentVertCapacityFloor_,
+                                                 static_cast<size_t>(verts.size())));
+            }
+            if (componentFaces_.capacity() < std::max(componentFaceCapacityFloor_,
+                                                      static_cast<size_t>(faces.size())))
+            {
+                componentFaces_.reserve(std::max(componentFaceCapacityFloor_,
+                                                 static_cast<size_t>(faces.size())));
+            }
+            if (componentAttrs_.capacity() < std::max(componentFaceCapacityFloor_,
+                                                      static_cast<size_t>(attrs.size())))
+            {
+                componentAttrs_.reserve(std::max(componentFaceCapacityFloor_,
+                                                 static_cast<size_t>(attrs.size())));
+            }
+            componentVerts_.insert(componentVerts_.end(), verts.begin(), verts.end());
+            componentFaces_.insert(componentFaces_.end(), faces.begin(), faces.end());
+            componentAttrs_.insert(componentAttrs_.end(), attrs.begin(), attrs.end());
+        }
+        else
+        {
+            ComponentVertVector vertsCopy(verts.begin(), verts.end());
+            ComponentFaceVector facesCopy(faces.begin(), faces.end());
+            ComponentAttrVector attrsCopy(attrs.begin(), attrs.end());
+            componentVerts_.swap(vertsCopy);
+            componentFaces_.swap(facesCopy);
+            componentAttrs_.swap(attrsCopy);
+        }
 
         meshCount_ = 1;
         faceCount_ = static_cast<uint32_t>(componentFaces_.size());
@@ -1167,11 +1244,14 @@ public:
             }
         }
 
-        // Refresh custom caches if they are used later.
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
-        if (isSmooth_) smoothCache_.assign(meshCount_, {});
-        else flatCache_.assign(meshCount_, {});
+        // Refresh custom caches only when some face texture actually changed.
+        if (applied > 0)
+        {
+            decltype(smoothCache_)().swap(smoothCache_);
+            decltype(flatCache_)().swap(flatCache_);
+            if (isSmooth_) smoothCache_.assign(meshCount_, {});
+            else flatCache_.assign(meshCount_, {});
+        }
 
         return applied;
     }
@@ -1333,10 +1413,13 @@ public:
             }
         }
 
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
-        if (isSmooth_) smoothCache_.assign(meshCount_, {});
-        else flatCache_.assign(meshCount_, {});
+        if (applied > 0)
+        {
+            decltype(smoothCache_)().swap(smoothCache_);
+            decltype(flatCache_)().swap(flatCache_);
+            if (isSmooth_) smoothCache_.assign(meshCount_, {});
+            else flatCache_.assign(meshCount_, {});
+        }
 
         return applied;
     }
@@ -1473,7 +1556,45 @@ public:
     // Release CPU-side buffers so streamed windows do not accumulate peak sizes.
     void RecycleRuntimeState()
     {
-        Reset();
+        if (trackObj_) { delete trackObj_; trackObj_ = nullptr; }
+        componentMode_ = false;
+        componentVerts_.clear();
+        componentFaces_.clear();
+        componentAttrs_.clear();
+        meshCenters_.clear();
+        meshBytes_.clear();
+        meshMap_.clear();
+        if (componentVertCapacityFloor_ > 0u && componentVerts_.capacity() < componentVertCapacityFloor_)
+        {
+            componentVerts_.reserve(componentVertCapacityFloor_);
+        }
+        if (componentFaceCapacityFloor_ > 0u)
+        {
+            if (componentFaces_.capacity() < componentFaceCapacityFloor_)
+            {
+                componentFaces_.reserve(componentFaceCapacityFloor_);
+            }
+            if (componentAttrs_.capacity() < componentFaceCapacityFloor_)
+            {
+                componentAttrs_.reserve(componentFaceCapacityFloor_);
+            }
+        }
+        if (meshCenters_.capacity() < 1u) meshCenters_.reserve(1u);
+        if (meshBytes_.capacity() < 1u) meshBytes_.reserve(1u);
+        if (meshMap_.capacity() < 1u) meshMap_.reserve(1u);
+        meshCount_ = 0;
+        faceCount_ = 0;
+        vertexCount_ = 0;
+        bounds_ = ModelBounds{};
+        memStats_ = {};
+        trackOffset_ = {};
+        hasTrack_ = false;
+        path_ = nullptr;
+        startMeshIdx_ = 0;
+        lastDrawnFaces_ = 0;
+        lastDrawnMeshes_ = 0;
+        decltype(smoothCache_)().swap(smoothCache_);
+        decltype(flatCache_)().swap(flatCache_);
     }
 
     ~TrackRenderer()

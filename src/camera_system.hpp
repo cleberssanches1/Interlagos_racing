@@ -14,6 +14,13 @@ using SRL::Math::Types::Vector3D;
 class CameraSystem
 {
 public:
+    enum class ChasePreset : uint8_t
+    {
+        FirstPerson = 0,
+        ChaseNear = 1,
+        ChaseFar = 2
+    };
+
     enum class Mode : uint8_t
     {
         Chase = 0,
@@ -24,7 +31,10 @@ public:
     CameraSystem();
 
     // Update camera and car yaw controls from the current controller state.
-    void UpdateFromPad(SRL::Input::Digital& pad, int32_t& carYawDeg, CameraRig::OrbitState& orbitState);
+    void UpdateFromPad(SRL::Input::Digital& pad,
+                       int32_t& carYawDeg,
+                       CameraRig::OrbitState& orbitState,
+                       bool allowCarYawInput = true);
 
     // Build world camera location using car world position plus manual camera offset.
     Vector3D CameraLocation(const Vector3D& carWorldPosition) const;
@@ -37,6 +47,11 @@ public:
     Mode GetMode() const { return mode_; }
     // Set explicit cinematic frame.
     void SetCinematicFrame(const Vector3D& location, const Vector3D& target);
+    // Configure camera 2 (CHASE) distance behind car center in world units.
+    void SetChaseNearFollowDistance(int16_t behindDistance);
+    // Keep camera heading synchronized with gameplay yaw when yaw is updated outside input handling.
+    void SetCarYawDegrees(int32_t yawDeg) { cachedCarYawDeg_ = NormalizeYawDeg(yawDeg); }
+    ChasePreset GetChasePreset() const { return chasePreset_; }
 
     const Camera::State& State() const { return state_; }
     bool IsZHeld() const { return zHeld_; }
@@ -52,10 +67,26 @@ public:
     Snapshot CreateSnapshot() const;
 
 private:
+    struct ChasePresetConfig
+    {
+        int16_t offsetX = 0;
+        int16_t offsetY = 0;
+        int16_t offsetZ = 0;
+        int16_t lookAhead = 0;
+        int16_t lookHeight = 0;
+        int16_t viewPitchDeg = 0;
+    };
+
     // Initialize manual camera offset so initial framing matches expected setup.
     void InitializeManualOffset();
     // Restore camera orientation and manual offset to startup defaults.
     void ResetToDefaultView();
+    void ApplyChasePreset(ChasePreset preset, bool logPreset);
+    ChasePresetConfig PresetConfig(ChasePreset preset) const;
+    static Vector3D ForwardFromYawDeg(int32_t yawDeg);
+    static int32_t NormalizeYawDeg(int32_t yawDeg);
+    void UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) const;
+    Vector3D ResolvePresetOffsetWorld() const;
 
     Camera::State state_;
     Camera::Tuning tuning_;
@@ -68,10 +99,23 @@ private:
     CameraOrbitController orbitController_{};
     CameraOrbitController::Config orbitConfig_{};
     CameraSafety::Config safetyConfig_{};
+    ChasePreset chasePreset_ = ChasePreset::ChaseNear;
+    int32_t cachedCarYawDeg_ = 180;
+    mutable Vector3D headingForwardWorld_{0.0, 0.0, 1.0f};
+    mutable Vector3D movementForwardWorld_{0.0, 0.0, 1.0f};
+    mutable Vector3D lookForwardWorld_{0.0, 0.0, 1.0f};
+    mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
+    mutable bool hasObservedCarWorldPosition_ = false;
+    // 16.16 fixed-point scalar in [0,1] based on per-frame movement magnitude.
+    mutable int32_t movementSpeedNormRaw_ = 0;
     bool zHeld_ = false;
+    bool aHeldPrev_ = false;
     bool startHeldPrev_ = false;
     int16_t carYawStepDeg_ = 4;
     int16_t orbitYawStepDeg_ = 4;
     int16_t orbitPitchStepDeg_ = 2;
     int16_t orbitPitchLimitDeg_ = 40;
+    int16_t chaseNearOffsetX_ = 0;
+    int16_t chaseNearOffsetZ_ = -190;
+    uint8_t chaseNearCalibRepeatFrames_ = 0;
 };

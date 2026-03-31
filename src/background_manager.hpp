@@ -15,6 +15,8 @@ struct BackgroundManager
     std::array<const char*, kMaxPaths> cachedPaths{};
     size_t cachedPathCount = 0;
     uint32_t retryTicks = 0;
+    uint32_t statusTicks = 0;
+    uint16_t retryAttempts = 0;
 
     void Configure()
     {
@@ -45,25 +47,34 @@ struct BackgroundManager
             }
             cachedPaths[i] = cachedPathStorage[i].data();
         }
-        loaded = env.Load(paths, count);
-        // log removido
+        loaded = env.Load(cachedPaths.data(), cachedPathCount);
         retryTicks = 0;
+        statusTicks = 0;
+        retryAttempts = 0;
         return loaded;
     }
 
     void Update(const Camera::State& camera)
     {
+        // Reafirma back screen em cada frame para detectar conflitos de estado VDP2.
+        SRL::VDP2::SetBackColor(SRL::Types::HighColor::FromRGB555(0, 31, 31));
+        ++statusTicks;
         if (!loaded && cachedPathCount > 0)
         {
             ++retryTicks;
             const auto hwr = SRL::Memory::HighWorkRam::GetReport();
             constexpr size_t kMinRetryHwrBytes = 64u * 1024u;
-            if (hwr.FreeSize >= kMinRetryHwrBytes && (retryTicks % 30u) == 0u)
+            constexpr uint32_t kRetryCadenceFrames = 180u;
+            constexpr uint16_t kMaxRetryAttempts = 20u;
+            if (retryAttempts < kMaxRetryAttempts &&
+                hwr.FreeSize >= kMinRetryHwrBytes &&
+                (retryTicks % kRetryCadenceFrames) == 0u)
             {
                 loaded = env.Load(cachedPaths.data(), cachedPathCount);
-                // log removido
+                ++retryAttempts;
             }
         }
+
         if (!loaded) return;
         env.Update(camera.yawDeg, camera.viewYawDeg, camera.viewPitchDeg);
     }

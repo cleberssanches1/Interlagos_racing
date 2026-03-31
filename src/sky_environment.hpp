@@ -18,7 +18,8 @@ struct SkyEnvironment
     {
         // NBG0 scroll control
         horizon.yawFactor = SRL::Math::Types::Fxp(0.5f);
-        horizon.driftStep = SRL::Math::Types::Fxp(0.0015f); // +50% de velocidade, ainda suave
+        // Mantem movimento horizontal perceptivel mesmo sem giro de camera.
+        horizon.driftStep = SRL::Math::Types::Fxp(0.03f);
     }
 
     bool Load(const char* const* paths, size_t count)
