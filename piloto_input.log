@@ -1,0 +1,31 @@
+# pilotoPC input log
+# columns: t frame action detail
+I 10.3255 588 toggle_moving 1
+I 159.429 9516 cam_mode 2
+I 160.313 9569 cam_mode 0
+I 161.08 9615 cam_mode 1
+I 161.813 9659 cam_mode 2
+I 162.68 9711 cam_mode 0
+I 164.783 9837 cam_mode 1
+I 165.267 9866 cam_mode 2
+I 165.785 9897 cam_mode 0
+I 166.686 9951 cam_mode 1
+I 167.27 9986 cam_mode 2
+I 167.922 10025 cam_mode 0
+I 232.39 13886 cam_mode 1
+I 233.259 13938 cam_mode 2
+I 233.741 13967 cam_mode 0
+I 234.141 13991 cam_mode 1
+I 559.174 33447 snapshot F9
+I 563.549 33709 draw_all_segments 1
+I 564.398 33756 draw_all_segments 0
+I 566.437 33878 car_local_fix 2
+I 567.373 33934 car_local_fix 3
+I 568.808 34020 car_local_fix 4
+I 569.608 34068 car_local_fix 0
+I 570.176 34102 car_local_fix 1
+I 571.096 34157 car_local_fix 2
+I 571.966 34209 car_local_fix 3
+I 572.484 34240 car_local_fix 4
+I 573.102 34277 car_local_fix 0
+I 573.736 34315 car_local_fix 1

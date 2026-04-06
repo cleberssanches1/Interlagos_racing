@@ -551,6 +551,12 @@ private:
     uint16_t releasedPrefetchNowThisFrame_ = 0;
     uint8_t memoryPressureLevelThisFrame_ = 0;
     bool runtimeStatsLogsEnabled_ = true;
+    uint32_t leakProbeSlidesObserved_ = 0;
+    bool leakProbePrevValid_ = false;
+    uint32_t leakProbePrevHwrFree_ = 0;
+    uint32_t leakProbePrevLwrFree_ = 0;
+    uint32_t leakProbePrevRetainedHwr_ = 0;
+    uint32_t leakProbePrevRetainedLwr_ = 0;
     bool fullTrackFamilyCacheReady_ = false;
     size_t lastWindowFreeBytes_ = 0;
     bool lastWindowFreeValid_ = false;

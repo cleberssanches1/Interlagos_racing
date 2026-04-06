@@ -1,8 +1,8 @@
 {
     "version":  1,
-    "generated_at_utc":  "2026-03-25T21:03:51Z",
+    "generated_at_utc":  "2026-04-06T01:59:41Z",
     "data_dir":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing",
-    "copied":  224,
+    "copied":  225,
     "skipped":  0,
     "items":  [
                   {
@@ -22,6 +22,15 @@
                       "target_name":  "F002_8.TGA",
                       "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F002_8.TGA",
                       "family":  "f00264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren",
+                      "source_name":  "F00264_RLE_backup.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren\\F00264_RLE_backup.TGA",
+                      "lod":  8,
+                      "target_name":  "F00264_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F00264_8.TGA",
+                      "family":  "f00264_rle_backup"
                   },
                   {
                       "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren",

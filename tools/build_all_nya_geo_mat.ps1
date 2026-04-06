@@ -1,6 +1,6 @@
 ﻿param(
     [string]$ConverterDir = "C:\saturn\tools\ModelConverter-linux-main\BuildDrop",
-    [string]$SourceObjDir = "C:\Models\png\sectors\source",
+    [string]$SourceObjDir = "",
     [string]$ResultDir = "C:\Models\png\sectors\result",
     [string]$PackageDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [string]$CdDataDir = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data",
@@ -18,6 +18,36 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Resolve-DefaultSourceObjDir {
+    param(
+        [string]$RequestedSourceObjDir,
+        [string]$ResultRootDir
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedSourceObjDir)) {
+        return $RequestedSourceObjDir
+    }
+
+    $candidates = @(
+        (Join-Path $ResultRootDir "obj_64"),
+        (Join-Path $ResultRootDir "obj_32"),
+        (Join-Path $ResultRootDir "obj_16"),
+        (Join-Path $ResultRootDir "obj_8"),
+        $ResultRootDir,
+        "C:\Models\png\sectors\source\obj_64",
+        "C:\Models\png\sectors\source"
+    )
+
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Get-SegmentIdFromFile([string]$BaseName) {
     if ($BaseName -match '^seg_(\d+)$') {
         return [int]$Matches[1]
@@ -25,9 +55,20 @@ function Get-SegmentIdFromFile([string]$BaseName) {
     return $null
 }
 
+$SourceObjDir = Resolve-DefaultSourceObjDir -RequestedSourceObjDir $SourceObjDir -ResultRootDir $ResultDir
 if (-not (Test-Path -LiteralPath $SourceObjDir)) { throw "SourceObjDir nao encontrado: $SourceObjDir" }
 if (-not (Test-Path -LiteralPath $PackageDir)) { New-Item -Path $PackageDir -ItemType Directory -Force | Out-Null }
 if (-not (Test-Path -LiteralPath $CdDataDir)) { New-Item -Path $CdDataDir -ItemType Directory -Force | Out-Null }
+
+$sourceObjCount = @(Get-ChildItem -LiteralPath $SourceObjDir -Recurse -File -Filter $Pattern -ErrorAction SilentlyContinue).Count
+if ($sourceObjCount -le 0) {
+    throw ("Nenhum OBJ encontrado em SourceObjDir={0} com Pattern={1}" -f $SourceObjDir, $Pattern)
+}
+
+Write-Host ("Build config: SourceObjDir={0} (objs:{1})" -f $SourceObjDir, $sourceObjCount)
+Write-Host ("Build config: ResultDir={0}" -f $ResultDir)
+Write-Host ("Build config: PackageDir={0}" -f $PackageDir)
+Write-Host ("Build config: CdDataDir={0}" -f $CdDataDir)
 
 $scriptDir = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($scriptDir)) {
@@ -328,7 +369,12 @@ Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 ==="
     -DataDir $PackageDir `
     -OutDir $PackageDir `
     -Lod 8 `
-    -AllSegments
+    -AllSegments `
+    -SegmentsMapPath $jsonPath `
+    -CanonicalizeQuadUvOrder `
+    -QuadUvEdgeTolerance 256 `
+    -QuadUvHighTolerance 1024 `
+    -CanonicalizeHighToleranceAllFamilies
 
 Write-Host "=== Etapa 3.6/7: Gerar blobs runtime RDR1 ==="
 & $script:rdrScript `
@@ -447,7 +493,7 @@ Write-Host "=== Limpeza: Remover auxiliares de cd/data ==="
 Remove-CdDataAuxFiles -TargetDirs $targetDirs
 
 Write-Host "=== Validacao final ==="
-$expectedSegmentIds = $segmentsDone | Sort-Object -Unique
+$expectedSegmentIds = @($segmentsDone | Sort-Object -Unique)
 $expectedCount = $expectedSegmentIds.Count
 
 $geoCountLong = @(Get-ChildItem -Path $PackageDir -File -Filter "SEG_*.GEO").Count

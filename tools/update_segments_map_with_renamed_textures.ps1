@@ -43,6 +43,13 @@ function Get-TextureStem([string]$Path) {
     return [System.IO.Path]::GetFileNameWithoutExtension($Path).ToLowerInvariant()
 }
 
+function Add-MappedStem([System.Collections.Generic.HashSet[string]]$Set, [string]$Value) {
+    if ($null -eq $Set) { return }
+    $stem = Get-TextureStem $Value
+    if ([string]::IsNullOrWhiteSpace($stem)) { return }
+    [void]$Set.Add($stem)
+}
+
 $knownFamilies = @{}
 $familyNodeByName = @{}
 $nextFamilyId = 1
@@ -74,8 +81,12 @@ function Set-FamilyLodMap($FamilyNode, [hashtable]$LodMap, [string]$SourceStem) 
         return
     }
 
-    if ($variants.Count -gt 0) { $FamilyNode.variants = $variants }
-    if ($imageFiles.Count -gt 0) { $FamilyNode.imageFiles = $imageFiles }
+    if ($variants.Count -gt 0) {
+        $FamilyNode | Add-Member -NotePropertyName variants -NotePropertyValue $variants -Force
+    }
+    if ($imageFiles.Count -gt 0) {
+        $FamilyNode | Add-Member -NotePropertyName imageFiles -NotePropertyValue $imageFiles -Force
+    }
     if (-not [string]::IsNullOrWhiteSpace($SourceStem)) {
         $FamilyNode | Add-Member -NotePropertyName sourceStem -NotePropertyValue $SourceStem -Force
     }
@@ -88,6 +99,7 @@ $obj64Dir = Join-Path $ResultDir "obj_64"
 if (Test-Path -LiteralPath $obj64Dir) {
     $mtlFiles = @(Get-ChildItem -LiteralPath $obj64Dir -File -Filter *.mtl)
     $mtlEntries = New-Object System.Collections.Generic.List[object]
+    $missingSourceStems = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($mtl in $mtlFiles) {
         $currentFamily = ""
         foreach ($line in Get-Content -LiteralPath $mtl.FullName) {
@@ -109,8 +121,11 @@ if (Test-Path -LiteralPath $obj64Dir) {
     }
 
     foreach ($e in $mtlEntries) {
-        if (-not $knownFamilies.ContainsKey($e.material)) { continue }
-        if (-not $sourceLookup.ContainsKey($e.texStem)) { continue }
+        if ([string]::IsNullOrWhiteSpace([string]$e.material)) { continue }
+        if (-not $sourceLookup.ContainsKey($e.texStem)) {
+            [void]$missingSourceStems.Add([string]$e.texStem)
+            continue
+        }
         if (-not $familyStems.ContainsKey($e.material)) {
             $familyStems[$e.material] = New-Object System.Collections.Generic.List[string]
         }
@@ -121,7 +136,21 @@ if (Test-Path -LiteralPath $obj64Dir) {
 
     $familiesToAppend = New-Object System.Collections.Generic.List[object]
     foreach ($lookupKey in $familyStems.Keys) {
-        $baseFamily = $familyNodeByName[$lookupKey]
+        $baseFamily = $null
+        if ($familyNodeByName.ContainsKey($lookupKey)) {
+            $baseFamily = $familyNodeByName[$lookupKey]
+        }
+        else {
+            $baseFamily = [pscustomobject]([ordered]@{
+                id = $nextFamilyId
+                name = [string]$lookupKey
+            })
+            $json.textureFamilies += $baseFamily
+            $familyNodeByName[$lookupKey] = $baseFamily
+            $knownFamilies[$lookupKey] = $true
+            $nextFamilyId++
+        }
+
         $stems = @($familyStems[$lookupKey].ToArray())
         if ($stems.Count -eq 0) { continue }
 
@@ -147,6 +176,53 @@ if (Test-Path -LiteralPath $obj64Dir) {
 
     foreach ($extra in $familiesToAppend) {
         $json.textureFamilies += $extra
+    }
+
+    # Garante remapeamento completo: qualquer stem presente no manifesto precisa
+    # existir em textureFamilies, mesmo que nao apareca no OBJ_64.
+    $mappedStems = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($family in @($json.textureFamilies)) {
+        if ($null -eq $family) { continue }
+        if ($family.PSObject.Properties.Name -contains "sourceStem") {
+            Add-MappedStem -Set $mappedStems -Value ([string]$family.sourceStem)
+        }
+        foreach ($propName in @("variants", "imageFiles")) {
+            if (-not ($family.PSObject.Properties.Name -contains $propName)) { continue }
+            $node = $family.$propName
+            if ($null -eq $node) { continue }
+            foreach ($lod in @("8", "16", "32", "64")) {
+                if (-not ($node.PSObject.Properties.Name -contains $lod)) { continue }
+                Add-MappedStem -Set $mappedStems -Value ([string]$node.$lod)
+            }
+        }
+    }
+
+    foreach ($stem in @($sourceLookup.Keys)) {
+        if ([string]::IsNullOrWhiteSpace([string]$stem)) { continue }
+        if ($mappedStems.Contains($stem)) { continue }
+
+        if ($familyNodeByName.ContainsKey($stem)) {
+            $existingNode = $familyNodeByName[$stem]
+            Set-FamilyLodMap -FamilyNode $existingNode -LodMap $sourceLookup[$stem] -SourceStem $stem
+            Add-MappedStem -Set $mappedStems -Value $stem
+            continue
+        }
+
+        $extraFamily = [pscustomobject]([ordered]@{
+            id = $nextFamilyId
+            name = [string]$stem
+        })
+        Set-FamilyLodMap -FamilyNode $extraFamily -LodMap $sourceLookup[$stem] -SourceStem $stem
+        $json.textureFamilies += $extraFamily
+        $familyNodeByName[$stem] = $extraFamily
+        $knownFamilies[$stem] = $true
+        $nextFamilyId++
+        Add-MappedStem -Set $mappedStems -Value $stem
+    }
+
+    if ($missingSourceStems.Count -gt 0) {
+        $preview = @($missingSourceStems | Sort-Object | Select-Object -First 8)
+        Write-Host ("Aviso: stems do MTL sem arquivo remapeado no manifesto ({0}): {1}" -f $missingSourceStems.Count, ($preview -join ", "))
     }
 
     foreach ($e in $mtlEntries) {

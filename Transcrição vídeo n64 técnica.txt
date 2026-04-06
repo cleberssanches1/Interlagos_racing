@@ -1,0 +1,861 @@
+0:00
+This scene is not supposed to be
+0:02
+rendered on the Nintendo 64. The
+0:04
+textures are all rendered at 256 x 256,
+0:08
+even though the Nintendo 64 can only
+0:10
+load full color textures up to 32x 64
+0:13
+into its texture memory. This should be
+0:16
+impossible. And just like how you've
+0:18
+probably never seen normal maps and
+0:20
+roughness textures rendered on the
+0:22
+Nintendo 64, but these all work and even
+0:25
+perform well on real hardware. Let me
+0:28
+explain. When the Nintendo 64 was
+0:30
+created, computers were significantly
+0:33
+weaker than they are nowadays.
+0:35
+Consequently, a cost-effective real-time
+0:37
+rendering machine, such as the home
+0:40
+console, would need smart tricks in its
+0:42
+hardware design to be able to render
+0:44
+good-looking 3D scenes at acceptable
+0:46
+frame rates. For this reason, the
+0:49
+hardware designers carved out a lot of
+0:50
+the basic idea of how a scene is
+0:52
+supposed to be rendered for the software
+0:54
+developers. things like vertx colors,
+0:57
+texture filtering, UV mapping, and
+0:59
+triangle rendering, even texture formats
+1:02
+all had special hardware parts to
+1:04
+support their functionality, and you
+1:06
+needed to render in a specific way to
+1:09
+make use of the support. That means that
+1:11
+doing 3D rendering using this intended
+1:14
+path is fast and convenient. It is rare
+1:16
+that a game would want to wander off the
+1:18
+proven path. It also means that
+1:21
+rendering is fairly limited. No
+1:23
+programmable shaders, a hard limit of 4
+1:25
+kilob of texture cache, and even those 4
+1:28
+kilobytes have to be accessed in the
+1:30
+limiting manner that makes some texture
+1:32
+setups impossible. And it is just the
+1:34
+tip of the iceberg. But human ingenuity
+1:38
+combined with time is sure to find ways
+1:40
+to bend the rules to make a new path.
+1:43
+And despite it not being officially
+1:45
+recommended, we find that sometimes
+1:47
+doing things in weird ways offers unique
+1:49
+benefits. And those weird ideas is what
+1:51
+we will look at today. After all,
+1:53
+efficient code is almost never
+1:56
+intuitively understood. Before we can
+1:58
+understand how breaking the intended
+2:00
+path can benefit us, we have to
+2:01
+understand what the intended path even
+2:03
+is. The intended path is simple. First,
+2:06
+the CPU prepares something called a
+2:08
+display list. This is a long list of
+2:10
+commands that set up the camera view,
+2:12
+places mesh transforming matrix commands
+2:15
+and triangle texture, lighting,
+2:18
+material, and vertex commands alongside
+2:20
+some other render properties. This list
+2:22
+gets sent off to the RSP, which then
+2:25
+processes this list via a thing called
+2:27
+microode. Microode is provided by the
+2:30
+game and can be customized to fit your
+2:32
+needs. Although in practice, most
+2:34
+studios barely touched it. Microode is a
+2:37
+microsized code file that contains
+2:40
+special assembly instructions designed
+2:42
+to be fast at computing 3D geometry. The
+2:44
+RSP's instructions can process a vector
+2:47
+with up to eight components, letting you
+2:49
+do eight computations at once with just
+2:51
+a single instruction. Perfect for
+2:53
+processing many triangles vertices all
+2:55
+at once. This microode doesn't render
+2:58
+any output pixels, but it does determine
+3:01
+all the triangle equations that decide
+3:03
+how textures or colors will be mapped
+3:05
+onto the triangle and other
+3:07
+miscellaneous render commands for the
+3:09
+RDP. The RDP comments are all set in
+3:12
+stone. These are all handled by the
+3:14
+special hardware parts. Rendering the
+3:16
+triangle commands into pixels is the
+3:19
+most expensive part, so it makes sense
+3:21
+to let special hardware handle it. Even
+3:23
+then, it is the slowest process by far.
+3:26
+The RDP outputs pixel color and some
+3:28
+anti-aliasing into the frame buffer. It
+3:31
+also writes the triangle depth values
+3:32
+into the depth buffer and tests against
+3:34
+the depth buffer for triangle drawing.
+3:37
+Afterwards, the frame buffer can
+3:38
+optionally be written to by the CPU or
+3:41
+the RSP again to do post-processing. Or
+3:44
+you could even set up a display list
+3:46
+command to read from the frame buffer to
+3:48
+feed info back to the RSP or RDB and
+3:51
+repeat from previous steps. And then the
+3:53
+final step, the video interface takes
+3:56
+the frame buffer, applies anti-aliasing
+3:58
+and other VI effects such as Dither
+4:01
+pixel sizes or even blur, and then ships
+4:03
+the output off to your TV. All right,
+4:06
+seems like a lot of work, but software
+4:08
+is complex and it needs us to allow all
+4:10
+kinds of effects, so this kind of makes
+4:12
+sense. Let's start off with some simple
+4:14
+ways to disrupt this rendering flow to
+4:16
+get new effects. Just so you can
+4:17
+understand what I want this video to be
+4:19
+about. First, right here, when we set up
+4:21
+the render material, there is nothing
+4:23
+preventing us from using any arbitrary
+4:26
+piece of data loaded into RAM as a
+4:28
+texture. For example, random code or
+4:31
+data. You can actually see this exact
+4:33
+effect on the GameCube game Metroid
+4:35
+Prime. So, this isn't even an N64
+4:37
+exclusive trick, but it is especially
+4:39
+easy and valuable to pull off on the N64
+4:42
+due to the low amount of memory we have
+4:44
+available. This trick is actually also
+4:46
+possibly unintentionally used in the N64
+4:50
+Zeldas for the Deco Stick. They have an
+4:52
+8x8 texture for the stick, but load a
+4:55
+16x6 sized chunk leading to other data
+4:58
+being read as the texture. It looks
+5:00
+great though. This is actually also the
+5:02
+reason the stick looks different in
+5:04
+Madros's Mask. the data it's pointing to
+5:06
+has changed. The next trick is one I use
+5:09
+excessively and nowadays our modding
+5:11
+tools have native support for it. It
+5:13
+lets us skin models so we don't need to
+5:15
+make those N64 style limp sausages. You
+5:18
+see how someone stole his kneecaps and
+5:20
+took a bite out of his elbow when we
+5:22
+sent the matrix vertex and triangle
+5:24
+command to the RSP. There's nothing
+5:27
+stopping us from instead sending two
+5:29
+matrices for just one batch of triangle
+5:31
+commands. So what's the benefit of that?
+5:34
+Well, we can load half the vertx buffer
+5:36
+with matrix one active and the other
+5:38
+half with matrix 2 active. This is
+5:40
+supported simply as a side effect of how
+5:43
+microods are typically implemented and
+5:45
+was even possible in Mario 64. In fact,
+5:48
+I did just this with a hex editor a long
+5:50
+time ago on an unmodified Mario 64 ROM
+5:52
+to show it as possible. Using this
+5:54
+trick, we can make triangles deform
+5:56
+along animations and get connected
+5:59
+animated limbs almost entirely free of
+6:01
+processing costs. This also saves you a
+6:04
+ton of triangles. So, it is a tragedy
+6:06
+this technique took so long to adopt.
+6:08
+Not having to close off limbs as they
+6:10
+had in most N64 games would have freed
+6:12
+up a serious amount of triangles. 30
+6:15
+extra triangles would have gone a long
+6:16
+way in a game like Mario Party.
+6:18
+Fortunately, they did seem to have this
+6:20
+figured out for Smash Bros. 64. Just
+6:22
+like it would be a tragedy if you still
+6:24
+used the stinky garbage bin chair on
+6:26
+your PC. If you're like me and sit 14
+6:29
+hours a day on your computer chair, your
+6:31
+computer chair has a huge impact on your
+6:33
+overall life quality. I switched to
+6:35
+Flexispot C7 Max a couple months ago
+6:37
+when they first sponsored me and it
+6:39
+actually improved my life. You can
+6:41
+adjust all kinds of things on this chair
+6:43
+like your lower back support, the
+6:44
+armrests or the head support for optimal
+6:46
+back rest. I actually even homebrew mine
+6:49
+to remove the armrest because I like to
+6:50
+sit cross-legged. You also get
+6:52
+adjustable seat depth and memory foam
+6:54
+cushion alongside a flexible backside to
+6:56
+support all kinds of seating positions.
+6:58
+Since I kind of work three different
+7:00
+jobs, my game job, making YouTube
+7:02
+videos, and working on my N64 games, I
+7:05
+do need a chair that helps me during
+7:06
+these triing times. They have a 30-day
+7:09
+return policy, so you can have a
+7:11
+risk-free trial as well as a 10-year
+7:13
+warranty to replace any damaged parts.
+7:16
+Use my code case 50 to get $50 off for
+7:19
+the best price. If you have a limited
+7:21
+budget, you can also check out their C5
+7:23
+chair, which is a little cheaper and has
+7:25
+many of the same options, or their C7
+7:27
+morpher if you're looking for something
+7:29
+more luxurious. There's actually another
+7:32
+cool trick at the texture loading stage.
+7:34
+There's nothing stopping us from
+7:36
+rendering directly onto a texture. This
+7:39
+lets us implement a modern rendering
+7:41
+pipeline for a surface, render the
+7:43
+output over a texture, and get
+7:44
+properties like normal maps or metallic
+7:46
+maps. I've done that right here for this
+7:48
+Mario Odyssey s coin and it runs full
+7:51
+frame rate on a real N64. Obviously,
+7:54
+this would be very very expensive to
+7:55
+render for thousands of pixels still.
+7:58
+But there's one very cool simplification
+7:59
+we can make pallet textures. With a
+8:02
+pallet of 256 or even just 16 pixels, we
+8:06
+would only need to run the PBR pipeline
+8:08
+on these few pixels and they get a
+8:10
+decent looking and very cheap output.
+8:13
+Dorel has shown me this cool usage of
+8:15
+that technique and it looks awesome.
+8:17
+Plus, it cost basically nothing. This
+8:19
+technique is actually cheap enough to a
+8:22
+point where you can realistically use it
+8:24
+across a whole game to get an entirely
+8:26
+modern rendered looking video game on
+8:28
+the Nintendo 64, provided you don't need
+8:31
+smooth shading anywhere. This would
+8:33
+limit you to exclusively man-made
+8:35
+angular structures, but it would be
+8:37
+insanely cool to see. Another trick is
+8:40
+right here where it computes the color.
+8:42
+There are a couple bucks or properties.
+8:44
+The line between the two is blurry that
+8:47
+emerge from the combiner. And there's
+8:48
+actually so many that I have an entire
+8:50
+video dedicated to this. You should
+8:52
+watch that too. You can do some cool
+8:54
+stuff like bloom these cotton candyesque
+8:56
+materials or even Mario Galaxy's
+8:58
+appearing pass. When the RDP outputs a
+9:01
+pixel to the frame buffer at this step,
+9:03
+it outputs it in RGBA 16 format across
+9:07
+two bytes. This format has five bits per
+9:09
+color channel and one bit for alpha. But
+9:12
+there is no such thing as transparent
+9:14
+video output. So really there's only 15
+9:17
+bit of color information and one extra
+9:19
+bit. In addition to this extra bit, the
+9:21
+N64 actually has a hidden 9th bit in
+9:24
+every bite that is used by the render
+9:26
+output as well. These three extra bits
+9:29
+are used by the RDP by outputting a
+9:31
+coverage value that is later used to
+9:33
+apply anti-aliasing, which blends
+9:36
+triangles with less of a staircase
+9:38
+pattern. But you can absolutely disable
+9:40
+the anti-aliasing in the video interface
+9:43
+and instead use those free bits to mark
+9:45
+special properties similar to a modern
+9:48
+stencil buffer. The most straightforward
+9:50
+example of this technique I've ever seen
+9:52
+comes from Hail to the Dongo's water
+9:54
+effect. The water material itself sets
+9:56
+these special bits to the correct value
+9:58
+to mark the render to pixels. He can
+10:00
+then identify which pixels were tagged
+10:03
+by the water material and shift them
+10:05
+around in a wavelike motion. A much much
+10:08
+more contrived example of this is
+10:10
+Major's Mask Lens of Truth. Major's mask
+10:12
+specifically or Queen of Times is much
+10:14
+simpler. It does some magic, much too
+10:17
+complicated to be part of this video to
+10:19
+ensure transparent geometry placed nice
+10:21
+with the lens effect that manipulates
+10:23
+the coverage values. Let me know if
+10:25
+you'd like a separate video dedicated to
+10:27
+that because it really would have to be
+10:28
+a full video. Of course, you can also
+10:31
+use your coverage values as a stencil
+10:32
+for any kind of other effects you would
+10:34
+like. It is actually possible to read
+10:36
+the hidden bits with the CPU on the
+10:38
+Nintendo 64. Although this is such a
+10:40
+crazy feature that no emulator, not even
+10:43
+Analog 3D's FPGA, implements this
+10:46
+behavior yet. It's also very expensive
+10:48
+because reading the hidden bits is not
+10:49
+cheap. So, who knows if anyone will ever
+10:51
+make use of this. A simple effect
+10:53
+hacking with the DB buffers can be seen
+10:56
+here with Patchmakers Workshops portals.
+10:58
+Simply render a scene once, then clear
+11:01
+the dead buffer only in the small part
+11:03
+and fill it everywhere else with the
+11:04
+closest value and then render the scene
+11:06
+a second time. This would cause the
+11:08
+second scene to only render in the small
+11:10
+square, which gives you this cool portal
+11:12
+effect. Well, at least that's one easy
+11:14
+way to do it. I don't actually know if
+11:16
+this is exactly what he did. Maybe with
+11:18
+the help of the tricks from this video,
+11:20
+you can think of a cheaper way of doing
+11:21
+it. There's actually even more hackery
+11:24
+to the RDP step. I need to ask you, what
+11:27
+is a triangle? I know it sounds like a
+11:29
+stupid question, but it is an important
+11:31
+one. Typically, you would say it is the
+11:33
+shape made by connecting three dots, but
+11:35
+three dots is not practical to work
+11:37
+with. That's why the RDP has its own
+11:40
+format to describe what a triangle is,
+11:42
+which consists of mathematical formulas.
+11:44
+These formulas let the RDP evaluate
+11:46
+triangles much quicker than it ever
+11:48
+could by supplying a set of points. This
+11:50
+format can represent triangles, but it
+11:53
+can also represent some less
+11:55
+identifiable shapes. All these shapes
+11:57
+shown here are valid RDP triangles.
+12:00
+Usually RDP triangles are computed by
+12:02
+the microode, but there is technically
+12:04
+nothing stopping you from just making an
+12:07
+abomination yourself. RDB triangles come
+12:10
+in many shapes and forms. You can do
+12:11
+this for example to draw a quad with
+12:13
+just one triangle. And in fact
+12:15
+internally the UI rectangle command in
+12:18
+the FD microode family are making use of
+12:20
+this. But by manually making one, you
+12:23
+can supply things like vertx colors to
+12:25
+the rectangle, which is typically not
+12:27
+possible on official Nintendo microode.
+12:29
+Wise Guy, who recently finished the Mand
+12:31
+Kazoui recompilation, let me know that
+12:34
+apparently Golden Eye uses this for its
+12:35
+sky.
+12:38
+Very cool. This technique would be
+12:40
+perfect for Mario 64's gradient hut,
+12:42
+too. It would save you a lot of texture
+12:43
+memory. You can also insert render
+12:46
+checks after the frame buffer has
+12:47
+rendered or even feed the frame buffer
+12:50
+back into the render and jump to an
+12:52
+earlier point into the pipeline. The
+12:53
+coolest example of this is probably what
+12:55
+Hail to the Dongo has been doing since
+12:58
+you can run any logic you want on these
+12:59
+pixels here. You can also pull off any
+13:02
+effect you want. Hail to the Dongo has
+13:04
+examples like HDR rendering or even
+13:06
+Bloom. Of course, these are very
+13:07
+expensive effects, but the result is
+13:09
+worth it. There is one kind of weird
+13:12
+render hack you can do on the VI to
+13:14
+increase image clarity. See, usually the
+13:17
+Nintendo 64 comes with a horizontal blur
+13:19
+you're not supposed to be able to turn
+13:21
+off. It blurs pixels horizontally to
+13:24
+upscale the output image. A 320x 240
+13:27
+rendered image actually gets output as a
+13:29
+640x240
+13:30
+with every other pixel being a blur of
+13:33
+the two neighboring pixels. For the
+13:34
+longest time, I did not know of a way to
+13:36
+turn it off and I didn't even know it
+13:38
+existed. But the homebrew community
+13:39
+pointed this out to me and there's a
+13:41
+funny way of turning it off. You simply
+13:43
+provide a slightly wrong frame buffer
+13:45
+scale to the VI and the blurring
+13:47
+algorithm ends up working out to no
+13:49
+longer blur pixels. We did basically
+13:51
+nothing at all and it instantly looks so
+13:52
+much sharper. There's one more thing I
+13:54
+want to bring up and I teased this in
+13:56
+the beginning because it basically turns
+13:58
+the entire rendering pipeline upside
+13:59
+down and that is Hail to the Dongo's
+14:01
+high resolution rendering pipeline. He
+14:03
+figured out a way to modify this
+14:05
+rendering pipeline to render much higher
+14:07
+resolution textures. He implemented this
+14:09
+with 256x 256 textures in full color
+14:14
+format, which is 32 times higher than
+14:16
+the Nintendo 64 usually can do. Look at
+14:19
+that insane difference. And the craziest
+14:21
+part is that the actual final output is
+14:24
+basically entirely drawn without the
+14:26
+RDP. The way he explained it is actually
+14:29
+awesome and much simpler than you would
+14:30
+think. He simply has the RDP draw
+14:33
+colored gradients instead of textures
+14:35
+into a frame buffer. And then he uses
+14:37
+the color values of the pixels that were
+14:39
+drawn as X and Y coordinates for a
+14:42
+texture to look up a pixel from. He can
+14:44
+index into multiple textures. For
+14:45
+example, by storing the texture ID into
+14:47
+the red channel and the X coordinate
+14:49
+into the blue channel and the Y-
+14:51
+coordinate into the green channel. He
+14:52
+simply iterates all pixels to generate a
+14:54
+whole new image based off the first
+14:56
+rendered buffer. This does have the
+14:58
+disadvantage that it adds an additional
+15:00
+constant cost to the render of course,
+15:02
+but man, this effect definitely has a
+15:04
+use case, and seeing a full game take
+15:07
+advantage of this would be so cool.
+15:09
+Thank you for watching. I am also
+15:11
+developing Nintendo 64 games. If you
+15:13
+would like to see me take advantage of
+15:15
+some of this knowledge, drop a
+15:16
+subscribe. Shout outs to all my patrons
+15:18
+for supporting my channel and deaf
+15:20
+journal. Admittedly, these sacks are
+15:22
+seldomly useful in a full game context,
+15:25
+as many require a game to be designed
+15:27
+around it, but I still find these really
+15:29
+cool to see, and I still will make use
+15:31
+of some of these. My game is slowly
+15:33
+nearing completion. I just about
+15:36
+finished the first pass of the
+15:37
+overworld, and I'm finishing most of the
+15:39
+side levels right now, and then it's
+15:41
+really just polishing work. That's it.
+15:43
+Bye-bye.
+15:48
+Here
+16:00
+we go.
+

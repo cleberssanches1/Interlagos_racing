@@ -11208,6 +11208,12 @@ void TrackSystem::ResetInitializationState()
     workRamTelemetryCooldown_ = 0;
     workRamRepairCount_ = 0;
     workRamEmergencyReserveReleases_ = 0;
+    leakProbeSlidesObserved_ = 0;
+    leakProbePrevValid_ = false;
+    leakProbePrevHwrFree_ = 0;
+    leakProbePrevLwrFree_ = 0;
+    leakProbePrevRetainedHwr_ = 0;
+    leakProbePrevRetainedLwr_ = 0;
     fullTrackFamilyCacheReady_ = false;
     lastWindowFreeBytes_ = 0;
     lastWindowFreeValid_ = false;
@@ -13805,6 +13811,51 @@ void TrackSystem::EndFrame()
     {
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
         phaseLwrEnd_ = static_cast<uint32_t>(lwr.FreeSize);
+    }
+    if (runtimeStatsLogsEnabled_ && runtimeSlidesThisFrame_ > 0u)
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        const uint32_t hwrFree = static_cast<uint32_t>(hwr.FreeSize);
+        const uint32_t lwrFree = static_cast<uint32_t>(lwr.FreeSize);
+        const uint32_t retainedHwr = static_cast<uint32_t>(EstimateWorkRamRetainedBytes());
+        const uint32_t retainedLwr = static_cast<uint32_t>(EstimateLowWorkRamRetainedBytes());
+        int32_t deltaHwrFree = 0;
+        int32_t deltaLwrFree = 0;
+        int32_t deltaRetainedHwr = 0;
+        int32_t deltaRetainedLwr = 0;
+        if (leakProbePrevValid_)
+        {
+            deltaHwrFree = static_cast<int32_t>(hwrFree) - static_cast<int32_t>(leakProbePrevHwrFree_);
+            deltaLwrFree = static_cast<int32_t>(lwrFree) - static_cast<int32_t>(leakProbePrevLwrFree_);
+            deltaRetainedHwr = static_cast<int32_t>(retainedHwr) - static_cast<int32_t>(leakProbePrevRetainedHwr_);
+            deltaRetainedLwr = static_cast<int32_t>(retainedLwr) - static_cast<int32_t>(leakProbePrevRetainedLwr_);
+        }
+        leakProbeSlidesObserved_ = static_cast<uint32_t>(
+            std::min<uint64_t>(static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                               static_cast<uint64_t>(leakProbeSlidesObserved_) +
+                                   static_cast<uint64_t>(runtimeSlidesThisFrame_)));
+        SRL::Debug::Print(1, 14, "LEAK sl:%u id:%d hs:%u hf:%u lf:%u",
+                          static_cast<unsigned>(leakProbeSlidesObserved_),
+                          static_cast<int>(slideHwrTraceSegmentId_),
+                          static_cast<unsigned>(runtimeSlidesThisFrame_),
+                          static_cast<unsigned>(hwrFree),
+                          static_cast<unsigned>(lwrFree));
+        SRL::Debug::Print(1, 15, "LEAK dF h:%d l:%d dR h:%d l:%d",
+                          static_cast<int>(deltaHwrFree),
+                          static_cast<int>(deltaLwrFree),
+                          static_cast<int>(deltaRetainedHwr),
+                          static_cast<int>(deltaRetainedLwr));
+        SRL::Debug::Print(1, 16, "LEAK R h:%u l:%u rel:%u/%u",
+                          static_cast<unsigned>(retainedHwr),
+                          static_cast<unsigned>(retainedLwr),
+                          static_cast<unsigned>(releasedNowSlotsThisFrame_),
+                          static_cast<unsigned>(releasedEndFrameSlotsThisFrame_));
+        leakProbePrevValid_ = true;
+        leakProbePrevHwrFree_ = hwrFree;
+        leakProbePrevLwrFree_ = lwrFree;
+        leakProbePrevRetainedHwr_ = retainedHwr;
+        leakProbePrevRetainedLwr_ = retainedLwr;
     }
     constexpr bool kEnablePerFrameDebugPrints = false;
     if (!kEnablePerFrameDebugPrints) return;

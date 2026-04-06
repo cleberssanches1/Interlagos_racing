@@ -3,11 +3,172 @@ param(
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [int]$Lod = 8,
     [int]$SegmentId = 0,
-    [switch]$AllSegments = $false
+    [switch]$AllSegments = $false,
+    [switch]$CanonicalizeQuadUvOrder = $false,
+    [int]$QuadUvEdgeTolerance = 192,
+    [int]$QuadUvHighTolerance = 704,
+    [switch]$CanonicalizeHighToleranceAllFamilies = $true,
+    [string]$SegmentsMapPath = "",
+    [string[]]$CanonicalizeExcludeSourceStems = @(),
+    [string[]]$CanonicalizeHighToleranceSourceStems = @("f02164", "f01764", "f04764", "f00764", "f00964", "f03764", "f00864", "f03464")
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$script:canonicalizeExcludeFamilyId = @{}
+$script:canonicalizeHighToleranceFamilyId = @{}
+$script:manualOrientationFixBySegmentFamily = @{}
+
+function Normalize-SourceStem([string]$Stem) {
+    if ([string]::IsNullOrWhiteSpace($Stem)) { return "" }
+    return ([regex]::Replace($Stem.Trim().ToLowerInvariant(), '[^a-z0-9]+', ''))
+}
+
+function Build-CanonicalizeExcludeFamilyIdMap(
+    [string]$MapPath,
+    [string[]]$ExcludeStems
+) {
+    $out = @{}
+    if ([string]::IsNullOrWhiteSpace($MapPath)) { return $out }
+    if (-not (Test-Path -LiteralPath $MapPath)) { return $out }
+
+    $exclude = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($rawStem in @($ExcludeStems)) {
+        $stem = Normalize-SourceStem ([string]$rawStem)
+        if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+        [void]$exclude.Add($stem)
+    }
+    if ($exclude.Count -eq 0) { return $out }
+
+    try {
+        $json = Get-Content -LiteralPath $MapPath -Raw | ConvertFrom-Json
+        foreach ($family in @($json.textureFamilies)) {
+            if ($null -eq $family) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "sourceStem")) { continue }
+            $stem = Normalize-SourceStem ([string]$family.sourceStem)
+            if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+            if (-not $exclude.Contains($stem)) { continue }
+            $out[[uint32]$family.id] = $true
+        }
+    }
+    catch {
+        return @{}
+    }
+
+    return $out
+}
+
+function Build-CanonicalizeFamilyIdMapBySourceStems(
+    [string]$MapPath,
+    [string[]]$SourceStems
+) {
+    $out = @{}
+    if ([string]::IsNullOrWhiteSpace($MapPath)) { return $out }
+    if (-not (Test-Path -LiteralPath $MapPath)) { return $out }
+
+    $targetStems = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($rawStem in @($SourceStems)) {
+        $stem = Normalize-SourceStem ([string]$rawStem)
+        if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+        [void]$targetStems.Add($stem)
+    }
+    if ($targetStems.Count -eq 0) { return $out }
+
+    try {
+        $json = Get-Content -LiteralPath $MapPath -Raw | ConvertFrom-Json
+        foreach ($family in @($json.textureFamilies)) {
+            if ($null -eq $family) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "sourceStem")) { continue }
+            $stem = Normalize-SourceStem ([string]$family.sourceStem)
+            if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+            if (-not $targetStems.Contains($stem)) { continue }
+            $out[[uint32]$family.id] = $true
+        }
+    }
+    catch {
+        return @{}
+    }
+
+    return $out
+}
+
+function Build-FamilyIdBySourceStemMap(
+    [string]$MapPath
+) {
+    $out = @{}
+    if ([string]::IsNullOrWhiteSpace($MapPath)) { return $out }
+    if (-not (Test-Path -LiteralPath $MapPath)) { return $out }
+
+    try {
+        $json = Get-Content -LiteralPath $MapPath -Raw | ConvertFrom-Json
+        foreach ($family in @($json.textureFamilies)) {
+            if ($null -eq $family) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "sourceStem")) { continue }
+            $stem = Normalize-SourceStem ([string]$family.sourceStem)
+            if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+            $out[$stem] = [uint32]$family.id
+        }
+    }
+    catch {
+        return @{}
+    }
+
+    return $out
+}
+
+function Add-ManualOrientationRule(
+    [hashtable]$Dst,
+    [hashtable]$FamilyByStem,
+    [int]$StartSeg,
+    [int]$EndSeg,
+    [string[]]$Stems,
+    [string]$Op
+) {
+    if ($StartSeg -gt $EndSeg) { return }
+    for ($sid = $StartSeg; $sid -le $EndSeg; $sid++) {
+        if (-not $Dst.ContainsKey($sid)) {
+            $Dst[$sid] = @{}
+        }
+        foreach ($rawStem in @($Stems)) {
+            $stem = Normalize-SourceStem $rawStem
+            if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+            if (-not $FamilyByStem.ContainsKey($stem)) { continue }
+            $fid = [uint32]$FamilyByStem[$stem]
+            $Dst[$sid][$fid] = $Op
+        }
+    }
+}
+
+function Build-ManualOrientationFixMap(
+    [string]$MapPath
+) {
+    $out = @{}
+    $familyByStem = Build-FamilyIdBySourceStemMap -MapPath $MapPath
+    if ($familyByStem.Count -eq 0) { return $out }
+
+    # Casos reportados em 2026-04-03:
+    # "girada" -> rot90
+    # "de cabeça para baixo" -> rot180
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 44  -EndSeg 44  -Stems @("f03164") -Op "rot90"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 53  -EndSeg 53  -Stems @("f02764") -Op "rot90"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 54  -EndSeg 54  -Stems @("f00664") -Op "rot90"
+
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 56  -EndSeg 97  -Stems @("f00864") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 78  -EndSeg 78  -Stems @("f00764") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 81  -EndSeg 81  -Stems @("f00764") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 102 -EndSeg 102 -Stems @("f00764") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 112 -EndSeg 112 -Stems @("f03164") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 120 -EndSeg 120 -Stems @("f00664") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 127 -EndSeg 127 -Stems @("f02764") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 129 -EndSeg 129 -Stems @("f00664", "f00764") -Op "rot180"
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 270 -EndSeg 305 -Stems @("f00864") -Op "rot180"
+
+    return $out
+}
 
 function Read-U16([byte[]]$Bytes, [int]$Offset) {
     return [uint16][System.BitConverter]::ToUInt16($Bytes, $Offset)
@@ -177,7 +338,7 @@ function Load-Mat([string]$Path) {
     }
 }
 
-function Reorder-QuadVerticesFromUv([object]$Face) {
+function Reorder-QuadVerticesFromUv([object]$Face, [int]$EdgeTolerance) {
     $result = @([uint16]$Face.vertex[0], [uint16]$Face.vertex[1], [uint16]$Face.vertex[2], [uint16]$Face.vertex[3])
 
     $minU = [int]$Face.u[0]
@@ -195,39 +356,107 @@ function Reorder-QuadVerticesFromUv([object]$Face) {
         return ,$result
     }
 
-    for ($i = 0; $i -lt 4; $i++) {
-        $onUEdge = ([int]$Face.u[$i] -eq $minU) -or ([int]$Face.u[$i] -eq $maxU)
-        $onVEdge = ([int]$Face.v[$i] -eq $minV) -or ([int]$Face.v[$i] -eq $maxV)
-        if (-not $onUEdge -or -not $onVEdge) {
-            return ,$result
+    # Candidate permutations:
+    # - first 4: rotations (preserve winding)
+    # - last 4: mirrored variants (flip)
+    $permutations = @(
+        @(0, 1, 2, 3),
+        @(1, 2, 3, 0),
+        @(2, 3, 0, 1),
+        @(3, 0, 1, 2),
+        @(0, 3, 2, 1),
+        @(3, 2, 1, 0),
+        @(2, 1, 0, 3),
+        @(1, 0, 3, 2)
+    )
+
+    # Two V conventions:
+    # - vMinTop = false: (minV at top)
+    # - vMinTop = true : (maxV at top)
+    $targetSets = @(
+        [pscustomobject]@{
+            u = @($minU, $maxU, $maxU, $minU)
+            v = @($minV, $minV, $maxV, $maxV)
+        },
+        [pscustomobject]@{
+            u = @($minU, $maxU, $maxU, $minU)
+            v = @($maxV, $maxV, $minV, $minV)
         }
-    }
+    )
 
-    $targetU = @($minU, $maxU, $maxU, $minU)
-    $targetV = @($minV, $minV, $maxV, $maxV)
-    $used = @( $false, $false, $false, $false )
+    $scale = [double][Math]::Max(1, ($maxU - $minU) + ($maxV - $minV))
+    $tol = [double][Math]::Max(0, $EdgeTolerance)
 
-    for ($corner = 0; $corner -lt 4; $corner++) {
-        $bestIndex = -1
-        $bestScore = [int]::MaxValue
-        for ($src = 0; $src -lt 4; $src++) {
-            if ($used[$src]) { continue }
-            $du = [Math]::Abs(([int]$Face.u[$src]) - $targetU[$corner])
-            $dv = [Math]::Abs(([int]$Face.v[$src]) - $targetV[$corner])
-            $score = $du + $dv
-            if ($score -lt $bestScore) {
-                $bestScore = $score
-                $bestIndex = $src
+    $bestAllScore = [double]::PositiveInfinity
+    $bestAllMaxCorner = [double]::PositiveInfinity
+    $bestAllPermIndex = -1
+    $bestAllTargetIndex = -1
+
+    $bestRotScore = [double]::PositiveInfinity
+    $bestRotMaxCorner = [double]::PositiveInfinity
+    $bestRotPermIndex = -1
+    $bestRotTargetIndex = -1
+
+    for ($pi = 0; $pi -lt $permutations.Count; $pi++) {
+        $perm = $permutations[$pi]
+        for ($ti = 0; $ti -lt $targetSets.Count; $ti++) {
+            $target = $targetSets[$ti]
+            $sumScore = [double]0.0
+            $maxCorner = [double]0.0
+            for ($corner = 0; $corner -lt 4; $corner++) {
+                $src = [int]$perm[$corner]
+                $du = [Math]::Abs(([double][int]$Face.u[$src]) - [double][int]$target.u[$corner])
+                $dv = [Math]::Abs(([double][int]$Face.v[$src]) - [double][int]$target.v[$corner])
+                $cornerScore = [double]($du + $dv)
+                $sumScore += $cornerScore
+                if ($cornerScore -gt $maxCorner) { $maxCorner = $cornerScore }
+            }
+
+            if ($sumScore -lt $bestAllScore) {
+                $bestAllScore = $sumScore
+                $bestAllMaxCorner = $maxCorner
+                $bestAllPermIndex = $pi
+                $bestAllTargetIndex = $ti
+            }
+
+            if ($pi -lt 4 -and $sumScore -lt $bestRotScore) {
+                $bestRotScore = $sumScore
+                $bestRotMaxCorner = $maxCorner
+                $bestRotPermIndex = $pi
+                $bestRotTargetIndex = $ti
             }
         }
-        if ($bestIndex -lt 0) {
-            return ,$result
-        }
-        $used[$bestIndex] = $true
-        $result[$corner] = [uint16]$Face.vertex[$bestIndex]
     }
 
-    return ,$result
+    if ($bestAllPermIndex -lt 0) {
+        return ,$result
+    }
+
+    # Prefer rotation-only unless mirrored mapping is clearly better.
+    $useRotationOnly = $false
+    if ($bestRotPermIndex -ge 0) {
+        $rotationBias = $scale * 0.05
+        if ($bestRotScore -le ($bestAllScore + $rotationBias)) {
+            $useRotationOnly = $true
+        }
+    }
+
+    $chosenPermIndex = if ($useRotationOnly) { $bestRotPermIndex } else { $bestAllPermIndex }
+    $chosenMaxCorner = if ($useRotationOnly) { $bestRotMaxCorner } else { $bestAllMaxCorner }
+
+    # Confidence gate: avoid changing faces with ambiguous/non-rectangular UV layout.
+    $maxAllowed = [double][Math]::Max($tol, ($scale * 0.35))
+    if ($chosenMaxCorner -gt $maxAllowed) {
+        return ,$result
+    }
+
+    $chosenPerm = $permutations[$chosenPermIndex]
+    return @(
+        [uint16]$Face.vertex[[int]$chosenPerm[0]],
+        [uint16]$Face.vertex[[int]$chosenPerm[1]],
+        [uint16]$Face.vertex[[int]$chosenPerm[2]],
+        [uint16]$Face.vertex[[int]$chosenPerm[3]]
+    )
 }
 
 function Build-FaceNormal([object[]]$Verts, [uint16[]]$Indices) {
@@ -274,6 +503,41 @@ function Build-BaseColor([uint32]$FamilyId) {
     $m = [uint16]($FamilyId -band 0x1F)
     if ($m -eq 0) { $m = 0x1F }
     return [uint16](0x8400 -bor $m)
+}
+
+function Apply-QuadOrientationOp([uint16[]]$Indices, [string]$Op) {
+    if ($null -eq $Indices -or $Indices.Count -lt 4) {
+        return $Indices
+    }
+    switch ($Op) {
+        "rot90" {
+            return @(
+                [uint16]$Indices[1],
+                [uint16]$Indices[2],
+                [uint16]$Indices[3],
+                [uint16]$Indices[0]
+            )
+        }
+        "rot180" {
+            return @(
+                [uint16]$Indices[2],
+                [uint16]$Indices[3],
+                [uint16]$Indices[0],
+                [uint16]$Indices[1]
+            )
+        }
+        "rot270" {
+            return @(
+                [uint16]$Indices[3],
+                [uint16]$Indices[0],
+                [uint16]$Indices[1],
+                [uint16]$Indices[2]
+            )
+        }
+        default {
+            return $Indices
+        }
+    }
 }
 
 function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
@@ -375,9 +639,30 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
             )
 
             if ([int]$srcFace.kind -eq 4) {
-                $indices = [uint16[]](Reorder-QuadVerticesFromUv $srcFace)
-            }
-            else {
+                $allowCanonicalize = $CanonicalizeQuadUvOrder
+                if ($allowCanonicalize -and $script:canonicalizeExcludeFamilyId.ContainsKey($familyId)) {
+                    $allowCanonicalize = $false
+                }
+                if ($allowCanonicalize) {
+                    $effectiveTol = [int][Math]::Max(0, $QuadUvEdgeTolerance)
+                    $useHighTol = $CanonicalizeHighToleranceAllFamilies
+                    if (-not $useHighTol -and $script:canonicalizeHighToleranceFamilyId.ContainsKey($familyId)) {
+                        $useHighTol = $true
+                    }
+                    if ($useHighTol) {
+                        $effectiveTol = [int][Math]::Max($effectiveTol, [int][Math]::Max(0, $QuadUvHighTolerance))
+                    }
+                    $indices = [uint16[]](Reorder-QuadVerticesFromUv $srcFace $effectiveTol)
+                }
+
+                if ($script:manualOrientationFixBySegmentFamily.ContainsKey($Id)) {
+                    $segFix = $script:manualOrientationFixBySegmentFamily[$Id]
+                    if ($segFix -and $segFix.ContainsKey($familyId)) {
+                        $op = [string]$segFix[$familyId]
+                        $indices = [uint16[]](Apply-QuadOrientationOp $indices $op)
+                    }
+                }
+            } else {
                 $indices[3] = $indices[2]
             }
 
@@ -433,6 +718,19 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
 
 $segmentIds = Resolve-SegmentList -BaseDir $DataDir -SingleId $SegmentId -UseAll:$AllSegments
 $written = 0
+
+if ([string]::IsNullOrWhiteSpace($SegmentsMapPath)) {
+    $SegmentsMapPath = Join-Path $DataDir "segments_map.json"
+}
+$script:canonicalizeExcludeFamilyId = Build-CanonicalizeExcludeFamilyIdMap `
+    -MapPath $SegmentsMapPath `
+    -ExcludeStems $CanonicalizeExcludeSourceStems
+if (-not $CanonicalizeHighToleranceAllFamilies) {
+    $script:canonicalizeHighToleranceFamilyId = Build-CanonicalizeFamilyIdMapBySourceStems `
+        -MapPath $SegmentsMapPath `
+        -SourceStems $CanonicalizeHighToleranceSourceStems
+}
+$script:manualOrientationFixBySegmentFamily = Build-ManualOrientationFixMap -MapPath $SegmentsMapPath
 
 foreach ($id in $segmentIds) {
     $geoPath = Join-Path $DataDir ("S{0:D3}.GEO" -f $id)
