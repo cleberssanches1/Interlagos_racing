@@ -46,6 +46,9 @@ CarSystem::CarSystem(ModelObject* carObj, bool smooth, const Config& config)
     MeshRenderer::Config rendererConfig;
     rendererConfig.modelCenter = config_.modelCenter;
     rendererConfig.lightDirection = config_.lightDirection;
+    // Match legacy car orientation and keep the chassis upright.
+    rendererConfig.rotateModelX180 = true;
+    rendererConfig.rotateModelZ180 = true;
     const size_t orderCount = std::min(config_.orderCount, rendererConfig.drawOrder.size());
     rendererConfig.drawOrderCount = orderCount;
     for (size_t i = 0; i < orderCount; ++i)

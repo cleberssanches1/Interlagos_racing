@@ -37,7 +37,15 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
 {
     SRL::Scene3D::PushMatrix();
     SRL::Scene3D::Translate(position + offset_);
+    if (config_.rotateModelX180)
+    {
+        SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
+    }
     SRL::Scene3D::RotateY(yaw);
+    if (config_.rotateModelZ180)
+    {
+        SRL::Scene3D::RotateZ(SRL::Math::Types::Angle::FromDegrees(180.0f));
+    }
     SRL::Scene3D::Scale(scale_);
     SRL::Scene3D::Translate(-config_.modelCenter);
     size_t drawnMesh = SIZE_MAX;
@@ -91,7 +99,15 @@ void MeshRenderer::ApplyTransform(const SRL::Math::Types::Vector3D& position,
                                   const SRL::Math::Types::Angle& yaw)
 {
     SRL::Scene3D::Translate(position + offset_);
+    if (config_.rotateModelX180)
+    {
+        SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
+    }
     SRL::Scene3D::RotateY(yaw);
+    if (config_.rotateModelZ180)
+    {
+        SRL::Scene3D::RotateZ(SRL::Math::Types::Angle::FromDegrees(180.0f));
+    }
 }
 
 void MeshRenderer::ComputeMeshCenters()

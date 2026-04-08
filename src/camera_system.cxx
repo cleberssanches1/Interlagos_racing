@@ -456,7 +456,12 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     const Fxp offY = Fxp::BuildRaw(static_cast<int32_t>(cfg.offsetY) << 16);
     const Fxp offZ = Fxp::BuildRaw(static_cast<int32_t>(cfg.offsetZ) << 16);
 
-    const Vector3D forward = headingForwardWorld_;
+    // Keep chase offset aligned with actual travel direction when moving.
+    // This prevents CAM2 from staying in a fixed world axis through curves
+    // when gameplay yaw and path heading are briefly out of sync.
+    constexpr int32_t kMotionHeadingThresholdRaw = (1 << 12);
+    const bool useMovementHeading = movementSpeedNormRaw_ > kMotionHeadingThresholdRaw;
+    const Vector3D forward = useMovementHeading ? movementForwardWorld_ : headingForwardWorld_;
     const Vector3D right(forward.Z, Fxp::BuildRaw(0), -forward.X);
 
     return Vector3D((right.X * offX) + (forward.X * offZ),

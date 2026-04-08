@@ -1201,7 +1201,7 @@ private:
         }
 
         // Keep the existing heading convention used by gameplay/car rendering:
-        // 0° = -Z, 90° = +X, 180° = +Z, 270° = -X.
+        // 0 deg = -Z, 90 deg = +X, 180 deg = +Z, 270 deg = -X.
         const auto angle = SRL::Math::Trigonometry::Atan2(
             SRL::Math::Types::Fxp::BuildRaw(deltaXRaw),
             SRL::Math::Types::Fxp::BuildRaw(-deltaZRaw));
@@ -1368,6 +1368,8 @@ private:
         size_t nextIndex = (currentIndex + 1u) % routePointCount;
         const SRL::Math::Types::Vector3D& currentCenter = autoLapRouteCenters_[currentIndex];
         const SRL::Math::Types::Vector3D& nextCenter = autoLapRouteCenters_[nextIndex];
+        const int32_t prevCarXRaw = ioCarWorldPosition.X.RawValue();
+        const int32_t prevCarZRaw = ioCarWorldPosition.Z.RawValue();
 
         // Move from current car position to next segment center.
         const int32_t ndx = nextCenter.X.RawValue() - ioCarWorldPosition.X.RawValue();
@@ -1445,55 +1447,27 @@ private:
         {
             return NormalizeYawDeg360(yawDeg);
         };
-        auto yawFromDelta = [&](int32_t deltaXRaw, int32_t deltaZRaw, int32_t fallbackYawDeg) -> int32_t
-        {
-            if (deltaXRaw == 0 && deltaZRaw == 0) return normalizeYawDeg(fallbackYawDeg);
-
-            // Preserve the existing car/model heading convention:
-            // 0° = -Z, 90° = +X, 180° = +Z, 270° = -X.
-            const auto angle = SRL::Math::Trigonometry::Atan2(
-                SRL::Math::Types::Fxp::BuildRaw(deltaXRaw),
-                SRL::Math::Types::Fxp::BuildRaw(-deltaZRaw));
-            const auto yawDegFxp = angle.ToDegrees();
-            const int32_t yawDeg = (yawDegFxp.RawValue() + (1 << 15)) >> 16;
-            return normalizeYawDeg(yawDeg);
-        };
         const size_t headingA = currentIndex;
         const size_t headingB = nextIndex;
-        const int32_t segDxRaw = autoLapRouteCenters_[headingB].X.RawValue() -
-                                 autoLapRouteCenters_[headingA].X.RawValue();
-        const int32_t segDzRaw = autoLapRouteCenters_[headingB].Z.RawValue() -
-                                 autoLapRouteCenters_[headingA].Z.RawValue();
-        const int32_t remDxRaw = autoLapRouteCenters_[headingB].X.RawValue() -
-                                 ioCarWorldPosition.X.RawValue();
-        const int32_t remDzRaw = autoLapRouteCenters_[headingB].Z.RawValue() -
-                                 ioCarWorldPosition.Z.RawValue();
+        // Align car heading with effective movement direction so visual forward
+        // matches the camera follow vector on curves.
+        const int32_t moveDxRaw = ioCarWorldPosition.X.RawValue() - prevCarXRaw;
+        const int32_t moveDzRaw = ioCarWorldPosition.Z.RawValue() - prevCarZRaw;
+        const int32_t moveAxis = std::max(std::abs(moveDxRaw), std::abs(moveDzRaw));
 
-        const int32_t segAxis = std::max(std::abs(segDxRaw), std::abs(segDzRaw));
-        const int32_t remAxis = std::max(std::abs(remDxRaw), std::abs(remDzRaw));
-        int32_t segmentProgressRaw = 0;
-        if (segAxis > 0)
+        // Fallback to active PATH edge heading when movement delta is tiny.
+        const int32_t pathDxRaw = autoLapRouteCenters_[headingB].X.RawValue() -
+                                  autoLapRouteCenters_[headingA].X.RawValue();
+        const int32_t pathDzRaw = autoLapRouteCenters_[headingB].Z.RawValue() -
+                                  autoLapRouteCenters_[headingA].Z.RawValue();
+        int32_t targetYawDeg = YawFromDeltaRaw(pathDxRaw, pathDzRaw, ioCarYawDeg);
+        constexpr int32_t kMinMotionForYawRaw = (1 << 10);
+        if (moveAxis > kMinMotionForYawRaw)
         {
-            segmentProgressRaw = ((segAxis - remAxis) << 16) / segAxis;
-            segmentProgressRaw = std::clamp<int32_t>(segmentProgressRaw, 0, (1 << 16));
+            targetYawDeg = YawFromDeltaRaw(moveDxRaw, moveDzRaw, targetYawDeg);
         }
 
-        int32_t targetYawDeg = yawFromDelta(remDxRaw, remDzRaw, ioCarYawDeg);
-        if (autoLapRouteYawDeg_.size() == autoLapRouteCenters_.size() &&
-            autoLapRouteOffDeg_.size() == autoLapRouteCenters_.size() &&
-            !autoLapRouteYawDeg_.empty())
-        {
-            const int32_t offA = autoLapRouteOffDeg_[headingA % autoLapRouteOffDeg_.size()];
-            const int32_t offB = autoLapRouteOffDeg_[headingB % autoLapRouteOffDeg_.size()];
-            const int32_t interpOff = LerpShortestAngleDeg(offA, offB, segmentProgressRaw);
-            targetYawDeg = normalizeYawDeg(static_cast<int32_t>(autoLapRouteBaseYawDeg_) + interpOff);
-        }
-
-        const int32_t maxTurnPerFrameDeg =
-            std::clamp<int32_t>(static_cast<int32_t>(autoLapStepUnits_) * 4, 12, 64);
-        int32_t yawDelta = ShortestDeltaDeg(ioCarYawDeg, targetYawDeg);
-        yawDelta = std::clamp<int32_t>(yawDelta, -maxTurnPerFrameDeg, maxTurnPerFrameDeg);
-        ioCarYawDeg = normalizeYawDeg(ioCarYawDeg + yawDelta);
+        ioCarYawDeg = normalizeYawDeg(targetYawDeg);
         if (autoLapRouteYawDeg_.size() == autoLapRouteCenters_.size() &&
             !autoLapRouteYawDeg_.empty())
         {

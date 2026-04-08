@@ -710,6 +710,9 @@ int GameApp::Run()
     if (carValid && carPtr)
     {
         carSystem = std::make_unique<Game::CarSystem>(carPtr, isSmoothMesh, carConfig);
+        // Rotate only the rendered car model so spawn orientation is correct
+        // without changing gameplay/camera yaw reference.
+        carSystem->SetVisualYawOffsetDegrees(180);
         carSystem->SetWorldPosition(carWorldPosition);
         if constexpr (kCarLogs)
         {

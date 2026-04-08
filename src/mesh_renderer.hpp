@@ -18,6 +18,8 @@ public:
         size_t drawOrderCount{0};
         bool wireframeOnly{false};
         bool useBudget{true};
+        bool rotateModelX180{false};
+        bool rotateModelZ180{false};
     };
 
     MeshRenderer(ModelObject& model, bool isSmooth, const Config& cfg);
