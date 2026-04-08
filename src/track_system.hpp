@@ -132,6 +132,8 @@ public:
     uint16_t WorkingSetTicksThisFrame() const { return sh2MasterWorkingSetTicksThisFrame_; }
     void SetRuntimeStatsLogsEnabled(bool enabled) { runtimeStatsLogsEnabled_ = enabled; }
     bool RuntimeStatsLogsEnabled() const { return runtimeStatsLogsEnabled_; }
+    // Re-anchor track texture heap base after loading non-track assets (e.g. car).
+    void RebaseTrackTextureHeapBase();
 
 private:
     enum class MemoryPressureLevel : uint8_t

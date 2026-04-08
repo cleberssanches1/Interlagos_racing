@@ -635,6 +635,11 @@ int GameApp::Run()
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
         SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
+        if (renderTrack && trackSystemReady)
+        {
+            // Protect car texture slots from track-heap recycle/residency rebuild.
+            trackSystem.RebaseTrackTextureHeapBase();
+        }
         // Boot-time RAM snapshot for car load disabled to keep runtime HUD focused
         // on track streaming and slide diagnostics.
 

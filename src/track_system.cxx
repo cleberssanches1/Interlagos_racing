@@ -8556,6 +8556,11 @@ void TrackSystem::CaptureTrackTextureHeapBase()
     trackTextureHeapBaseValid_ = true;
 }
 
+void TrackSystem::RebaseTrackTextureHeapBase()
+{
+    CaptureTrackTextureHeapBase();
+}
+
 bool TrackSystem::RebuildTrackTextureResidencyForWindow()
 {
     if (segmentRenderers_.empty())
