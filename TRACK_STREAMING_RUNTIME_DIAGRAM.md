@@ -2,298 +2,232 @@
 
 ## Objetivo
 
-A pista deve operar como uma janela deslizante fixa de `20` segmentos.
+Este documento descreve o fluxo real do runtime de renderizacao da pista no codigo atual.
+O ponto principal e este:
 
-Contrato visual:
+- a janela ativa continua sendo o contrato de `20` segmentos
+- o modo de estabilizacao e o caminho ativo no codigo atual
+- `TrackRenderCoordinator` e `TrackDrawProducer` existem e sao inicializados, mas o hot path de render estabilizado os contorna
 
-- `4` segmentos em `64x64`
-- `5` segmentos em `32x32`
-- `5` segmentos em `16x16`
-- `6` segmentos em `8x8`
+## Estado atual do runtime
 
-Contrato de slide:
+O codigo hoje opera com estas regras observaveis:
 
-- sai `1` segmento da frente
-- entra `1` novo segmento no fim em `8x8`
-- o antigo rank `4` sobe para `64x64`
-- o antigo rank `9` sobe para `32x32`
-- o antigo rank `14` sobe para `16x16`
+- `kEnableTrackRuntimeStabilization = true`
+- `kEnableDeterministicStabilizedSlide = true`
+- `TrackSystem::RenderFrame()` executa manutencao, slide, prefetch, working-set refresh e desenho
+- `RenderVisibleSegmentOrder()` faz render direto na trilha estabilizada
+- `TrackDrawProducer` e `TrackRenderCoordinator` entram no caminho de fallback quando a estabilizacao esta desligada
 
-Em outras palavras, a janela sempre deve ficar:
+Em outras palavras:
 
-```text
-rank  0..3   -> 64x64
-rank  4..8   -> 32x32
-rank  9..13  -> 16x16
-rank  14..19 -> 8x8
-```
+- no modo estabilizado, o coordenador nao e o motor principal de render
+- no modo nao estabilizado, o par `TrackDrawProducer` + `TrackRenderCoordinator` volta a ser usado para preparar e executar a fila de desenho
 
-Se a janela é fixa e o segmento que sai é reciclado de verdade, o uso de memória da pista deve ficar quase constante ao longo da corrida.
+## Papel de cada componente
 
-## Exemplo
+| Componente | Papel real no codigo atual |
+| --- | --- |
+| `TrackSystem::RenderFrame` | Orquestra o frame: manutencao de RAM, slide da janela, prefetch, recuperacao de LOD, working-set e render final |
+| `RenderVisibleSegmentOrder` | Decide a ordem visivel e executa o desenho; no modo estabilizado, faz render direto por segmento |
+| `TrackDrawProducer` | Mantem a lista de desenho para o caminho nao estabilizado; nao participa do hot path estabilizado |
+| `TrackRenderCoordinator` | Enforce de budget e staging de chunks; usado no fallback nao estabilizado |
 
-```text
-Carro no segmento 1
-Segs:  1  2  3  4 | 5  6  7  8  9 | 10 11 12 13 14 | 15 16 17 18 19 20
-LOD : 64 64 64 64 |32 32 32 32 32 | 16 16 16 16 16 |  8  8  8  8  8  8
+## Fluxo real por frame
 
-Carro no segmento 2
-Segs:  2  3  4  5 | 6  7  8  9 10 | 11 12 13 14 15 | 16 17 18 19 20 21
-LOD : 64 64 64 64 |32 32 32 32 32 | 16 16 16 16 16 |  8  8  8  8  8  8
-```
+O fluxo atual e este:
 
-## Fluxo ideal por frame
+1. `RenderFrame(renderTrack, trackOffset, lightDirection, cameraLocation, carWorldPosition)`
+2. Se `!ready_`, sai sem render
+3. Inicia medicao de frame com `Sh2FrtProfiler`
+4. Se a estabilizacao esta ativa, roda `RunWorkRamMaintenance(false)` antes do slide
+5. Atualiza a janela com `UpdateActiveSegmentWindowForPosition(...)`
+6. Se houve slide e ha pressao de memoria, pode rodar `RunWorkRamMaintenance(true)` depois do slide
+7. Se a estabilizacao estiver desligada, roda `RunWorkRamMaintenance(windowSlid)`
+8. O bloco de recuperacao de LOD existe, mas com `kEnableDeterministicStabilizedSlide = true` ele fica efetivamente desativado no build atual
+9. Se a estabilizacao estiver desligada, monta `orderedHandles` com `BuildVisibleSegmentOrder(...)`
+10. Refresca o working-set quando `familyWorkingSetDirty_` esta marcado
+11. Chama `RenderVisibleSegmentOrder(...)`
+12. Fecha o frame com `EndFrame()`, telemetria e limpeza de recursos adiados
+
+## Diagrama atualizado
 
 ```mermaid
 flowchart TD
-    A[BeginFrame] --> B{Carro cruzou para o próximo segmento?}
-    B -- Não --> C[Opcional: preparar tail N+20 em 8x8]
-    C --> D[Opcional: preparar promoções 4/9/14]
-    D --> E[Render]
-    E --> F[EndFrame]
-
-    B -- Sim --> G[Identificar dropIdx e nextId]
-    G --> H[Garantir nextId pronto em 8x8]
-    H --> I[Preparar promoções obrigatórias 4->64 9->32 14->16]
-    I --> J[Reciclar slot do segmento que saiu]
-    J --> K[Inserir nextId no slot reciclado]
-    K --> L[Aplicar as 3 promoções]
-    L --> M[Atualizar lookup/handles]
-    M --> E
+    A[TrackSystem::RenderFrame] --> B{ready_ and renderTrack?}
+    B -- nao --> Z[Return]
+    B -- sim --> C[Start frame timers and RAM snapshots]
+    C --> D[RunWorkRamMaintenance(false) if stabilization is on]
+    D --> E[UpdateActiveSegmentWindowForPosition]
+    E --> F{Window slid?}
+    F -- sim --> G{Memory pressure?}
+    G -- sim --> H[RunWorkRamMaintenance(true)]
+    G -- nao --> I[Skip post-slide maintenance]
+    F -- nao --> J[TryPrefetchUpcomingSegment / PrewarmNextSegmentLod8 / BoundaryLods]
+    H --> J
+    I --> J
+    J --> K{Deterministic stabilized slide enabled?}
+    K -- sim --> L[ExecuteDeterministicStabilizedSlide]
+    K -- nao --> M[Legacy slide back-buffer path]
+    L --> N[RefreshFamilyWorkingSet if dirty]
+    M --> N
+    N --> O[RenderVisibleSegmentOrder]
+    O --> P{Stabilization on?}
+    P -- sim --> Q[Sort visible entries far-first and render direct]
+    P -- nao --> R{Coordinator ready?}
+    R -- nao --> S[Direct fallback render over orderedHandles]
+    R -- sim --> T[TrackDrawProducer.Build]
+    T --> U[TrackRenderCoordinator.Prepare]
+    U --> V[TrackRenderCoordinator.Execute]
+    V --> W[EndFrame]
+    Q --> W
+    S --> W
 ```
 
-Princípio:
-
-- `0` ou `1` slide por frame
-- `1` segmento novo por slide
-- no máximo `3` promoções por slide
-- nenhum outro subsistema deve “mandar” no LOD da janela no modo estabilizado
-
-## Fluxo real atual
+## Sequencia de render estabilizada
 
-Hoje o runtime da pista passa por estes blocos:
+No caminho ativo hoje, `RenderVisibleSegmentOrder()` faz:
 
-1. `TrackSystem::Initialize()`
-2. `PrepareInitialSegmentPackages()`
-3. `BuildSegmentRenderers()`
-4. `RebuildTrackTextureResidencyForWindow()`
-5. `RenderFrame()`
-6. `RunWorkRamMaintenance()`
-7. `SlideActiveSegmentWindow()`
-8. `ExecuteDeterministicStabilizedSlide()` ou caminho legado de `slideBackBuffer`
-9. `BuildSegmentIntoPrefetch()`
-10. `RenderVisibleSegmentOrder()`
-11. `RecycleTrackTextureHeap()` / rebuild de textura
-12. `EndFrame()`
+1. coleta entradas validas de `segmentRenderers_`
+2. ordena por profundidade para a camera, com desempate por rank da janela
+3. limita a quantidade desenhada por `fixedVisibleSegmentCap_`
+4. repara estado corrompido se necessario
+5. revalida slots de textura por face/familia
+6. aplica `SetOffset(...)`
+7. chama `renderer->Render(...)` diretamente
 
-Em termos de estado vivo, ainda existem estes grupos:
+Isto significa:
 
-- janela ativa dos `20` segmentos
-- `slideScratchRenderer_`
-- `slidePrefetchRenderer_`
-- `slidePrefetchFamilyIds_`
-- `slidePrefetchFaceSlots_`
-- scratch de `slideIncoming*`
-- scratch de `slideRollback*`
-- slots e filas de reciclagem de textura
-- coordinator/pool de draw
-- caches internos do `TrackRenderer`
-- blobs/scratch de carregamento de `RDR/SDR/BDR/GEO/MAT`
+- a janela visivel real e montada a partir dos renderers residentes
+- a lista do `TrackDrawProducer` nao decide a ordem no caminho estabilizado
+- o `TrackRenderCoordinator` nao faz staging do hot path estabilizado
 
-## Diagrama do runtime atual
+## Onde `TrackDrawProducer` e `TrackRenderCoordinator` entram
 
-```mermaid
-flowchart LR
-    A[Carro / Segmento atual] --> B[RenderFrame]
-    B --> C[RunWorkRamMaintenance]
-    B --> D[SlideActiveSegmentWindow]
-    D --> E[BuildSegmentIntoPrefetch]
-    D --> F[ExecuteDeterministicStabilizedSlide]
-    D --> G[slideBackBuffer legado]
-    B --> H[RebuildTrackTextureResidencyForWindow]
-    B --> I[RecycleTrackTextureHeap]
-    B --> J[RenderVisibleSegmentOrder]
-    J --> K[TrackRenderer::Render]
-    B --> L[EndFrame]
-```
+Hoje o papel deles e de fallback e telemetria:
 
-Problema central:
+- `TrackDrawProducer` monta a lista de handles quando a estabilizacao esta desligada
+- `TrackRenderCoordinator::Prepare()` converte handles ordenados em chunks staged
+- `TrackRenderCoordinator::Execute()` aplica o budget por frame e dispara o render
+- `coordinator_.PresentTelemetry()` continua sendo chamado em `EndFrame()`
 
-- a regra visual de `20` segmentos está correta
-- mas o runtime ainda mantém estado auxiliar demais vivo ao redor dessa janela
-- isso faz o `free` cair volta após volta
+Por isso, este par continua relevante para:
 
-## Leitura dos logs atuais
+- medir custo de budget
+- validar a trilha nao estabilizada
+- servir como fallback quando a politica de estabilizacao muda
 
-Padrão observado nos logs mais recentes:
+## O que este codigo nao faz mais no hot path
 
-- primeira volta fluida
-- depois o frame rate cai progressivamente
-- `free` vai reduzindo até chegar perto de `0`
-- depois surgem:
-  - `PKG slide low step`
-  - lacunas
-  - perda de segmentos
-  - travamento
+Estas suposicoes antigas nao valem mais para o caminho estabilizado atual:
 
-Sinais importantes:
+- `TrackDrawProducer` nao e o controlador principal da ordem visivel
+- `TrackRenderCoordinator` nao e o pipeline principal de desenho
+- a logica de slide nao depende do coordenador para estabilizar a janela
 
-- a janela lógica segue correta por bastante tempo
-- a degradação não começa porque “o segmento antigo ficou preso”
-- o acúmulo acontece em buckets ligados à pista fora do miolo `20 segmentos`
+## Plano de otimizacao de performance
 
-## Hipótese consolidada
+Este e o plano de trabalho recomendado com base no fluxo atual:
 
-O problema não é o contrato da janela. O problema é a desmobilização incompleta do estado auxiliar do streaming.
+### 1. Manter o hot path sem bifurcacao desnecessaria
 
-Hoje há sinais de retenção em três áreas:
+Objetivo:
 
-1. `TrackCore`
-   Estado persistente da pista que ainda continua na `HighWorkRam`.
+- reduzir trabalho redundante no render estabilizado
+- manter `RenderVisibleSegmentOrder()` direto e previsivel
 
-2. `TrackPrepare`
-   Preparação de slide/prefetch/repair mantendo muitos blocos vivos.
+Metricas:
 
-3. `TrackTexture`
-   Estado de textura e rebind residindo mais tempo do que deveria.
+- `sh2MasterDrawTicksThisFrame_`
+- `runtimeSafeReappliedThisFrame_`
+- `runtimeSafeSkippedThisFrame_`
 
-## Onde o risco é maior
+Aceite:
 
-### 1. Prefetch e slide
+- o caminho estabilizado deve ficar constante em custo por frame
+- reparos devem acontecer so quando houver inconsistencia real
 
-Mesmo com o caminho determinístico novo, ainda existe estado de prefetch persistente:
+### 2. Controlar o custo de prefetch e prewarm
 
-- `slidePrefetchSegmentId_`
-- `slidePrefetchFamilyIds_`
-- `slidePrefetchFaceSlots_`
-- `slidePrefetchRenderer_`
+Objetivo:
 
-Se esse bloco não volta ao piso após o commit do slide, o custo cresce ao longo das voltas.
+- manter o numero de uploads e rebuilds sob teto
+- evitar que prefetch vire fonte de picos repetidos
 
-### 2. Caches internos do renderer
+Metricas:
 
-O `TrackRenderer` ainda tem caches internos por mesh.
+- `runtimePrefetchHitsThisFrame_`
+- `runtimePrefetchMissesThisFrame_`
+- `textureUploadsThisFrame_`
+- `trackTextureRecycleCount_`
+- `textureHeapCompactCooldown_`
 
-Se esses caches:
+Aceite:
 
-- crescem com o pior caso
-- não são desativados para segmentos streamados
-- ou são usados em caminhos que não precisam deles
+- o sistema deve preferir reutilizar estado residente
+- o prewarm deve respeitar o orcamento de uploads por frame
 
-então a memória deixa de ser constante.
+### 3. Reduzir churn de working-set e slots
 
-### 3. Pipeline de textura
+Objetivo:
 
-O segmento que sai da janela precisa:
+- evitar crescimento monotono de estado auxiliar
+- manter o custo do `familyWorkingSetDirty_` sob controle
 
-- perder seus refs de working set
-- colocar slot/palette em reciclagem segura
-- não manter shadow state desnecessário
+Metricas:
 
-Se o runtime mantém metadados extras por face/família além do necessário, o custo vai se acumulando.
+- `sh2MasterWorkingSetTicksThisFrame_`
+- `EstimateWorkRamRetainedBytes()`
+- `EstimateLowWorkRamRetainedBytes()`
+- `phaseHwrAfterStream_ - phaseHwrBeforeStream_`
+- `phaseLwrAfterStream_ - phaseLwrBeforeStream_`
 
-## Regra de ouro para corrigir
+Aceite:
 
-No modo estabilizado, a pista precisa viver com memória determinística:
+- o working-set deve ser atualizado so quando houver mudanca real
+- a memoria retida deve oscilar dentro de uma faixa estavel
 
-```text
-20 ativos
-+ 1 scratch
-+ 1 prefetch
-+ buffers fixos de slots/famílias no pior caso do pack
-= custo estável
-```
+### 4. Tratar slide e textura como sistemas separados
 
-Qualquer crescimento monotônico de `free` para baixo significa bug.
+Objetivo:
 
-## Plano de correção
+- diferenciar custo de janela de custo de heap de textura
+- evitar confundir recuperacao de LOD com leak de RAM
 
-### Etapa 1. Uma única fonte de verdade para o slide
+Metricas:
 
-Manter só o caminho:
+- `runtimeSlidesThisFrame_`
+- `runtimeSlideStallsThisFrame_`
+- `slideHwrTraceFlags_`
+- `slideHwrTraceAfterTrim_`
+- `slideHwrTraceAfterBuildPrefetch_`
 
-- `BuildSegmentIntoPrefetch(nextId)`
-- `ExecuteDeterministicStabilizedSlide(dropIdx, nextId, nextStartId)`
+Aceite:
 
-No modo estabilizado, o caminho legado de `slideBackBuffer` não deve mais influenciar o slide.
+- o slide precisa continuar deterministico
+- falha visual de textura nao deve ser mascarada como problema de janela
 
-### Etapa 2. Memória fixa da janela
+### 5. Medir antes de alterar politica de render
 
-Pré-alocar uma vez:
+Objetivo:
 
-- `20` renderers ativos
-- `1` scratch
-- `1` prefetch
-- vetores de face slots / family ids com capacidade máxima do pack
+- qualquer ajuste em budget ou coordenador precisa de baseline
 
-Durante a corrida:
+Metricas:
 
-- não fazer `reserve` crescente
-- não criar novos containers persistentes
+- `sh2MasterStreamTicksThisFrame_`
+- `sh2MasterDrawTicksThisFrame_`
+- `sh2MasterFrameTicksThisFrame_`
+- `coordinator_.Telemetry().submittedTrackSegments`
+- `coordinator_.Telemetry().trackSegmentsSkippedByBudget`
 
-### Etapa 3. Zerar o custo do prepare após o slide
+Aceite:
 
-Após commit do slide:
+- nao mudar a politica sem baseline comparavel
+- toda regressao deve ser visivel em ticks e em memoria, nao apenas em FPS
 
-- o scratch do segmento que saiu deve ser reciclado no mesmo frame
-- o prefetch antigo deve ser desmontado se não for o próximo `N+20`
-- qualquer vetor auxiliar deve voltar ao piso
+## Referencia de plan separado
 
-### Etapa 4. Desligar repair difuso no modo estabilizado
+O plano de uso dual do SH2 foi extraido para um documento dedicado:
 
-No modo estabilizado, o draw não deve virar lugar de correção.
-
-`RenderVisibleSegmentOrder()` deve:
-
-- renderizar
-- no máximo logar inconsistência
-
-e não manter mecanismos paralelos de recuperação mandando no LOD.
-
-### Etapa 5. Separar bug de textura do bug de memória
-
-O problema visual do segmento `173` na 1a volta parece outro bug:
-
-- texture slot
-- palette
-- rebind
-
-Ele deve ser tratado depois da memória da pista estabilizar.
-
-## Checklist de aceite
-
-### Memória
-
-- `free` não pode cair monotonicamente volta após volta
-- `TrackCore`, `TrackPrepare` e `TrackTexture` precisam estabilizar
-- a pista deve operar com custo quase constante
-
-### Slide
-
-- `WIN N..N+19 -> N+1..N+20`
-- exatamente `1` slide por transição de segmento
-- o segmento que sai libera o slot para o segmento que entra
-
-### LOD
-
-- `TRK band` deve ficar:
-  - `64:4`
-  - `32:5`
-  - `16:5`
-  - `8:6`
-
-### Performance
-
-- sem queda progressiva de FPS ao longo das voltas
-- objetivo operacional: `30 fps`
-
-## Resposta curta
-
-A janela de `20` segmentos está conceitualmente correta. O problema está no estado auxiliar que continua vivo ao redor dela.
-
-Para corrigir:
-
-1. reduzir o modo estabilizado para `20 + 1 + 1`
-2. parar de manter buffers persistentes duplicados para slide/prefetch/texture
-3. fixar a memória da pista em pools/capacidades máximas
-4. só depois tratar os glitches visuais de textura
+- [SH2_BALANCING_PLAN.md](./SH2_BALANCING_PLAN.md)

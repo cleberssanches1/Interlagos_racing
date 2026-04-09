@@ -737,6 +737,7 @@ private:
         input.rHeld = pad_.IsHeld(SRL::Input::Digital::Button::R);
         input.leftHeld = pad_.IsHeld(SRL::Input::Digital::Button::Left);
         input.rightHeld = pad_.IsHeld(SRL::Input::Digital::Button::Right);
+        const bool zHeld = pad_.IsHeld(SRL::Input::Digital::Button::Z);
         const bool xHeld = input.xHeld;
 
         int32_t yawForCamera = carYawDeg_;
@@ -802,17 +803,27 @@ private:
         }
         if (input.yHeld && !yHeldPrev_)
         {
-            autoLapTestEnabled_ = !autoLapTestEnabled_;
-            if (autoLapTestEnabled_)
+            const bool toggleTrackSlave = zHeld && context_.trackSystem;
+            if (toggleTrackSlave)
             {
-                autoLapRouteInitialized_ = false;
-                autoLapRouteBuilt_ = false;
+                const bool nextSlaveMode = !context_.trackSystem->TrackSlaveModeRequested();
+                context_.trackSystem->SetTrackSlaveMode(nextSlaveMode);
+                SRL::Debug::Print(1, 18, "TRK SH2 mode:%s   ", nextSlaveMode ? "DUAL" : "SINGLE");
             }
             else
             {
-                autoLapCurrentOffDeg_ = 0;
+                autoLapTestEnabled_ = !autoLapTestEnabled_;
+                if (autoLapTestEnabled_)
+                {
+                    autoLapRouteInitialized_ = false;
+                    autoLapRouteBuilt_ = false;
+                }
+                else
+                {
+                    autoLapCurrentOffDeg_ = 0;
+                }
+                SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
             }
-            SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
         }
         yHeldPrev_ = input.yHeld;
         leftHeldPrev_ = input.leftHeld;

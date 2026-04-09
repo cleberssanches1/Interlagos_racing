@@ -31,6 +31,13 @@ struct TrackDrawProducerStats
     bool safeModeActive = false;
 };
 
+template <typename Handle, typename DepthKey>
+struct TrackDepthSortItem
+{
+    Handle handle{};
+    DepthKey depthKey{};
+};
+
 template <typename Handle, size_t Capacity>
 class ITrackDrawProducer
 {
@@ -84,6 +91,312 @@ private:
     TrackDrawListAB<Handle, Capacity> lists_{};
     TrackDrawProducerStats stats_{};
     uint32_t currentFrameId_ = 0;
+};
+
+// Small-list sorter that mirrors the producer lifecycle.
+// It accepts handle + depthKey pairs, emits far-to-near order, and keeps the
+// same job/latency telemetry shape for future TrackSystem integration.
+template <typename Handle, typename DepthKey, size_t Capacity>
+class SlaveTrackDepthSorter final
+{
+public:
+    using Item = TrackDepthSortItem<Handle, DepthKey>;
+
+    // Capture frame context for latency and timeout accounting.
+    void BeginFrame(uint32_t frameId)
+    {
+        currentFrameId_ = frameId;
+        UpdateSafeModeState();
+        TryRecoverSlave();
+    }
+
+    // Sort depth-keyed pairs from far to near.
+    template <typename AllocT>
+    void Build(const std::vector<Item, AllocT>& items, size_t limit)
+    {
+        FinalizeIfReady();
+
+        if (jobInFlight_)
+        {
+            const uint32_t inFlightFrames = currentFrameId_ - submittedFrameId_;
+            if (inFlightFrames > maxFramesInFlight_)
+            {
+                ++stats_.timeoutFallbacks;
+                ++stats_.consecutiveTimeouts;
+                stats_.slaveDisabledByTimeout = true;
+                disableSlaveWhenIdle_ = true;
+                disabledAtFrameId_ = currentFrameId_;
+                EnterSafeMode(safeModeCooldownFrames_);
+            }
+            ++stats_.reusedPreviousList;
+            stats_.jobInFlight = true;
+            if (safeModeFramesRemaining_ > 0)
+            {
+                ++stats_.safeModeFrames;
+            }
+            return;
+        }
+
+        BuildJobData jobData{};
+        jobData.count = static_cast<uint16_t>(std::min({ limit, items.size(), size_t(Capacity) }));
+        for (size_t i = 0; i < jobData.count; ++i)
+        {
+            jobData.items[i] = items[i];
+        }
+
+        pendingData_ = jobData;
+        pendingTarget_ = CacheThroughPtr(&lists_[writeIdx_]);
+
+        // Force synchronous mode while safe mode cooldown is active.
+        if (useSlave_ && safeModeFramesRemaining_ == 0)
+        {
+            // Ensure configured pointers are visible before scheduling Slave SH2.
+            CompilerFence();
+            task_.Configure(CacheThroughPtr(&pendingData_), pendingTarget_);
+            SRL::Slave::ExecuteOnSlave(task_);
+            jobInFlight_ = true;
+            submittedFrameId_ = currentFrameId_;
+            ++stats_.jobsSubmitted;
+            stats_.jobInFlight = true;
+            return;
+        }
+
+        // Synchronous fallback for environments without Slave SH2 scheduling.
+        ApplyJob(pendingData_, *pendingTarget_);
+        SwapBuffers();
+        ++stats_.jobsSubmitted;
+        ++stats_.jobsCompleted;
+        ++stats_.synchronousBuilds;
+        stats_.lastLatencyFrames = 0;
+        stats_.consecutiveTimeouts = 0;
+        stats_.jobInFlight = false;
+        if (safeModeFramesRemaining_ > 0)
+        {
+            ++stats_.safeModeFrames;
+        }
+    }
+
+    // Return the latest completed far-to-near order.
+    const TrackDrawList<Handle, Capacity>& Consume() const
+    {
+        return *CacheThroughPtr(const_cast<TrackDrawList<Handle, Capacity>*>(&lists_[readIdx_]));
+    }
+
+    // Return immutable sorter stats.
+    TrackDrawProducerStats Stats() const
+    {
+        return stats_;
+    }
+
+    bool IsJobInFlight() const { return jobInFlight_; }
+    void SetUseSlave(bool enabled) { useSlave_ = enabled; }
+    void SetMaxFramesInFlight(uint32_t frames) { maxFramesInFlight_ = frames == 0 ? 1 : frames; }
+    void SetRecoveryFrames(uint32_t frames) { recoveryFrames_ = frames == 0 ? 1 : frames; }
+    void SetSafeModeStallThreshold(uint32_t frames) { safeModeStallThreshold_ = frames == 0 ? 1 : frames; }
+    void SetSafeModeCooldownFrames(uint32_t frames) { safeModeCooldownFrames_ = frames == 0 ? 1 : frames; }
+
+private:
+    struct BuildJobData
+    {
+        Item items[Capacity]{};
+        uint16_t count = 0;
+    };
+
+    class BuildTask final : public SRL::Types::ITask
+    {
+    public:
+        // Configure input and output pointers before scheduling.
+        void Configure(const BuildJobData* data, TrackDrawList<Handle, Capacity>* target)
+        {
+            data_ = data;
+            target_ = target;
+        }
+
+        uint16_t LastTicks() const { return lastTicks_; }
+
+    private:
+        // Execute depth sort on Slave SH2.
+        void Do() override
+        {
+            if (!data_ || !target_) return;
+            Sh2FrtProfiler::EnsureInitialized();
+            const uint16_t startTicks = Sh2FrtProfiler::Now();
+            ApplyJob(*data_, *target_);
+            lastTicks_ = Sh2FrtProfiler::Elapsed(startTicks, Sh2FrtProfiler::Now());
+            CompilerFence();
+        }
+
+        const BuildJobData* data_ = nullptr;
+        TrackDrawList<Handle, Capacity>* target_ = nullptr;
+        volatile uint16_t lastTicks_ = 0;
+    };
+
+    static void ApplyJob(const BuildJobData& data, TrackDrawList<Handle, Capacity>& target)
+    {
+        Item sorted[Capacity]{};
+        for (uint16_t i = 0; i < data.count; ++i)
+        {
+            sorted[i] = data.items[i];
+        }
+
+        // Small-list insertion sort keeps the footprint low and stays stable.
+        for (uint16_t i = 1; i < data.count; ++i)
+        {
+            const Item current = sorted[i];
+            int32_t j = static_cast<int32_t>(i) - 1;
+            while (j >= 0 && sorted[j].depthKey < current.depthKey)
+            {
+                sorted[j + 1] = sorted[j];
+                --j;
+            }
+            sorted[j + 1] = current;
+        }
+
+        target.Clear();
+        for (uint16_t i = 0; i < data.count; ++i)
+        {
+            target.Push(sorted[i].handle);
+        }
+        CompilerFence();
+    }
+
+    void FinalizeIfReady()
+    {
+        if (!jobInFlight_) return;
+        // Important: do not call virtual methods through cache through aliases.
+        // Virtual dispatch must use a regular pointer to keep vtable reads stable.
+        if (!task_.IsDone()) return;
+        jobInFlight_ = false;
+        ++stats_.jobsCompleted;
+        stats_.lastLatencyFrames = currentFrameId_ - submittedFrameId_;
+        if (stats_.lastLatencyFrames > stats_.maxLatencyFrames)
+        {
+            stats_.maxLatencyFrames = stats_.lastLatencyFrames;
+        }
+        stats_.consecutiveTimeouts = 0;
+        if (disableSlaveWhenIdle_)
+        {
+            useSlave_ = false;
+        }
+        disableSlaveWhenIdle_ = false;
+        stats_.jobInFlight = false;
+        stats_.slaveLastJobTicks = task_.LastTicks();
+        if (stats_.slaveLastJobTicks > stats_.slaveMaxJobTicks)
+        {
+            stats_.slaveMaxJobTicks = stats_.slaveLastJobTicks;
+        }
+        SwapBuffers();
+    }
+
+    // Track repeated reuse patterns and enter safe mode before hard timeout.
+    void UpdateSafeModeState()
+    {
+        const uint32_t reusedDelta = stats_.reusedPreviousList - lastReusedPreviousList_;
+        lastReusedPreviousList_ = stats_.reusedPreviousList;
+
+        if (jobInFlight_ && reusedDelta > 0)
+        {
+            ++stallFrames_;
+        }
+        else
+        {
+            stallFrames_ = 0;
+        }
+
+        if (stallFrames_ >= safeModeStallThreshold_)
+        {
+            EnterSafeMode(safeModeCooldownFrames_);
+            stallFrames_ = 0;
+        }
+
+        if (safeModeFramesRemaining_ > 0)
+        {
+            --safeModeFramesRemaining_;
+            stats_.safeModeActive = true;
+        }
+        else
+        {
+            stats_.safeModeActive = false;
+        }
+    }
+
+    // Enter synchronous fallback window to drain instability.
+    void EnterSafeMode(uint32_t frames)
+    {
+        safeModeFramesRemaining_ = frames == 0 ? 1 : frames;
+        ++stats_.safeModeTriggers;
+        stats_.safeModeActive = true;
+        if (jobInFlight_)
+        {
+            disableSlaveWhenIdle_ = true;
+            disabledAtFrameId_ = currentFrameId_;
+        }
+        else
+        {
+            useSlave_ = false;
+            stats_.slaveDisabledByTimeout = true;
+            disabledAtFrameId_ = currentFrameId_;
+        }
+    }
+
+    // Try to re-enable Slave SH2 after a cooldown window.
+    void TryRecoverSlave()
+    {
+        if (useSlave_) return;
+        if (!stats_.slaveDisabledByTimeout) return;
+        if (jobInFlight_) return;
+        if (safeModeFramesRemaining_ > 0) return;
+        const uint32_t elapsed = currentFrameId_ - disabledAtFrameId_;
+        if (elapsed < recoveryFrames_) return;
+        useSlave_ = true;
+        stats_.slaveDisabledByTimeout = false;
+        stats_.consecutiveTimeouts = 0;
+        ++stats_.slaveReenabledCount;
+    }
+
+    // Swap read and write indices only after build is visible.
+    void SwapBuffers()
+    {
+        CompilerFence();
+        const uint8_t prevRead = readIdx_;
+        readIdx_ = writeIdx_;
+        writeIdx_ = prevRead;
+        CompilerFence();
+    }
+
+    template <typename T>
+    static T* CacheThroughPtr(T* ptr)
+    {
+        constexpr uintptr_t kCacheThroughMask = 0x20000000u;
+        return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) | kCacheThroughMask);
+    }
+
+    // Compiler memory fence for shared producer state.
+    static void CompilerFence()
+    {
+        asm volatile("" ::: "memory");
+    }
+
+    TrackDrawList<Handle, Capacity> lists_[2]{};
+    uint8_t readIdx_ = 0;
+    uint8_t writeIdx_ = 1;
+    bool useSlave_ = true;
+    bool jobInFlight_ = false;
+    bool disableSlaveWhenIdle_ = false;
+    TrackDrawProducerStats stats_{};
+    uint32_t currentFrameId_ = 0;
+    uint32_t submittedFrameId_ = 0;
+    uint32_t disabledAtFrameId_ = 0;
+    uint32_t maxFramesInFlight_ = 2;
+    uint32_t recoveryFrames_ = 120;
+    uint32_t safeModeStallThreshold_ = 4;
+    uint32_t safeModeCooldownFrames_ = 90;
+    uint32_t safeModeFramesRemaining_ = 0;
+    uint32_t stallFrames_ = 0;
+    uint32_t lastReusedPreviousList_ = 0;
+    BuildJobData pendingData_{};
+    TrackDrawList<Handle, Capacity>* pendingTarget_ = nullptr;
+    BuildTask task_{};
 };
 
 template <typename Handle, size_t Capacity>

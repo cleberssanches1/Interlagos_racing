@@ -472,7 +472,7 @@ int GameApp::Run()
     const bool renderTrack = true; // pista habilitada
     const bool renderCar = true; // carro habilitado
     const bool loadCarAfterTrack = true; // mantem fluxo padrao de carga da pista
-    const bool enableTrackSlaveProducer = false; // diagnostico: desativa Slave para estabilizar
+    const bool enableTrackSlaveProducer = true; // teste: habilita Slave
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
 

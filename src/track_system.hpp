@@ -32,6 +32,15 @@ using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
 using TrackLowWorkI16Vector = TrackLowWorkVector<int16_t>;
 using TrackHighWorkI16Vector = TrackHighWorkVector<int16_t>;
 
+namespace TrackPipeline
+{
+class TrackMaintenanceStage;
+class TrackWindowStage;
+class TrackPrefetchStage;
+class TrackLodStage;
+class TrackWorkingSetStage;
+}
+
 template <typename T, SRL::Memory::Zone ZoneValue>
 struct TrackObjectDeleter
 {
@@ -130,12 +139,21 @@ public:
     uint16_t PrefetchTicksThisFrame() const { return sh2MasterPrefetchTicksThisFrame_; }
     uint16_t LodTicksThisFrame() const { return sh2MasterLodTicksThisFrame_; }
     uint16_t WorkingSetTicksThisFrame() const { return sh2MasterWorkingSetTicksThisFrame_; }
+    // Toggle track Slave usage at runtime for A/B performance measurements.
+    void SetTrackSlaveMode(bool enabled);
+    bool TrackSlaveModeRequested() const { return trackSlaveModeRequested_; }
     void SetRuntimeStatsLogsEnabled(bool enabled) { runtimeStatsLogsEnabled_ = enabled; }
     bool RuntimeStatsLogsEnabled() const { return runtimeStatsLogsEnabled_; }
     // Re-anchor track texture heap base after loading non-track assets (e.g. car).
     void RebaseTrackTextureHeapBase();
 
 private:
+    friend class TrackPipeline::TrackMaintenanceStage;
+    friend class TrackPipeline::TrackWindowStage;
+    friend class TrackPipeline::TrackPrefetchStage;
+    friend class TrackPipeline::TrackLodStage;
+    friend class TrackPipeline::TrackWorkingSetStage;
+
     enum class MemoryPressureLevel : uint8_t
     {
         Normal = 0,
@@ -389,11 +407,43 @@ private:
     MemoryPressureLevel ClassifyMemoryPressure(size_t freeBytes, bool freeValid) const;
     uint16_t ReleaseTrackFamilyResourcesImmediate(MemoryPressureLevel level);
     void RunWorkRamMaintenance(bool windowSlid);
+    bool RunInitialMaintenanceStage();
+    bool RunWindowStage(const SRL::Math::Types::Vector3D& carWorldPosition,
+                        const SRL::Math::Types::Vector3D& trackOffset);
+    void RunTextureCompactionStage(bool windowSlid);
+    void RunPrefetchStage(bool windowSlid);
+    bool RunPostSlideMaintenanceStage(bool slidThisFrame);
+    bool RunLegacyMaintenanceStage(bool windowSlid);
+    void BuildOrderedHandlesStage(const SRL::Math::Types::Vector3D& trackOffset,
+                                  const SRL::Math::Types::Vector3D& cameraLocation,
+                                  std::vector<SegmentHandle>& outOrderedHandles);
+    bool RunWorkingSetStage();
+    void RunDrawStage(const std::vector<SegmentHandle>& orderedHandles,
+                      const SRL::Math::Types::Vector3D& trackOffset,
+                      const SRL::Math::Types::Vector3D& lightDirection,
+                      const SRL::Math::Types::Vector3D& cameraLocation,
+                      std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
+                      std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+                      bool& segment01Logged,
+                      bool& segment01Prepared);
     void RefreshFamilyWorkingSet(bool releaseUnused);
     void ReleaseUnusedFamilyResourcesEndFrame();
     void EmitFamilyWorkingSetTelemetry() const;
     void MergeCurrentWindowFamilies();
     void ValidateStabilizedWindowInvariants();
+    void TickRuntimeFrameCooldowns();
+    bool ShouldRunPostSlideMaintenance(bool slidThisFrame) const;
+    bool RunPendingLodRecoveryStage(bool slidThisFrame);
+    const TrackLowWorkVector<SegmentHandle>& BuildStabilizedSortedHandles(
+        const SRL::Math::Types::Vector3D& trackOffset,
+        const SRL::Math::Types::Vector3D& cameraLocation);
+    void RenderVisibleSegmentOrderStabilized(
+        const SRL::Math::Types::Vector3D& trackOffset,
+        const SRL::Math::Types::Vector3D& lightDirection,
+        const SRL::Math::Types::Vector3D& cameraLocation,
+        std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
+        std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+        bool& segment01Prepared);
     bool UpdateActiveSegmentWindowForPosition(const SRL::Math::Types::Vector3D& worldPosition,
                                               const SRL::Math::Types::Vector3D& trackOffset);
     std::vector<SegmentHandle> BuildVisibleSegmentOrder(const SRL::Math::Types::Vector3D& trackOffset,
@@ -418,6 +468,7 @@ private:
     size_t ResolveInitialLoadLimit(const Config& config) const;
     void PrepareInitialSegmentPackages(size_t loadLimit);
     void ConfigureCoordinatorAndBudget(const Config& config);
+    void ApplyTrackSlaveMode();
     void LogInitialSegmentDiagnostics() const;
     void ApplyInitialSdrFamilySlots();
 
@@ -514,6 +565,9 @@ private:
     uint16_t sh2MasterPrefetchTicksThisFrame_ = 0;
     uint16_t sh2MasterLodTicksThisFrame_ = 0;
     uint16_t sh2MasterWorkingSetTicksThisFrame_ = 0;
+    uint16_t sh2SlaveSortTicksThisFrame_ = 0;
+    uint8_t sh2ProducerListUsedThisFrame_ = 0;
+    uint8_t sh2ProducerListFallbacksThisFrame_ = 0;
     uint32_t phaseHwrBeforeStream_ = 0;
     uint32_t phaseHwrAfterStream_ = 0;
     uint32_t phaseHwrAfterDraw_ = 0;
@@ -552,6 +606,32 @@ private:
     uint16_t releasedEndFrameSlotsThisFrame_ = 0;
     uint16_t releasedPrefetchNowThisFrame_ = 0;
     uint8_t memoryPressureLevelThisFrame_ = 0;
+    bool trackSlaveModeRequested_ = true;
+    bool trackSlaveProducerRequested_ = true;
+    bool trackSlaveDepthSortRequested_ = true;
+
+    struct Sh2PerfBucket
+    {
+        uint16_t sampleFrames = 0;
+        uint32_t samplesAccum = 0;
+        uint32_t sumMasterFrameTicks = 0;
+        uint32_t sumMasterDrawTicks = 0;
+        uint32_t sumProducerTicks = 0;
+        uint32_t sumSortTicks = 0;
+        uint32_t sumProducerFallbacks = 0;
+        uint32_t sumProducerListUsed = 0;
+        uint32_t sumProducerListFallbacks = 0;
+        uint16_t avgMasterFrameTicks = 0;
+        uint16_t avgMasterDrawTicks = 0;
+        uint16_t avgProducerTicks = 0;
+        uint16_t avgSortTicks = 0;
+        uint16_t avgProducerFallbacks = 0;
+        uint16_t avgProducerListUsed = 0;
+        uint16_t avgProducerListFallbacks = 0;
+    };
+    static constexpr uint16_t kSh2PerfSampleWindowFrames = 120u;
+    Sh2PerfBucket sh2PerfSingle_{}; // Master only
+    Sh2PerfBucket sh2PerfDual_{};   // Master + Slave
     bool runtimeStatsLogsEnabled_ = true;
     uint32_t leakProbeSlidesObserved_ = 0;
     bool leakProbePrevValid_ = false;
@@ -609,7 +689,12 @@ private:
     uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)
     SegmentPool segmentPool_{};
     TrackLowWorkVector<SegmentHandle> segmentHandles_{};
+    TrackLowWorkVector<TrackDepthSortItem<SegmentHandle, int64_t>> stabilizedDepthItemsScratch_{};
+    TrackLowWorkVector<SegmentHandle> stabilizedSortedHandlesScratch_{};
+    std::vector<SegmentHandle> stabilizedProducerInputScratch_{};
     std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};
+    SlaveTrackDepthSorter<SegmentHandle, int64_t, kTrackSegmentLimit> stabilizedDepthSorter_{};
+    TrackDrawProducerStats stabilizedDepthStats_{};
     SlaveTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit> coordinator_{producer_};
     AdaptiveTrackBudgetController budgetController_{};
