@@ -14,6 +14,20 @@ using SRL::Math::Types::Vector3D;
 class CameraSystem
 {
 public:
+    struct PathFrameContext
+    {
+        bool valid = false;
+        Vector3D forwardWorld{0.0, 0.0, 1.0f};
+        // 16.16 fixed-point scalar in [0,1].
+        int32_t speedNormRaw = 0;
+        // 16.16 fixed-point scalar in [0,1].
+        int32_t curvatureAbsRaw = 0;
+        // 16.16 fixed-point scalar in [0,1].
+        int32_t slopeAbsRaw = 0;
+        // -1 = left, +1 = right, 0 = neutral/unknown.
+        int8_t turnSign = 0;
+    };
+
     enum class ChasePreset : uint8_t
     {
         FirstPerson = 0,
@@ -51,6 +65,17 @@ public:
     void SetChaseNearFollowDistance(int16_t behindDistance);
     // Keep camera heading synchronized with gameplay yaw when yaw is updated outside input handling.
     void SetCarYawDegrees(int32_t yawDeg) { cachedCarYawDeg_ = NormalizeYawDeg(yawDeg); }
+    void SetCarForwardYawOffsetDegrees(int32_t offsetDeg)
+    {
+        offsetDeg = NormalizeYawDeg(offsetDeg);
+        if (offsetDeg > 180) offsetDeg -= 360;
+        carForwardYawOffsetDeg_ = static_cast<int16_t>(offsetDeg);
+    }
+    // Runtime flag to enable/disable camera debug overlay logs.
+    void SetDebugLogsEnabled(bool enabled) { debugLogsEnabled_ = enabled; }
+    bool DebugLogsEnabled() const { return debugLogsEnabled_; }
+    // External PATH guidance for chase camera (optional, fallback-safe).
+    void SetPathFrameContext(const PathFrameContext& context) { pathFrameContext_ = context; }
     ChasePreset GetChasePreset() const { return chasePreset_; }
 
     const Camera::State& State() const { return state_; }
@@ -101,11 +126,13 @@ private:
     CameraSafety::Config safetyConfig_{};
     ChasePreset chasePreset_ = ChasePreset::ChaseNear;
     int32_t cachedCarYawDeg_ = 180;
+    int16_t carForwardYawOffsetDeg_ = 180;
     mutable Vector3D headingForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D movementForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lookForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
     mutable bool hasObservedCarWorldPosition_ = false;
+    PathFrameContext pathFrameContext_{};
     // 16.16 fixed-point scalar in [0,1] based on per-frame movement magnitude.
     mutable int32_t movementSpeedNormRaw_ = 0;
     bool zHeld_ = false;
@@ -118,4 +145,5 @@ private:
     int16_t chaseNearOffsetX_ = 0;
     int16_t chaseNearOffsetZ_ = -190;
     uint8_t chaseNearCalibRepeatFrames_ = 0;
+    bool debugLogsEnabled_ = false;
 };

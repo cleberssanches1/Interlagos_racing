@@ -132,6 +132,26 @@ void TestWindowSlidesForwardKeepingSameBandShape(TestContext& ctx)
     }
 }
 
+void TestWindowSlidesBackwardKeepingSameBandShape(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    const std::vector<int32_t> start305 = BuildWindowSegmentIds(305, 305, 20u, -1);
+    const std::vector<int32_t> start304 = BuildWindowSegmentIds(304, 305, 20u, -1);
+
+    EXPECT_EQ(ctx, start305.front(), 305);
+    EXPECT_EQ(ctx, start305.back(), 286);
+    EXPECT_EQ(ctx, start304.front(), 304);
+    EXPECT_EQ(ctx, start304.back(), 285);
+
+    for (size_t rank = 0; rank < 20u; ++rank)
+    {
+        const uint8_t lodA = ResolveLodIndexByRank(rank);
+        const uint8_t lodB = ResolveLodIndexByRank(rank);
+        EXPECT_EQ(ctx, lodA, lodB);
+    }
+}
+
 void TestWindowWrapsAcrossLapBoundary(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
@@ -166,6 +186,28 @@ void TestCollectRetiredSlotsForRemovedFamilies(TestContext& ctx)
         });
 
     const std::vector<uint16_t> expected{101u, 103u, 104u};
+    EXPECT_EQ(ctx, retired, expected);
+}
+
+void TestCollectRetiredSlotsDeduplicatesAcrossLods(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    const std::vector<FamilySlotsSnapshot> previous{
+        {10u, {{111u, 111u, kNoTexture, kNoTexture}}},
+        {20u, {{111u, 222u, kNoTexture, kNoTexture}}},
+    };
+    const std::vector<FamilySlotsSnapshot> next{};
+
+    const std::vector<uint16_t> retired = CollectRetiredSlotsForRemovedFamilies(
+        previous,
+        next,
+        [](uint16_t slot)
+        {
+            return slot != 222u;
+        });
+
+    const std::vector<uint16_t> expected{111u};
     EXPECT_EQ(ctx, retired, expected);
 }
 
@@ -220,6 +262,26 @@ void TestForwardSlideBoundaryPrewarmPlanMatchesContract(TestContext& ctx)
     EXPECT_EQ(ctx, plan[2].targetLodIndex, kLod16);
 }
 
+void TestWindowLodCountsInvariantAcrossLap(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    const std::array<size_t, 4> expectedCounts{{6u, 5u, 5u, 4u}};
+    for (int32_t startId = 1; startId <= 305; ++startId)
+    {
+        const std::vector<int32_t> window = BuildWindowSegmentIds(startId, 305, 20u, +1);
+        EXPECT_EQ(ctx, window.size(), static_cast<size_t>(20u));
+
+        std::array<size_t, 4> counts{{0u, 0u, 0u, 0u}};
+        for (size_t rank = 0; rank < window.size(); ++rank)
+        {
+            const uint8_t lod = ResolveLodIndexByRank(rank);
+            if (lod < counts.size()) ++counts[lod];
+        }
+        EXPECT_EQ(ctx, counts, expectedCounts);
+    }
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -232,11 +294,14 @@ int main()
     const std::vector<TestCase> tests{
         {"ResolveLodBandsForTwentySegmentWindow", &TestResolveLodBandsForTwentySegmentWindow},
         {"WindowSlidesForwardKeepingSameBandShape", &TestWindowSlidesForwardKeepingSameBandShape},
+        {"WindowSlidesBackwardKeepingSameBandShape", &TestWindowSlidesBackwardKeepingSameBandShape},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},
         {"CollectRetiredSlotsForRemovedFamilies", &TestCollectRetiredSlotsForRemovedFamilies},
+        {"CollectRetiredSlotsDeduplicatesAcrossLods", &TestCollectRetiredSlotsDeduplicatesAcrossLods},
         {"RetiredSlotsIgnoreFamiliesStillVisible", &TestRetiredSlotsIgnoreFamiliesStillVisible},
         {"TopNearCameraRanksStayBoundedToFourSegments", &TestTopNearCameraRanksStayBoundedToFourSegments},
         {"ForwardSlideBoundaryPrewarmPlanMatchesContract", &TestForwardSlideBoundaryPrewarmPlanMatchesContract},
+        {"WindowLodCountsInvariantAcrossLap", &TestWindowLodCountsInvariantAcrossLap},
     };
 
     TestContext ctx{};

@@ -4,7 +4,7 @@
 #include <vector>
 
 // Desliga logs desta unidade (tela VDP2). Altere para true para depurar carregamentos.
-constexpr bool kModelLog = true;
+constexpr bool kModelLog = false;
 #define MO_LOG(...) do { if constexpr (kModelLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
 /** @brief Detect whether object has size function
@@ -185,6 +185,56 @@ private:
         return mode != SRL::CRAM::TextureColorMode::RGB555;
     }
 
+    static bool ExpandIndexedTextureToRgb555(const uint8_t* src,
+                                             size_t srcSize,
+                                             uint16_t width,
+                                             uint16_t height,
+                                             SRL::CRAM::TextureColorMode mode,
+                                             const std::vector<SRL::Types::HighColor>& palette,
+                                             std::vector<uint8_t>& outRgb)
+    {
+        if (!src || palette.empty()) return false;
+        const size_t pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+        if (pixels == 0) return false;
+
+        outRgb.resize(pixels * 2u);
+
+        if (mode == SRL::CRAM::TextureColorMode::Paletted16)
+        {
+            const size_t required = (pixels + 1u) >> 1u;
+            if (srcSize < required) return false;
+            for (size_t p = 0; p < pixels; ++p)
+            {
+                const uint8_t packed = src[p >> 1u];
+                const uint8_t idx = (p & 1u) ? static_cast<uint8_t>(packed & 0x0Fu)
+                                             : static_cast<uint8_t>((packed >> 4u) & 0x0Fu);
+                if (idx >= palette.size()) return false;
+                const uint16_t c = static_cast<uint16_t>(palette[idx]);
+                outRgb[(p * 2u) + 0u] = static_cast<uint8_t>((c >> 8u) & 0xFFu);
+                outRgb[(p * 2u) + 1u] = static_cast<uint8_t>(c & 0xFFu);
+            }
+            return true;
+        }
+
+        if (mode == SRL::CRAM::TextureColorMode::Paletted64 ||
+            mode == SRL::CRAM::TextureColorMode::Paletted128 ||
+            mode == SRL::CRAM::TextureColorMode::Paletted256)
+        {
+            if (srcSize < pixels) return false;
+            for (size_t p = 0; p < pixels; ++p)
+            {
+                const uint8_t idx = src[p];
+                if (idx >= palette.size()) return false;
+                const uint16_t c = static_cast<uint16_t>(palette[idx]);
+                outRgb[(p * 2u) + 0u] = static_cast<uint8_t>((c >> 8u) & 0xFFu);
+                outRgb[(p * 2u) + 1u] = static_cast<uint8_t>(c & 0xFFu);
+            }
+            return true;
+        }
+
+        return false;
+    }
+
     static uint16_t ReservedPaletteBanksForMode(SRL::CRAM::TextureColorMode mode)
     {
         // Reserve low CRAM banks to avoid conflicts with VDP2/debug/font palettes.
@@ -229,6 +279,74 @@ private:
             }
         }
         return -1;
+    }
+
+    struct PaletteBankHandle
+    {
+        SRL::CRAM::TextureColorMode mode = SRL::CRAM::TextureColorMode::RGB555;
+        uint16_t bank = 0;
+    };
+
+    struct PaletteCacheEntry
+    {
+        SRL::CRAM::TextureColorMode mode = SRL::CRAM::TextureColorMode::RGB555;
+        uint16_t bank = 0;
+        std::vector<SRL::Types::HighColor> colors;
+    };
+
+    static bool PaletteDataEquals(const std::vector<SRL::Types::HighColor>& left,
+                                  const std::vector<SRL::Types::HighColor>& right)
+    {
+        if (left.size() != right.size()) return false;
+        for (size_t i = 0; i < left.size(); ++i)
+        {
+            if (left[i] != right[i]) return false;
+        }
+        return true;
+    }
+
+    static int32_t FindPaletteCacheEntry(const std::vector<PaletteCacheEntry>& cache,
+                                         SRL::CRAM::TextureColorMode mode,
+                                         const std::vector<SRL::Types::HighColor>& colors)
+    {
+        for (size_t i = 0; i < cache.size(); ++i)
+        {
+            if (cache[i].mode != mode) continue;
+            if (PaletteDataEquals(cache[i].colors, colors))
+            {
+                return static_cast<int32_t>(i);
+            }
+        }
+        return -1;
+    }
+
+    static void RemovePaletteCacheEntry(std::vector<PaletteCacheEntry>& cache,
+                                        SRL::CRAM::TextureColorMode mode,
+                                        uint16_t bank)
+    {
+        for (size_t i = 0; i < cache.size(); ++i)
+        {
+            if (cache[i].mode == mode && cache[i].bank == bank)
+            {
+                cache.erase(cache.begin() + static_cast<long>(i));
+                return;
+            }
+        }
+    }
+
+    static void ReleasePaletteBank(const PaletteBankHandle& handle)
+    {
+        if (!IsPalettedMode(handle.mode)) return;
+        SRL::CRAM::SetBankUsedState(handle.bank, handle.mode, false);
+    }
+
+    static void ReleasePaletteBanks(std::vector<PaletteBankHandle>& handles)
+    {
+        for (size_t i = 0; i < handles.size(); ++i)
+        {
+            ReleasePaletteBank(handles[i]);
+        }
+        handles.clear();
     }
 
     // SGL defines No_Texture as 0. Reserve texture slot 0 with a dummy texture
@@ -419,13 +537,7 @@ public:
     {
         if (this != &other)
         {
-            if (this->meshes)
-            {
-                if (this->type == 0)
-                    delete[] (SRL::Types::Mesh*)this->meshes;
-                else
-                    delete[] (SRL::Types::SmoothMesh*)this->meshes;
-            }
+            ReleaseLoadedMeshState();
 
             this->meshes = other.meshes;
             this->meshCount = other.meshCount;
@@ -445,6 +557,30 @@ public:
     }
 
 private:
+
+    void ReleaseLoadedMeshState()
+    {
+        if (!this->meshes) return;
+        if (this->type == 0)
+        {
+            delete[] reinterpret_cast<SRL::Types::Mesh*>(this->meshes);
+        }
+        else
+        {
+            delete[] reinterpret_cast<SRL::Types::SmoothMesh*>(this->meshes);
+        }
+        this->meshes = nullptr;
+        this->meshCount = 0;
+    }
+
+    void ResetLoadedState()
+    {
+        ReleaseLoadedMeshState();
+        this->textureCount = 0;
+        this->type = 0;
+        this->gouraudOffset = 0;
+        this->startTextureIndex = -1;
+    }
 
     void RemapLoadedTextureIndices(size_t textureBase, const std::vector<int32_t>& remap)
     {
@@ -1056,12 +1192,7 @@ public:
         if (this->meshes == nullptr || this->meshCount == 0 || this->GetFaceCount() == 0)
         {
             // limpa estado mnimo
-            this->meshes = nullptr;
-            this->meshCount = 0;
-            this->textureCount = 0;
-            this->type = 0;
-            this->gouraudOffset = 0;
-            this->startTextureIndex = -1;
+            ResetLoadedState();
             this->LoadBuffer(modelFile, gouraudTableStart);
         }
 
@@ -1070,18 +1201,13 @@ public:
     bool LoadFromMemory(const void* buffer, size_t size, size_t gouraudTableStart = 0, bool firstMeshOnly = false, size_t maxMeshes = 0, bool forceBE = false, bool forceHwrAlloc = false)
     {
         if (!buffer || size == 0) return false;
+        ResetLoadedState();
         this->firstMeshOnly = firstMeshOnly;
         this->forceBigEndian = forceBE;
         this->maxMeshesToLoad = maxMeshes;
         this->forceHwrAlloc = forceHwrAlloc;
         this->streamOnly = false;
         this->swapDataEndian = false;
-        this->meshes = nullptr;
-        this->meshCount = 0;
-        this->textureCount = 0;
-        this->type = 0;
-        this->gouraudOffset = 0;
-        this->startTextureIndex = -1;
 
         return this->ParseBuffer(static_cast<const char*>(buffer), size, gouraudTableStart);
     }
@@ -1131,7 +1257,8 @@ private:
 
         bool ok = this->ParseBuffer(buf, f.Size.Bytes, gouraudTableStart);
         if (bufInHwr) SRL::Memory::HighWorkRam::Free(buf);
-        else if (!bufInCart) delete[] buf; // mantm buffer no cart
+        else if (bufInCart) SRL::Memory::CartRam::Free(buf);
+        else delete[] buf;
 
         if (ok)
         {
@@ -1140,7 +1267,6 @@ private:
         }
         else
         {
-            if (bufInCart) SRL::Memory::CartRam::Free(buf);
             MO_LOG(1, 6, "NYA buffer parse fail: %s", modelFile);
         }
         return ok;
@@ -1153,12 +1279,7 @@ private:
         if (!file.Open())
         {
             MO_LOG(1, 6, "NYA open fail(stream): %s", modelFile);
-            this->meshes = nullptr;
-            this->meshCount = 0;
-            this->textureCount = 0;
-            this->type = 0;
-            this->gouraudOffset = 0;
-            this->startTextureIndex = -1;
+            ResetLoadedState();
             return;
         }
 
@@ -1168,12 +1289,7 @@ private:
         {
             MO_LOG(1, 6, "NYA hdr read fail(stream): %s read:%d", modelFile, hdrRead);
             file.Close();
-            this->meshes = nullptr;
-            this->meshCount = 0;
-            this->textureCount = 0;
-            this->type = 0;
-            this->gouraudOffset = 0;
-            this->startTextureIndex = -1;
+            ResetLoadedState();
             return;
         }
 
@@ -1228,12 +1344,7 @@ private:
                                   (unsigned long)this->meshCount,
                                   (unsigned long)this->textureCount);
                 file.Close();
-                this->meshes = nullptr;
-                this->meshCount = 0;
-                this->textureCount = 0;
-                this->type = 0;
-                this->gouraudOffset = 0;
-                this->startTextureIndex = -1;
+                ResetLoadedState();
                 return;
             }
         }
@@ -1258,12 +1369,7 @@ private:
                                       (unsigned long)this->meshCount,
                                       (unsigned long)this->textureCount);
                     file.Close();
-                    this->meshes = nullptr;
-                    this->meshCount = 0;
-                    this->textureCount = 0;
-                    this->type = 0;
-                    this->gouraudOffset = 0;
-                    this->startTextureIndex = -1;
+                    ResetLoadedState();
                     return;
                 }
             }
@@ -1304,10 +1410,16 @@ private:
             }
         }
 
+        uint16_t textureBaseForRollback = 0;
+        bool textureUploadsStarted = false;
+        std::vector<PaletteBankHandle> loadedPaletteBanks;
+        std::vector<PaletteCacheEntry> paletteCache;
         if (!this->firstMeshOnly)
         {
             EnsureTextureZeroReserved();
-            const size_t textureBase = SRL::VDP1::GetTextureCount();
+            const uint16_t textureBase = SRL::VDP1::GetTextureCount();
+            textureBaseForRollback = textureBase;
+            textureUploadsStarted = true;
             if (this->textureCount > 0)
             {
                 this->startTextureIndex = static_cast<int32_t>(textureBase);
@@ -1316,6 +1428,9 @@ private:
             size_t uploadedRgb = 0;
             size_t uploadedPaletted = 0;
             size_t uploadedBytes = 0;
+            size_t paletteAllocatedCount = 0;
+            size_t paletteReusedCount = 0;
+            size_t paletteFallbackRgbCount = 0;
             for (size_t textureIndex = 0; ok && textureIndex < this->textureCount; textureIndex++)
             {
                 TextureHeader textureHeader{};
@@ -1333,6 +1448,9 @@ private:
                 uint16_t paletteId = 0;
                 std::vector<uint8_t> texData;
                 std::vector<SRL::Types::HighColor> paletteData;
+                bool paletteAllocated = false;
+                bool paletteFallbackToRgb = false;
+                PaletteBankHandle allocatedPalette{};
 
                 const size_t legacyBytes = TextureDataByteSize(textureHeader.Width, textureHeader.Height, SRL::CRAM::TextureColorMode::RGB555);
                 uint8_t probe[4] = {0, 0, 0, 0};
@@ -1414,18 +1532,56 @@ private:
 
                 if (IsPalettedMode(colorMode) && !paletteData.empty())
                 {
-                    int32_t bankId = AllocatePaletteBank(colorMode);
-                    if (bankId >= 0)
+                    const int32_t cached = FindPaletteCacheEntry(paletteCache, colorMode, paletteData);
+                    if (cached >= 0)
                     {
-                        SRL::CRAM::Palette palette(colorMode, static_cast<uint16_t>(bankId));
-                        palette.Load(paletteData.data(), static_cast<int16_t>(paletteData.size()));
-                        paletteId = static_cast<uint16_t>(bankId);
+                        paletteId = paletteCache[static_cast<size_t>(cached)].bank;
+                        ++paletteReusedCount;
                     }
                     else
+                    {
+                        int32_t bankId = AllocatePaletteBank(colorMode);
+                        if (bankId >= 0)
+                        {
+                            SRL::CRAM::Palette palette(colorMode, static_cast<uint16_t>(bankId));
+                            palette.Load(paletteData.data(), static_cast<int16_t>(paletteData.size()));
+                            paletteId = static_cast<uint16_t>(bankId);
+                            paletteAllocated = true;
+                            allocatedPalette.mode = colorMode;
+                            allocatedPalette.bank = paletteId;
+                            ++paletteAllocatedCount;
+                            PaletteCacheEntry entry{};
+                            entry.mode = colorMode;
+                            entry.bank = paletteId;
+                            entry.colors = paletteData;
+                            paletteCache.push_back(std::move(entry));
+                        }
+                        else
+                        {
+                            paletteFallbackToRgb = true;
+                        }
+                    }
+                }
+
+                if (paletteFallbackToRgb)
+                {
+                    std::vector<uint8_t> rgbData;
+                    if (!ExpandIndexedTextureToRgb555(
+                            texData.data(),
+                            texData.size(),
+                            textureHeader.Width,
+                            textureHeader.Height,
+                            colorMode,
+                            paletteData,
+                            rgbData))
                     {
                         ok = false;
                         break;
                     }
+                    texData.swap(rgbData);
+                    colorMode = SRL::CRAM::TextureColorMode::RGB555;
+                    paletteId = 0;
+                    ++paletteFallbackRgbCount;
                 }
 
                 textureRemap[textureIndex] = SRL::VDP1::TryLoadTexture(
@@ -1437,12 +1593,18 @@ private:
 
                 if (textureRemap[textureIndex] >= 0)
                 {
+                    if (paletteAllocated) loadedPaletteBanks.push_back(allocatedPalette);
                     uploadedBytes += texData.size();
                     if (IsPalettedMode(colorMode)) ++uploadedPaletted;
                     else ++uploadedRgb;
                 }
                 else
                 {
+                    if (paletteAllocated)
+                    {
+                        ReleasePaletteBank(allocatedPalette);
+                        RemovePaletteCacheEntry(paletteCache, allocatedPalette.mode, allocatedPalette.bank);
+                    }
                     MO_LOG(1, 6, "NYA tex upload fail(stream) tid:%lu %ux%u mode:%u pal:%u bytes:%lu",
                           (unsigned long)textureIndex,
                           textureHeader.Width,
@@ -1459,6 +1621,11 @@ private:
                       (unsigned long)uploadedRgb,
                       (unsigned long)uploadedPaletted,
                       (unsigned long)uploadedBytes);
+                MO_LOG(1, 5, "NYA pal banks new:%lu reuse:%lu",
+                      (unsigned long)paletteAllocatedCount,
+                      (unsigned long)paletteReusedCount);
+                MO_LOG(1, 5, "NYA pal fallback rgb:%lu",
+                      (unsigned long)paletteFallbackRgbCount);
             }
         }
 
@@ -1467,17 +1634,12 @@ private:
         if (!ok)
         {
             MO_LOG(1, 6, "NYA parse fail(stream): %s", modelFile);
-            if (this->meshes)
+            if (textureUploadsStarted)
             {
-                if (this->type == 0) delete[] (SRL::Types::Mesh*)this->meshes;
-                else delete[] (SRL::Types::SmoothMesh*)this->meshes;
+                SRL::VDP1::ResetTextureHeap(textureBaseForRollback);
             }
-            this->meshes = nullptr;
-            this->meshCount = 0;
-            this->textureCount = 0;
-            this->type = 0;
-            this->gouraudOffset = 0;
-            this->startTextureIndex = -1;
+            ReleasePaletteBanks(loadedPaletteBanks);
+            ResetLoadedState();
         }
         else
         {
@@ -1604,7 +1766,9 @@ private:
         }
 
         EnsureTextureZeroReserved();
-        size_t textureBase = SRL::VDP1::GetTextureCount();
+        const uint16_t textureBase = SRL::VDP1::GetTextureCount();
+        std::vector<PaletteBankHandle> loadedPaletteBanks;
+        std::vector<PaletteCacheEntry> paletteCache;
         if (this->textureCount > 0)
         {
             this->startTextureIndex = static_cast<int32_t>(textureBase);
@@ -1613,6 +1777,9 @@ private:
         size_t uploadedRgb = 0;
         size_t uploadedPaletted = 0;
         size_t uploadedBytes = 0;
+        size_t paletteAllocatedCount = 0;
+        size_t paletteReusedCount = 0;
+        size_t paletteFallbackRgbCount = 0;
         for (size_t ti = 0; ok && ti < this->textureCount; ++ti)
         {
             if (it + sizeof(TextureHeader) > (buf + bufSize))
@@ -1628,6 +1795,9 @@ private:
             SRL::CRAM::TextureColorMode colorMode = SRL::CRAM::TextureColorMode::RGB555;
             uint16_t paletteId = 0;
             std::vector<SRL::Types::HighColor> paletteData;
+            bool paletteAllocated = false;
+            bool paletteFallbackToRgb = false;
+            PaletteBankHandle allocatedPalette{};
 
             bool isV2Header = false;
             if (it + 4 <= (buf + bufSize))
@@ -1678,17 +1848,34 @@ private:
 
             if (IsPalettedMode(colorMode) && !paletteData.empty())
             {
-                int32_t bankId = AllocatePaletteBank(colorMode);
-                if (bankId >= 0)
+                const int32_t cached = FindPaletteCacheEntry(paletteCache, colorMode, paletteData);
+                if (cached >= 0)
                 {
-                    SRL::CRAM::Palette palette(colorMode, static_cast<uint16_t>(bankId));
-                    palette.Load(paletteData.data(), static_cast<int16_t>(paletteData.size()));
-                    paletteId = static_cast<uint16_t>(bankId);
+                    paletteId = paletteCache[static_cast<size_t>(cached)].bank;
+                    ++paletteReusedCount;
                 }
                 else
                 {
-                    ok = false;
-                    break;
+                    int32_t bankId = AllocatePaletteBank(colorMode);
+                    if (bankId >= 0)
+                    {
+                        SRL::CRAM::Palette palette(colorMode, static_cast<uint16_t>(bankId));
+                        palette.Load(paletteData.data(), static_cast<int16_t>(paletteData.size()));
+                        paletteId = static_cast<uint16_t>(bankId);
+                        paletteAllocated = true;
+                        allocatedPalette.mode = colorMode;
+                        allocatedPalette.bank = paletteId;
+                        ++paletteAllocatedCount;
+                        PaletteCacheEntry entry{};
+                        entry.mode = colorMode;
+                        entry.bank = paletteId;
+                        entry.colors = paletteData;
+                        paletteCache.push_back(std::move(entry));
+                    }
+                    else
+                    {
+                        paletteFallbackToRgb = true;
+                    }
                 }
             }
 
@@ -1698,22 +1885,51 @@ private:
                 ok = false;
                 break;
             }
+            const uint8_t* uploadData = reinterpret_cast<const uint8_t*>(it);
+            std::vector<uint8_t> rgbData;
+            if (paletteFallbackToRgb)
+            {
+                if (!ExpandIndexedTextureToRgb555(
+                        uploadData,
+                        texBytes,
+                        texW,
+                        texH,
+                        colorMode,
+                        paletteData,
+                        rgbData))
+                {
+                    ok = false;
+                    break;
+                }
+                uploadData = rgbData.data();
+                colorMode = SRL::CRAM::TextureColorMode::RGB555;
+                paletteId = 0;
+                ++paletteFallbackRgbCount;
+            }
             textureRemap[ti] = SRL::VDP1::TryLoadTexture(
                 texW,
                 texH,
                 colorMode,
                 paletteId,
-                (void*)it);
+                (void*)uploadData);
             it += texBytes;
 
             if (textureRemap[ti] >= 0)
             {
-                uploadedBytes += texBytes;
+                if (paletteAllocated) loadedPaletteBanks.push_back(allocatedPalette);
+                uploadedBytes += (colorMode == SRL::CRAM::TextureColorMode::RGB555)
+                    ? TextureDataByteSize(texW, texH, SRL::CRAM::TextureColorMode::RGB555)
+                    : texBytes;
                 if (IsPalettedMode(colorMode)) ++uploadedPaletted;
                 else ++uploadedRgb;
             }
             else
             {
+                if (paletteAllocated)
+                {
+                    ReleasePaletteBank(allocatedPalette);
+                    RemovePaletteCacheEntry(paletteCache, allocatedPalette.mode, allocatedPalette.bank);
+                }
                 MO_LOG(1, 6, "NYA tex upload fail(buffer) tid:%lu %ux%u mode:%u pal:%u bytes:%lu",
                       (unsigned long)ti,
                       texW,
@@ -1730,6 +1946,17 @@ private:
                   (unsigned long)uploadedRgb,
                   (unsigned long)uploadedPaletted,
                   (unsigned long)uploadedBytes);
+            MO_LOG(1, 5, "NYA pal banks new:%lu reuse:%lu",
+                  (unsigned long)paletteAllocatedCount,
+                  (unsigned long)paletteReusedCount);
+            MO_LOG(1, 5, "NYA pal fallback rgb:%lu",
+                  (unsigned long)paletteFallbackRgbCount);
+        }
+        if (!ok)
+        {
+            SRL::VDP1::ResetTextureHeap(textureBase);
+            ReleasePaletteBanks(loadedPaletteBanks);
+            ResetLoadedState();
         }
         return ok;
     }
@@ -1740,16 +1967,7 @@ public:
      */
     ~ModelObject()
     {
-        if (this->type == 0)
-        {
-            delete[] (SRL::Types::Mesh*)this->meshes;
-        }
-        else
-        {
-            delete[] (SRL::Types::SmoothMesh*)this->meshes;
-        }
-
-        this->meshCount = 0;
+        ResetLoadedState();
     }
 
     /** @brief Draw specified mesh

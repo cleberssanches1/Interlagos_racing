@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where sh2eb-elf-g++.exe)",
+      "Read(//c/devkitsaturn/bin/**)",
+      "Bash(find /c -name \"sh2eb-elf-g++*\")",
+      "Read(//c/saturn//**)",
+      "Read(//c/saturn/**)",
+      "Bash(make -C /c/saturn/SaturnRingLib-main/Projects/Interlagos_racing)",
+      "WebSearch",
+      "Bash(ls -la /c/saturn/SaturnRingLib-main/Projects/Interlagos_racing/src/track*.*)"
+    ]
+  }
+}

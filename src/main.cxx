@@ -47,6 +47,19 @@ constexpr bool kEnableRuntimeStatsLogs = false;
 
 static const char* FindExistingPath(const char* const* paths, size_t count);
 static constexpr size_t kCarGouraudOffset = 4096;
+volatile uint32_t g_srlAppVblankCounter = 0;
+
+struct CarAnchorPoints
+{
+    bool valid = false;
+    Vector3D front{0.0, 0.0, 0.0};
+    Vector3D rear{0.0, 0.0, 0.0};
+};
+
+extern "C" uint32_t SRL_AppGetVblankCounter()
+{
+    return g_srlAppVblankCounter;
+}
 
 // VBlank handler without Event dispatch to avoid invalid callback jumps in OnVblank.
 static void SafeVblankNoEvent()
@@ -54,6 +67,7 @@ static void SafeVblankNoEvent()
     slGetStatus();
     SRL::Input::Management::RefreshPeripherals();
     SRL::Input::Gun::VblankRefresh();
+    g_srlAppVblankCounter = g_srlAppVblankCounter + 1u;
 }
 
 // Procura o primeiro caminho existente em disco.
@@ -65,6 +79,251 @@ static const char* FindExistingPath(const char* const* paths, size_t count)
         if (f.Exists() && f.Size.Bytes > 0) return paths[i];
     }
     return nullptr;
+}
+
+static bool ReadCdBinaryFileSimple(const char* path, std::vector<uint8_t>& outBytes)
+{
+    outBytes.clear();
+    if (!path || path[0] == '\0') return false;
+
+    SRL::Cd::File f(path);
+    if (!f.Exists() || f.Size.Bytes <= 0) return false;
+    if (!f.Open()) return false;
+
+    const size_t size = static_cast<size_t>(f.Size.Bytes);
+    if (size == 0u) return false;
+
+    outBytes.resize(size);
+    size_t totalRead = 0u;
+    while (totalRead < size)
+    {
+        const int32_t want = static_cast<int32_t>(std::min<size_t>(2048u, size - totalRead));
+        const int32_t got = f.Read(want, outBytes.data() + totalRead);
+        if (got <= 0) break;
+        totalRead += static_cast<size_t>(got);
+        if (got < want) break;
+    }
+
+    if (totalRead != size)
+    {
+        outBytes.clear();
+        return false;
+    }
+    return true;
+}
+
+static const char* SkipWs(const char* p)
+{
+    while (p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
+    return p;
+}
+
+static bool ParseJsonVec3ByKey(const char* json, const char* key, Vector3D& outVec)
+{
+    if (!json || !key) return false;
+    const char* k = ::strstr(json, key);
+    if (!k) return false;
+    const char* lb = ::strchr(k, '[');
+    const char* rb = lb ? ::strchr(lb, ']') : nullptr;
+    if (!lb || !rb || rb <= lb) return false;
+
+    const char* p = SkipWs(lb + 1);
+    char* end = nullptr;
+    const float x = std::strtof(p, &end);
+    if (end == p) return false;
+    p = SkipWs(end);
+    if (*p == ',') ++p;
+
+    p = SkipWs(p);
+    const float y = std::strtof(p, &end);
+    if (end == p) return false;
+    p = SkipWs(end);
+    if (*p == ',') ++p;
+
+    p = SkipWs(p);
+    const float z = std::strtof(p, &end);
+    if (end == p) return false;
+
+    auto toRaw = [](float v) -> int32_t
+    {
+        const float scaled = v * 65536.0f;
+        return static_cast<int32_t>(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
+    };
+    outVec = Vector3D(Fxp::BuildRaw(toRaw(x)),
+                      Fxp::BuildRaw(toRaw(y)),
+                      Fxp::BuildRaw(toRaw(z)));
+    return true;
+}
+
+static CarAnchorPoints LoadCarAnchorPointsFromCd()
+{
+    const char* candidates[] = {
+        "CD/DATA/CAR1_ANCHORS.JSON;1",
+        "CD/DATA/CAR1_ANCHORS.JSON",
+        "DATA/CAR1_ANCHORS.JSON;1",
+        "DATA/CAR1_ANCHORS.JSON",
+        "CAR1_ANCHORS.JSON;1",
+        "CAR1_ANCHORS.JSON",
+        "cd/data/CAR1_ANCHORS.JSON",
+        "cd/data/CAR1_ANCHORS.json",
+        "data/CAR1_ANCHORS.JSON",
+        "data/CAR1_ANCHORS.json",
+        "CAR1_ANCHORS.json"
+    };
+
+    std::vector<uint8_t> bytes{};
+    for (size_t i = 0; i < (sizeof(candidates) / sizeof(candidates[0])); ++i)
+    {
+        if (!ReadCdBinaryFileSimple(candidates[i], bytes)) continue;
+        std::vector<char> text(bytes.begin(), bytes.end());
+        text.push_back('\0');
+
+        CarAnchorPoints anchors{};
+        if (!ParseJsonVec3ByKey(text.data(), "\"front\"", anchors.front)) continue;
+        if (!ParseJsonVec3ByKey(text.data(), "\"rear\"", anchors.rear)) continue;
+        anchors.valid = true;
+        return anchors;
+    }
+
+    return {};
+}
+
+static int32_t NormalizeYawDeg360Main(int32_t yawDeg)
+{
+    yawDeg %= 360;
+    if (yawDeg < 0) yawDeg += 360;
+    return yawDeg;
+}
+
+static int32_t NormalizeSignedYawDegMain(int32_t yawDeg)
+{
+    yawDeg = NormalizeYawDeg360Main(yawDeg);
+    if (yawDeg > 180) yawDeg -= 360;
+    return yawDeg;
+}
+
+static bool ComputeGameplayYawFromModelForwardRaw(int32_t forwardXRaw,
+                                                  int32_t forwardZRaw,
+                                                  int32_t& outYawDeg)
+{
+    if (forwardXRaw == 0 && forwardZRaw == 0) return false;
+
+    // MeshRenderer applies X180 + Z180 before yaw, equivalent to Y180 for direction vectors.
+    const int32_t rdxRaw = -forwardXRaw;
+    const int32_t rdzRaw = -forwardZRaw;
+    const auto angle = SRL::Math::Trigonometry::Atan2(
+        SRL::Math::Types::Fxp::BuildRaw(rdxRaw),
+        SRL::Math::Types::Fxp::BuildRaw(-rdzRaw));
+    const auto yawDegFxp = angle.ToDegrees();
+    outYawDeg = NormalizeYawDeg360Main((yawDegFxp.RawValue() + (1 << 15)) >> 16);
+    return true;
+}
+
+static bool ComputeCarVisualYawOffsetFromAnchors(const CarAnchorPoints& anchors, int32_t& outOffsetDeg)
+{
+    if (!anchors.valid) return false;
+    const int32_t dxRaw = (anchors.front.X - anchors.rear.X).RawValue();
+    const int32_t dzRaw = (anchors.front.Z - anchors.rear.Z).RawValue();
+    int32_t modelForwardYawDeg = 0;
+    if (!ComputeGameplayYawFromModelForwardRaw(dxRaw, dzRaw, modelForwardYawDeg)) return false;
+    outOffsetDeg = NormalizeSignedYawDegMain(-modelForwardYawDeg);
+    return true;
+}
+
+static bool ComputeCarMeshCenterByIndex(ModelObject* carPtr,
+                                        uint32_t meshCount,
+                                        bool isSmoothMesh,
+                                        size_t meshIndex,
+                                        Vector3D& outCenter,
+                                        uint32_t* outVertexCount = nullptr,
+                                        uint32_t* outFaceCount = nullptr)
+{
+    outCenter = Vector3D(0.0, 0.0, 0.0);
+    if (!carPtr || meshIndex >= static_cast<size_t>(meshCount)) return false;
+
+    if (isSmoothMesh)
+    {
+        auto* mesh = carPtr->GetMesh<SRL::Types::SmoothMesh>(meshIndex);
+        if (!mesh || mesh->VertexCount == 0) return false;
+        if (outVertexCount) *outVertexCount = static_cast<uint32_t>(mesh->VertexCount);
+        if (outFaceCount) *outFaceCount = static_cast<uint32_t>(mesh->FaceCount);
+        int64_t sumX = 0;
+        int64_t sumY = 0;
+        int64_t sumZ = 0;
+        for (size_t v = 0; v < mesh->VertexCount; ++v)
+        {
+            sumX += static_cast<int64_t>(mesh->Vertices[v].X.RawValue());
+            sumY += static_cast<int64_t>(mesh->Vertices[v].Y.RawValue());
+            sumZ += static_cast<int64_t>(mesh->Vertices[v].Z.RawValue());
+        }
+        const int64_t count = static_cast<int64_t>(mesh->VertexCount);
+        outCenter = Vector3D(
+            Fxp::BuildRaw(static_cast<int32_t>(sumX / count)),
+            Fxp::BuildRaw(static_cast<int32_t>(sumY / count)),
+            Fxp::BuildRaw(static_cast<int32_t>(sumZ / count)));
+        return true;
+    }
+
+    auto* mesh = carPtr->GetMesh<SRL::Types::Mesh>(meshIndex);
+    if (!mesh || mesh->VertexCount == 0) return false;
+    if (outVertexCount) *outVertexCount = static_cast<uint32_t>(mesh->VertexCount);
+    if (outFaceCount) *outFaceCount = static_cast<uint32_t>(mesh->FaceCount);
+    int64_t sumX = 0;
+    int64_t sumY = 0;
+    int64_t sumZ = 0;
+    for (size_t v = 0; v < mesh->VertexCount; ++v)
+    {
+        sumX += static_cast<int64_t>(mesh->Vertices[v].X.RawValue());
+        sumY += static_cast<int64_t>(mesh->Vertices[v].Y.RawValue());
+        sumZ += static_cast<int64_t>(mesh->Vertices[v].Z.RawValue());
+    }
+    const int64_t count = static_cast<int64_t>(mesh->VertexCount);
+    outCenter = Vector3D(
+        Fxp::BuildRaw(static_cast<int32_t>(sumX / count)),
+        Fxp::BuildRaw(static_cast<int32_t>(sumY / count)),
+        Fxp::BuildRaw(static_cast<int32_t>(sumZ / count)));
+    return true;
+}
+
+static bool ComputeCarVisualYawOffsetFromFrontMarkerMesh(ModelObject* carPtr,
+                                                         uint32_t meshCount,
+                                                         bool isSmoothMesh,
+                                                         const Vector3D& modelCenter,
+                                                         size_t markerMeshIndex,
+                                                         int32_t& outOffsetDeg,
+                                                         int32_t& outMarkerYawDeg,
+                                                         uint32_t& outMarkerVertexCount,
+                                                         uint32_t& outMarkerFaceCount)
+{
+    Vector3D markerCenter{};
+    outMarkerVertexCount = 0;
+    outMarkerFaceCount = 0;
+    if (!ComputeCarMeshCenterByIndex(carPtr,
+                                     meshCount,
+                                     isSmoothMesh,
+                                     markerMeshIndex,
+                                     markerCenter,
+                                     &outMarkerVertexCount,
+                                     &outMarkerFaceCount))
+    {
+        return false;
+    }
+
+    const int32_t dxRaw = (markerCenter.X - modelCenter.X).RawValue();
+    const int32_t dzRaw = (markerCenter.Z - modelCenter.Z).RawValue();
+    const int32_t absDx = (dxRaw < 0) ? -dxRaw : dxRaw;
+    const int32_t absDz = (dzRaw < 0) ? -dzRaw : dzRaw;
+    if ((absDx + absDz) < (1 << 8))
+    {
+        return false;
+    }
+
+    if (!ComputeGameplayYawFromModelForwardRaw(dxRaw, dzRaw, outMarkerYawDeg))
+    {
+        return false;
+    }
+    outOffsetDeg = NormalizeSignedYawDegMain(-outMarkerYawDeg);
+    return true;
 }
 
 // Simple shading table
@@ -112,7 +371,7 @@ struct CarPipeline
     std::unique_ptr<ModelObject> wramCopy;  // C??????pia independente na work RAM.
 
     // Retorna o modelo ativo (c??????pia em WRAM se existir, sen?????o o do cart).
-    ModelObject* ActiveModel() const { return wramCopy ? wramCopy.get() : cart.car; }
+    ModelObject* ActiveModel() const { return wramCopy ? wramCopy.get() : cart.car.get(); }
 
     // Indica se h????? um modelo utiliz?????vel.
     bool Loaded() const { return cart.loaded && ActiveModel(); }
@@ -558,6 +817,7 @@ int GameApp::Run()
 
     // Camera system owns camera state, tuning and input workflow.
     CameraSystem cameraSystem;
+    cameraSystem.SetDebugLogsEnabled(false);
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
     SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
@@ -581,7 +841,9 @@ int GameApp::Run()
     Vector3D carWorldPosition(0.0, 0.0, 0.0);
 
     AppState::Set(AppState::Stage::TrackInit, 0);
-    TrackSystem trackSystem;
+    // Keep TrackSystem out of the main thread stack.
+    // Its runtime state is large and stack growth can corrupt return addresses on SH2.
+    static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
     trackConfig.initialSegments = 20;
@@ -710,9 +972,50 @@ int GameApp::Run()
     if (carValid && carPtr)
     {
         carSystem = std::make_unique<Game::CarSystem>(carPtr, isSmoothMesh, carConfig);
+        int32_t visualYawOffsetDeg = 180;
+        constexpr size_t kFrontMarkerMeshIndex = 5u; // 6o objeto: marcador da frente
+        int32_t markerYawDeg = 0;
+        uint32_t markerVerts = 0;
+        uint32_t markerFaces = 0;
+        const bool markerOffsetValid = ComputeCarVisualYawOffsetFromFrontMarkerMesh(
+            carPtr,
+            meshCount,
+            isSmoothMesh,
+            modelCenter,
+            kFrontMarkerMeshIndex,
+            visualYawOffsetDeg,
+            markerYawDeg,
+            markerVerts,
+            markerFaces);
+
+        const CarAnchorPoints anchors = LoadCarAnchorPointsFromCd();
+        int32_t anchorYawDeg = 0;
+        bool anchorOffsetValid = false;
+        if (!markerOffsetValid)
+        {
+            anchorOffsetValid = ComputeCarVisualYawOffsetFromAnchors(anchors, visualYawOffsetDeg);
+            if (anchors.valid)
+            {
+                const int32_t dxRaw = (anchors.front.X - anchors.rear.X).RawValue();
+                const int32_t dzRaw = (anchors.front.Z - anchors.rear.Z).RawValue();
+                (void)ComputeGameplayYawFromModelForwardRaw(dxRaw, dzRaw, anchorYawDeg);
+            }
+        }
+        if constexpr (kLog)
+        {
+            const char* src = markerOffsetValid ? "M6" : (anchorOffsetValid ? "JS" : "DF");
+            const int32_t srcYaw = markerOffsetValid ? markerYawDeg : anchorYawDeg;
+            SRL::Debug::Print(1, 12, "CAR fwd:%s off:%d y:%d m6v:%u m6f:%u",
+                              src,
+                              static_cast<int>(visualYawOffsetDeg),
+                              static_cast<int>(srcYaw),
+                              static_cast<unsigned>(markerVerts),
+                              static_cast<unsigned>(markerFaces));
+        }
         // Rotate only the rendered car model so spawn orientation is correct
         // without changing gameplay/camera yaw reference.
-        carSystem->SetVisualYawOffsetDegrees(180);
+        carSystem->SetVisualYawOffsetDegrees(visualYawOffsetDeg);
+        cameraSystem.SetCarForwardYawOffsetDegrees(visualYawOffsetDeg);
         carSystem->SetWorldPosition(carWorldPosition);
         if constexpr (kCarLogs)
         {

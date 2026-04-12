@@ -24,6 +24,25 @@ Em outras palavras:
 - no modo estabilizado, o coordenador nao e o motor principal de render
 - no modo nao estabilizado, o par `TrackDrawProducer` + `TrackRenderCoordinator` volta a ser usado para preparar e executar a fila de desenho
 
+## Atualizacao recente de arquitetura
+
+O `TrackSystem::RenderFrame()` foi segregado em estagios explicitos e agora chama classes dedicadas em `track_pipeline_stages.*`:
+
+- `TrackMaintenanceStage`
+- `TrackWindowStage`
+- `TrackPrefetchStage`
+- `TrackLodStage`
+- `TrackWorkingSetStage`
+
+Essa segregacao nao mudou o comportamento funcional da pista; ela prepara o codigo para distribuicao futura entre SH2.
+
+Tambem foi adicionado modo lockstep para jobs da Slave no caminho de sort/lista:
+
+- `blockUntilDone` pode forcar a Master a aguardar a Slave no mesmo frame
+- foco atual e determinismo para alvo de `30 FPS`
+- `BuildAndApplyFramePlanStage(...)` agora gera/aplica plano por frame antes do draw
+- o plano reaproveita o sort da Slave e atualiza `desiredLodIndex/desiredBaseRank` por segmento
+
 ## Papel de cada componente
 
 | Componente | Papel real no codigo atual |
@@ -44,11 +63,12 @@ O fluxo atual e este:
 5. Atualiza a janela com `UpdateActiveSegmentWindowForPosition(...)`
 6. Se houve slide e ha pressao de memoria, pode rodar `RunWorkRamMaintenance(true)` depois do slide
 7. Se a estabilizacao estiver desligada, roda `RunWorkRamMaintenance(windowSlid)`
-8. O bloco de recuperacao de LOD existe, mas com `kEnableDeterministicStabilizedSlide = true` ele fica efetivamente desativado no build atual
-9. Se a estabilizacao estiver desligada, monta `orderedHandles` com `BuildVisibleSegmentOrder(...)`
-10. Refresca o working-set quando `familyWorkingSetDirty_` esta marcado
-11. Chama `RenderVisibleSegmentOrder(...)`
-12. Fecha o frame com `EndFrame()`, telemetria e limpeza de recursos adiados
+8. Gera `FrameSnapshot/FramePlan` com `BuildAndApplyFramePlanStage(...)` e aplica alvos de LOD na janela
+9. O bloco de recuperacao de LOD existe, mas com `kEnableDeterministicStabilizedSlide = true` ele fica efetivamente desativado no build atual
+10. Se a estabilizacao estiver desligada, monta `orderedHandles` com `BuildVisibleSegmentOrder(...)`
+11. Refresca o working-set quando `familyWorkingSetDirty_` esta marcado
+12. Chama `RenderVisibleSegmentOrder(...)`
+13. Fecha o frame com `EndFrame()`, telemetria e limpeza de recursos adiados
 
 ## Diagrama atualizado
 

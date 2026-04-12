@@ -1595,6 +1595,7 @@ public:
         lastDrawnMeshes_ = 0;
         decltype(smoothCache_)().swap(smoothCache_);
         decltype(flatCache_)().swap(flatCache_);
+        (void)CompactRuntimeState(true);
     }
 
     ~TrackRenderer()

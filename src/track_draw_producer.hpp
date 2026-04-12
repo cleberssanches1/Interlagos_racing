@@ -158,6 +158,11 @@ public:
             submittedFrameId_ = currentFrameId_;
             ++stats_.jobsSubmitted;
             stats_.jobInFlight = true;
+            if (blockUntilDone_)
+            {
+                WaitForCompletion();
+                FinalizeIfReady();
+            }
             return;
         }
 
@@ -190,6 +195,7 @@ public:
 
     bool IsJobInFlight() const { return jobInFlight_; }
     void SetUseSlave(bool enabled) { useSlave_ = enabled; }
+    void SetBlockUntilDone(bool enabled) { blockUntilDone_ = enabled; }
     void SetMaxFramesInFlight(uint32_t frames) { maxFramesInFlight_ = frames == 0 ? 1 : frames; }
     void SetRecoveryFrames(uint32_t frames) { recoveryFrames_ = frames == 0 ? 1 : frames; }
     void SetSafeModeStallThreshold(uint32_t frames) { safeModeStallThreshold_ = frames == 0 ? 1 : frames; }
@@ -288,6 +294,25 @@ private:
         SwapBuffers();
     }
 
+    void WaitForCompletion()
+    {
+        if (!jobInFlight_) return;
+        constexpr uint32_t kSpinLimit = 4u * 1024u * 1024u;
+        uint32_t spins = 0u;
+        while (!task_.IsDone())
+        {
+            ++spins;
+            if (spins < kSpinLimit) continue;
+            ++stats_.timeoutFallbacks;
+            ++stats_.consecutiveTimeouts;
+            stats_.slaveDisabledByTimeout = true;
+            disableSlaveWhenIdle_ = true;
+            disabledAtFrameId_ = currentFrameId_;
+            EnterSafeMode(safeModeCooldownFrames_);
+            break;
+        }
+    }
+
     // Track repeated reuse patterns and enter safe mode before hard timeout.
     void UpdateSafeModeState()
     {
@@ -381,6 +406,7 @@ private:
     uint8_t readIdx_ = 0;
     uint8_t writeIdx_ = 1;
     bool useSlave_ = true;
+    bool blockUntilDone_ = false;
     bool jobInFlight_ = false;
     bool disableSlaveWhenIdle_ = false;
     TrackDrawProducerStats stats_{};
@@ -461,6 +487,11 @@ public:
             submittedFrameId_ = currentFrameId_;
             ++stats_.jobsSubmitted;
             stats_.jobInFlight = true;
+            if (blockUntilDone_)
+            {
+                WaitForCompletion();
+                FinalizeIfReady();
+            }
             return;
         }
 
@@ -493,6 +524,7 @@ public:
 
     bool IsJobInFlight() const { return jobInFlight_; }
     void SetUseSlave(bool enabled) { useSlave_ = enabled; }
+    void SetBlockUntilDone(bool enabled) { blockUntilDone_ = enabled; }
     void SetMaxFramesInFlight(uint32_t frames) { maxFramesInFlight_ = frames == 0 ? 1 : frames; }
     void SetRecoveryFrames(uint32_t frames) { recoveryFrames_ = frames == 0 ? 1 : frames; }
     void SetSafeModeStallThreshold(uint32_t frames) { safeModeStallThreshold_ = frames == 0 ? 1 : frames; }
@@ -576,6 +608,25 @@ private:
         SwapBuffers();
     }
 
+    void WaitForCompletion()
+    {
+        if (!jobInFlight_) return;
+        constexpr uint32_t kSpinLimit = 4u * 1024u * 1024u;
+        uint32_t spins = 0u;
+        while (!task_.IsDone())
+        {
+            ++spins;
+            if (spins < kSpinLimit) continue;
+            ++stats_.timeoutFallbacks;
+            ++stats_.consecutiveTimeouts;
+            stats_.slaveDisabledByTimeout = true;
+            disableSlaveWhenIdle_ = true;
+            disabledAtFrameId_ = currentFrameId_;
+            EnterSafeMode(safeModeCooldownFrames_);
+            break;
+        }
+    }
+
     // Track repeated reuse patterns and enter safe mode before hard timeout.
     void UpdateSafeModeState()
     {
@@ -669,6 +720,7 @@ private:
     uint8_t readIdx_ = 0;
     uint8_t writeIdx_ = 1;
     bool useSlave_ = true;
+    bool blockUntilDone_ = false;
     bool jobInFlight_ = false;
     bool disableSlaveWhenIdle_ = false;
     TrackDrawProducerStats stats_{};

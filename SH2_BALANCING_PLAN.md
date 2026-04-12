@@ -13,6 +13,29 @@ O codigo atual ja tem a abstracao para isso:
 - `TrackRenderCoordinator` mede budget e aplica a fila preparada
 - `TrackDrawProducerStats` expoe os sinais de saude da pipeline
 
+## Status atual (implementado)
+
+Foi aplicado um primeiro passo de lockstep para alvo de 30 FPS:
+
+1. `SlaveTrackDepthSorter` e `SlaveTrackDrawProducer` agora suportam `SetBlockUntilDone(true)`.
+2. A Master pode aguardar conclusao do job da Slave no mesmo frame (com guarda de timeout).
+3. O modo lockstep e configurado no `TrackSystem::ConfigureCoordinatorAndBudget`.
+4. Overlay SH2 mostra `lk:1` quando lockstep esta ativo.
+5. `RenderFrame` agora executa `BuildAndApplyFramePlanStage(...)` antes de LOD/draw.
+6. O draw estabilizado consome `framePlanSortedHandles_` no mesmo frame (evita recomputar ordem).
+7. `RunPendingLodRecoveryStage` reaproveita `desiredLodBySegment` do plano quando valido.
+8. Overlay SH2 agora mostra ticks de planejamento: `SH2M ... pl:%u` e `SH2S ... pl:%u`.
+
+Resultado esperado desta fase:
+
+- maior determinismo de ordem/planos por frame
+- menos reutilizacao de lista anterior por latencia assincrona
+- base pronta para mover planejamento puro (`FrameSnapshot/FramePlan`) para Slave
+
+Contrato de dados desta proxima etapa:
+
+- [SH2_FRAME_PLAN_CONTRACT.md](./SH2_FRAME_PLAN_CONTRACT.md)
+
 Hoje, na estabilizacao, o runtime desliga o uso do slave por politica. Este plano descreve como sair desse modo de forma incremental e mensuravel.
 
 ## Estado atual observado

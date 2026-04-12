@@ -6,6 +6,8 @@
 
 namespace
 {
+constexpr bool kEnablePathGuidedChaseCamera = false;
+
 using SRL::Math::Types::Fxp;
 using SRL::Math::Types::Vector3D;
 
@@ -23,6 +25,66 @@ inline Vector3D NormalizeFlatDirectionRaw(int32_t dxRaw,
     return Vector3D(Fxp::BuildRaw(static_cast<int32_t>(nxRaw)),
                     Fxp::BuildRaw(0),
                     Fxp::BuildRaw(static_cast<int32_t>(nzRaw)));
+}
+
+inline int32_t ClampUnitRaw(int32_t valueRaw)
+{
+    if (valueRaw < 0) return 0;
+    if (valueRaw > (1 << 16)) return (1 << 16);
+    return valueRaw;
+}
+
+enum class PathProfileType : uint8_t
+{
+    Straight = 0,
+    TurnLight = 1,
+    TurnHard = 2
+};
+
+struct PathProfileDeltas
+{
+    int16_t offsetZDelta = 0;
+    int16_t offsetYDelta = 0;
+    int16_t lookAheadDelta = 0;
+    int32_t smoothBaseRaw = 13107;
+};
+
+inline PathProfileType ClassifyPathProfile(int32_t curvatureRaw)
+{
+    constexpr int32_t kCurveLightRaw = 8192;   // 0.125
+    constexpr int32_t kCurveHardRaw = 19661;   // 0.30
+    if (curvatureRaw >= kCurveHardRaw) return PathProfileType::TurnHard;
+    if (curvatureRaw >= kCurveLightRaw) return PathProfileType::TurnLight;
+    return PathProfileType::Straight;
+}
+
+inline PathProfileDeltas GetPathProfileDeltas(PathProfileType profile)
+{
+    switch (profile)
+    {
+    case PathProfileType::TurnHard:
+        return PathProfileDeltas{
+            +20,    // pull camera closer to reduce cut jitter
+            -6,     // raise camera in hard turns
+            -30,    // shorter look-ahead in hard turns
+            19661   // 0.30
+        };
+    case PathProfileType::TurnLight:
+        return PathProfileDeltas{
+            -4,
+            -2,
+            -8,
+            14746   // 0.225
+        };
+    case PathProfileType::Straight:
+    default:
+        return PathProfileDeltas{
+            -18,    // farther behind on straight
+            -1,
+            +24,    // longer look-ahead on straight
+            11469   // 0.175
+        };
+    }
 }
 } // namespace
 
@@ -188,7 +250,7 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
 
     (void)orbitState;
 
-    if (chasePreset_ == ChasePreset::ChaseNear)
+    if (debugLogsEnabled_ && chasePreset_ == ChasePreset::ChaseNear)
     {
         const auto cfg = PresetConfig(chasePreset_);
         SRL::Debug::Print(1, 24, "CAM2 off x:%d y:%d z:%d    ",
@@ -197,7 +259,7 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
                           static_cast<int>(cfg.offsetZ));
         SRL::Debug::Print(1, 25, "X+U/D:Z  X+L/R:X         ");
     }
-    else
+    else if (debugLogsEnabled_)
     {
         SRL::Debug::Print(1, 24, "                          ");
         SRL::Debug::Print(1, 25, "                          ");
@@ -218,7 +280,7 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
     const Vector3D defaultOffset = ResolvePresetOffsetWorld();
     const Vector3D activeOffset = orbitController_.ResolveOffset(defaultOffset);
     lastResolvedCameraLocation_ = carWorldPosition + activeOffset;
-    if (chasePreset_ == ChasePreset::ChaseNear)
+    if (debugLogsEnabled_ && chasePreset_ == ChasePreset::ChaseNear)
     {
         SRL::Debug::Print(1, 26, "CAM2 pos x:%d y:%d z:%d    ",
                           static_cast<int>(lastResolvedCameraLocation_.X.As<int32_t>()),
@@ -250,12 +312,70 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
     // Keep first-person deterministic and rigidly forward.
     if (chasePreset_ == ChasePreset::FirstPerson)
     {
-        const int32_t lookYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + 180);
+        const int32_t lookYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_);
         const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(lookYawDeg << 16));
         const Vector3D forward(lookAhead * SRL::Math::Trigonometry::Sin(yaw),
                                zero,
                                lookAhead * SRL::Math::Trigonometry::Cos(yaw));
         lastResolvedLookTarget_ = lastResolvedCameraLocation_ + forward;
+        return lastResolvedLookTarget_;
+    }
+
+    if (kEnablePathGuidedChaseCamera && pathFrameContext_.valid)
+    {
+        const Vector3D pathForward = NormalizeFlatDirectionRaw(
+            pathFrameContext_.forwardWorld.X.RawValue(),
+            pathFrameContext_.forwardWorld.Z.RawValue(),
+            headingForwardWorld_);
+        const int32_t speedNormRaw = ClampUnitRaw(pathFrameContext_.speedNormRaw);
+        const int32_t curveNormRaw = ClampUnitRaw(pathFrameContext_.curvatureAbsRaw);
+        const int32_t slopeNormRaw = ClampUnitRaw(pathFrameContext_.slopeAbsRaw);
+        const PathProfileType profile = ClassifyPathProfile(curveNormRaw);
+        const PathProfileDeltas profileDeltas = GetPathProfileDeltas(profile);
+
+        constexpr int32_t kLookAheadSpeedGainUnits = 72;
+        constexpr int32_t kLookAheadCurvePenaltyUnits = 88;
+        constexpr int32_t kLookAheadSlopePenaltyUnits = 28;
+        constexpr int32_t kLookAheadMinUnits = 64;
+        constexpr int32_t kLookAheadMaxUnits = 300;
+        int32_t dynamicLookAheadUnits = cfg.lookAhead;
+        dynamicLookAheadUnits += profileDeltas.lookAheadDelta;
+        dynamicLookAheadUnits += static_cast<int32_t>(
+            (static_cast<int64_t>(kLookAheadSpeedGainUnits) * speedNormRaw) >> 16);
+        dynamicLookAheadUnits -= static_cast<int32_t>(
+            (static_cast<int64_t>(kLookAheadCurvePenaltyUnits) * curveNormRaw) >> 16);
+        dynamicLookAheadUnits -= static_cast<int32_t>(
+            (static_cast<int64_t>(kLookAheadSlopePenaltyUnits) * slopeNormRaw) >> 16);
+        dynamicLookAheadUnits = std::clamp<int32_t>(
+            dynamicLookAheadUnits,
+            kLookAheadMinUnits,
+            kLookAheadMaxUnits);
+        const Fxp dynamicLookAhead = Fxp::BuildRaw(dynamicLookAheadUnits << 16);
+
+        constexpr int32_t kSmoothCurveGainRaw = 9830;  // +0.15 in hard turns
+        constexpr int32_t kSmoothSlopeGainRaw = 6554;  // +0.10 in crest/dip
+        int32_t smoothRaw = profileDeltas.smoothBaseRaw;
+        smoothRaw += static_cast<int32_t>(
+            (static_cast<int64_t>(kSmoothCurveGainRaw) * curveNormRaw) >> 16);
+        smoothRaw += static_cast<int32_t>(
+            (static_cast<int64_t>(kSmoothSlopeGainRaw) * slopeNormRaw) >> 16);
+        smoothRaw = std::clamp<int32_t>(smoothRaw, 8192, 32768); // 0.125 .. 0.50
+        const Fxp smooth = Fxp::BuildRaw(smoothRaw);
+        const Fxp invSmooth = one - smooth;
+
+        const Vector3D smoothedForward((lookForwardWorld_.X * invSmooth) + (pathForward.X * smooth),
+                                       zero,
+                                       (lookForwardWorld_.Z * invSmooth) + (pathForward.Z * smooth));
+        lookForwardWorld_ = NormalizeFlatDirectionRaw(smoothedForward.X.RawValue(),
+                                                      smoothedForward.Z.RawValue(),
+                                                      pathForward);
+
+        const Vector3D forward(lookForwardWorld_.X * dynamicLookAhead,
+                               zero,
+                               lookForwardWorld_.Z * dynamicLookAhead);
+        lastResolvedLookTarget_ = carWorldPosition + forward;
+        lastResolvedLookTarget_.Y = lastResolvedCameraLocation_.Y +
+                                    Fxp::BuildRaw(static_cast<int32_t>(cfg.lookHeight) << 16);
         return lastResolvedLookTarget_;
     }
 
@@ -342,7 +462,7 @@ void CameraSystem::ApplyChasePreset(ChasePreset preset, bool logPreset)
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(state_.viewPitchDeg << 16));
     InitializeManualOffset();
 
-    if (!logPreset) return;
+    if (!logPreset || !debugLogsEnabled_) return;
     switch (preset)
     {
     case ChasePreset::FirstPerson:
@@ -375,9 +495,9 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
     case ChasePreset::ChaseFar:
         return ChasePresetConfig{
             0,    // offsetX
-            -26,  // offsetY
-            -90,  // offsetZ (far behind)
-            140,  // lookAhead
+            -30,  // offsetY
+            -260, // offsetZ (far behind)
+            180,  // lookAhead
             0,    // lookHeight
             0     // viewPitchDeg
         };
@@ -409,7 +529,7 @@ void CameraSystem::UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) 
 {
     // Keep camera-offset forward aligned with the same visual-forward convention
     // used by LookTarget (model axis requires 180deg flip vs physics yaw).
-    headingForwardWorld_ = ForwardFromYawDeg(NormalizeYawDeg(cachedCarYawDeg_ + 180));
+    headingForwardWorld_ = ForwardFromYawDeg(NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_));
 
     if (!hasObservedCarWorldPosition_)
     {
@@ -452,16 +572,63 @@ int32_t CameraSystem::NormalizeYawDeg(int32_t yawDeg)
 Vector3D CameraSystem::ResolvePresetOffsetWorld() const
 {
     const auto cfg = PresetConfig(chasePreset_);
-    const Fxp offX = Fxp::BuildRaw(static_cast<int32_t>(cfg.offsetX) << 16);
-    const Fxp offY = Fxp::BuildRaw(static_cast<int32_t>(cfg.offsetY) << 16);
-    const Fxp offZ = Fxp::BuildRaw(static_cast<int32_t>(cfg.offsetZ) << 16);
+    int32_t offsetXUnits = cfg.offsetX;
+    int32_t offsetYUnits = cfg.offsetY;
+    int32_t offsetZUnits = cfg.offsetZ;
 
-    // Keep chase offset aligned with actual travel direction when moving.
-    // This prevents CAM2 from staying in a fixed world axis through curves
-    // when gameplay yaw and path heading are briefly out of sync.
-    constexpr int32_t kMotionHeadingThresholdRaw = (1 << 12);
-    const bool useMovementHeading = movementSpeedNormRaw_ > kMotionHeadingThresholdRaw;
-    const Vector3D forward = useMovementHeading ? movementForwardWorld_ : headingForwardWorld_;
+    Vector3D forward = headingForwardWorld_;
+    if (kEnablePathGuidedChaseCamera &&
+        pathFrameContext_.valid &&
+        chasePreset_ != ChasePreset::FirstPerson)
+    {
+        forward = NormalizeFlatDirectionRaw(pathFrameContext_.forwardWorld.X.RawValue(),
+                                            pathFrameContext_.forwardWorld.Z.RawValue(),
+                                            headingForwardWorld_);
+        const int32_t speedNormRaw = ClampUnitRaw(pathFrameContext_.speedNormRaw);
+        const int32_t curveNormRaw = ClampUnitRaw(pathFrameContext_.curvatureAbsRaw);
+        const int32_t slopeNormRaw = ClampUnitRaw(pathFrameContext_.slopeAbsRaw);
+        const PathProfileType profile = ClassifyPathProfile(curveNormRaw);
+        const PathProfileDeltas profileDeltas = GetPathProfileDeltas(profile);
+
+        offsetZUnits += profileDeltas.offsetZDelta;
+        offsetYUnits += profileDeltas.offsetYDelta;
+
+        constexpr int32_t kBehindSpeedGainUnits = 36;
+        constexpr int32_t kCurvePullInUnits = 18;
+        constexpr int32_t kCrestRaiseUnits = 14;
+        constexpr int32_t kCrestPullInUnits = 10;
+        offsetZUnits -= static_cast<int32_t>(
+            (static_cast<int64_t>(kBehindSpeedGainUnits) * speedNormRaw) >> 16);
+        offsetZUnits += static_cast<int32_t>(
+            (static_cast<int64_t>(kCurvePullInUnits) * curveNormRaw) >> 16);
+        offsetYUnits -= static_cast<int32_t>(
+            (static_cast<int64_t>(kCrestRaiseUnits) * slopeNormRaw) >> 16);
+        offsetZUnits += static_cast<int32_t>(
+            (static_cast<int64_t>(kCrestPullInUnits) * slopeNormRaw) >> 16);
+
+        if (pathFrameContext_.turnSign != 0)
+        {
+            constexpr int32_t kTurnLateralUnits = 12;
+            const int32_t lateralAbs = static_cast<int32_t>(
+                (static_cast<int64_t>(kTurnLateralUnits) * curveNormRaw) >> 16);
+            offsetXUnits += (pathFrameContext_.turnSign > 0) ? lateralAbs : -lateralAbs;
+        }
+    }
+    else
+    {
+        // Keep chase offset aligned with actual travel direction when moving.
+        // This prevents CAM2 from staying in a fixed world axis through curves
+        // when gameplay yaw and path heading are briefly out of sync.
+        constexpr int32_t kMotionHeadingThresholdRaw = (1 << 12);
+        const bool useMovementHeading = movementSpeedNormRaw_ > kMotionHeadingThresholdRaw;
+        forward = useMovementHeading ? movementForwardWorld_ : headingForwardWorld_;
+    }
+    offsetXUnits = std::clamp<int32_t>(offsetXUnits, -140, 140);
+    offsetYUnits = std::clamp<int32_t>(offsetYUnits, -56, 20);
+    offsetZUnits = std::clamp<int32_t>(offsetZUnits, -280, 80);
+    const Fxp offX = Fxp::BuildRaw(offsetXUnits * (1 << 16));
+    const Fxp offY = Fxp::BuildRaw(offsetYUnits * (1 << 16));
+    const Fxp offZ = Fxp::BuildRaw(offsetZUnits * (1 << 16));
     const Vector3D right(forward.Z, Fxp::BuildRaw(0), -forward.X);
 
     return Vector3D((right.X * offX) + (forward.X * offZ),

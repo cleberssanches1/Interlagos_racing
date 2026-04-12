@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 #include <srl.hpp>
 #include "modelObject.hpp"
@@ -12,7 +13,7 @@ static constexpr bool kCarLoadLogs = false;
 struct CarLoadResult
 {
     // Pointer to car model allocated in cart RAM (ownership transferred to caller).
-    ModelObject* car = nullptr; // allocated when loaded
+    std::unique_ptr<ModelObject> car{};
     bool loaded = false;
     int32_t hwrDelta = 0;
     uint32_t estBytes = 0;
@@ -74,7 +75,7 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
 
         if (candidate.GetMeshCount() > 0 && candidate.GetFaceCount() > 0)
         {
-            res.car = new ModelObject(std::move(candidate));
+            res.car = std::make_unique<ModelObject>(std::move(candidate));
             res.loaded = true;
             return true;
         }
@@ -168,7 +169,7 @@ inline CarLoadResult LoadCarToCart(const char* const* paths, size_t pathCount, b
                 {
                     if (memCar.GetMeshCount() > 0 && memCar.GetFaceCount() > 0)
                     {
-                        res.car = new ModelObject(std::move(memCar));
+                        res.car = std::make_unique<ModelObject>(std::move(memCar));
                         res.loaded = true;
                         break;
                     }

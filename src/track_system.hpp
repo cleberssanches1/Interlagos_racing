@@ -139,6 +139,9 @@ public:
     uint16_t PrefetchTicksThisFrame() const { return sh2MasterPrefetchTicksThisFrame_; }
     uint16_t LodTicksThisFrame() const { return sh2MasterLodTicksThisFrame_; }
     uint16_t WorkingSetTicksThisFrame() const { return sh2MasterWorkingSetTicksThisFrame_; }
+    uint8_t PrefetchBuildAttemptsThisFrame() const { return prefetchBuildAttemptsThisFrame_; }
+    uint8_t PrefetchBuildBudgetThisFrame() const { return prefetchBuildBudgetThisFrame_; }
+    uint8_t PrefetchBuildBudgetDropsThisFrame() const { return prefetchBuildBudgetDropsThisFrame_; }
     // Toggle track Slave usage at runtime for A/B performance measurements.
     void SetTrackSlaveMode(bool enabled);
     bool TrackSlaveModeRequested() const { return trackSlaveModeRequested_; }
@@ -259,6 +262,39 @@ private:
 
     using SegmentPool = TrackSegmentPool<kTrackSegmentLimit, SegmentRenderEntry>;
     using SegmentHandle = SegmentPool::Handle;
+
+    struct TrackFrameSnapshot
+    {
+        struct SegmentMeta
+        {
+            int16_t id = -1;
+            SRL::Math::Types::Vector3D center{};
+            uint8_t logicalSegmentCount = 0;
+            uint8_t flags = 0u; // bit0:renderer bit1:lodReady bit2:perFaceRank
+        };
+
+        uint32_t frameId = 0;
+        SRL::Math::Types::Vector3D carWorldPosition{};
+        SRL::Math::Types::Vector3D cameraLocation{};
+        SRL::Math::Types::Vector3D trackOffset{};
+        int16_t windowStartId = -1;
+        int8_t windowDirection = 1;
+        uint8_t fixedVisibleSegmentCap = 0;
+        uint8_t segmentCount = 0;
+        std::array<SegmentMeta, kTrackSegmentLimit> segmentMeta{};
+    };
+
+    struct TrackFramePlan
+    {
+        uint32_t frameId = 0;
+        bool valid = false;
+        uint8_t flags = 0u;
+        uint16_t plannerTicksSlave = 0;
+        uint16_t sortedCount = 0;
+        std::array<int16_t, kTrackSegmentLimit> sortedSegmentIds{};
+        std::array<uint8_t, kTrackSegmentLimit + 1> desiredLodBySegment{};
+        std::array<int16_t, kTrackSegmentLimit + 1> desiredBaseRankBySegment{};
+    };
 
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
     void ReleaseRawSegmentCatalog();
@@ -391,7 +427,7 @@ private:
     void PrimeRuntimeScratchCapacities();
     void ApplyActiveRendererCapacityFloor(TrackRenderer& renderer);
     void CaptureTrackTextureHeapBase();
-    bool RebuildTrackTextureResidencyForWindow();
+    bool RebuildTrackTextureResidencyForWindow(bool forceStrongReset = false);
     bool ShouldRecycleTrackTextureHeap() const;
     bool ShouldCompactTrackTextureHeapInStabilization() const;
     void RecycleTrackTextureHeap();
@@ -414,6 +450,14 @@ private:
     void RunPrefetchStage(bool windowSlid);
     bool RunPostSlideMaintenanceStage(bool slidThisFrame);
     bool RunLegacyMaintenanceStage(bool windowSlid);
+    void ResetFramePlan(TrackFramePlan& plan) const;
+    void BuildFrameSnapshot(const SRL::Math::Types::Vector3D& trackOffset,
+                            const SRL::Math::Types::Vector3D& cameraLocation,
+                            const SRL::Math::Types::Vector3D& carWorldPosition,
+                            TrackFrameSnapshot& outSnapshot) const;
+    void BuildAndApplyFramePlanStage(const SRL::Math::Types::Vector3D& trackOffset,
+                                     const SRL::Math::Types::Vector3D& cameraLocation,
+                                     const SRL::Math::Types::Vector3D& carWorldPosition);
     void BuildOrderedHandlesStage(const SRL::Math::Types::Vector3D& trackOffset,
                                   const SRL::Math::Types::Vector3D& cameraLocation,
                                   std::vector<SegmentHandle>& outOrderedHandles);
@@ -527,10 +571,8 @@ private:
     FamilyIdVector slideIncomingFamilyIdsScratch_{};
     FaceRankOffsetVector slideIncomingFaceRankOffsetsScratch_{};
     TrackLowWorkI16Vector slideIncomingFaceSlotsScratch_{};
-    FamilyIdVector slideRollbackFamilyIdsScratch_{};
-    FaceRankOffsetVector slideRollbackFaceRankOffsetsScratch_{};
     TrackLowWorkI16Vector slideRollbackFaceSlotsScratch_{};
-    TrackHighWorkI16Vector runtimeRenderFaceSlotsScratch_{};
+    TrackLowWorkI16Vector runtimeRenderFaceSlotsScratch_{};
     SlideBackBuffer slideBackBuffer_{};
     int16_t slidePrefetchSegmentId_ = -1;
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
@@ -563,11 +605,14 @@ private:
     uint16_t sh2MasterMaintenanceTicksThisFrame_ = 0;
     uint16_t sh2MasterWindowTicksThisFrame_ = 0;
     uint16_t sh2MasterPrefetchTicksThisFrame_ = 0;
+    uint16_t sh2MasterPlanTicksThisFrame_ = 0;
     uint16_t sh2MasterLodTicksThisFrame_ = 0;
     uint16_t sh2MasterWorkingSetTicksThisFrame_ = 0;
+    uint16_t sh2SlavePlanTicksThisFrame_ = 0;
     uint16_t sh2SlaveSortTicksThisFrame_ = 0;
     uint8_t sh2ProducerListUsedThisFrame_ = 0;
     uint8_t sh2ProducerListFallbacksThisFrame_ = 0;
+    uint32_t frameIdThisFrame_ = 0;
     uint32_t phaseHwrBeforeStream_ = 0;
     uint32_t phaseHwrAfterStream_ = 0;
     uint32_t phaseHwrAfterDraw_ = 0;
@@ -592,6 +637,9 @@ private:
     uint8_t prewarmCooldown_ = 0;
     uint8_t boundaryPrewarmCooldown_ = 0;
     uint8_t prefetchRetryCooldown_ = 0;
+    uint8_t prefetchBuildAttemptsThisFrame_ = 0;
+    uint8_t prefetchBuildBudgetThisFrame_ = 1;
+    uint8_t prefetchBuildBudgetDropsThisFrame_ = 0;
     uint8_t textureHeapCompactCooldown_ = 0;
     uint8_t workRamTrimCooldown_ = 0;
     uint8_t workRamWindowRebuildCooldown_ = 0;
@@ -609,6 +657,7 @@ private:
     bool trackSlaveModeRequested_ = true;
     bool trackSlaveProducerRequested_ = true;
     bool trackSlaveDepthSortRequested_ = true;
+    bool trackSlaveBarrierLockstep_ = false;
 
     struct Sh2PerfBucket
     {
@@ -632,13 +681,14 @@ private:
     static constexpr uint16_t kSh2PerfSampleWindowFrames = 120u;
     Sh2PerfBucket sh2PerfSingle_{}; // Master only
     Sh2PerfBucket sh2PerfDual_{};   // Master + Slave
-    bool runtimeStatsLogsEnabled_ = true;
+    bool runtimeStatsLogsEnabled_ = false;
     uint32_t leakProbeSlidesObserved_ = 0;
     bool leakProbePrevValid_ = false;
     uint32_t leakProbePrevHwrFree_ = 0;
     uint32_t leakProbePrevLwrFree_ = 0;
     uint32_t leakProbePrevRetainedHwr_ = 0;
     uint32_t leakProbePrevRetainedLwr_ = 0;
+    uint32_t lowWorkBaselineFree_ = 0;
     bool fullTrackFamilyCacheReady_ = false;
     size_t lastWindowFreeBytes_ = 0;
     bool lastWindowFreeValid_ = false;
@@ -666,7 +716,6 @@ private:
     FamilyIdCatalogVector seg1FaceFamilyIds_{};
     FamilySlotVector seg1FamilySlots_{};
     FamilySlotVector familyMergeCurrentWindowScratch_{};
-    FamilySlotVector familyMergeNextScratch_{};
     FamilySlotVector slidePrefetchFamilySlotsScratch_{};
     std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
     TrackLowWorkVector<Seg1TgaCartEntry> seg1TgaCatalog_{};
@@ -689,6 +738,11 @@ private:
     uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)
     SegmentPool segmentPool_{};
     TrackLowWorkVector<SegmentHandle> segmentHandles_{};
+    TrackFrameSnapshot frameSnapshotScratch_{};
+    TrackFramePlan framePlanCurrent_{};
+    TrackFramePlan framePlanLastValid_{};
+    TrackLowWorkVector<SegmentHandle> framePlanSortedHandles_{};
+    TrackLowWorkVector<SegmentHandle> framePlanLastValidSortedHandles_{};
     TrackLowWorkVector<TrackDepthSortItem<SegmentHandle, int64_t>> stabilizedDepthItemsScratch_{};
     TrackLowWorkVector<SegmentHandle> stabilizedSortedHandlesScratch_{};
     std::vector<SegmentHandle> stabilizedProducerInputScratch_{};
