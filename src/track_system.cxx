@@ -7570,6 +7570,38 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
         return false;
     }
     activeWindowHead_ = 0;
+
+    // === FIXED SLOT POOL: alocar slots uma vez com capacity pré-reservada ===
+    // Os slots 0..19 ficam disponíveis para uso futuro na rotação.
+    // Slot 20 é o staging para prefetch (usado em ResetSlidePrefetchState).
+    // NÃO mover dados de segmentRenderers_ — eles continuam como autoridade dos segmentos ativos.
+    if (slotPool_[0] == nullptr)
+    {
+        const size_t maxFaces = std::max(static_cast<size_t>(slotFaceCapacityFloor_), size_t(1));
+        const size_t maxVerts = std::max(static_cast<size_t>(rendererVertexCapacityFloor_), size_t(1));
+        for (size_t i = 0; i < kSlotPoolSize; ++i)
+        {
+            void* mem = SRL::Memory::Malloc(sizeof(SegmentRenderEntry), SRL::Memory::Zone::LWRam);
+            if (!mem) break;
+            slotPool_[i] = new (mem) SegmentRenderEntry{};
+            auto& s = *slotPool_[i];
+            s.lodState.faceFamilyIds.reserve(maxFaces);
+            s.lodState.faceRankOffsets.reserve(maxFaces);
+            s.lodState.currentFaceSlots.reserve(maxFaces);
+            s.lodState.workingSetFamilies.reserve(maxFaces);
+            s.lodState.workingSetLodIndices.reserve(maxFaces);
+            s.lodState.workingSetSlots.reserve(maxFaces);
+            s.renderer = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
+            if (s.renderer)
+            {
+                ConfigureStreamedRendererDefaults(*s.renderer);
+                s.renderer->SetRuntimeCapacityFloor(maxVerts, maxFaces);
+            }
+        }
+    }
+    stagingSlotIdx_ = static_cast<uint8_t>(kSlotPoolSize - 1); // slot 20 = staging
+    // === FIM FIXED SLOT POOL ===
+
     segmentHandles_ = BuildSegmentHandleTable();
     if (kEnableTrackRuntimeStabilization && !slideScratchRenderer_)
     {
@@ -7604,15 +7636,40 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
 
 void TrackSystem::ResetSlidePrefetchState()
 {
-    prefetchRetryCooldown_ = 0u;
+    prefetchRetryCooldown_  = 0u;
     slidePrefetchSegmentId_ = -1;
-    slidePrefetchCenter_ = Vector3D(0.0, 0.0, 0.0);
-    decltype(slidePrefetchFamilyIds_){}.swap(slidePrefetchFamilyIds_);
-    decltype(slidePrefetchFaceSlots_){}.swap(slidePrefetchFaceSlots_);
-    decltype(slidePrefetchFamilySlotsScratch_){}.swap(slidePrefetchFamilySlotsScratch_);
-    slidePrefetchRenderer_.reset();
+    slidePrefetchCenter_    = Vector3D(0.0, 0.0, 0.0);
+
+    // Usar clear() em vez de swap-free para preservar capacity no LWR
+    slidePrefetchFamilyIds_.clear();
+    slidePrefetchFaceSlots_.clear();
+    slidePrefetchFamilySlotsScratch_.clear();
+
+    // Limpar slot staging do pool fixo (sem liberar LWR)
+    if (slotPool_[0] != nullptr && stagingSlotIdx_ < kSlotPoolSize
+        && slotPool_[stagingSlotIdx_] != nullptr)
+    {
+        auto& st = *slotPool_[stagingSlotIdx_];
+        st.id = -1;
+        st.lodState.faceFamilyIds.clear();
+        st.lodState.faceRankOffsets.clear();
+        st.lodState.currentFaceSlots.clear();
+        st.lodState.workingSetFamilies.clear();
+        st.lodState.workingSetLodIndices.clear();
+        st.lodState.workingSetSlots.clear();
+        st.lodState.ready           = false;
+        st.lodState.currentLodIndex = 0xFF;
+        st.lodState.currentBaseRank = -1;
+        if (st.renderer) st.renderer->RecycleRuntimeState();
+    }
+    else if (slidePrefetchRenderer_)
+    {
+        // Fallback legado: reciclar em vez de reset
+        slidePrefetchRenderer_->RecycleRuntimeState();
+    }
+
     slidePrefetchRendererReady_ = false;
-    slidePrefetchLod8Ready_ = false;
+    slidePrefetchLod8Ready_     = false;
 }
 
 void TrackSystem::ResetSlideBackBuffer()
@@ -7624,32 +7681,18 @@ void TrackSystem::ResetSlideBackBuffer()
     slideBackBuffer_.outgoingSegmentId = -1;
     slideBackBuffer_.nextStartId = 1;
     slideBackBuffer_.incomingCenter = Vector3D(0.0, 0.0, 0.0);
-    if (kEnableDeterministicStabilizedSlide)
-    {
-        decltype(slideBackBuffer_.incomingFamilyIds){}.swap(slideBackBuffer_.incomingFamilyIds);
-        decltype(slideBackBuffer_.incomingFaceSlots){}.swap(slideBackBuffer_.incomingFaceSlots);
-    }
-    else
-    {
-        slideBackBuffer_.incomingFamilyIds.clear();
-        slideBackBuffer_.incomingFaceSlots.clear();
-    }
+    // Usar clear() em todos os casos — preserva capacity no LWR, sem swap-free
+    slideBackBuffer_.incomingFamilyIds.clear();
+    slideBackBuffer_.incomingFaceSlots.clear();
     slideBackBuffer_.incomingResidentLodIndex = 0xFF;
     slideBackBuffer_.incomingResidentBaseRank = -1;
     for (auto& update : slideBackBuffer_.boundaryUpdates)
     {
-        update.active = false;
-        update.segmentId = -1;
+        update.active          = false;
+        update.segmentId       = -1;
         update.desiredLodIndex = 0xFF;
         update.desiredBaseRank = -1;
-        if (kEnableDeterministicStabilizedSlide)
-        {
-            decltype(update.preparedFaceSlots){}.swap(update.preparedFaceSlots);
-        }
-        else
-        {
-            update.preparedFaceSlots.clear();
-        }
+        update.preparedFaceSlots.clear();
     }
 }
 
@@ -7732,9 +7775,10 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         (direction >= 0) ? (windowCount - 1u) : 0u;
 
     Vector3D incomingCenter = slidePrefetchCenter_;
-    FamilyIdVector incomingFamilyIds{};
-    if (!BuildSegmentIntoSlideScratch(nextId, incomingCenter, incomingFamilyIds) ||
-        incomingFamilyIds.empty())
+    // Usar scratch persistente — evita alloc/free de LWR por slide
+    slideScratchEntry_.lodState.faceFamilyIds.clear();
+    if (!BuildSegmentIntoSlideScratch(nextId, incomingCenter, slideScratchEntry_.lodState.faceFamilyIds) ||
+        slideScratchEntry_.lodState.faceFamilyIds.empty())
     {
         slideHwrTraceFlags_ |= kSlideHwrTracePrepareFailBit;
         SRL::Debug::Print(1, 11, "PKG tail build fail id:%d md:%u",
@@ -7745,7 +7789,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
 
     bool addedIncomingFamily = false;
     const size_t familySlotsBeforeIncoming = seg1FamilySlots_.size();
-    for (const uint16_t fam : incomingFamilyIds)
+    for (const uint16_t fam : slideScratchEntry_.lodState.faceFamilyIds)
     {
         if (fam == 0u) continue;
         if (FindFamilySlot(seg1FamilySlots_, fam)) continue;
@@ -7773,7 +7817,9 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         familyWorkingSetDirty_ = true;
     };
 
-    SegmentRenderEntry incomingPrepared{};
+    // Usar membro persistente para evitar alloc/free de LWR por slide.
+    // faceFamilyIds já preenchido por BuildSegmentIntoSlideScratch acima — sem swap necessário.
+    SegmentRenderEntry& incomingPrepared = slideScratchEntry_;
     incomingPrepared.id = static_cast<int16_t>(nextId);
     incomingPrepared.logicalSegmentCount = 1;
     incomingPrepared.renderer = std::move(slideScratchRenderer_);
@@ -7784,8 +7830,10 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     incomingPrepared.lodState.currentBaseRank = -1;
     incomingPrepared.lodState.desiredLodIndex = incomingPrepared.lodState.currentLodIndex;
     incomingPrepared.lodState.desiredBaseRank = -1;
-    incomingPrepared.lodState.faceFamilyIds.swap(incomingFamilyIds);
+    // faceFamilyIds já preenchido — sem swap; apenas preparar rank offsets e face slots
+    incomingPrepared.lodState.faceRankOffsets.clear();
     incomingPrepared.lodState.faceRankOffsets.assign(incomingPrepared.lodState.faceFamilyIds.size(), 0u);
+    incomingPrepared.lodState.currentFaceSlots.clear();
     incomingPrepared.lodState.currentFaceSlots.assign(incomingPrepared.lodState.faceFamilyIds.size(), -1);
     EnsureVectorCapacityFloor(incomingPrepared.lodState.faceFamilyIds, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(incomingPrepared.lodState.faceRankOffsets, slotFaceCapacityFloor_);
@@ -7813,19 +7861,19 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         return false;
     }
     incomingCenter = incomingPrepared.center;
-    incomingFamilyIds.swap(incomingPrepared.lodState.faceFamilyIds);
-    TrackLowWorkI16Vector incomingFaceSlots{};
-    incomingFaceSlots.swap(incomingPrepared.lodState.currentFaceSlots);
+    // Devolver renderer ao scratch; dados permanecem em incomingPrepared.lodState.* (persistente)
     slideScratchRenderer_ = std::move(incomingPrepared.renderer);
 
+    // Usar scratch persistente para boundary slots — evita alloc/free de LWR por slide
     struct BoundaryPrepared
     {
         SegmentRenderEntry* entry = nullptr;
         uint8_t desiredLodIndex = 0xFF;
         int16_t desiredBaseRank = -1;
-        TrackLowWorkI16Vector faceSlots{};
+        // faceSlots em slideScratchBoundarySlots_[preparedCount]
     };
     std::array<BoundaryPrepared, 3> preparedUpdates{};
+    for (auto& s : slideScratchBoundarySlots_) s.clear();
     size_t preparedCount = 0u;
     uint8_t deferredBoundaryUpdates = 0u;
     static constexpr std::array<size_t, 3> kForwardBoundaryRanks{{3u, 8u, 13u}};
@@ -7870,19 +7918,20 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         // Boundary transitions are important, but forcing all uploads in the
         // same slide causes frame spikes. Respect frame upload budget here and
         // defer unresolved boundaries to pending LOD recovery.
+        TrackLowWorkI16Vector& boundaryScratch = slideScratchBoundarySlots_[preparedCount];
         const bool ok = entry->lodState.hasPerFaceRankOffsets
             ? ResolvePreparedFaceSlotsForBaseRank(*entry,
                                                   logicalRank,
                                                   seg1FamilySlots_,
-                                                  prepared.faceSlots,
+                                                  boundaryScratch,
                                                   /*bypassUploadBudget*/false)
             : ResolvePreparedFaceSlotsForLod(*entry,
                                              desiredLodIndex,
                                              seg1FamilySlots_,
-                                             prepared.faceSlots,
+                                             boundaryScratch,
                                              /*bypassUploadBudget*/false);
         if (!ok ||
-            HasMissingRequiredFaceTextureSlots(prepared.faceSlots, &entry->lodState.faceFamilyIds))
+            HasMissingRequiredFaceTextureSlots(boundaryScratch, &entry->lodState.faceFamilyIds))
         {
             QueuePendingStabilizedLodRank(logicalRank);
             slideHwrTraceFlags_ |= kSlideHwrTraceDeferredBit;
@@ -7921,9 +7970,11 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     slot.center = incomingCenter;
     slot.lodState.ready = true;
     slot.lodState.hasPerFaceRankOffsets = false;
-    slot.lodState.faceFamilyIds.swap(incomingFamilyIds);
-    slot.lodState.faceRankOffsets.assign(slot.lodState.faceFamilyIds.size(), 0u);
-    slot.lodState.currentFaceSlots.swap(incomingFaceSlots);
+    // Swap entre dois membros persistentes: old slot capacity vai para o scratch,
+    // incoming data vai para o slot — nenhum free de LWR ocorre.
+    slot.lodState.faceFamilyIds.swap(incomingPrepared.lodState.faceFamilyIds);
+    slot.lodState.faceRankOffsets.swap(incomingPrepared.lodState.faceRankOffsets);
+    slot.lodState.currentFaceSlots.swap(incomingPrepared.lodState.currentFaceSlots);
     EnsureVectorCapacityFloor(slot.lodState.faceFamilyIds, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(slot.lodState.faceRankOffsets, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(slot.lodState.currentFaceSlots, slotFaceCapacityFloor_);
@@ -7960,7 +8011,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         BoundaryPrepared& prepared = preparedUpdates[i];
         if (!prepared.entry) continue;
         RestoreFaceSlotsFromScratch(prepared.entry->lodState.currentFaceSlots,
-                                    prepared.faceSlots);
+                                    slideScratchBoundarySlots_[i]);
         prepared.entry->lodState.currentLodIndex = prepared.desiredLodIndex;
         prepared.entry->lodState.currentBaseRank = prepared.desiredBaseRank;
         prepared.entry->lodState.desiredLodIndex = prepared.desiredLodIndex;
@@ -8080,9 +8131,10 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         (slideBackBuffer_.direction >= 0) ? (windowCount - 1u) : 0u;
 
     Vector3D incomingCenter = slidePrefetchCenter_;
-    FamilyIdVector incomingFamilyIds{};
-    if (!BuildSegmentIntoSlideScratch(nextId, incomingCenter, incomingFamilyIds) ||
-        incomingFamilyIds.empty())
+    // Usar scratch persistente — evita alloc/free de LWR por slide
+    slideScratchEntry_.lodState.faceFamilyIds.clear();
+    if (!BuildSegmentIntoSlideScratch(nextId, incomingCenter, slideScratchEntry_.lodState.faceFamilyIds) ||
+        slideScratchEntry_.lodState.faceFamilyIds.empty())
     {
         slideHwrTraceFlags_ |= kSlideHwrTracePrepareFailBit;
         SRL::Debug::Print(1, 11, "PKG tail build fail id:%d md:%u",
@@ -8093,7 +8145,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
 
     bool addedIncomingFamily = false;
     const size_t familySlotsBeforeIncoming = seg1FamilySlots_.size();
-    for (const uint16_t fam : incomingFamilyIds)
+    for (const uint16_t fam : slideScratchEntry_.lodState.faceFamilyIds)
     {
         if (fam == 0u) continue;
         if (FindFamilySlot(seg1FamilySlots_, fam)) continue;
@@ -8121,7 +8173,9 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         familyWorkingSetDirty_ = true;
     };
 
-    SegmentRenderEntry incomingPrepared{};
+    // Usar membro persistente para evitar alloc/free de LWR por slide.
+    // faceFamilyIds já preenchido por BuildSegmentIntoSlideScratch acima — sem swap necessário.
+    SegmentRenderEntry& incomingPrepared = slideScratchEntry_;
     incomingPrepared.id = static_cast<int16_t>(nextId);
     incomingPrepared.logicalSegmentCount = 1;
     incomingPrepared.renderer = std::move(slideScratchRenderer_);
@@ -8132,8 +8186,10 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     incomingPrepared.lodState.currentBaseRank = -1;
     incomingPrepared.lodState.desiredLodIndex = incomingPrepared.lodState.currentLodIndex;
     incomingPrepared.lodState.desiredBaseRank = -1;
-    incomingPrepared.lodState.faceFamilyIds.swap(incomingFamilyIds);
+    // faceFamilyIds já preenchido — sem swap; apenas preparar rank offsets e face slots
+    incomingPrepared.lodState.faceRankOffsets.clear();
     incomingPrepared.lodState.faceRankOffsets.assign(incomingPrepared.lodState.faceFamilyIds.size(), 0u);
+    incomingPrepared.lodState.currentFaceSlots.clear();
     incomingPrepared.lodState.currentFaceSlots.assign(incomingPrepared.lodState.faceFamilyIds.size(), -1);
     EnsureVectorCapacityFloor(incomingPrepared.lodState.faceFamilyIds, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(incomingPrepared.lodState.faceRankOffsets, slotFaceCapacityFloor_);
@@ -8162,6 +8218,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     }
 
     slideBackBuffer_.incomingCenter = incomingPrepared.center;
+    // Swap entre membros persistentes: incomingPrepared data → back buffer, old back buffer → scratch
     slideBackBuffer_.incomingFamilyIds.swap(incomingPrepared.lodState.faceFamilyIds);
     slideBackBuffer_.incomingFaceSlots.swap(incomingPrepared.lodState.currentFaceSlots);
     slideScratchRenderer_ = std::move(incomingPrepared.renderer);
@@ -8279,6 +8336,8 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     slot.center = slideBackBuffer_.incomingCenter;
     slot.lodState.ready = true;
     slot.lodState.hasPerFaceRankOffsets = false;
+    // Swap entre membros persistentes: old slot capacity vai para slideBackBuffer_ (preservado via clear()),
+    // incoming data vai para o slot — nenhum free de LWR ocorre.
     slot.lodState.faceFamilyIds.swap(slideBackBuffer_.incomingFamilyIds);
     slot.lodState.faceRankOffsets.assign(slot.lodState.faceFamilyIds.size(), 0u);
     slot.lodState.currentFaceSlots.swap(slideBackBuffer_.incomingFaceSlots);
@@ -8315,6 +8374,7 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
         for (auto& entry : segmentRenderers_)
         {
             if (entry.id != update.segmentId) continue;
+            // Swap entre membros persistentes — nenhum free de LWR ocorre
             entry.lodState.currentFaceSlots.swap(update.preparedFaceSlots);
             entry.lodState.currentLodIndex = update.desiredLodIndex;
             entry.lodState.currentBaseRank = update.desiredBaseRank;
@@ -8367,7 +8427,8 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
         const bool prefetchMetadataReady =
             slidePrefetchSegmentId_ == segmentId &&
             !slidePrefetchFamilyIds_.empty();
-        if (prefetchMetadataReady)
+        // Retornar true somente quando metadata E renderer estiverem prontos
+        if (prefetchMetadataReady && slidePrefetchRendererReady_)
         {
             return true;
         }
@@ -8387,28 +8448,62 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
         }
         ++prefetchBuildAttemptsThisFrame_;
 
-        TrackLowWorkU16Vector familyIds{};
-        if (!LoadRuntimeFamilyIdsForSegment(segmentId, familyIds) || familyIds.empty())
+        // Fase 1: carregar metadata de família (reutilizar scratch — sem alloc LWR)
+        if (!prefetchMetadataReady)
         {
-            return false;
+            slideScratchEntry_.lodState.faceFamilyIds.clear();
+            if (!LoadRuntimeFamilyIdsForSegment(segmentId, slideScratchEntry_.lodState.faceFamilyIds)
+                || slideScratchEntry_.lodState.faceFamilyIds.empty())
+            {
+                return false;
+            }
+            slidePrefetchSegmentId_ = static_cast<int16_t>(segmentId);
+            if (segmentId > 0 &&
+                static_cast<size_t>(segmentId) <= segmentCenterCatalog_.size())
+            {
+                slidePrefetchCenter_ = segmentCenterCatalog_[static_cast<size_t>(segmentId - 1)];
+            }
+            else
+            {
+                slidePrefetchCenter_ = Vector3D(0.0, 0.0, 0.0);
+            }
+            slidePrefetchFamilyIds_.assign(slideScratchEntry_.lodState.faceFamilyIds.begin(),
+                                           slideScratchEntry_.lodState.faceFamilyIds.end());
+            slidePrefetchFaceSlots_.assign(slidePrefetchFamilyIds_.size(), -1);
+            EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
+            EnsureVectorCapacityFloor(slidePrefetchFaceSlots_, slotFaceCapacityFloor_);
+            slidePrefetchRendererReady_ = false;
+            slidePrefetchLod8Ready_ = false;
         }
-        slidePrefetchSegmentId_ = static_cast<int16_t>(segmentId);
-        if (segmentId > 0 &&
-            static_cast<size_t>(segmentId) <= segmentCenterCatalog_.size())
+
+        // Fase 2: pré-construir renderer no scratch para eliminar build síncrono no frame do slide
+        if (!slidePrefetchRendererReady_)
         {
-            slidePrefetchCenter_ = segmentCenterCatalog_[static_cast<size_t>(segmentId - 1)];
+            if (!slideScratchRenderer_)
+                slideScratchRenderer_ = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
+            if (slideScratchRenderer_)
+            {
+                ApplyActiveRendererCapacityFloor(*slideScratchRenderer_);
+                slideScratchEntry_.lodState.faceFamilyIds.clear();
+                Vector3D buildCenter{};
+                if (BuildSegmentIntoRenderer(segmentId, *slideScratchRenderer_, buildCenter,
+                                             slideScratchEntry_.lodState.faceFamilyIds))
+                {
+                    slidePrefetchCenter_ = buildCenter;
+                    slidePrefetchFamilyIds_.assign(slideScratchEntry_.lodState.faceFamilyIds.begin(),
+                                                   slideScratchEntry_.lodState.faceFamilyIds.end());
+                    EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
+                    slidePrefetchRendererReady_ = true;
+                    slidePrefetchLod8Ready_ = false;
+                }
+            }
         }
-        else
+        // Reciclar staging slot (não mais usado para renderer no caminho estabilizado)
+        if (slotPool_[0] != nullptr && stagingSlotIdx_ < kSlotPoolSize
+            && slotPool_[stagingSlotIdx_] && slotPool_[stagingSlotIdx_]->renderer)
         {
-            slidePrefetchCenter_ = Vector3D(0.0, 0.0, 0.0);
+            slotPool_[stagingSlotIdx_]->renderer->RecycleRuntimeState();
         }
-        slidePrefetchFamilyIds_.swap(familyIds);
-        slidePrefetchFaceSlots_.assign(slidePrefetchFamilyIds_.size(), -1);
-        EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
-        EnsureVectorCapacityFloor(slidePrefetchFaceSlots_, slotFaceCapacityFloor_);
-        slidePrefetchRenderer_.reset();
-        slidePrefetchRendererReady_ = false;
-        slidePrefetchLod8Ready_ = false;
         return slidePrefetchSegmentId_ == segmentId &&
                !slidePrefetchFamilyIds_.empty();
     }
@@ -8554,6 +8649,19 @@ bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
                                                FamilyIdVector& outFamilyIds)
 {
     if (segmentId <= 0) return false;
+    // Se o renderer foi pré-construído pelo prefetch para este segmento, reutilizá-lo diretamente.
+    // O slideScratchRenderer_ já contém a geometria; apenas copiar os family IDs do cache.
+    if (kEnableTrackRuntimeStabilization &&
+        slidePrefetchRendererReady_ &&
+        slidePrefetchSegmentId_ == segmentId &&
+        slideScratchRenderer_)
+    {
+        outCenter = slidePrefetchCenter_;
+        outFamilyIds.assign(slidePrefetchFamilyIds_.begin(), slidePrefetchFamilyIds_.end());
+        // slidePrefetchRendererReady_ será limpo em ResetSlidePrefetchState() após o slide
+        return true;
+    }
+    // Build síncrono (fallback: prefetch ainda não construiu o renderer)
     if (!slideScratchRenderer_) slideScratchRenderer_ = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
     if (slideScratchRenderer_)
     {
