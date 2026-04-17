@@ -644,10 +644,10 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
     loopContext.enableRuntimeStatsLogs = enableRuntimeStatsLogs;
-    // Estabilidade: manter apenas um pipeline na Slave por frame (pista).
-    // Simulation/car prepare em Slave junto com producer da pista causa conflito de jobs.
+    // Dual-SH2: simulacao na Slave reativada com drenagem segura antes da
+    // janela de render da pista (evita conflito de submissao com producer).
     loopContext.enableSlaveForCarPrepare = false;
-    loopContext.enableSlaveForSimulation = false;
+    loopContext.enableSlaveForSimulation = true;
     loopContext.enableManualGouraudCopy = enableManualGouraudCopy;
     loopContext.faceCount = faceCount;
     loopContext.vertexCount = vertexCount;

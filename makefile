@@ -18,6 +18,9 @@ SGL_MAX_POLYGONS = 1700         # Values above this overflow WORK_AREA and corru
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 
+# Extra compile flags (LWR stage tracing for leak diagnosis)
+SRL_CUSTOM_CCFLAGS = -DTRACK_LWR_STAGE_TRACE
+
 # Disk name
 CD_NAME = Interlagos_racing
 

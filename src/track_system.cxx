@@ -11,6 +11,66 @@
 #include <errno.h>
 #include <limits>
 
+// ============================================================================
+// TRACK_LWR_STAGE_TRACE — probes de LWR por função para diagnóstico de leak
+//
+// Ativar com: -DTRACK_LWR_STAGE_TRACE na linha de compilação
+// Saída: "LWP <nome> d:<delta>" via SRL::Debug::Print nas linhas 31-38.
+// Cada linha mostra o delta de bytes livres de LWR antes/após a função.
+// delta negativo = a função consumiu LWR neste frame.
+// ============================================================================
+#ifdef TRACK_LWR_STAGE_TRACE
+namespace {
+struct LwrStageProbeAccum
+{
+    int32_t resetPrefetch    = 0;
+    int32_t resetBackBuf     = 0;
+    int32_t buildPrefetch    = 0;
+    int32_t prepareSlide     = 0;
+    int32_t commitSlide      = 0;
+    int32_t mergeFamilies    = 0;
+    int32_t buildHandleTable = 0;
+    int32_t drawStage        = 0;
+    int32_t releaseEndFrame  = 0;
+};
+static LwrStageProbeAccum g_lwrStageAccum{};
+
+inline uint32_t LwrProbeCapture()
+{
+    return static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+}
+inline int32_t LwrProbeDelta(uint32_t before)
+{
+    return static_cast<int32_t>(LwrProbeCapture()) - static_cast<int32_t>(before);
+}
+} // namespace
+
+// Imprime o acumulado de probes do frame atual (chamar uma vez por frame).
+// Uso: adicionar TrackSystem::PrintLwrStageProbes() no game loop de debug.
+void TrackSystem::PrintLwrStageProbes()
+{
+    SRL::Debug::Print(2, 9, "LWP rst:%d/%d bld:%d      ",
+                      static_cast<int>(g_lwrStageAccum.resetPrefetch),
+                      static_cast<int>(g_lwrStageAccum.resetBackBuf),
+                      static_cast<int>(g_lwrStageAccum.buildPrefetch));
+    SRL::Debug::Print(2, 10, "LWP prp:%d cmt:%d mrg:%d hnd:%d  ",
+                      static_cast<int>(g_lwrStageAccum.prepareSlide),
+                      static_cast<int>(g_lwrStageAccum.commitSlide),
+                      static_cast<int>(g_lwrStageAccum.mergeFamilies),
+                      static_cast<int>(g_lwrStageAccum.buildHandleTable));
+    SRL::Debug::Print(2, 11, "LWP drw:%d efr:%d              ",
+                      static_cast<int>(g_lwrStageAccum.drawStage),
+                      static_cast<int>(g_lwrStageAccum.releaseEndFrame));
+    g_lwrStageAccum = LwrStageProbeAccum{};
+}
+
+#define LWR_PROBE_BEGIN()  const uint32_t _lwrRef = LwrProbeCapture()
+#define LWR_PROBE_END(acc) (acc) += LwrProbeDelta(_lwrRef)
+#else
+#define LWR_PROBE_BEGIN()  ((void)0)
+#define LWR_PROBE_END(acc) ((void)0)
+#endif // TRACK_LWR_STAGE_TRACE
+
 #include "modelObject.hpp"
 #include "resource_loader.hpp"
 #include "segment_component_loader.hpp"
@@ -441,6 +501,17 @@ static bool TrimVectorSlack(VecT& v, size_t keepCapacityElements, bool aggressiv
         if (slackBytes < (2u * 1024u)) return false;
     }
 
+    // Safety: compact.reserve() needs 'desired * sizeof(T)' contiguous LWR bytes
+    // BEFORE the old block is freed. Attempting this when LWR is nearly exhausted
+    // creates a catastrophic double-allocation that consumes the last available bytes.
+    const size_t compactBytes = desired * sizeof(T);
+    if (compactBytes > 0u)
+    {
+        static constexpr size_t kTrimLwrSafetyMarginBytes = 2u * 1024u;
+        if (SRL::Memory::LowWorkRam::GetReport().FreeSize < compactBytes + kTrimLwrSafetyMarginBytes)
+            return false;
+    }
+
     VecT compact{};
     compact.reserve(desired);
     compact.insert(compact.end(), v.begin(), v.end());
@@ -510,12 +581,15 @@ static void TrimRuntimeBlobScratchCaches(bool aggressive)
         ResetBlobBytes(g_sdrBuildScratch.blob);
         ResetBlobBytes(g_rdrFamilyIdsScratch);
         ResetBlobBytes(g_sdrFamilyIdsScratch);
-        decltype(g_rdrBuildScratch.verts){}.swap(g_rdrBuildScratch.verts);
-        decltype(g_sdrBuildScratch.verts){}.swap(g_sdrBuildScratch.verts);
-        decltype(g_rdrBuildScratch.faces){}.swap(g_rdrBuildScratch.faces);
-        decltype(g_sdrBuildScratch.faces){}.swap(g_sdrBuildScratch.faces);
-        decltype(g_rdrBuildScratch.attrs){}.swap(g_rdrBuildScratch.attrs);
-        decltype(g_sdrBuildScratch.attrs){}.swap(g_sdrBuildScratch.attrs);
+        // Use clear() instead of swap-to-empty: preserves pre-primed capacity from
+        // PrimeRuntimeScratchCapacities(), avoiding re-allocation TLSF overhead when
+        // BuildSegmentIntoPrefetch immediately needs them again.
+        g_rdrBuildScratch.verts.clear();
+        g_sdrBuildScratch.verts.clear();
+        g_rdrBuildScratch.faces.clear();
+        g_sdrBuildScratch.faces.clear();
+        g_rdrBuildScratch.attrs.clear();
+        g_sdrBuildScratch.attrs.clear();
         return;
     }
 
@@ -1713,8 +1787,26 @@ struct TrackedPaletteBankState
 static TrackedPaletteBankState g_trackPaletteBanks{};
 static TrackLowWorkU16Vector g_trackReusableTextureSlots{};
 static TrackLowWorkU16Vector g_trackPendingRetiredTextureSlots{};
+// Keep queue capacities stable to avoid end-frame LWR churn when slots are
+// retired/reused continuously during long races.
+static size_t g_trackTextureSlotQueueCapacityFloor = 0u;
 static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackReusableTextureSlotFlags{};
 static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackPendingRetiredTextureSlotFlags{};
+
+// Verifica se o slot está vivo E ainda pertence exclusivamente a esta família
+// (i.e., não foi aposentado nem está no pool de reuso).
+// Slots aposentados/reutilizáveis podem ter sido realocados para outra textura,
+// causando textura errada na face mesmo com IsVdp1TextureSlotLive() == true.
+static bool IsVdp1TextureSlotActiveAndOwned(uint16_t slot)
+{
+    if (!IsVdp1TextureSlotLive(slot)) return false;
+    if (slot < g_trackPendingRetiredTextureSlotFlags.size() &&
+        g_trackPendingRetiredTextureSlotFlags[slot] != 0u) return false;
+    if (slot < g_trackReusableTextureSlotFlags.size() &&
+        g_trackReusableTextureSlotFlags[slot] != 0u) return false;
+    return true;
+}
+
 static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackReusableTextureSlotPaletteReleased{};
 static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackReusableTextureSlotReuseCooldown{};
 // Keep the effective byte capacity per slot. Width/height metadata can shrink
@@ -1732,13 +1824,48 @@ static uint16_t g_trackRetiredFlushedThisFrame = 0u;
 // count during continuous slides and drains LWR even when the 20-slot window is
 // stable.
 // Delay minimo > 1 frame reduz risco de "palette tear" visivel como roxo.
-static constexpr uint8_t kReusableTrackSlotReuseDelayFrames = 3u;
+// Reuse on the next frame to keep the texture slot pool stable during
+// continuous slides (fast movement / low FPS scenarios).
+static constexpr uint8_t kReusableTrackSlotReuseDelayFrames = 1u;
 static constexpr bool kDisableTrackReusableSlotReuseForDiagnostics = false;
+
+// In stabilized runtime, keep family merge cadence short enough to recycle
+// outgoing families promptly without forcing a merge every single slide.
+static constexpr uint8_t kStabilizedFamilyMergeCooldownFrames = 2u;
+
+static uint8_t ResolveFamilyMergeCooldownFrames(bool fullTrackFamilyCacheReady)
+{
+    return fullTrackFamilyCacheReady ? 1u : kStabilizedFamilyMergeCooldownFrames;
+}
 
 static void ReleaseTrackedPaletteBankForSlot(uint16_t slot);
 
+static void EnsureTrackTextureSlotQueueCapacityFloor(size_t floor)
+{
+    if (floor == 0u) return;
+    floor = std::min<size_t>(floor, static_cast<size_t>(SRL_MAX_TEXTURES));
+    if (floor == 0u) return;
+    if (floor > g_trackTextureSlotQueueCapacityFloor)
+    {
+        g_trackTextureSlotQueueCapacityFloor = floor;
+    }
+    if (g_trackReusableTextureSlots.capacity() < g_trackTextureSlotQueueCapacityFloor)
+    {
+        g_trackReusableTextureSlots.reserve(g_trackTextureSlotQueueCapacityFloor);
+    }
+    if (g_trackPendingRetiredTextureSlots.capacity() < g_trackTextureSlotQueueCapacityFloor)
+    {
+        g_trackPendingRetiredTextureSlots.reserve(g_trackTextureSlotQueueCapacityFloor);
+    }
+}
+
 static void ResetReusableTrackTextureSlots()
 {
+    if (g_trackTextureSlotQueueCapacityFloor == 0u)
+    {
+        g_trackTextureSlotQueueCapacityFloor =
+            std::min<size_t>(static_cast<size_t>(SRL_MAX_TEXTURES), 256u);
+    }
     g_trackReusableTextureSlots.clear();
     g_trackPendingRetiredTextureSlots.clear();
     g_trackReusableTextureSlotFlags.fill(0u);
@@ -1746,6 +1873,7 @@ static void ResetReusableTrackTextureSlots()
     g_trackReusableTextureSlotPaletteReleased.fill(0u);
     g_trackReusableTextureSlotReuseCooldown.fill(0u);
     g_trackTextureSlotCapacityBytes.fill(0u);
+    EnsureTrackTextureSlotQueueCapacityFloor(g_trackTextureSlotQueueCapacityFloor);
 }
 
 static void RemoveReusableTrackTextureSlotAt(size_t index)
@@ -3400,12 +3528,13 @@ static bool LoadSdrFamilyIdsForSegment(int segmentId, TrackLowWorkU16Vector& out
 {
     outFamilyIds.clear();
 
+    // Trim only on LWR pressure — g_sdrFamilyIdsScratch lives in LWR.
     auto trimStaticBlobIfLow = [&]()
     {
         bool freeValid = false;
-        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+        const size_t freeBytes = GetLowWorkRamFreeBytesSafe(&freeValid);
         if (!freeValid) return;
-        if (freeBytes > (kWorkRamHardFloorBytes + (64u * 1024u))) return;
+        if (freeBytes > kLowWorkRamSoftFloorBytes) return;
         ResetBlobBytes(g_sdrFamilyIdsScratch);
     };
     trimStaticBlobIfLow();
@@ -3436,12 +3565,13 @@ static bool LoadRuntimeFamilyIdsForSegment(int segmentId, TrackLowWorkU16Vector&
 {
     outFamilyIds.clear();
 
+    // Trim only on LWR pressure — g_rdrFamilyIdsScratch lives in LWR.
     auto trimStaticBlobIfLow = [&]()
     {
         bool freeValid = false;
-        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+        const size_t freeBytes = GetLowWorkRamFreeBytesSafe(&freeValid);
         if (!freeValid) return;
-        if (freeBytes > (kWorkRamHardFloorBytes + (64u * 1024u))) return;
+        if (freeBytes > kLowWorkRamSoftFloorBytes) return;
         ResetBlobBytes(g_rdrFamilyIdsScratch);
     };
     trimStaticBlobIfLow();
@@ -3562,15 +3692,15 @@ static bool BuildRendererFromRdr(int segmentId,
     const auto previousHwrTag = SRL::Memory::HighWorkRam::GetDebugTag();
     const auto previousLwrTag = SRL::Memory::LowWorkRam::GetDebugTag();
     SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
-    auto trimStaticScratchIfLow = [&]()
+    // Trim only when LWR (where the blobs actually live) is under pressure.
+    // The old check used HWR which is always low (~44KB), causing free+realloc
+    // fragmentation on every build call even when LWR has hundreds of KB free.
     {
         bool freeValid = false;
-        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
-        if (!freeValid) return;
-        if (freeBytes > (kWorkRamHardFloorBytes + (64u * 1024u))) return;
-        TrimRuntimeBlobScratchCaches(true);
-    };
-    trimStaticScratchIfLow();
+        const size_t freeBytes = GetLowWorkRamFreeBytesSafe(&freeValid);
+        if (freeValid && freeBytes <= kLowWorkRamSoftFloorBytes)
+            TrimRuntimeBlobScratchCaches(true);
+    }
 
     SegmentRuntimeDraw::MappedBlob rdrBlob{};
     SegmentRuntimeDraw::Loader::View rdrView{};
@@ -3587,12 +3717,11 @@ static bool BuildRendererFromRdr(int segmentId,
     verts.clear();
     faces.clear();
     attrs.clear();
-    (void)CompactEmptyVectorForTarget(verts, rdrView.header.vertexCount);
-    (void)CompactEmptyVectorForTarget(faces, rdrView.header.faceCount);
-    (void)CompactEmptyVectorForTarget(attrs, rdrView.header.faceCount);
-    if (verts.capacity() < rdrView.header.vertexCount) verts.reserve(rdrView.header.vertexCount);
-    if (faces.capacity() < rdrView.header.faceCount) faces.reserve(rdrView.header.faceCount);
-    if (attrs.capacity() < rdrView.header.faceCount) attrs.reserve(rdrView.header.faceCount);
+    // Use floor-only reservation — never shrink below pre-reserved capacity.
+    // CompactEmptyVectorForTarget was shrinking to segment size, undoing PrimeRuntimeScratchCapacities.
+    EnsureVectorCapacityFloor(verts, rdrView.header.vertexCount);
+    EnsureVectorCapacityFloor(faces, rdrView.header.faceCount);
+    EnsureVectorCapacityFloor(attrs, rdrView.header.faceCount);
     if (outFamilyIds)
     {
         outFamilyIds->clear();
@@ -3697,7 +3826,6 @@ static bool BuildRendererFromRdr(int segmentId,
             SRL::Math::Types::Fxp::BuildRaw(rdrView.header.centerY),
             SRL::Math::Types::Fxp::BuildRaw(rdrView.header.centerZ));
     }
-    trimStaticScratchIfLow();
     SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
     SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
     return ok;
@@ -3711,15 +3839,13 @@ static bool BuildRendererFromSdr(int segmentId,
     const auto previousHwrTag = SRL::Memory::HighWorkRam::GetDebugTag();
     const auto previousLwrTag = SRL::Memory::LowWorkRam::GetDebugTag();
     SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
-    auto trimStaticScratchIfLow = [&]()
+    // Trim only on LWR pressure — not on HWR pressure (blobs live in LWR).
     {
         bool freeValid = false;
-        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
-        if (!freeValid) return;
-        if (freeBytes > (kWorkRamHardFloorBytes + (64u * 1024u))) return;
-        TrimRuntimeBlobScratchCaches(true);
-    };
-    trimStaticScratchIfLow();
+        const size_t freeBytes = GetLowWorkRamFreeBytesSafe(&freeValid);
+        if (freeValid && freeBytes <= kLowWorkRamSoftFloorBytes)
+            TrimRuntimeBlobScratchCaches(true);
+    }
     g_sdrBuildScratch.blob.loaded = false;
     g_sdrBuildScratch.blob.size = 0;
     g_sdrBuildScratch.blob.bytes.clear();
@@ -3738,12 +3864,9 @@ static bool BuildRendererFromSdr(int segmentId,
     verts.clear();
     faces.clear();
     attrs.clear();
-    (void)CompactEmptyVectorForTarget(verts, sdrView.header.vertexCount);
-    (void)CompactEmptyVectorForTarget(faces, sdrView.header.faceCount);
-    (void)CompactEmptyVectorForTarget(attrs, sdrView.header.faceCount);
-    if (verts.capacity() < sdrView.header.vertexCount) verts.reserve(sdrView.header.vertexCount);
-    if (faces.capacity() < sdrView.header.faceCount) faces.reserve(sdrView.header.faceCount);
-    if (attrs.capacity() < sdrView.header.faceCount) attrs.reserve(sdrView.header.faceCount);
+    EnsureVectorCapacityFloor(verts, sdrView.header.vertexCount);
+    EnsureVectorCapacityFloor(faces, sdrView.header.faceCount);
+    EnsureVectorCapacityFloor(attrs, sdrView.header.faceCount);
     if (outFamilyIds)
     {
         outFamilyIds->clear();
@@ -3874,7 +3997,6 @@ static bool BuildRendererFromSdr(int segmentId,
             SRL::Math::Types::Fxp::BuildRaw(sdrView.header.centerY),
             SRL::Math::Types::Fxp::BuildRaw(sdrView.header.centerZ));
     }
-    trimStaticScratchIfLow();
     SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
     SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
     return ok;
@@ -5698,18 +5820,17 @@ TrackLowWorkVector<TrackSystem::SegmentRenderEntry> TrackSystem::BuildSegmentRen
     return renderers;
 }
 
-TrackLowWorkVector<TrackSystem::SegmentHandle> TrackSystem::BuildSegmentHandleTable()
+void TrackSystem::BuildSegmentHandleTable()
 {
+    LWR_PROBE_BEGIN();
     segmentPool_.Reset();
-    TrackLowWorkVector<SegmentHandle> handles;
-    handles.reserve(segmentRenderers_.size());
-    if (segmentRenderers_.empty()) return handles;
+    segmentHandles_.clear();
+    if (segmentRenderers_.empty()) return;
+    if (segmentHandles_.capacity() < segmentRenderers_.size())
+        segmentHandles_.reserve(segmentRenderers_.size());
     for (size_t i = 0; i < segmentRenderers_.size(); ++i)
-    {
-        auto& entry = segmentRenderers_[i];
-        handles.push_back(segmentPool_.Add(&entry));
-    }
-    return handles;
+        segmentHandles_.push_back(segmentPool_.Add(&segmentRenderers_[i]));
+    LWR_PROBE_END(g_lwrStageAccum.buildHandleTable);
 }
 
 void TrackSystem::InitializeFamilySlots(FamilySlotVector& outSlots,
@@ -5824,7 +5945,7 @@ bool TrackSystem::TryGetFamilyLodSlot(const FamilySlotVector& familySlots,
     const auto* slotEntry = FindFamilySlot(familySlots, familyId);
     if (!slotEntry) return false;
     outSlot = slotEntry->lodSlots[lodIndex];
-    return IsVdp1TextureSlotLive(outSlot);
+    return IsVdp1TextureSlotActiveAndOwned(outSlot);
 }
 
 const TrackSystem::Seg1TexbankEntry* TrackSystem::FindTexbankEntryByFamily(const Seg1TexbankCart& bank, uint16_t familyId) const
@@ -5855,7 +5976,9 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
     if (slotEntry.lodSlots[targetLodIndex] != No_Texture)
     {
         const uint16_t existingSlot = slotEntry.lodSlots[targetLodIndex];
-        if (IsVdp1TextureSlotLive(existingSlot))
+        // Usar ActiveAndOwned: um slot aposentado/reutilizável pode ter sido realocado
+        // para outra família — IsVdp1TextureSlotLive() retornaria true com textura errada.
+        if (IsVdp1TextureSlotActiveAndOwned(existingSlot))
         {
             if (outLoadedFromLodValue)
             {
@@ -5864,7 +5987,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
             }
             return true;
         }
-        // Slot was previously assigned but is no longer valid in VDP1 metadata.
+        // Slot inválido, aposentado ou reutilizado — limpar e recarregar.
         slotEntry.lodSlots[targetLodIndex] = No_Texture;
     }
 
@@ -6079,7 +6202,8 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
 bool TrackSystem::BuildTrackFamilyLodSlots(FamilySlotVector& outSlots)
 {
     outSlots.clear();
-    if (outSlots.capacity() < 256u) outSlots.reserve(256u);
+    const size_t familyFloor = std::max<size_t>(256u, static_cast<size_t>(familySlotCapacityFloor_));
+    if (outSlots.capacity() < familyFloor) outSlots.reserve(familyFloor);
     std::array<uint8_t, 4096> seenSmallFamily{};
     for (size_t i = 0; i < seenSmallFamily.size(); ++i) seenSmallFamily[i] = 0;
     for (const auto& seg : segmentRenderers_)
@@ -6176,7 +6300,9 @@ bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
                 for (uint8_t li = 0; li < 4u; ++li)
                 {
                     if (family->lodSlots[li] != slot) continue;
-                    if (!IsVdp1TextureSlotLive(slot)) continue;
+                    // ActiveAndOwned: a reusable slot may match by number but
+                    // is no longer owned by this family — use fallback LOD.
+                    if (!IsVdp1TextureSlotActiveAndOwned(slot)) continue;
                     resolvedLod = li;
                     break;
                 }
@@ -6290,7 +6416,8 @@ bool TrackSystem::EnsureFamilyLodSlotLoaded(FamilySlotVector& familySlots,
     Seg1FamilySlotEntry* slotEntry = FindFamilySlot(familySlots, familyId);
     if (!slotEntry) return false;
     const uint16_t existing = slotEntry->lodSlots[lodIndex];
-    if (existing != No_Texture && IsVdp1TextureSlotLive(existing)) return true;
+    if (existing != No_Texture && IsVdp1TextureSlotActiveAndOwned(existing)) return true;
+    if (existing != No_Texture) slotEntry->lodSlots[lodIndex] = No_Texture; // limpar slot stale
     if (!bypassUploadBudget &&
         ready_ &&
         textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
@@ -6327,7 +6454,7 @@ bool TrackSystem::TryGetBestFamilyLodSlot(FamilySlotVector& familySlots,
     {
         if (lodIndex > 3u) return false;
         const uint16_t slot = slotEntry->lodSlots[lodIndex];
-        if (!IsVdp1TextureSlotLive(slot)) return false;
+        if (!IsVdp1TextureSlotActiveAndOwned(slot)) return false;
         outSlot = slot;
         if (outResolvedLodIndex) *outResolvedLodIndex = lodIndex;
         return true;
@@ -6586,8 +6713,6 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     EnsureVectorCapacityFloor(entry.lodState.faceFamilyIds, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(entry.lodState.faceRankOffsets, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(entry.lodState.currentFaceSlots, slotFaceCapacityFloor_);
-    TrackLowWorkI16Vector previousFaceSlots{};
-    CopyFaceSlotsToScratch(entry.lodState.currentFaceSlots, previousFaceSlots);
     bool rebuilt = false;
     uint8_t appliedLodIndex = desiredLodIndex;
     const bool requireExactLod =
@@ -6613,7 +6738,8 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     }
     if (!rebuilt)
     {
-        RestoreFaceSlotsFromScratch(entry.lodState.currentFaceSlots, previousFaceSlots);
+        // Restore to clean state (currentFaceSlots was already -1 before rebuild attempts)
+        entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
         return false;
     }
     (void)entry.renderer->ApplyFaceTextureSlotsGlobal(entry.lodState.currentFaceSlots);
@@ -6958,15 +7084,14 @@ bool TrackSystem::ApplyStabilizedLodForLogicalRank(size_t logicalRank)
         }
         if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
 
-        TrackLowWorkI16Vector previousFaceSlots{};
-        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
         const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
         const int16_t previousBaseRank = entry->lodState.currentBaseRank;
         if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, familySlots) ||
             HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                &entry->lodState.faceFamilyIds))
         {
-            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             entry->lodState.currentLodIndex = previousLodIndex;
             entry->lodState.currentBaseRank = previousBaseRank;
             return false;
@@ -6993,15 +7118,14 @@ bool TrackSystem::ApplyStabilizedLodForLogicalRank(size_t logicalRank)
     }
     if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
 
-    TrackLowWorkI16Vector previousFaceSlots{};
-    CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+    CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
     const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
     const int16_t previousBaseRank = entry->lodState.currentBaseRank;
     if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots) ||
         HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                            &entry->lodState.faceFamilyIds))
     {
-        RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+        RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
         entry->lodState.currentLodIndex = previousLodIndex;
         entry->lodState.currentBaseRank = previousBaseRank;
         return false;
@@ -7206,13 +7330,12 @@ void TrackSystem::UpdateStabilizedWindowLodBands()
             }
             if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) continue;
 
-            TrackLowWorkI16Vector previousFaceSlots{};
-            CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
             const int16_t previousBaseRank = entry->lodState.currentBaseRank;
             if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, familySlots))
             {
-                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
                 entry->lodState.currentLodIndex = previousLodIndex;
                 entry->lodState.currentBaseRank = previousBaseRank;
                 continue;
@@ -7220,7 +7343,7 @@ void TrackSystem::UpdateStabilizedWindowLodBands()
             if (HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                    &entry->lodState.faceFamilyIds))
             {
-                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
                 entry->lodState.currentLodIndex = previousLodIndex;
                 entry->lodState.currentBaseRank = previousBaseRank;
                 continue;
@@ -7243,13 +7366,12 @@ void TrackSystem::UpdateStabilizedWindowLodBands()
         }
         if (ready_ && textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) continue;
 
-        TrackLowWorkI16Vector previousFaceSlots{};
-        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
         const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
         const int16_t previousBaseRank = entry->lodState.currentBaseRank;
         if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots))
         {
-            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             entry->lodState.currentLodIndex = previousLodIndex;
             entry->lodState.currentBaseRank = previousBaseRank;
             continue;
@@ -7257,7 +7379,7 @@ void TrackSystem::UpdateStabilizedWindowLodBands()
         if (HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                &entry->lodState.faceFamilyIds))
         {
-            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             entry->lodState.currentLodIndex = previousLodIndex;
             entry->lodState.currentBaseRank = previousBaseRank;
             continue;
@@ -7307,13 +7429,12 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
                 continue;
             }
 
-            TrackLowWorkI16Vector previousFaceSlots{};
-            CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
             const int16_t previousBaseRank = entry->lodState.currentBaseRank;
             if (!RebuildSegmentFaceSlotsForLod(*entry, desiredLodIndex, familySlots))
             {
-                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
                 entry->lodState.currentLodIndex = previousLodIndex;
                 entry->lodState.currentBaseRank = previousBaseRank;
                 logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
@@ -7325,7 +7446,7 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
             if (missing)
             {
                 // Keep the previous mapping until the new lod is fully available.
-                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+                RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
                 entry->lodState.currentLodIndex = previousLodIndex;
                 entry->lodState.currentBaseRank = previousBaseRank;
                 logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
@@ -7353,13 +7474,12 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
             continue;
         }
-        TrackLowWorkI16Vector previousFaceSlots{};
-        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
         const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
         const int16_t previousBaseRank = entry->lodState.currentBaseRank;
         if (!RebuildSegmentFaceSlotsForBaseRank(*entry, logicalRank, familySlots))
         {
-            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             entry->lodState.currentLodIndex = previousLodIndex;
             entry->lodState.currentBaseRank = previousBaseRank;
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
@@ -7370,7 +7490,7 @@ void TrackSystem::UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nea
                                                &entry->lodState.faceFamilyIds);
         if (missing)
         {
-            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             entry->lodState.currentLodIndex = previousLodIndex;
             entry->lodState.currentBaseRank = previousBaseRank;
             logicalRank += std::max<size_t>(1, static_cast<size_t>(entry->logicalSegmentCount));
@@ -7571,38 +7691,10 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
     }
     activeWindowHead_ = 0;
 
-    // === FIXED SLOT POOL: alocar slots uma vez com capacity pré-reservada ===
-    // Os slots 0..19 ficam disponíveis para uso futuro na rotação.
-    // Slot 20 é o staging para prefetch (usado em ResetSlidePrefetchState).
-    // NÃO mover dados de segmentRenderers_ — eles continuam como autoridade dos segmentos ativos.
-    if (slotPool_[0] == nullptr)
-    {
-        const size_t maxFaces = std::max(static_cast<size_t>(slotFaceCapacityFloor_), size_t(1));
-        const size_t maxVerts = std::max(static_cast<size_t>(rendererVertexCapacityFloor_), size_t(1));
-        for (size_t i = 0; i < kSlotPoolSize; ++i)
-        {
-            void* mem = SRL::Memory::Malloc(sizeof(SegmentRenderEntry), SRL::Memory::Zone::LWRam);
-            if (!mem) break;
-            slotPool_[i] = new (mem) SegmentRenderEntry{};
-            auto& s = *slotPool_[i];
-            s.lodState.faceFamilyIds.reserve(maxFaces);
-            s.lodState.faceRankOffsets.reserve(maxFaces);
-            s.lodState.currentFaceSlots.reserve(maxFaces);
-            s.lodState.workingSetFamilies.reserve(maxFaces);
-            s.lodState.workingSetLodIndices.reserve(maxFaces);
-            s.lodState.workingSetSlots.reserve(maxFaces);
-            s.renderer = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
-            if (s.renderer)
-            {
-                ConfigureStreamedRendererDefaults(*s.renderer);
-                s.renderer->SetRuntimeCapacityFloor(maxVerts, maxFaces);
-            }
-        }
-    }
-    stagingSlotIdx_ = static_cast<uint8_t>(kSlotPoolSize - 1); // slot 20 = staging
-    // === FIM FIXED SLOT POOL ===
+    // slotPool_ não é alocado: a rotação O(1) planejada não foi implementada.
+    // Alocar 21 SegmentRenderEntry+renderers+vetores em LWR sem uso é ~210 KB perdidos.
 
-    segmentHandles_ = BuildSegmentHandleTable();
+    BuildSegmentHandleTable();
     if (kEnableTrackRuntimeStabilization && !slideScratchRenderer_)
     {
         slideScratchRenderer_ = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
@@ -7636,6 +7728,7 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
 
 void TrackSystem::ResetSlidePrefetchState()
 {
+    LWR_PROBE_BEGIN();
     prefetchRetryCooldown_  = 0u;
     slidePrefetchSegmentId_ = -1;
     slidePrefetchCenter_    = Vector3D(0.0, 0.0, 0.0);
@@ -7645,35 +7738,19 @@ void TrackSystem::ResetSlidePrefetchState()
     slidePrefetchFaceSlots_.clear();
     slidePrefetchFamilySlotsScratch_.clear();
 
-    // Limpar slot staging do pool fixo (sem liberar LWR)
-    if (slotPool_[0] != nullptr && stagingSlotIdx_ < kSlotPoolSize
-        && slotPool_[stagingSlotIdx_] != nullptr)
+    if (slidePrefetchRenderer_)
     {
-        auto& st = *slotPool_[stagingSlotIdx_];
-        st.id = -1;
-        st.lodState.faceFamilyIds.clear();
-        st.lodState.faceRankOffsets.clear();
-        st.lodState.currentFaceSlots.clear();
-        st.lodState.workingSetFamilies.clear();
-        st.lodState.workingSetLodIndices.clear();
-        st.lodState.workingSetSlots.clear();
-        st.lodState.ready           = false;
-        st.lodState.currentLodIndex = 0xFF;
-        st.lodState.currentBaseRank = -1;
-        if (st.renderer) st.renderer->RecycleRuntimeState();
-    }
-    else if (slidePrefetchRenderer_)
-    {
-        // Fallback legado: reciclar em vez de reset
         slidePrefetchRenderer_->RecycleRuntimeState();
     }
 
     slidePrefetchRendererReady_ = false;
     slidePrefetchLod8Ready_     = false;
+    LWR_PROBE_END(g_lwrStageAccum.resetPrefetch);
 }
 
 void TrackSystem::ResetSlideBackBuffer()
 {
+    LWR_PROBE_BEGIN();
     slideBackBuffer_.ready = false;
     slideBackBuffer_.direction = 1;
     slideBackBuffer_.dropIdx = 0;
@@ -7694,6 +7771,7 @@ void TrackSystem::ResetSlideBackBuffer()
         update.desiredBaseRank = -1;
         update.preparedFaceSlots.clear();
     }
+    LWR_PROBE_END(g_lwrStageAccum.resetBackBuf);
 }
 
 bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
@@ -7732,16 +7810,23 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         ++runtimePrefetchMissesThisFrame_;
         bool freeValid = false;
         const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
-        uint32_t trackOwnedHwrBytes =
-            ResolveTrackOwnedHighWorkBytesForPressure(
-                static_cast<uint32_t>(EstimateWorkRamRetainedBytes()));
-        if (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u)))
+        // Estimativa detalhada de retenção é custosa. Só calcular quando há
+        // pressão real de memória para não penalizar o caminho de slide.
+        uint32_t trackOwnedHwrBytes = 0u;
+        bool trackOwnedBypass = true;
+        if (!freeValid || freeBytes <= (kWorkRamHardFloorBytes + (32u * 1024u)))
         {
-            trackOwnedHwrBytes = std::max<uint32_t>(trackOwnedHwrBytes,
-                                                    GetTrackOwnedHighWorkBytesExact());
+            trackOwnedHwrBytes =
+                ResolveTrackOwnedHighWorkBytesForPressure(
+                    static_cast<uint32_t>(EstimateWorkRamRetainedBytes()));
+            if (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u)))
+            {
+                trackOwnedHwrBytes = std::max<uint32_t>(trackOwnedHwrBytes,
+                                                        GetTrackOwnedHighWorkBytesExact());
+            }
+            trackOwnedBypass =
+                trackOwnedHwrBytes <= static_cast<uint32_t>(kWorkRamTrackOwnedBypassBytes);
         }
-        const bool trackOwnedBypass =
-            trackOwnedHwrBytes <= static_cast<uint32_t>(kWorkRamTrackOwnedBypassBytes);
         if (!trackOwnedBypass &&
             freeValid &&
             freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u)))
@@ -7750,7 +7835,9 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
             {
                 slideScratchRenderer_->RecycleRuntimeState();
             }
-            TrimRuntimeBlobScratchCaches(true);
+            // Do NOT call TrimRuntimeBlobScratchCaches(true) here: it frees blob/verts/faces/attrs,
+            // which BuildSegmentIntoPrefetch immediately reallocates — pure TLSF overhead per cycle.
+            // The blob will be reused in-place via resize(); verts/faces/attrs are pre-primed.
             int32_t freeDelta = 0;
             (void)TrimWorkRamRetainedCapacities(true, &freeDelta);
         }
@@ -7878,6 +7965,12 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     uint8_t deferredBoundaryUpdates = 0u;
     static constexpr std::array<size_t, 3> kForwardBoundaryRanks{{3u, 8u, 13u}};
     static constexpr std::array<size_t, 3> kBackwardBoundaryRanks{{4u, 9u, 14u}};
+    bool boundaryFreeValid = false;
+    const size_t boundaryFreeBytes = GetHighWorkRamFreeBytesSafe(&boundaryFreeValid);
+    const uint8_t boundaryBudget =
+        (!boundaryFreeValid || boundaryFreeBytes <= (kWorkRamHardFloorBytes + (24u * 1024u))) ? 1u :
+        (boundaryFreeBytes <= (kWorkRamHardFloorBytes + (64u * 1024u))) ? 2u :
+        3u;
     const int32_t dir = (direction < 0) ? -1 : 1;
     const auto& boundaryRanks = (dir > 0) ? kForwardBoundaryRanks : kBackwardBoundaryRanks;
     for (size_t ri = 0; ri < boundaryRanks.size(); ++ri)
@@ -7910,6 +8003,12 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
                                  HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                                     &entry->lodState.faceFamilyIds);
         if (!needsUpdate) continue;
+        if (preparedCount >= boundaryBudget)
+        {
+            QueuePendingStabilizedLodRank(logicalRank);
+            ++deferredBoundaryUpdates;
+            continue;
+        }
 
         BoundaryPrepared& prepared = preparedUpdates[preparedCount];
         prepared.entry = entry;
@@ -8022,12 +8121,12 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         InvalidateEntryWorkingSetCache(*prepared.entry);
     }
 
-    segmentHandles_ = BuildSegmentHandleTable();
+    BuildSegmentHandleTable();
     ResetSlidePrefetchState();
     if (familyMergeCooldown_ == 0u)
     {
         MergeCurrentWindowFamilies();
-        familyMergeCooldown_ = fullTrackFamilyCacheReady_ ? 1u : 6u;
+        familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(fullTrackFamilyCacheReady_);
     }
     else
     {
@@ -8054,6 +8153,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
                                                    int32_t nextId,
                                                    int32_t nextStartId)
 {
+    LWR_PROBE_BEGIN();
     slideHwrTraceSegmentId_ = static_cast<int16_t>(nextId);
     ResetSlideBackBuffer();
     if (!kEnableTrackRuntimeStabilization) return false;
@@ -8101,7 +8201,9 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
             {
                 slideScratchRenderer_->RecycleRuntimeState();
             }
-            TrimRuntimeBlobScratchCaches(true);
+            // Do NOT call TrimRuntimeBlobScratchCaches(true) here: it frees blob/verts/faces/attrs,
+            // which BuildSegmentIntoPrefetch immediately reallocates — pure TLSF overhead per cycle.
+            // The blob will be reused in-place via resize(); verts/faces/attrs are pre-primed.
             int32_t freeDelta = 0;
             (void)TrimWorkRamRetainedCapacities(true, &freeDelta);
         }
@@ -8303,6 +8405,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     }
 
     slideBackBuffer_.ready = true;
+    LWR_PROBE_END(g_lwrStageAccum.prepareSlide);
     slideHwrTraceFlags_ |= kSlideHwrTracePrepareOkBit;
     slideHwrTraceAfterPrepare_ = static_cast<uint32_t>(GetHighWorkRamFreeBytesSafe());
     return true;
@@ -8310,6 +8413,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
 
 bool TrackSystem::CommitStabilizedSlideBackBuffer()
 {
+    LWR_PROBE_BEGIN();
     if (!slideBackBuffer_.ready) return false;
     if (slideBackBuffer_.dropIdx >= segmentRenderers_.size()) return false;
     if (!slideScratchRenderer_)
@@ -8344,6 +8448,9 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     EnsureVectorCapacityFloor(slot.lodState.faceFamilyIds, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(slot.lodState.faceRankOffsets, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(slot.lodState.currentFaceSlots, slotFaceCapacityFloor_);
+    EnsureVectorCapacityFloor(slot.lodState.workingSetFamilies, static_cast<size_t>(slotFaceCapacityFloor_));
+    EnsureVectorCapacityFloor(slot.lodState.workingSetLodIndices, static_cast<size_t>(slotFaceCapacityFloor_));
+    EnsureVectorCapacityFloor(slot.lodState.workingSetSlots, static_cast<size_t>(slotFaceCapacityFloor_));
     slot.lodState.currentLodIndex = slideBackBuffer_.incomingResidentLodIndex;
     slot.lodState.currentBaseRank = slideBackBuffer_.incomingResidentBaseRank;
     slot.lodState.desiredLodIndex = slideBackBuffer_.incomingResidentLodIndex;
@@ -8380,6 +8487,9 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
             entry.lodState.currentBaseRank = update.desiredBaseRank;
             entry.lodState.desiredLodIndex = update.desiredLodIndex;
             entry.lodState.desiredBaseRank = update.desiredBaseRank;
+            EnsureVectorCapacityFloor(entry.lodState.workingSetFamilies, static_cast<size_t>(slotFaceCapacityFloor_));
+            EnsureVectorCapacityFloor(entry.lodState.workingSetLodIndices, static_cast<size_t>(slotFaceCapacityFloor_));
+            EnsureVectorCapacityFloor(entry.lodState.workingSetSlots, static_cast<size_t>(slotFaceCapacityFloor_));
             (void)entry.renderer->ApplyFaceTextureSlotsGlobal(entry.lodState.currentFaceSlots);
             ++runtimeFaceRemapsThisFrame_;
             ++runtimeLodSegmentUpdatesThisFrame_;
@@ -8392,20 +8502,21 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     if (familyMergeCooldown_ == 0u)
     {
         MergeCurrentWindowFamilies();
-        familyMergeCooldown_ = fullTrackFamilyCacheReady_ ? 1u : 6u;
+        familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(fullTrackFamilyCacheReady_);
     }
     else
     {
         --familyMergeCooldown_;
     }
     familyWorkingSetDirty_ = true;
-    segmentHandles_ = BuildSegmentHandleTable();
+    BuildSegmentHandleTable();
     ResetSlidePrefetchState();
     ResetSlideBackBuffer();
     ++runtimeSlidesThisFrame_;
     {
         bool freeValid = false;
         const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+        LWR_PROBE_END(g_lwrStageAccum.commitSlide);
         slideHwrTraceFlags_ |= kSlideHwrTraceCommitOkBit;
         slideHwrTraceAfterCommit_ = static_cast<uint32_t>(freeBytes);
         const uint8_t cooldown =
@@ -8419,6 +8530,7 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
 
 bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarmup)
 {
+    LWR_PROBE_BEGIN();
     if (segmentId <= 0) return false;
 
     if (kEnableTrackRuntimeStabilization)
@@ -8497,12 +8609,6 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
                     slidePrefetchLod8Ready_ = false;
                 }
             }
-        }
-        // Reciclar staging slot (não mais usado para renderer no caminho estabilizado)
-        if (slotPool_[0] != nullptr && stagingSlotIdx_ < kSlotPoolSize
-            && slotPool_[stagingSlotIdx_] && slotPool_[stagingSlotIdx_]->renderer)
-        {
-            slotPool_[stagingSlotIdx_]->renderer->RecycleRuntimeState();
         }
         return slidePrefetchSegmentId_ == segmentId &&
                !slidePrefetchFamilyIds_.empty();
@@ -8624,6 +8730,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
         rebuilt &&
         !HasMissingRequiredFaceTextureSlots(slidePrefetchFaceSlots_, &slidePrefetchFamilyIds_);
     familyWorkingSetDirty_ = true;
+    LWR_PROBE_END(g_lwrStageAccum.buildPrefetch);
     return rebuilt;
 }
 
@@ -8706,6 +8813,9 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
 
     const size_t maxFaces = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFaceCount));
     const size_t maxVerts = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxVertexCount));
+    const size_t maxFamilies = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFamilyCount));
+    const size_t familyFloor = std::max<size_t>(256u, maxFamilies + 16u);
+    familySlotCapacityFloor_ = static_cast<uint16_t>(std::min<size_t>(familyFloor, 0xFFFFu));
     if (kEnableTrackRuntimeStabilization)
     {
         // Keep fixed floors in stabilized mode to avoid progressive growth and
@@ -8743,6 +8853,10 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     if (slideIncomingFaceSlotsScratch_.capacity() < maxFaces) slideIncomingFaceSlotsScratch_.reserve(maxFaces);
     if (slidePrefetchFamilyIds_.capacity() < maxFaces) slidePrefetchFamilyIds_.reserve(maxFaces);
     if (slidePrefetchFaceSlots_.capacity() < maxFaces) slidePrefetchFaceSlots_.reserve(maxFaces);
+    if (seg1FamilySlots_.capacity() < familyFloor) seg1FamilySlots_.reserve(familyFloor);
+    if (familyMergeCurrentWindowScratch_.capacity() < familyFloor) familyMergeCurrentWindowScratch_.reserve(familyFloor);
+    if (slidePrefetchFamilySlotsScratch_.capacity() < familyFloor) slidePrefetchFamilySlotsScratch_.reserve(familyFloor);
+    EnsureTrackTextureSlotQueueCapacityFloor(static_cast<size_t>(SRL_MAX_TEXTURES));
     const size_t segmentCap = std::max<size_t>(1u, segmentRenderers_.size());
     if (stabilizedDepthItemsScratch_.capacity() < segmentCap)
     {
@@ -8761,6 +8875,9 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
         EnsureVectorCapacityFloor(entry.lodState.faceFamilyIds, maxFaces);
         EnsureVectorCapacityFloor(entry.lodState.faceRankOffsets, maxFaces);
         EnsureVectorCapacityFloor(entry.lodState.currentFaceSlots, maxFaces);
+        EnsureVectorCapacityFloor(entry.lodState.workingSetFamilies, maxFaces);
+        EnsureVectorCapacityFloor(entry.lodState.workingSetLodIndices, maxFaces);
+        EnsureVectorCapacityFloor(entry.lodState.workingSetSlots, maxFaces);
         if (entry.renderer)
         {
             ApplyActiveRendererCapacityFloor(*entry.renderer);
@@ -8773,6 +8890,26 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     if (slidePrefetchRenderer_)
     {
         ApplyActiveRendererCapacityFloor(*slidePrefetchRenderer_);
+    }
+    // Prime scratch vectors not covered by the segmentRenderers_ loop:
+    // runtimeRenderFaceSlotsScratch_ grows lazily on first render per entry —
+    // pre-floor it to avoid one-time alloc during the first rendered frame.
+    if (runtimeRenderFaceSlotsScratch_.capacity() < maxFaces)
+        runtimeRenderFaceSlotsScratch_.reserve(maxFaces);
+    if (slideRollbackFaceSlotsScratch_.capacity() < maxFaces)
+        slideRollbackFaceSlotsScratch_.reserve(maxFaces);
+    // slideScratchEntry_ is a persistent entry used as staging — give it the
+    // same floor as all segmentRenderers_ entries.
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceFamilyIds, maxFaces);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceRankOffsets, maxFaces);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.currentFaceSlots, maxFaces);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetFamilies, maxFaces);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetLodIndices, maxFaces);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetSlots, maxFaces);
+    // slideScratchBoundarySlots_ entries grow on first boundary prepare — floor them.
+    for (auto& s : slideScratchBoundarySlots_)
+    {
+        if (s.capacity() < maxFaces) s.reserve(maxFaces);
     }
 }
 
@@ -8982,8 +9119,7 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow(bool forceStrongReset)
         const int16_t desiredBaseRank = entry->lodState.hasPerFaceRankOffsets
             ? static_cast<int16_t>(logicalRank)
             : -1;
-        TrackLowWorkI16Vector previousFaceSlots{};
-        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+        CopyFaceSlotsToScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
         const uint8_t previousLodIndex = entry->lodState.currentLodIndex;
         const int16_t previousBaseRank = entry->lodState.currentBaseRank;
         const bool remapOk = !entry->lodState.hasPerFaceRankOffsets
@@ -8993,7 +9129,7 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow(bool forceStrongReset)
             HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                &entry->lodState.faceFamilyIds))
         {
-            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, previousFaceSlots);
+            RestoreFaceSlotsFromScratch(entry->lodState.currentFaceSlots, runtimeRenderFaceSlotsScratch_);
             entry->lodState.currentLodIndex = previousLodIndex;
             entry->lodState.currentBaseRank = previousBaseRank;
             if (!remapFailure)
@@ -9403,6 +9539,9 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
         ? (static_cast<size_t>(totalSegmentCount_) + 1u)
         : 0u;
     const size_t faceCapacityFloor = static_cast<size_t>(slotFaceCapacityFloor_);
+    const size_t queueCapacityFloor = std::max<size_t>(64u, g_trackTextureSlotQueueCapacityFloor);
+    const size_t familySlotVectorFloor =
+        std::max<size_t>(256u, static_cast<size_t>(familySlotCapacityFloor_));
 
     if (aggressive)
     {
@@ -9417,12 +9556,16 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
         trimmed |= TrimVectorSlack(g_textCache, g_textCache.size(), aggressive);
     }
     trimmed |= TrimVectorSlack(g_trackReusableTextureSlots,
-                               aggressive ? g_trackReusableTextureSlots.size()
-                                          : (g_trackReusableTextureSlots.size() + 16u),
+                               std::max<size_t>(
+                                   queueCapacityFloor,
+                                   aggressive ? g_trackReusableTextureSlots.size()
+                                              : (g_trackReusableTextureSlots.size() + 16u)),
                                aggressive);
     trimmed |= TrimVectorSlack(g_trackPendingRetiredTextureSlots,
-                               aggressive ? g_trackPendingRetiredTextureSlots.size()
-                                          : (g_trackPendingRetiredTextureSlots.size() + 16u),
+                               std::max<size_t>(
+                                   queueCapacityFloor,
+                                   aggressive ? g_trackPendingRetiredTextureSlots.size()
+                                              : (g_trackPendingRetiredTextureSlots.size() + 16u)),
                                aggressive);
     trimmed |= TrimVectorSlack(activeWindowEntryIndexBySegmentId_, segmentCatalogTarget, aggressive);
     trimmed |= TrimVectorSlack(activeWindowLogicalRankBySegmentId_, segmentCatalogTarget, aggressive);
@@ -9430,15 +9573,19 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
                                aggressive ? segmentEntries_.size() : (windowTarget + 2u),
                                aggressive);
     trimmed |= TrimVectorSlack(seg1FamilySlots_,
-                               aggressive ? seg1FamilySlots_.size() : (seg1FamilySlots_.size() + 16u),
+                               std::max<size_t>(familySlotVectorFloor,
+                                                aggressive ? seg1FamilySlots_.size()
+                                                           : (seg1FamilySlots_.size() + 16u)),
                                aggressive);
     trimmed |= TrimVectorSlack(familyMergeCurrentWindowScratch_,
-                               aggressive ? familyMergeCurrentWindowScratch_.size()
-                                          : (familyMergeCurrentWindowScratch_.size() + 16u),
+                               std::max<size_t>(familySlotVectorFloor,
+                                                aggressive ? familyMergeCurrentWindowScratch_.size()
+                                                           : (familyMergeCurrentWindowScratch_.size() + 16u)),
                                aggressive);
     trimmed |= TrimVectorSlack(slidePrefetchFamilySlotsScratch_,
-                               aggressive ? slidePrefetchFamilySlotsScratch_.size()
-                                          : (slidePrefetchFamilySlotsScratch_.size() + 16u),
+                               std::max<size_t>(familySlotVectorFloor,
+                                                aggressive ? slidePrefetchFamilySlotsScratch_.size()
+                                                           : (slidePrefetchFamilySlotsScratch_.size() + 16u)),
                                aggressive);
     trimmed |= TrimVectorSlack(stabilizedDepthItemsScratch_,
                                aggressive ? 0u : (stabilizedDepthItemsScratch_.size() + 8u),
@@ -9550,14 +9697,26 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
                                                           aggressive,
                                                           8u),
                                    aggressive);
+        // Working set vectors: never trim below the current capacity in non-aggressive
+        // mode — the capacity IS the self-tracking high-water mark for this slot.
+        // Trimming below it causes TLSF alloc/free oscillation every lap when a segment
+        // with more unique (family, LOD) pairs enters the slot (e.g. segment 115 with
+        // > kSegmentFamilyDedupScratchCap unique keys). In aggressive mode, floor at 64
+        // (the dedup scratch cap) to allow emergency recovery without full collapse.
         trimmed |= TrimVectorSlack(lod.workingSetFamilies,
-                                   aggressive ? lod.workingSetFamilies.size() : (lod.workingSetFamilies.size() + 8u),
+                                   aggressive ? std::max(lod.workingSetFamilies.size(),
+                                                         kSegmentFamilyDedupScratchCap)
+                                              : lod.workingSetFamilies.capacity(),
                                    aggressive);
         trimmed |= TrimVectorSlack(lod.workingSetLodIndices,
-                                   aggressive ? lod.workingSetLodIndices.size() : (lod.workingSetLodIndices.size() + 8u),
+                                   aggressive ? std::max(lod.workingSetLodIndices.size(),
+                                                         kSegmentFamilyDedupScratchCap)
+                                              : lod.workingSetLodIndices.capacity(),
                                    aggressive);
         trimmed |= TrimVectorSlack(lod.workingSetSlots,
-                                   aggressive ? lod.workingSetSlots.size() : (lod.workingSetSlots.size() + 8u),
+                                   aggressive ? std::max(lod.workingSetSlots.size(),
+                                                         kSegmentFamilyDedupScratchCap)
+                                              : lod.workingSetSlots.capacity(),
                                    aggressive);
         if (segmentRenderers_[i].renderer)
         {
@@ -9591,7 +9750,7 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
     if (trimmed)
     {
         InvalidateFamilySlotIndex();
-        segmentHandles_ = BuildSegmentHandleTable();
+        BuildSegmentHandleTable();
     }
 
     if (outFreeDelta)
@@ -9739,7 +9898,7 @@ bool TrackSystem::ValidateAndRepairWindowState()
     }
     if (rebuildHandles)
     {
-        segmentHandles_ = BuildSegmentHandleTable();
+        BuildSegmentHandleTable();
         repaired = true;
     }
 
@@ -10096,7 +10255,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         }
         if (!handlesOk || kEnableTrackRuntimeStabilization)
         {
-            segmentHandles_ = BuildSegmentHandleTable();
+            BuildSegmentHandleTable();
         }
         if (allowImmediatePrefetch)
         {
@@ -10741,7 +10900,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
 
         // Keep family/palette state bounded to the active window plus prefetch.
         MergeCurrentWindowFamilies();
-        familyMergeCooldown_ = fullTrackFamilyCacheReady_ ? 1u : 6u;
+        familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(fullTrackFamilyCacheReady_);
         ResetSlidePrefetchState();
         activeWindowStartId_ = WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(direction),
                                                     totalSegmentCount_);
@@ -10851,7 +11010,9 @@ void TrackSystem::PrewarmNextSegmentLod8()
             slotEntry = &seg1FamilySlots_.back();
         }
         if (!slotEntry) continue;
-        if (slotEntry->lodSlots[0] != No_Texture && IsVdp1TextureSlotLive(slotEntry->lodSlots[0])) continue;
+        // Use ActiveAndOwned: a slot in the reusable pool is still "live" but no
+        // longer owned by this family — skipping the upload would leave a stale slot.
+        if (slotEntry->lodSlots[0] != No_Texture && IsVdp1TextureSlotActiveAndOwned(slotEntry->lodSlots[0])) continue;
 
         if (EnsureFamilyLodSlotLoaded(seg1FamilySlots_, fam, 0))
         {
@@ -10960,7 +11121,7 @@ void TrackSystem::PrewarmUpcomingBoundaryLods()
 
             uint16_t existingSlot = No_Texture;
             if (TryGetFamilyLodSlot(seg1FamilySlots_, fam, targetLodIndex, existingSlot) &&
-                IsVdp1TextureSlotLive(existingSlot))
+                IsVdp1TextureSlotActiveAndOwned(existingSlot))
             {
                 continue;
             }
@@ -10990,6 +11151,7 @@ void TrackSystem::PrewarmUpcomingBoundaryLods()
 
 void TrackSystem::MergeCurrentWindowFamilies()
 {
+    LWR_PROBE_BEGIN();
     FamilySlotVector& currentWindowFamilies = familyMergeCurrentWindowScratch_;
     (void)BuildTrackFamilyLodSlots(currentWindowFamilies);
 
@@ -11012,7 +11174,12 @@ void TrackSystem::MergeCurrentWindowFamilies()
                 if (slotHint < 0 || slotHint >= static_cast<int32_t>(SRL_MAX_TEXTURES)) return;
 
                 const uint16_t liveSlot = static_cast<uint16_t>(slotHint);
-                if (!IsVdp1TextureSlotLive(liveSlot)) return;
+                // Must use IsVdp1TextureSlotActiveAndOwned — not IsVdp1TextureSlotLive.
+                // A slot in the reusable/retired queue is still "live" in VDP1 but is
+                // no longer exclusively owned by this family. Re-adopting it would
+                // re-insert a stale slot that is about to (or already has) been reused
+                // for a different family, causing wrong textures on the next upload.
+                if (!IsVdp1TextureSlotActiveAndOwned(liveSlot)) return;
 
                 Seg1FamilySlotEntry* target = FindFamilySlot(targetFamilies, familyId);
                 if (!target) return;
@@ -11114,7 +11281,18 @@ void TrackSystem::MergeCurrentWindowFamilies()
     // (now holding old seg1FamilySlots_ data) is overwritten next slide by
     // BuildTrackFamilyLodSlots which calls .clear() before filling.
     seg1FamilySlots_.swap(familyMergeCurrentWindowScratch_);
+
+    // Equalize capacities so the scratch buffer for the next call is never smaller
+    // than the freshly-built result. Without this, a swap where the incoming buffer
+    // grew (window gained families) leaves the scratch with the smaller old capacity,
+    // causing a realloc on the very next merge call for the same segment.
+    if (familyMergeCurrentWindowScratch_.capacity() < seg1FamilySlots_.capacity())
+    {
+        familyMergeCurrentWindowScratch_.reserve(seg1FamilySlots_.capacity());
+    }
+
     InvalidateFamilySlotIndex();
+    LWR_PROBE_END(g_lwrStageAccum.mergeFamilies);
 }
 
 void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
@@ -11246,6 +11424,14 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
 void TrackSystem::ValidateStabilizedWindowInvariants()
 {
     if (!kEnableTrackRuntimeStabilization) return;
+    static uint8_t sInvariantCadence = 0u;
+    const uint8_t cadenceFrames = runtimeStatsLogsEnabled_ ? 8u : 24u;
+    if (sInvariantCadence > 0u)
+    {
+        --sInvariantCadence;
+        return;
+    }
+    sInvariantCadence = cadenceFrames;
 
     constexpr size_t kExpectedWindowSegments =
         static_cast<size_t>(kLodBand64Count + kLodBand32Count + kLodBand16Count + kLodBand8Count);
@@ -11260,8 +11446,23 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
         ++bandCounts[entry.lodState.currentLodIndex];
     }
 
-    FamilySlotVector expectedFamilies{};
+    // Reuse persistent scratch to avoid per-frame LWR alloc/free churn.
+    static FamilySlotVector sExpectedFamiliesScratch{};
+    FamilySlotVector& expectedFamilies = sExpectedFamiliesScratch;
     (void)BuildTrackFamilyLodSlots(expectedFamilies);
+    // Prefetch families are legitimate out-of-window entries.
+    if (slidePrefetchSegmentId_ > 0 && !slidePrefetchFamilyIds_.empty())
+    {
+        for (const uint16_t fam : slidePrefetchFamilyIds_)
+        {
+            if (fam == 0u) continue;
+            if (FindFamilySlot(expectedFamilies, fam)) continue;
+            Seg1FamilySlotEntry slotEntry{};
+            slotEntry.familyId = fam;
+            slotEntry.lodSlots = { No_Texture, No_Texture, No_Texture, No_Texture };
+            expectedFamilies.push_back(slotEntry);
+        }
+    }
     uint16_t extraFamilies = 0u;
     for (const auto& family : seg1FamilySlots_)
     {
@@ -11289,22 +11490,27 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
         (prefetchHasMetadata &&
          !slidePrefetchFaceSlots_.empty() &&
          slidePrefetchFaceSlots_.size() != slidePrefetchFamilyIds_.size());
-    const bool prefetchShouldBeMetadataOnly =
-        !slidePrefetchRendererReady_ &&
-        !slidePrefetchLod8Ready_ &&
-        !prefetchHasResolvedSlots;
     const bool badWindowCount = activeReadySegments != kExpectedWindowSegments;
     const bool badBands =
         bandCounts[3] != kLodBand64Count ||
         bandCounts[2] != kLodBand32Count ||
         bandCounts[1] != kLodBand16Count ||
         bandCounts[0] != kLodBand8Count;
-    const bool badPrefetch =
-        prefetchMetadataMismatch ||
-        (prefetchHasMetadata && !prefetchShouldBeMetadataOnly);
+    const bool badPrefetch = prefetchMetadataMismatch;
     const bool badFamilies = extraFamilies != 0u;
 
+    if (badFamilies &&
+        extraFamilies > 8u &&
+        !slideBackBuffer_.ready &&
+        !segmentRenderers_.empty())
+    {
+        MergeCurrentWindowFamilies();
+        familyWorkingSetDirty_ = true;
+        extraFamilies = 0u;
+    }
+
     if (!badWindowCount && !badBands && !badPrefetch && !badFamilies) return;
+    if (!runtimeStatsLogsEnabled_) return;
 
     SRL::Debug::Print(1, 18, "TRK inv n:%u pf:%u ex:%u    ",
                       static_cast<unsigned>(activeReadySegments),
@@ -11501,10 +11707,13 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
             trackedCarSegmentValid_ = true;
             return false;
         }
-        SRL::Debug::Print(1, 13, "TRK obs back s:%d o:%d t:%d",
-                          startId,
-                          observedId,
-                          trackedCarSegmentValid_ ? trackedCarSegmentId_ : -1);
+        if (runtimeStatsLogsEnabled_ && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+        {
+            SRL::Debug::Print(1, 13, "TRK obs back s:%d o:%d t:%d",
+                              startId,
+                              observedId,
+                              trackedCarSegmentValid_ ? trackedCarSegmentId_ : -1);
+        }
         // If gameplay temporarily reports a segment behind the active window,
         // do not freeze the slide state. Fall through to the local progressive
         // heuristic so the window can continue following the car.
@@ -11556,6 +11765,7 @@ void TrackSystem::ResetInitializationState()
     lastLapWrapProbeSegmentId_ = -1;
     lapWrapScrubCooldown_ = 0;
     slotFaceCapacityFloor_ = 0;
+    familySlotCapacityFloor_ = 0;
     rendererVertexCapacityFloor_ = 0;
     rendererFaceCapacityFloor_ = 0;
     segmentCenterCatalog_.clear();
@@ -12993,8 +13203,8 @@ void TrackSystem::BeginFrame(uint32_t frameId)
             const bool freeVeryHealthy =
                 freeValid && freeBytes > (kWorkRamHardFloorBytes + (128u * 1024u));
 
-            uint8_t budget = 1u;
-            if (backlog >= 2) budget = 2u;
+            uint8_t budget = freeVeryHealthy ? 2u : 1u;
+            if (backlog >= 2) budget = std::max<uint8_t>(budget, 2u);
             if (backlog >= 3 && freeVeryHealthy) budget = 3u;
             if (freeCritical) budget = 1u;
             prefetchBuildBudgetThisFrame_ = budget;
@@ -13024,8 +13234,9 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                 // when the car moves faster than one segment per frame we need
                 // limited catch-up. Otherwise the car outruns the 20-segment
                 // window even without an explicit slide stall.
-                const uint8_t maxCatchupSlides =
-                    std::max<uint8_t>(1u, std::min<uint8_t>(prefetchBuildBudgetThisFrame_, 3u));
+                // Avoid 2-slide bursts in normal pressure; they create visible
+                // frame spikes exactly at segment boundaries.
+                const uint8_t maxCatchupSlides = 1u;
                 const uint8_t slideBudget = static_cast<uint8_t>(
                     std::min<int32_t>(backlog, static_cast<int32_t>(maxCatchupSlides)));
                 for (uint8_t i = 0; i < slideBudget; ++i)
@@ -13125,7 +13336,7 @@ bool TrackSystem::ShouldRunPostSlideMaintenance(bool slidThisFrame) const
         return false;
     }
 
-    sPostSlideMaintenanceCooldown = 2u;
+    sPostSlideMaintenanceCooldown = 3u;
     return true;
 }
 
@@ -13262,7 +13473,7 @@ const TrackLowWorkVector<TrackSystem::SegmentHandle>& TrackSystem::BuildStabiliz
     const size_t windowCount = segmentRenderers_.size();
     if (segmentHandles_.empty() || segmentHandles_.size() != windowCount)
     {
-        segmentHandles_ = BuildSegmentHandleTable();
+        BuildSegmentHandleTable();
     }
     if (segmentHandles_.empty()) return stabilizedSortedHandlesScratch_;
 
@@ -13402,18 +13613,20 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
         windowCount > 0 &&
         windowForwardDistance >= static_cast<int32_t>(windowCount))
     {
-        if (RebuildActiveSegmentWindow(observedId, windowCount, +1))
+        // Avoid full 20-segment rebuild on runtime bootstrap alignment.
+        // Keep the deterministic sliding window and converge through normal
+        // incremental slides to prevent frame spikes and transient memory churn.
+        targetWindowStartId_ = observedId;
+        trackedCarSegmentId_ = observedId;
+        trackedCarSegmentValid_ = true;
+        activeWindowSwitchCooldown_ = 0;
+        if (runtimeStatsLogsEnabled_)
         {
-            targetWindowStartId_ = observedId;
-            trackedCarSegmentId_ = observedId;
-            trackedCarSegmentValid_ = true;
-            activeWindowSwitchCooldown_ = 0;
-            TryPrefetchUpcomingSegment();
-            SRL::Debug::Print(1, 13, "TRK align s:%d o:%d",
+            SRL::Debug::Print(1, 13, "TRK align defer s:%d o:%d",
                               currentStartId,
                               observedId);
-            return;
         }
+        return;
     }
 
     const int32_t anchorId = (currentTargetId > 0) ? currentTargetId : currentStartId;
@@ -13438,7 +13651,7 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(
         segmentHandles_.empty() ||
         segmentHandles_.size() != windowCount)
     {
-        segmentHandles_ = BuildSegmentHandleTable();
+        BuildSegmentHandleTable();
     }
     if (segmentHandles_.empty()) return orderedHandles;
     orderedHandles.reserve(windowCount);
@@ -13455,7 +13668,7 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(
     }
     if (invalidHandleCount > 0)
     {
-        segmentHandles_ = BuildSegmentHandleTable();
+        BuildSegmentHandleTable();
         orderedHandles.clear();
         for (size_t i = 0; i < windowCount; ++i)
         {
@@ -13767,12 +13980,15 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             if (!TryRepairRendererState(*entry->renderer) &&
                 !RebuildSafeSegmentEntry(*entry))
             {
-                SRL::Debug::Print(1, 21, "TRK inv id:%d m:%u f:%u v:%u d:%u",
-                                  entry->id,
-                                  static_cast<unsigned>(entry->renderer->MeshCount()),
-                                  static_cast<unsigned>(entry->renderer->FaceCount()),
-                                  static_cast<unsigned>(entry->renderer->VertexCount()),
-                                  static_cast<unsigned>(entry->renderer->DrawLimit()));
+                if (runtimeStatsLogsEnabled_ && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                {
+                    SRL::Debug::Print(1, 21, "TRK inv id:%d m:%u f:%u v:%u d:%u",
+                                      entry->id,
+                                      static_cast<unsigned>(entry->renderer->MeshCount()),
+                                      static_cast<unsigned>(entry->renderer->FaceCount()),
+                                      static_cast<unsigned>(entry->renderer->VertexCount()),
+                                      static_cast<unsigned>(entry->renderer->DrawLimit()));
+                }
                 ++runtimeSafeSkippedThisFrame_;
                 continue;
             }
@@ -13790,13 +14006,16 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             {
                 size_t logicalRank = 0u;
                 const bool hasLogicalRank = TryGetWindowLogicalRank(entry->id, logicalRank);
-                SRL::Debug::Print(1, 21, "TRK det miss id:%d r:%u l:%u m:%u",
-                                  entry->id,
-                                  static_cast<unsigned>(hasLogicalRank ? logicalRank : 0u),
-                                  static_cast<unsigned>(entry->lodState.desiredLodIndex <= 3u
-                                      ? entry->lodState.desiredLodIndex
-                                      : entry->lodState.currentLodIndex),
-                                  static_cast<unsigned>(missingSlots));
+                if (runtimeStatsLogsEnabled_ && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                {
+                    SRL::Debug::Print(1, 21, "TRK det miss id:%d r:%u l:%u m:%u",
+                                      entry->id,
+                                      static_cast<unsigned>(hasLogicalRank ? logicalRank : 0u),
+                                      static_cast<unsigned>(entry->lodState.desiredLodIndex <= 3u
+                                          ? entry->lodState.desiredLodIndex
+                                          : entry->lodState.currentLodIndex),
+                                      static_cast<unsigned>(missingSlots));
+                }
             }
             else
             {
@@ -13907,11 +14126,14 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                 }
                 else if (requireExactRepair)
                 {
-                    SRL::Debug::Print(1, 21, "TRK exact miss id:%d r:%u l:%u m:%u",
-                                      entry->id,
-                                      static_cast<unsigned>(hasLogicalRank ? logicalRank : 0u),
-                                      static_cast<unsigned>(repairLodIndex),
-                                      static_cast<unsigned>(missingSlots));
+                    if (runtimeStatsLogsEnabled_ && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                    {
+                        SRL::Debug::Print(1, 21, "TRK exact miss id:%d r:%u l:%u m:%u",
+                                          entry->id,
+                                          static_cast<unsigned>(hasLogicalRank ? logicalRank : 0u),
+                                          static_cast<unsigned>(repairLodIndex),
+                                          static_cast<unsigned>(missingSlots));
+                    }
                 }
                 if (!remapped ||
                     CountMissingOrDeadRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
@@ -14116,7 +14338,10 @@ void TrackSystem::RenderVisibleSegmentOrder(
             // Do not budget corrupted renderers for this frame.
             if (!TryRepairRendererState(*renderer))
             {
-                SRL::Debug::Print(1, 23, "TRK prep skip seg:%d", entry.id);
+                if (runtimeStatsLogsEnabled_ && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                {
+                    SRL::Debug::Print(1, 23, "TRK prep skip seg:%d", entry.id);
+                }
                 return estimate;
             }
             estimate.rendered = true;
@@ -14188,7 +14413,10 @@ void TrackSystem::RenderVisibleSegmentOrder(
             {
                 if (!TryRepairRendererState(*renderer))
                 {
-                    SRL::Debug::Print(1, 23, "TRK draw skip seg:%d", chunk.segmentId);
+                    if (runtimeStatsLogsEnabled_ && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                    {
+                        SRL::Debug::Print(1, 23, "TRK draw skip seg:%d", chunk.segmentId);
+                    }
                     return {};
                 }
             }
@@ -14501,7 +14729,9 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
 void TrackSystem::RunPrefetchStage(bool windowSlid)
 {
     const uint16_t prefetchTicksStart = Sh2FrtProfiler::Now();
-    if (!windowSlid) TryPrefetchUpcomingSegment();
+    // Mantém pipeline alimentado mesmo com slide no frame anterior.
+    // Isso reduz miss síncrono exatamente na borda de criação de segmento.
+    TryPrefetchUpcomingSegment();
     if (!windowSlid) PrewarmNextSegmentLod8();
     if (!windowSlid) PrewarmUpcomingBoundaryLods();
     sh2MasterPrefetchTicksThisFrame_ =
@@ -14723,7 +14953,7 @@ void TrackSystem::BuildOrderedHandlesStage(const Vector3D& trackOffset,
         !segmentRenderers_.empty())
     {
         // Last safety net: keep rendering possible even after transient handle corruption.
-        segmentHandles_ = BuildSegmentHandleTable();
+        BuildSegmentHandleTable();
         outOrderedHandles = BuildVisibleSegmentOrder(trackOffset, cameraLocation);
     }
 }
@@ -14960,23 +15190,27 @@ void TrackSystem::RenderFrame(bool renderTrack,
     RunSeg1DiagnosticsForFrame();
     std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};
     std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountById{};
-    RunDrawStage(orderedHandles,
-                 trackOffset,
-                 lightDirection,
-                 cameraLocation,
-                 preparedCountById,
-                 renderedCountById,
-                 segment01Logged,
-                 segment01Prepared);
+    {
+        LWR_PROBE_BEGIN();
+        RunDrawStage(orderedHandles,
+                     trackOffset,
+                     lightDirection,
+                     cameraLocation,
+                     preparedCountById,
+                     renderedCountById,
+                     segment01Logged,
+                     segment01Prepared);
+        LWR_PROBE_END(g_lwrStageAccum.drawStage);
+    }
     sh2MasterFrameTicksThisFrame_ =
         Sh2FrtProfiler::Elapsed(frameTicksStart, Sh2FrtProfiler::Now());
     for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
     {
-        if (preparedCountById[id] > 1)
+        if (runtimeStatsLogsEnabled_ && preparedCountById[id] > 1)
         {
             SRL::Debug::Print(1, 25, "WARN prep dup seg:%u count:%u", (unsigned)id, (unsigned)preparedCountById[id]);
         }
-        if (renderedCountById[id] > 1)
+        if (runtimeStatsLogsEnabled_ && renderedCountById[id] > 1)
         {
             SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u", (unsigned)id, (unsigned)renderedCountById[id]);
         }
@@ -15200,7 +15434,11 @@ void TrackSystem::EndFrame()
                           static_cast<unsigned>(slideHwrTraceAfterCommit_),
                           static_cast<unsigned>(slideHwrTraceFlags_));
     }
-    ReleaseUnusedFamilyResourcesEndFrame();
+    {
+        LWR_PROBE_BEGIN();
+        ReleaseUnusedFamilyResourcesEndFrame();
+        LWR_PROBE_END(g_lwrStageAccum.releaseEndFrame);
+    }
     // Slots aposentados no fim do frame precisam entrar imediatamente na fila
     // de reuso; esperar o proximo frame aumenta churn/alocacao nova no slide.
     releasedEndFrameSlotsThisFrame_ = static_cast<uint16_t>(
@@ -15213,7 +15451,21 @@ void TrackSystem::EndFrame()
         (void)ReleaseReusableTrackSlotPalettesEndFrame(usedTextureSlotsThisFrame_);
     }
     EmitFamilyWorkingSetTelemetry();
-    lowWorkBreakdownEnd_ = CaptureLowWorkBreakdown();
+    // Breakdown sampling is expensive (renderer retained-bytes walk + vector
+    // capacity accounting). Sample at cadence and reuse last snapshot.
+    {
+        static uint8_t sBreakdownSampleCooldown = 0u;
+        const uint8_t sampleCadence = runtimeStatsLogsEnabled_ ? 3u : 8u;
+        if (sBreakdownSampleCooldown == 0u)
+        {
+            lowWorkBreakdownEnd_ = CaptureLowWorkBreakdown();
+            sBreakdownSampleCooldown = sampleCadence;
+        }
+        else
+        {
+            --sBreakdownSampleCooldown;
+        }
+    }
     ValidateStabilizedWindowInvariants();
     {
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
@@ -15225,6 +15477,7 @@ void TrackSystem::EndFrame()
     }
     if (runtimeStatsLogsEnabled_ && runtimeSlidesThisFrame_ > 0u)
     {
+        static uint8_t sLeakOldestProbeCooldown = 0u;
         const auto hwr = SRL::Memory::HighWorkRam::GetReport();
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
         const uint32_t hwrFree = static_cast<uint32_t>(hwr.FreeSize);
@@ -15257,6 +15510,7 @@ void TrackSystem::EndFrame()
                           static_cast<int>(deltaLwrFree),
                           static_cast<int>(deltaRetainedHwr),
                           static_cast<int>(deltaRetainedLwr));
+        if (sLeakOldestProbeCooldown == 0u)
         {
             SRL::Memory::LiveBlockInfo txOldest[1]{};
             SRL::Memory::LiveBlockInfo wkOldest[1]{};
@@ -15296,6 +15550,11 @@ void TrackSystem::EndFrame()
                               (prepCount > 0u || backendCount > 0u)
                                   ? static_cast<unsigned>(wkOldest[0].Age)
                                   : 0u);
+            sLeakOldestProbeCooldown = 5u;
+        }
+        else
+        {
+            --sLeakOldestProbeCooldown;
         }
         leakProbePrevValid_ = true;
         leakProbePrevHwrFree_ = hwrFree;

@@ -14,6 +14,10 @@ using SRL::Math::Types::Vector3D;
 class CameraSystem
 {
 public:
+    // Controls whether PATH-based frame context is consumed by chase camera.
+    // Keep false while the path-guided chase branch is disabled in runtime.
+    static constexpr bool kPathGuidedChaseEnabled = false;
+
     struct PathFrameContext
     {
         bool valid = false;

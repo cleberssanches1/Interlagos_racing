@@ -6,8 +6,6 @@
 
 namespace
 {
-constexpr bool kEnablePathGuidedChaseCamera = false;
-
 using SRL::Math::Types::Fxp;
 using SRL::Math::Types::Vector3D;
 
@@ -321,7 +319,7 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         return lastResolvedLookTarget_;
     }
 
-    if (kEnablePathGuidedChaseCamera && pathFrameContext_.valid)
+    if (CameraSystem::kPathGuidedChaseEnabled && pathFrameContext_.valid)
     {
         const Vector3D pathForward = NormalizeFlatDirectionRaw(
             pathFrameContext_.forwardWorld.X.RawValue(),
@@ -577,7 +575,7 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     int32_t offsetZUnits = cfg.offsetZ;
 
     Vector3D forward = headingForwardWorld_;
-    if (kEnablePathGuidedChaseCamera &&
+    if (CameraSystem::kPathGuidedChaseEnabled &&
         pathFrameContext_.valid &&
         chasePreset_ != ChasePreset::FirstPerson)
     {

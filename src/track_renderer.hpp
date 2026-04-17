@@ -1554,7 +1554,9 @@ public:
     }
 
     // Release CPU-side buffers so streamed windows do not accumulate peak sizes.
-    void RecycleRuntimeState()
+    // compact=false (default): keeps all vector capacities intact for immediate reuse.
+    // compact=true: aggressively shrinks all vectors after a permanent release.
+    void RecycleRuntimeState(bool compact = false)
     {
         if (trackObj_) { delete trackObj_; trackObj_ = nullptr; }
         componentMode_ = false;
@@ -1595,7 +1597,10 @@ public:
         lastDrawnMeshes_ = 0;
         decltype(smoothCache_)().swap(smoothCache_);
         decltype(flatCache_)().swap(flatCache_);
-        (void)CompactRuntimeState(true);
+        // Only compact when explicitly requested: avoids free+realloc on
+        // persistent scratch renderers that will be refilled immediately.
+        if (compact)
+            (void)CompactRuntimeState(true);
     }
 
     ~TrackRenderer()

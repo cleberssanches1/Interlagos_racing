@@ -135,10 +135,17 @@ private:
     // Permite ligar o overlay de memoria mesmo quando os logs gerais de runtime
     // estao desligados em main.cxx.
     static constexpr bool kEnableLowWorkFreeOverlayRequireRuntimeStats = false;
-    static constexpr uint16_t kLowWorkFreeOverlayCadenceFrames = 12u;
+    // Lower overhead while keeping memory visibility on-screen.
+    static constexpr uint16_t kLowWorkFreeOverlayCadenceFrames = 20u;
     static constexpr bool kEnableCameraRuntimeLogs = false;
     static constexpr bool kEnableAutoPathLogs = false;
     static constexpr bool kEnableSh2ToggleLogs = false;
+    // Slave SH2 drain guardrails:
+    // - soft: account wait and back off future dispatches
+    // - hard: guarantee completion before entering track render window
+    static constexpr uint32_t kSimDrainSoftSpinLimit = 512u * 1024u;
+    static constexpr uint32_t kSimDrainHardSpinLimit = 8u * 1024u * 1024u;
+    static constexpr uint8_t kSimSlaveBackoffFrames = 6u;
 
     struct HwrStageTrace
     {
@@ -201,6 +208,17 @@ private:
         uint32_t car = 0;
         uint32_t track = 0;
         uint32_t finishSync = 0;
+    };
+
+    struct SimulationPayload
+    {
+        Game::IGameplayTick* gameplayTick = nullptr;
+        Game::ICarPhysics* carPhysics = nullptr;
+        Game::IAudioEvents* audioEvents = nullptr;
+        Game::ITrackCollisionQuery* trackCollision = nullptr;
+        Game::GameplayFrameState frameState{};
+        SRL::Math::Types::Vector3D outWorldPosition{};
+        int32_t outYawDeg = 0;
     };
 
     static HwrStageTrace::Snapshot CaptureHighWorkRamSnapshot()
@@ -409,6 +427,10 @@ private:
 
         lastLowWorkBreakdownOverlay_ = breakdown;
         lowWorkBreakdownOverlayValid_ = true;
+
+#ifdef TRACK_LWR_STAGE_TRACE
+        TrackSystem::PrintLwrStageProbes();
+#endif
 
         SRL::Debug::Print(2, 16, "LWC1 r:%u s:%u w:%u       ",
                           static_cast<unsigned>(breakdown.renderers),
@@ -870,6 +892,11 @@ private:
                 else
                 {
                     autoLapCurrentOffDeg_ = 0;
+                    cameraPathPrevCarWorldPositionValid_ = false;
+                    if (!CameraSystem::kPathGuidedChaseEnabled)
+                    {
+                        ReleaseAutoLapRouteStorage();
+                    }
                 }
                 SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
             }
@@ -878,6 +905,72 @@ private:
         leftHeldPrev_ = input.leftHeld;
         rightHeldPrev_ = input.rightHeld;
         return input;
+    }
+
+    void ApplySimulationOutput(const SimulationPayload& simOut)
+    {
+        context_.carWorldPosition = simOut.outWorldPosition;
+        carYawDeg_ = simOut.outYawDeg;
+        latestActiveSegmentId_ = simOut.frameState.activeSegmentId;
+    }
+
+    bool IsTrackProducerJobInFlightHint() const
+    {
+        if (!context_.trackSystem || !context_.trackSystemReady || !context_.renderTrack)
+        {
+            return false;
+        }
+        return context_.trackSystem->Telemetry().producer.jobInFlight;
+    }
+
+    void BackoffSimulationSlaveDispatch()
+    {
+        simSlaveBackoffFrames_ = std::max<uint8_t>(simSlaveBackoffFrames_, kSimSlaveBackoffFrames);
+    }
+
+    // Ensure SimulationTask is fully drained before entering the track render
+    // window that may submit SlaveTrackDrawProducer jobs.
+    bool DrainSimulationJobIfInFlight(bool mandatoryWait)
+    {
+        if (!simJobInFlight_) return true;
+
+        if (simulationTask_.IsDone())
+        {
+            simJobInFlight_ = false;
+            simHasCompleted_ = true;
+            simCompletedIdx_ = simInFlightIdx_;
+            ApplySimulationOutput(simOutput_[simCompletedIdx_]);
+            return true;
+        }
+
+        if (!mandatoryWait) return false;
+
+        uint32_t spins = 0;
+        while (!simulationTask_.IsDone() && spins < kSimDrainSoftSpinLimit)
+        {
+            ++spins;
+        }
+
+        if (!simulationTask_.IsDone())
+        {
+            ++simDrainSoftTimeouts_;
+            BackoffSimulationSlaveDispatch();
+            while (!simulationTask_.IsDone() && spins < kSimDrainHardSpinLimit)
+            {
+                ++spins;
+            }
+            if (!simulationTask_.IsDone())
+            {
+                ++simDrainHardWaits_;
+                while (!simulationTask_.IsDone()) {}
+            }
+        }
+
+        simJobInFlight_ = false;
+        simHasCompleted_ = true;
+        simCompletedIdx_ = simInFlightIdx_;
+        ApplySimulationOutput(simOutput_[simCompletedIdx_]);
+        return true;
     }
 
     void ConsumeCompletedJobs()
@@ -890,10 +983,7 @@ private:
         }
         if (simHasCompleted_)
         {
-            const auto& simOut = simOutput_[simCompletedIdx_];
-            context_.carWorldPosition = simOut.outWorldPosition;
-            carYawDeg_ = simOut.outYawDeg;
-            latestActiveSegmentId_ = simOut.frameState.activeSegmentId;
+            ApplySimulationOutput(simOutput_[simCompletedIdx_]);
         }
         if (carPrepareJobInFlight_ && carPrepareTask_.IsDone())
         {
@@ -946,36 +1036,8 @@ private:
         return frameState;
     }
 
-    void ExecuteGameplayFrame(Game::GameplayFrameState& frameState)
+    void RunGameplayFrameSynchronously(Game::GameplayFrameState& frameState)
     {
-        const bool useSlaveSim =
-            context_.enableSlaveForSimulation &&
-            (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
-
-        if (useSlaveSim)
-        {
-            if (!simJobInFlight_)
-            {
-                SimulationTask::Payload simPayload{};
-                simPayload.gameplayTick = context_.gameplayTick;
-                simPayload.carPhysics = context_.carPhysics;
-                simPayload.audioEvents = context_.audioEvents;
-                simPayload.trackCollision = context_.trackCollision;
-                simPayload.frameState = frameState;
-                simPayload.outWorldPosition = frameState.carWorldPosition;
-                simPayload.outYawDeg = frameState.carYawDeg;
-
-                const uint8_t slot = simWriteIdx_;
-                simInput_[slot] = simPayload;
-                simulationTask_.Configure(&simInput_[slot], &simOutput_[slot]);
-                SRL::Slave::ExecuteOnSlave(simulationTask_);
-                simJobInFlight_ = true;
-                simInFlightIdx_ = slot;
-                simWriteIdx_ ^= 1u;
-            }
-            return;
-        }
-
         if (context_.gameplayTick)
         {
             context_.gameplayTick->Tick(frameState, context_.trackCollision);
@@ -1002,10 +1064,70 @@ private:
         latestActiveSegmentId_ = frameState.activeSegmentId;
     }
 
+    bool TryDispatchSimulationOnSlave(const Game::GameplayFrameState& frameState)
+    {
+        if (simSlaveBackoffFrames_ > 0)
+        {
+            --simSlaveBackoffFrames_;
+            ++simSlaveDispatchSkipsBackoff_;
+            return false;
+        }
+        if (simJobInFlight_ || carPrepareJobInFlight_)
+        {
+            return false;
+        }
+        if (IsTrackProducerJobInFlightHint())
+        {
+            ++simSlaveDispatchSkipsTrackBusy_;
+            BackoffSimulationSlaveDispatch();
+            return false;
+        }
+
+        SimulationPayload simPayload{};
+        simPayload.gameplayTick = context_.gameplayTick;
+        simPayload.carPhysics = context_.carPhysics;
+        simPayload.audioEvents = context_.audioEvents;
+        simPayload.trackCollision = context_.trackCollision;
+        simPayload.frameState = frameState;
+        simPayload.outWorldPosition = frameState.carWorldPosition;
+        simPayload.outYawDeg = frameState.carYawDeg;
+
+        const uint8_t slot = simWriteIdx_;
+        simInput_[slot] = simPayload;
+        simulationTask_.Configure(&simInput_[slot], &simOutput_[slot]);
+        SRL::Slave::ExecuteOnSlave(simulationTask_);
+        simJobInFlight_ = true;
+        simInFlightIdx_ = slot;
+        simWriteIdx_ ^= 1u;
+        ++simSlaveDispatchCount_;
+        return true;
+    }
+
+    void ExecuteGameplayFrame(Game::GameplayFrameState& frameState)
+    {
+        const bool useSlaveSim =
+            context_.enableSlaveForSimulation &&
+            (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
+
+        if (useSlaveSim)
+        {
+            // If previous simulation still runs at this point, drain now so we do
+            // not accumulate skipped gameplay frames.
+            (void)DrainSimulationJobIfInFlight(true);
+            if (TryDispatchSimulationOnSlave(frameState))
+            {
+                return;
+            }
+        }
+
+        RunGameplayFrameSynchronously(frameState);
+    }
+
     void ScheduleCarPrepareIfEnabled()
     {
         if (!CanRenderCar() || !context_.enableSlaveForCarPrepare) return;
         if (carPrepareJobInFlight_) return;
+        if (IsTrackProducerJobInFlightHint()) return;
 
         const uint8_t slot = carPrepareWriteIdx_;
         carPrepareInputYaw_[slot] = carYawDeg_;
@@ -1120,6 +1242,9 @@ private:
 
         if (context_.trackSystemReady && context_.renderTrack)
         {
+            // Reserve Slave SH2 track window: ensure simulation job from this
+            // frame is fully drained before TrackDrawProducer can submit.
+            (void)DrainSimulationJobIfInFlight(true);
             context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
         }
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
@@ -1409,6 +1534,24 @@ private:
         CameraSystem::PathFrameContext pathCtx{};
         pathCtx.valid = false;
         const SRL::Math::Types::Vector3D fallbackForward(0.0, 0.0, 1.0f);
+
+        if (!CameraSystem::kPathGuidedChaseEnabled)
+        {
+            const bool hasRetainedRouteStorage =
+                autoLapRouteBuilt_ ||
+                autoLapRouteInitialized_ ||
+                autoLapRouteIds_.capacity() > 0u ||
+                autoLapRouteCenters_.capacity() > 0u ||
+                autoLapRouteYawDeg_.capacity() > 0u ||
+                autoLapRouteOffDeg_.capacity() > 0u;
+            if (!autoLapTestEnabled_ && hasRetainedRouteStorage)
+            {
+                ReleaseAutoLapRouteStorage();
+            }
+            cameraPathPrevCarWorldPositionValid_ = false;
+            context_.cameraSystem->SetPathFrameContext(pathCtx);
+            return;
+        }
 
         if (!context_.trackSystem || !context_.trackSystemReady)
         {
@@ -2084,6 +2227,26 @@ private:
         }
     }
 
+    void ReleaseAutoLapRouteStorage()
+    {
+        autoLapRouteIds_.clear();
+        autoLapRouteCenters_.clear();
+        autoLapRouteYawDeg_.clear();
+        autoLapRouteOffDeg_.clear();
+        TrackLowWorkVector<int16_t>{}.swap(autoLapRouteIds_);
+        TrackLowWorkVector<SRL::Math::Types::Vector3D>{}.swap(autoLapRouteCenters_);
+        TrackLowWorkVector<int16_t>{}.swap(autoLapRouteYawDeg_);
+        TrackLowWorkVector<int16_t>{}.swap(autoLapRouteOffDeg_);
+        ReleaseAutoLapGuideLines();
+        autoLapRouteInitialized_ = false;
+        autoLapRouteBuilt_ = false;
+        startupPathYawAligned_ = false;
+        autoLapRouteIndex_ = 0;
+        autoLapRouteBaseYawDeg_ = 0;
+        autoLapCurrentOffDeg_ = 0;
+        autoLapSelectedGuideLine_ = -1;
+    }
+
     static double AutoLapPointSegmentDistanceSqXZ(const SRL::Math::Types::Vector3D& point,
                                                   const SRL::Math::Types::Vector3D& a,
                                                   const SRL::Math::Types::Vector3D& b)
@@ -2247,18 +2410,7 @@ private:
     class SimulationTask final : public SRL::Types::ITask
     {
     public:
-        struct Payload
-        {
-            Game::IGameplayTick* gameplayTick = nullptr;
-            Game::ICarPhysics* carPhysics = nullptr;
-            Game::IAudioEvents* audioEvents = nullptr;
-            Game::ITrackCollisionQuery* trackCollision = nullptr;
-            Game::GameplayFrameState frameState{};
-            SRL::Math::Types::Vector3D outWorldPosition{};
-            int32_t outYawDeg = 0;
-        };
-
-        void Configure(const Payload* input, Payload* output)
+        void Configure(const SimulationPayload* input, SimulationPayload* output)
         {
             input_ = input;
             output_ = output;
@@ -2297,8 +2449,8 @@ private:
             output_->outYawDeg = state.carYawDeg;
         }
 
-        const Payload* input_ = nullptr;
-        Payload* output_ = nullptr;
+        const SimulationPayload* input_ = nullptr;
+        SimulationPayload* output_ = nullptr;
     };
 
     class CarRenderPrepareTask final : public SRL::Types::ITask
@@ -2336,13 +2488,19 @@ private:
     uint32_t fpsFramesOver30Budget_ = 0u;
     uint32_t fpsFramesOver60Budget_ = 0u;
     SimulationTask simulationTask_{};
-    SimulationTask::Payload simInput_[2]{};
-    SimulationTask::Payload simOutput_[2]{};
+    SimulationPayload simInput_[2]{};
+    SimulationPayload simOutput_[2]{};
     bool simJobInFlight_ = false;
     bool simHasCompleted_ = false;
     uint8_t simWriteIdx_ = 0;
     uint8_t simInFlightIdx_ = 0;
     uint8_t simCompletedIdx_ = 0;
+    uint8_t simSlaveBackoffFrames_ = 0;
+    uint32_t simSlaveDispatchCount_ = 0;
+    uint32_t simSlaveDispatchSkipsTrackBusy_ = 0;
+    uint32_t simSlaveDispatchSkipsBackoff_ = 0;
+    uint32_t simDrainSoftTimeouts_ = 0;
+    uint32_t simDrainHardWaits_ = 0;
     CarRenderPrepareTask carPrepareTask_{};
     int32_t carPrepareInputYaw_[2]{};
     int32_t carPrepareOutputYaw_[2]{};

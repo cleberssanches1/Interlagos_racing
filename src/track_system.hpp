@@ -149,6 +149,9 @@ public:
     bool RuntimeStatsLogsEnabled() const { return runtimeStatsLogsEnabled_; }
     // Re-anchor track texture heap base after loading non-track assets (e.g. car).
     void RebaseTrackTextureHeapBase();
+#ifdef TRACK_LWR_STAGE_TRACE
+    static void PrintLwrStageProbes();
+#endif
 
 private:
     friend class TrackPipeline::TrackMaintenanceStage;
@@ -507,7 +510,7 @@ private:
     TrackSegmentCopy CopySegmentById(size_t id);
     SegmentEntryVector CopyAllTrackSegments(size_t maxSegments);
     TrackLowWorkVector<SegmentRenderEntry> BuildSegmentRenderers(SegmentEntryVector& entries);
-    TrackLowWorkVector<SegmentHandle> BuildSegmentHandleTable();
+    void BuildSegmentHandleTable();
     void ResetInitializationState();
     size_t ResolveInitialLoadLimit(const Config& config) const;
     void PrepareInitialSegmentPackages(size_t loadLimit);
@@ -564,6 +567,7 @@ private:
     int16_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
     uint16_t slotFaceCapacityFloor_ = 0;
+    uint16_t familySlotCapacityFloor_ = 0;
     uint16_t rendererVertexCapacityFloor_ = 0;
     uint16_t rendererFaceCapacityFloor_ = 0;
     CenterCatalogVector segmentCenterCatalog_{};
