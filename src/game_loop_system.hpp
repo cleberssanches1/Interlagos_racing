@@ -131,7 +131,7 @@ private:
     static constexpr bool kEnableLowWorkFreeOverlay = true;
     // Modo completo imprime muitas linhas e pode degradar FPS em corrida longa.
     // Mantemos o modo leve por padrao para monitorar memoria com menor custo.
-    static constexpr bool kEnableLowWorkFreeOverlayFull = false;
+    static constexpr bool kEnableLowWorkFreeOverlayFull = true;
     // Permite ligar o overlay de memoria mesmo quando os logs gerais de runtime
     // estao desligados em main.cxx.
     static constexpr bool kEnableLowWorkFreeOverlayRequireRuntimeStats = false;

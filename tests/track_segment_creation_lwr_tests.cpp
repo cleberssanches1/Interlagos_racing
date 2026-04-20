@@ -651,6 +651,107 @@ void TestAssignThenEnsureFloorDoesNotExceedFloor(TestContext& ctx)
 }
 
 // ============================================================================
+// Teste 9: componentes do renderer são compactados ao piso após segmento outlier
+//
+// Valida a lógica adicionada em RecycleRuntimeState():
+//   if (capacity > floor * 2) { swap(tmp.reserve(floor)); }
+//
+// O segmento outlier (>2×piso faces) cresce o renderer. Ao ser evictado,
+// RecycleRuntimeState compacta as componentes de volta ao piso. O próximo
+// segmento normal reutiliza o piso sem nova alocação.
+// ============================================================================
+
+void TestOversizedSegmentComponentVectorsCompactOnRecycle(TestContext& ctx)
+{
+    ctx.currentTest = "OversizedSegmentComponentVectorsCompactOnRecycle";
+    MockLwrTracker tracker;
+
+    constexpr size_t kFaceFloor = 128u;   // análogo a kStabilizedFaceCapacityFloorCap
+    constexpr size_t kVertFloor = 128u;
+
+    TrackedVector<int16_t> faces(tracker); // proxy para componentFaces_
+    TrackedVector<int16_t> attrs(tracker); // proxy para componentAttrs_
+    TrackedVector<int16_t> verts(tracker); // proxy para componentVerts_
+
+    // SetRuntimeCapacityFloor — pré-aloca ao piso
+    faces.reserve(kFaceFloor);
+    attrs.reserve(kFaceFloor);
+    verts.reserve(kVertFloor);
+    const int64_t lwrAtFloor = tracker.Snapshot();
+
+    // Simula InitializeFromComponentDataRecycled para segmento outlier (3×piso)
+    // Análogo ao: if (componentFaces_.capacity() < max(floor, faces.size())) reserve(max)
+    constexpr size_t kOutlierFaces = kFaceFloor * 3u; // 384 — claramente > 2×piso
+    constexpr size_t kOutlierVerts = kVertFloor * 3u;
+    faces.reserve(kOutlierFaces);
+    attrs.reserve(kOutlierFaces);
+    verts.reserve(kOutlierVerts);
+    faces.assign(kOutlierFaces, 1);
+    attrs.assign(kOutlierFaces, 2);
+    verts.assign(kOutlierVerts, 3);
+    const int64_t lwrAfterOutlierBuild = tracker.Snapshot();
+    ASSERT_TRUE(ctx, lwrAfterOutlierBuild > lwrAtFloor); // cresceu
+
+    // Simula RecycleRuntimeState: clear() + compact if capacity > floor*2
+    faces.clear();
+    attrs.clear();
+    verts.clear();
+
+    // Compact path (capacity 384 > 128*2=256 → deve compactar)
+    ASSERT_TRUE(ctx, faces.capacity() > kFaceFloor * 2u); // pré-condição
+
+    auto compactIfOversized = [&](TrackedVector<int16_t>& v, size_t floor)
+    {
+        if (v.capacity() > floor * 2u)
+        {
+            TrackedVector<int16_t> tmp(tracker);
+            tmp.reserve(floor);
+            v.swap(tmp);
+            // tmp sai de escopo → libera capacidade antiga
+        }
+    };
+    compactIfOversized(faces, kFaceFloor);
+    compactIfOversized(attrs, kFaceFloor);
+    compactIfOversized(verts, kVertFloor);
+
+    // Após compact: capacity deve ser exatamente o piso
+    ASSERT_EQ(ctx, faces.capacity(), kFaceFloor);
+    ASSERT_EQ(ctx, attrs.capacity(), kFaceFloor);
+    ASSERT_EQ(ctx, verts.capacity(), kVertFloor);
+
+    // LWR deve ter caído em relação ao pico do outlier
+    const int64_t lwrAfterCompact = tracker.Snapshot();
+    ASSERT_TRUE(ctx, lwrAfterCompact < lwrAfterOutlierBuild);
+    // E deve ser igual ao nível do piso (free da sobra, alloc do piso novo)
+    ASSERT_EQ(ctx, lwrAfterCompact, lwrAtFloor);
+
+    // Simula próximo segmento normal (≤piso faces) — sem nova alocação
+    constexpr size_t kNormalFaces = 80u;
+    faces.clear();
+    faces.assign(kNormalFaces, 5);
+    attrs.clear();
+    attrs.assign(kNormalFaces, 6);
+    verts.clear();
+    verts.assign(kNormalFaces, 7);
+
+    ASSERT_EQ(ctx, tracker.Snapshot(), lwrAtFloor); // sem nova alloc
+
+    // Segmento subsequente também outlier — comportamento idêntico (cresce → compacta)
+    faces.reserve(kOutlierFaces);
+    attrs.reserve(kOutlierFaces);
+    verts.reserve(kOutlierVerts);
+    const int64_t lwrAtSecondOutlierPeak = tracker.Snapshot();
+    ASSERT_TRUE(ctx, lwrAtSecondOutlierPeak > lwrAtFloor);
+
+    // Evicção: compactar novamente
+    faces.clear(); attrs.clear(); verts.clear();
+    compactIfOversized(faces, kFaceFloor);
+    compactIfOversized(attrs, kFaceFloor);
+    compactIfOversized(verts, kVertFloor);
+    ASSERT_EQ(ctx, tracker.Snapshot(), lwrAtFloor); // volta ao piso
+}
+
+// ============================================================================
 // Registro de testes
 // ============================================================================
 
@@ -673,6 +774,7 @@ int main()
         { "FamilyCatalogBoundedByActiveWindowAfterMerge", &TestFamilyCatalogBoundedByActiveWindowAfterMerge },
         { "FullSlidePipelineStabilizesLwrAfterWarmup", &TestFullSlidePipelineStabilizesLwrAfterWarmup },
         { "AssignThenEnsureFloorDoesNotExceedFloor",   &TestAssignThenEnsureFloorDoesNotExceedFloor   },
+        { "OversizedSegmentComponentVectorsCompactOnRecycle", &TestOversizedSegmentComponentVectorsCompactOnRecycle },
     };
 
     TestContext ctx{};

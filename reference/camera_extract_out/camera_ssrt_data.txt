@@ -1,0 +1,18 @@
+=== HOTSHOT RACING — SSRT CAMERA DATA ===
+
+FILE: SlipstreamCameraEffects.dat
+  Size: 507 bytes
+  Strings:
+    @0000: 'SSRT'
+    @0013: 'rDefault'
+    @0070: 'Default'
+    @0080: 'Cockpit'
+    @00E8: 'Bonnet'
+    @014F: 'Bumper'
+    @01B0: 'SlipStreamCamera1_Sys'
+    @01C8: 'Cockpit'
+    @01D0: 'SlipStreamCamera2_Sys'
+    @01E8: 'Bonnet'
+    @01F0: 'Bumper'
+  Floats:
+

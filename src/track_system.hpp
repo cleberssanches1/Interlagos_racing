@@ -129,7 +129,7 @@ public:
     int32_t LowWorkDrawFrameDeltaThisFrame() const { return lowWorkDrawFrameDeltaThisFrame_; }
     uint32_t LowWorkEndFreeBytesThisFrame() const { return phaseLwrEnd_; }
     uint8_t SlidesThisFrame() const { return runtimeSlidesThisFrame_; }
-    int16_t SlideSegmentIdThisFrame() const { return slideHwrTraceSegmentId_; }
+    int32_t SlideSegmentIdThisFrame() const { return slideHwrTraceSegmentId_; }
     LowWorkCategoryBreakdown LowWorkBreakdownThisFrame() const { return lowWorkBreakdownEnd_; }
     uint16_t StreamTicksThisFrame() const { return sh2MasterStreamTicksThisFrame_; }
     uint16_t MaintenanceTicksThisFrame() const { return sh2MasterMaintenanceTicksThisFrame_; }
@@ -169,7 +169,7 @@ private:
 
     struct TrackSegmentEntry
     {
-        int16_t id = 0;
+        int32_t id = 0;
         TrackSegmentCopy copy;
     };
 
@@ -194,7 +194,7 @@ private:
             TrackLowWorkI16Vector workingSetSlots{};
         };
 
-        int16_t id = 0;
+        int32_t id = 0;
         uint8_t logicalSegmentCount = 0;
         TrackLowWorkUniquePtr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
@@ -202,7 +202,7 @@ private:
     };
     struct RawSegmentEntry
     {
-        int16_t id = 0;
+        int32_t id = 0;
         TrackSegmentCopy copy{};
     };
     struct Seg1FamilySlotEntry
@@ -234,7 +234,7 @@ private:
     struct SlideBoundaryUpdate
     {
         bool active = false;
-        int16_t segmentId = -1;
+        int32_t segmentId = -1;
         uint8_t desiredLodIndex = 0xFF;
         int16_t desiredBaseRank = -1;
         TrackLowWorkI16Vector preparedFaceSlots{};
@@ -244,9 +244,9 @@ private:
         bool ready = false;
         int8_t direction = 1;
         size_t dropIdx = 0;
-        int16_t incomingSegmentId = -1;
-        int16_t outgoingSegmentId = -1;
-        int16_t nextStartId = 1;
+        int32_t incomingSegmentId = -1;
+        int32_t outgoingSegmentId = -1;
+        int32_t nextStartId = 1;
         SRL::Math::Types::Vector3D incomingCenter{};
         TrackLowWorkU16Vector incomingFamilyIds{};
         TrackLowWorkI16Vector incomingFaceSlots{};
@@ -270,7 +270,7 @@ private:
     {
         struct SegmentMeta
         {
-            int16_t id = -1;
+            int32_t id = -1;
             SRL::Math::Types::Vector3D center{};
             uint8_t logicalSegmentCount = 0;
             uint8_t flags = 0u; // bit0:renderer bit1:lodReady bit2:perFaceRank
@@ -280,7 +280,7 @@ private:
         SRL::Math::Types::Vector3D carWorldPosition{};
         SRL::Math::Types::Vector3D cameraLocation{};
         SRL::Math::Types::Vector3D trackOffset{};
-        int16_t windowStartId = -1;
+        int32_t windowStartId = -1;
         int8_t windowDirection = 1;
         uint8_t fixedVisibleSegmentCap = 0;
         uint8_t segmentCount = 0;
@@ -294,9 +294,10 @@ private:
         uint8_t flags = 0u;
         uint16_t plannerTicksSlave = 0;
         uint16_t sortedCount = 0;
-        std::array<int16_t, kTrackSegmentLimit> sortedSegmentIds{};
-        std::array<uint8_t, kTrackSegmentLimit + 1> desiredLodBySegment{};
-        std::array<int16_t, kTrackSegmentLimit + 1> desiredBaseRankBySegment{};
+        std::array<int32_t, kTrackSegmentLimit> sortedSegmentIds{};
+        // Indexed by logical rank in the active window (0..windowCount-1).
+        std::array<uint8_t, kTrackSegmentLimit> desiredLodByLogicalRank{};
+        std::array<int16_t, kTrackSegmentLimit> desiredBaseRankByLogicalRank{};
     };
 
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
@@ -373,6 +374,14 @@ private:
     bool TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) const;
     void RebuildActiveWindowLookupTables();
     void InvalidateActiveWindowLookupTables();
+    size_t LogicalToPhysicalWindowIndex(size_t logicalIndex, size_t windowCount) const;
+    int32_t ResolveWindowOutgoingSegmentId(int8_t direction, size_t windowCount) const;
+    int32_t ResolveWindowIncomingSegmentId(int8_t direction, size_t windowCount) const;
+    bool TryResolveWindowEntryIndexBySegmentId(int32_t segmentId, size_t& outIndex);
+    bool TryResolveWindowEntryIndexBySegmentId(int32_t segmentId, size_t& outIndex) const;
+    bool ResolveWindowDropIndexByDirection(int8_t direction, size_t windowCount, size_t& outDropIdx);
+    bool ResolveWindowHeadByStartId(size_t fallbackIndex);
+    bool AdvanceWindowHeadByDirection(int8_t direction, size_t windowCount);
     SegmentRenderEntry* FindWindowEntryByIdFast(int32_t segmentId);
     const SegmentRenderEntry* FindWindowEntryByIdFast(int32_t segmentId) const;
     void UpdateDesiredStabilizedWindowLodTargets();
@@ -556,15 +565,15 @@ private:
     bool coordinatorReady_ = false;
     uint16_t fixedVisibleSegmentCap_ = 1;
     uint16_t totalSegmentCount_ = 0;
-    int16_t activeWindowStartId_ = 1;
+    int32_t activeWindowStartId_ = 1;
     uint16_t activeWindowHead_ = 0;
     int8_t windowDirection_ = 1;
     uint8_t activeWindowSwitchCooldown_ = 0;
-    int16_t targetWindowStartId_ = 1;
-    int16_t trackedCarSegmentId_ = 1;
+    int32_t targetWindowStartId_ = 1;
+    int32_t trackedCarSegmentId_ = 1;
     bool trackedCarSegmentValid_ = false;
-    int16_t observedCarSegmentId_ = -1;
-    int16_t lastLapWrapProbeSegmentId_ = -1;
+    int32_t observedCarSegmentId_ = -1;
+    int32_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
     uint16_t slotFaceCapacityFloor_ = 0;
     uint16_t familySlotCapacityFloor_ = 0;
@@ -593,7 +602,7 @@ private:
     TrackLowWorkI16Vector slideRollbackFaceSlotsScratch_{};
     TrackLowWorkI16Vector runtimeRenderFaceSlotsScratch_{};
     SlideBackBuffer slideBackBuffer_{};
-    int16_t slidePrefetchSegmentId_ = -1;
+    int32_t slidePrefetchSegmentId_ = -1;
     SRL::Math::Types::Vector3D slidePrefetchCenter_{};
     FamilyIdVector slidePrefetchFamilyIds_{};
     TrackLowWorkI16Vector slidePrefetchFaceSlots_{};
@@ -645,7 +654,7 @@ private:
     int32_t lowWorkDrawExecuteDeltaThisFrame_ = 0;
     int32_t lowWorkDrawOtherDeltaThisFrame_ = 0;
     int32_t lowWorkDrawFrameDeltaThisFrame_ = 0;
-    int16_t slideHwrTraceSegmentId_ = -1;
+    int32_t slideHwrTraceSegmentId_ = -1;
     uint8_t slideHwrTraceFlags_ = 0;
     uint32_t slideHwrTraceCheck_ = 0;
     uint32_t slideHwrTraceAfterTrim_ = 0;
@@ -719,6 +728,7 @@ private:
     mutable bool familySlotIndexDirty_ = true;
     uint8_t familyMergeCooldown_ = 0;
     std::array<uint8_t, SRL_MAX_TEXTURES> usedTextureSlotsThisFrame_{};
+    TrackLowWorkVector<int32_t> activeWindowLookupSegmentIds_{};
     TrackLowWorkVector<int16_t> activeWindowEntryIndexBySegmentId_{};
     TrackLowWorkVector<int16_t> activeWindowLogicalRankBySegmentId_{};
     void* workRamEmergencyReserve_ = nullptr;

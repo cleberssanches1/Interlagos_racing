@@ -14,6 +14,16 @@
 #include <type_traits>
 #include <utility>
 
+#ifndef TRACK_RENDERER_ENABLE_VERBOSE_LOGS
+#define TRACK_RENDERER_ENABLE_VERBOSE_LOGS 0
+#endif
+
+#if TRACK_RENDERER_ENABLE_VERBOSE_LOGS
+#define TRK_REN_LOG(...) SRL::Debug::Print(__VA_ARGS__)
+#else
+#define TRK_REN_LOG(...) ((void)0)
+#endif
+
 template <typename T>
 using TrackRendererLowWorkVector =
     TrackLowWorkVectorBase<T>;
@@ -169,15 +179,21 @@ public:
             meshCenters_[m] = (minv + maxv) / SRL::Math::Types::Fxp::BuildRaw(2 << 16);
         }
 
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
         if (isSmooth_)
         {
-            smoothCache_.assign(meshCount_, {});
+            // Inactive type: just invalidate, keep inner-vector capacity
+            for (auto& e : flatCache_) e.valid = false;
+            // Active type: grow-only resize (never shrink), then invalidate
+            if (meshCount_ > smoothCache_.size()) smoothCache_.resize(meshCount_);
+            for (size_t i = 0; i < meshCount_ && i < smoothCache_.size(); ++i)
+                smoothCache_[i].valid = false;
         }
         else
         {
-            flatCache_.assign(meshCount_, {});
+            for (auto& e : smoothCache_) e.valid = false;
+            if (meshCount_ > flatCache_.size()) flatCache_.resize(meshCount_);
+            for (size_t i = 0; i < meshCount_ && i < flatCache_.size(); ++i)
+                flatCache_[i].valid = false;
         }
 
         trackOffset_ = {};
@@ -273,8 +289,8 @@ public:
         trackOffset_ = {};
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
+        smoothCache_.clear();
+        flatCache_.clear();
 
         const bool reuseReservedStorage =
             componentVertCapacityFloor_ > 0u || componentFaceCapacityFloor_ > 0u;
@@ -314,9 +330,8 @@ public:
             verts.clear();
             faces.clear();
             attrs.clear();
-            VertVecT{}.swap(verts);
-            FaceVecT{}.swap(faces);
-            AttrVecT{}.swap(attrs);
+            // Preserve caller scratch capacities to avoid per-segment alloc/free
+            // churn in the streaming pipeline.
         }
         else
         {
@@ -331,7 +346,6 @@ public:
                     std::make_move_iterator(verts.end()));
                 componentVerts_.swap(vertsMoved);
                 verts.clear();
-                VertVecT{}.swap(verts);
             }
 
             if constexpr (std::is_same_v<FaceVecT, decltype(componentFaces_)>)
@@ -345,7 +359,6 @@ public:
                     std::make_move_iterator(faces.end()));
                 componentFaces_.swap(facesMoved);
                 faces.clear();
-                FaceVecT{}.swap(faces);
             }
 
             if constexpr (std::is_same_v<AttrVecT, decltype(componentAttrs_)>)
@@ -359,7 +372,6 @@ public:
                     std::make_move_iterator(attrs.end()));
                 componentAttrs_.swap(attrsMoved);
                 attrs.clear();
-                AttrVecT{}.swap(attrs);
             }
         }
 
@@ -412,8 +424,8 @@ public:
         trackOffset_ = {};
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
+        smoothCache_.clear();
+        flatCache_.clear();
 
         const bool reuseReservedStorage =
             componentVertCapacityFloor_ > 0u || componentFaceCapacityFloor_ > 0u;
@@ -558,7 +570,7 @@ public:
 
         // Debug log disabled to keep overlay clean during texture LOD validation.
 
-        SRL::Debug::Print(1, 10, "TR ren begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
+        TRK_REN_LOG(1, 10, "TR ren begin m:%u start:%u limit:%u off:%d,%d,%d flags SGL:%d orig:%d direct2d:%d",
                           (unsigned)meshCount_, (unsigned)startMeshIdx_, (unsigned)drawLimit_,
                           trackOffset_.X.As<int16_t>(), trackOffset_.Y.As<int16_t>(), trackOffset_.Z.As<int16_t>(),
                           useSglDirect_ ? 1 : 0, useOriginal_ ? 1 : 0, useDirect2D_ ? 1 : 0);
@@ -601,7 +613,7 @@ public:
                         auto v = smoothCache_[i].verts[idx] * trackScale_ + trackOffset_;
                         SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                     }
-                    SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                    TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                       p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
                                       p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                                       p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
@@ -616,7 +628,7 @@ public:
                         auto v = flatCache_[i].verts[idx] * trackScale_ + trackOffset_;
                         SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                     }
-                    SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                    TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                       p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
                                       p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                                       p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
@@ -626,7 +638,7 @@ public:
             auto ValidateCache = [&](const auto& cache) {
                 if (cache.verts.empty() || cache.faces.empty())
                 {
-                    SRL::Debug::Print(1, 61, "Track cache empty mesh%lu verts:%lu faces:%lu",
+                    TRK_REN_LOG(1, 61, "Track cache empty mesh%lu verts:%lu faces:%lu",
                                       (unsigned long)i,
                                       (unsigned long)cache.verts.size(),
                                       (unsigned long)cache.faces.size());
@@ -638,7 +650,7 @@ public:
                     {
                         if (face.Vertices[vi] >= cache.verts.size())
                         {
-                            SRL::Debug::Print(1, 60, "Track cache invalid mesh%lu face idx%u vert%u/%lu",
+                            TRK_REN_LOG(1, 60, "Track cache invalid mesh%lu face idx%u vert%u/%lu",
                                               (unsigned long)i,
                                               (unsigned)&face - (unsigned)cache.faces.data(),
                                               (unsigned)face.Vertices[vi],
@@ -667,7 +679,7 @@ public:
                 if (i >= smoothCache_.size() || !smoothCache_[i].valid) continue;
                 const auto& cache = smoothCache_[i];
                 if (!ValidateCache(cache)) continue;
-                if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
+                if (drawn == 0) TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
                 if (drawn == 0 && !cache.verts.empty())
                 {
                     SRL::Math::Types::Vector2D p2d[3];
@@ -677,7 +689,7 @@ public:
                         auto v = cache.verts[idx] * trackScale_ + trackOffset_;
                         SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                     }
-                    SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                    TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                       p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
                                       p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                                       p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
@@ -693,7 +705,7 @@ public:
                 if (i >= flatCache_.size() || !flatCache_[i].valid) continue;
                 const auto& cache = flatCache_[i];
                 if (!ValidateCache(cache)) continue;
-                if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
+                if (drawn == 0) TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
                 if (drawn == 0 && !cache.verts.empty())
                     {
                         SRL::Math::Types::Vector2D p2d[3];
@@ -703,7 +715,7 @@ public:
                             auto v = cache.verts[idx] * trackScale_ + trackOffset_;
                             SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                         }
-                        SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                        TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                             p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
                             p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                             p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
@@ -723,7 +735,7 @@ public:
                 {
             if (i >= smoothCache_.size() || !smoothCache_[i].valid) continue;
             const auto& cache = smoothCache_[i];
-            if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
+            if (drawn == 0) TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
             for (size_t f = 0; f < cache.faces.size(); ++f)
             {
                 SRL::Math::Types::Vector2D pts[4];
@@ -737,7 +749,7 @@ public:
                 }
                 if (drawn == 0 && f == 0)
                 {
-                    SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                    TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                       pts[0].X.As<int16_t>(), pts[0].Y.As<int16_t>(),
                                       pts[1].X.As<int16_t>(), pts[1].Y.As<int16_t>(),
                                       pts[2].X.As<int16_t>(), pts[2].Y.As<int16_t>());
@@ -751,7 +763,7 @@ public:
                 {
             if (i >= flatCache_.size() || !flatCache_[i].valid) continue;
             const auto& cache = flatCache_[i];
-            if (drawn == 0) SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
+            if (drawn == 0) TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u", (unsigned)i, (unsigned)cache.faces.size(), (unsigned)cache.verts.size());
             for (size_t f = 0; f < cache.faces.size(); ++f)
             {
                 SRL::Math::Types::Vector2D pts[4];
@@ -765,7 +777,7 @@ public:
                 }
                 if (drawn == 0 && f == 0)
                 {
-                    SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                    TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                       pts[0].X.As<int16_t>(), pts[0].Y.As<int16_t>(),
                                       pts[1].X.As<int16_t>(), pts[1].Y.As<int16_t>(),
                                       pts[2].X.As<int16_t>(), pts[2].Y.As<int16_t>());
@@ -791,13 +803,13 @@ public:
                         if (!ValidateModelMeshSmooth(mesh)) { SRL::Scene3D::PopMatrix(); continue; }
                         if (drawn == 0)
                         {
-                            SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",
+                            TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u",
                                               (unsigned)i, (unsigned)mesh->FaceCount, (unsigned)mesh->VertexCount);
                             // Log de projeo do primeiro tringulo
                             if (mesh->FaceCount > 0)
                             {
                                 const auto& f0 = mesh->Faces[0];
-                                SRL::Debug::Print(1, 31, "Orig attr tex:%d", (mesh->Attributes ? (int)mesh->Attributes[0].Texture : -1));
+                                TRK_REN_LOG(1, 31, "Orig attr tex:%d", (mesh->Attributes ? (int)mesh->Attributes[0].Texture : -1));
                                 SRL::Math::Types::Vector2D p2d[3];
                                 for (int vi = 0; vi < 3; ++vi)
                                 {
@@ -806,11 +818,11 @@ public:
                                     auto v = mesh->Vertices[idx] * trackScale_ + trackOffset_;
                                     SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                                 }
-                                SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                                TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                                   p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
                                                   p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                                                   p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
-                                SRL::Debug::Print(1, 32, "Orig v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
+                                TRK_REN_LOG(1, 32, "Orig v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
                                                   mesh->Vertices[f0.Vertices[0]].X.As<int16_t>(), mesh->Vertices[f0.Vertices[0]].Y.As<int16_t>(), mesh->Vertices[f0.Vertices[0]].Z.As<int16_t>(),
                                                   mesh->Vertices[f0.Vertices[1]].X.As<int16_t>(), mesh->Vertices[f0.Vertices[1]].Y.As<int16_t>(), mesh->Vertices[f0.Vertices[1]].Z.As<int16_t>(),
                                                   mesh->Vertices[f0.Vertices[2]].X.As<int16_t>(), mesh->Vertices[f0.Vertices[2]].Y.As<int16_t>(), mesh->Vertices[f0.Vertices[2]].Z.As<int16_t>());
@@ -849,12 +861,12 @@ public:
                         if (!ValidateModelMesh(mesh)) { SRL::Scene3D::PopMatrix(); continue; }
                         if (drawn == 0)
                         {
-                            SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",
+                            TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u",
                                               (unsigned)i, (unsigned)mesh->FaceCount, (unsigned)mesh->VertexCount);
                             if (mesh->FaceCount > 0)
                             {
                                 const auto& f0 = mesh->Faces[0];
-                                SRL::Debug::Print(1, 31, "Orig attr tex:%d", (mesh->Attributes ? (int)mesh->Attributes[0].Texture : -1));
+                                TRK_REN_LOG(1, 31, "Orig attr tex:%d", (mesh->Attributes ? (int)mesh->Attributes[0].Texture : -1));
                                 SRL::Math::Types::Vector2D p2d[3];
                                 for (int vi = 0; vi < 3; ++vi)
                                 {
@@ -862,11 +874,11 @@ public:
                                     auto v = mesh->Vertices[idx] * trackScale_ + trackOffset_;
                                     SRL::Scene3D::ProjectToScreen(v, &p2d[vi]);
                                 }
-                                SRL::Debug::Print(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
+                                TRK_REN_LOG(1, 30, "Proj2D p0:%d,%d p1:%d,%d p2:%d,%d",
                                                   p2d[0].X.As<int16_t>(), p2d[0].Y.As<int16_t>(),
                                                   p2d[1].X.As<int16_t>(), p2d[1].Y.As<int16_t>(),
                                                   p2d[2].X.As<int16_t>(), p2d[2].Y.As<int16_t>());
-                                SRL::Debug::Print(1, 32, "Orig v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
+                                TRK_REN_LOG(1, 32, "Orig v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
                                                   mesh->Vertices[f0.Vertices[0]].X.As<int16_t>(), mesh->Vertices[f0.Vertices[0]].Y.As<int16_t>(), mesh->Vertices[f0.Vertices[0]].Z.As<int16_t>(),
                                                   mesh->Vertices[f0.Vertices[1]].X.As<int16_t>(), mesh->Vertices[f0.Vertices[1]].Y.As<int16_t>(), mesh->Vertices[f0.Vertices[1]].Z.As<int16_t>(),
                                                   mesh->Vertices[f0.Vertices[2]].X.As<int16_t>(), mesh->Vertices[f0.Vertices[2]].Y.As<int16_t>(), mesh->Vertices[f0.Vertices[2]].Z.As<int16_t>());
@@ -914,13 +926,13 @@ public:
 
                     if (drawn == 0)
                     {
-                        SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",
+                        TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u",
                                           (unsigned)i, (unsigned)tmp.FaceCount, (unsigned)tmp.VertexCount);
                         if (!cache.faces.empty())
                         {
                             const auto& f0 = cache.faces[0];
-                            SRL::Debug::Print(1, 31, "Cache attr tex:%d", (int)cache.attrs[0].Texture);
-                            SRL::Debug::Print(1, 32, "Cache v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
+                            TRK_REN_LOG(1, 31, "Cache attr tex:%d", (int)cache.attrs[0].Texture);
+                            TRK_REN_LOG(1, 32, "Cache v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
                                               cache.verts[f0.Vertices[0]].X.As<int16_t>(), cache.verts[f0.Vertices[0]].Y.As<int16_t>(), cache.verts[f0.Vertices[0]].Z.As<int16_t>(),
                                               cache.verts[f0.Vertices[1]].X.As<int16_t>(), cache.verts[f0.Vertices[1]].Y.As<int16_t>(), cache.verts[f0.Vertices[1]].Z.As<int16_t>(),
                                               cache.verts[f0.Vertices[2]].X.As<int16_t>(), cache.verts[f0.Vertices[2]].Y.As<int16_t>(), cache.verts[f0.Vertices[2]].Z.As<int16_t>());
@@ -947,13 +959,13 @@ public:
 
                     if (drawn == 0)
                     {
-                        SRL::Debug::Print(1, 11, "Track mesh%u faces:%u verts:%u",
+                        TRK_REN_LOG(1, 11, "Track mesh%u faces:%u verts:%u",
                                           (unsigned)i, (unsigned)tmp.FaceCount, (unsigned)tmp.VertexCount);
                         if (!cache.faces.empty())
                         {
                             const auto& f0 = cache.faces[0];
-                            SRL::Debug::Print(1, 31, "Cache attr tex:%d", (int)cache.attrs[0].Texture);
-                            SRL::Debug::Print(1, 32, "Cache v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
+                            TRK_REN_LOG(1, 31, "Cache attr tex:%d", (int)cache.attrs[0].Texture);
+                            TRK_REN_LOG(1, 32, "Cache v0:%d,%d,%d v1:%d,%d,%d v2:%d,%d,%d",
                                               cache.verts[f0.Vertices[0]].X.As<int16_t>(), cache.verts[f0.Vertices[0]].Y.As<int16_t>(), cache.verts[f0.Vertices[0]].Z.As<int16_t>(),
                                               cache.verts[f0.Vertices[1]].X.As<int16_t>(), cache.verts[f0.Vertices[1]].Y.As<int16_t>(), cache.verts[f0.Vertices[1]].Z.As<int16_t>(),
                                               cache.verts[f0.Vertices[2]].X.As<int16_t>(), cache.verts[f0.Vertices[2]].Y.As<int16_t>(), cache.verts[f0.Vertices[2]].Z.As<int16_t>());
@@ -987,7 +999,7 @@ public:
                 SRL::Math::Types::Vector2D(-10,  10)
             };
             SRL::Scene2D::DrawPolygon(pts, true, SRL::Types::HighColor::FromRGB555(31,31,0), 0);
-            SRL::Debug::Print(1, 23, "Track direct2D fallback quad drawn");
+            TRK_REN_LOG(1, 23, "Track direct2D fallback quad drawn");
         }
         lastDrawnMeshes_ = (uint32_t)drawn;
         lastDrawnFaces_ = drawnFaces;
@@ -1096,8 +1108,8 @@ public:
 
     void ReleaseMeshCaches()
     {
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
+        smoothCache_.clear();
+        flatCache_.clear();
     }
 
     // Export per-face texture slot in global face order (mesh0 face0..N, mesh1...).
@@ -1245,12 +1257,13 @@ public:
         }
 
         // Refresh custom caches only when some face texture actually changed.
+        // Invalidate without destroying inner vectors so EnsureCached reuses capacity.
         if (applied > 0)
         {
-            decltype(smoothCache_)().swap(smoothCache_);
-            decltype(flatCache_)().swap(flatCache_);
-            if (isSmooth_) smoothCache_.assign(meshCount_, {});
-            else flatCache_.assign(meshCount_, {});
+            if (isSmooth_)
+                for (auto& e : smoothCache_) e.valid = false;
+            else
+                for (auto& e : flatCache_) e.valid = false;
         }
 
         return applied;
@@ -1415,10 +1428,10 @@ public:
 
         if (applied > 0)
         {
-            decltype(smoothCache_)().swap(smoothCache_);
-            decltype(flatCache_)().swap(flatCache_);
-            if (isSmooth_) smoothCache_.assign(meshCount_, {});
-            else flatCache_.assign(meshCount_, {});
+            if (isSmooth_)
+                for (auto& e : smoothCache_) e.valid = false;
+            else
+                for (auto& e : flatCache_) e.valid = false;
         }
 
         return applied;
@@ -1500,10 +1513,10 @@ public:
             for (size_t i = 0; i < meshCount_; ++i) applyMesh(trackObj_->GetMesh<SRL::Types::Mesh>(i));
         }
 
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
-        if (isSmooth_) smoothCache_.assign(meshCount_, {});
-        else flatCache_.assign(meshCount_, {});
+        if (isSmooth_)
+            for (auto& e : smoothCache_) e.valid = false;
+        else
+            for (auto& e : flatCache_) e.valid = false;
 
         return applied;
     }
@@ -1581,6 +1594,26 @@ public:
                 componentAttrs_.reserve(componentFaceCapacityFloor_);
             }
         }
+        // If component vectors grew far beyond the floor (outlier segment), compact
+        // them back to the floor now. This is a one-time cost paid when the outlier
+        // segment is evicted; normal segments stay at or below 2× floor and skip this.
+        if (componentFaceCapacityFloor_ > 0u)
+        {
+            const size_t faceFloor = static_cast<size_t>(componentFaceCapacityFloor_);
+            if (componentFaces_.capacity() > faceFloor * 2u)
+            {
+                { ComponentFaceVector tmp; tmp.reserve(faceFloor); componentFaces_.swap(tmp); }
+                { ComponentAttrVector tmp; tmp.reserve(faceFloor); componentAttrs_.swap(tmp); }
+            }
+        }
+        if (componentVertCapacityFloor_ > 0u)
+        {
+            const size_t vertFloor = static_cast<size_t>(componentVertCapacityFloor_);
+            if (componentVerts_.capacity() > vertFloor * 2u)
+            {
+                ComponentVertVector tmp; tmp.reserve(vertFloor); componentVerts_.swap(tmp);
+            }
+        }
         if (meshCenters_.capacity() < 1u) meshCenters_.reserve(1u);
         if (meshBytes_.capacity() < 1u) meshBytes_.reserve(1u);
         if (meshMap_.capacity() < 1u) meshMap_.reserve(1u);
@@ -1595,8 +1628,10 @@ public:
         startMeshIdx_ = 0;
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
+        // Invalidate without destroying inner vectors — EnsureCached will
+        // refill in-place reusing existing capacity, avoiding TLSF churn.
+        for (auto& e : smoothCache_) e.valid = false;
+        for (auto& e : flatCache_) e.valid = false;
         // Only compact when explicitly requested: avoids free+realloc on
         // persistent scratch renderers that will be refilled immediately.
         if (compact)
@@ -1694,8 +1729,8 @@ private:
         startMeshIdx_ = 0;
         lastDrawnFaces_ = 0;
         lastDrawnMeshes_ = 0;
-        decltype(smoothCache_)().swap(smoothCache_);
-        decltype(flatCache_)().swap(flatCache_);
+        smoothCache_.clear();
+        flatCache_.clear();
     }
     // Ensure a mesh has a cached copy with forced attributes for flat lighting.
     void EnsureCached(size_t idx)
@@ -1727,7 +1762,7 @@ private:
                     sprPolygon,
                     UseLight);
             }
-            SRL::Debug::Print(1, 50, "Track cache ready smooth mesh%lu verts:%lu faces:%lu lastDrawn:%u",
+            TRK_REN_LOG(1, 50, "Track cache ready smooth mesh%lu verts:%lu faces:%lu lastDrawn:%u",
                               (unsigned long)idx,
                               (unsigned long)c.verts.size(),
                               (unsigned long)c.faces.size(),
@@ -1756,7 +1791,7 @@ private:
                     sprPolygon,
                     UseLight);
             }
-            SRL::Debug::Print(1, 51, "Track cache ready flat mesh%lu verts:%lu faces:%lu lastDrawn:%u",
+            TRK_REN_LOG(1, 51, "Track cache ready flat mesh%lu verts:%lu faces:%lu lastDrawn:%u",
                               (unsigned long)idx,
                               (unsigned long)c.verts.size(),
                               (unsigned long)c.faces.size(),

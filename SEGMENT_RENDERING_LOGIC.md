@@ -1,182 +1,139 @@
-﻿# Logica de Renderizacao de Segmentos
+# Logica de Renderizacao de Segmentos
 
-## Objetivo
-Este documento descreve a logica completa da renderizacao de segmentos da pista (`TrackSystem`), com foco no pipeline por frame, no fluxo de slide/prefetch e no controle de memoria (HWR/LWR).
+## 1) Objetivo do pipeline
+- Renderizar uma janela ativa de segmentos (pista visivel) com slide continuo.
+- Reaproveitar slots de renderer e slots de textura para reduzir churn de memoria.
+- Manter LOD por faixa de distancia (rank logico na janela).
 
-## Estruturas Principais
-- `TrackSystem::SegmentRenderEntry`
-- `TrackSystem::SegmentRenderEntry::SegmentLodState`
-- `TrackRenderer`
-- `seg1FamilySlots_` (cache de familias e slots por LOD)
-- `segmentRenderers_` (janela ativa de segmentos)
-- `segmentHandles_` + `segmentPool_` (handles estaveis para sort/draw)
-- `slidePrefetch*` e `slideBackBuffer_` (pipeline de entrada do proximo segmento)
+## 2) Estruturas principais
+- `segmentRenderers_`: janela ativa de segmentos renderizaveis.
+- `segmentEntries_`: metadata da mesma janela ativa.
+- `activeWindowStartId_`: id logico inicial da janela.
+- `activeWindowHead_`: cabeca fisica da fila/ring dentro do vetor.
+- `windowDirection_`: direcao de progresso (+1 ou -1).
+- `slideScratchRenderer_`: renderer staging para entrada do proximo segmento.
+- `seg1FamilySlots_`: cache de familias de textura e slots por LOD.
 
-## Pipeline Geral (por frame)
+## 3) Modelo de fila/ring da janela
+A janela e tratada como fila circular:
+- indice fisico = `(head + logicalRank) % windowCount`
+- `logicalRank=0` representa a ponta de saida da direcao atual.
+- no slide:
+1. identifica segmento de saida (`ResolveWindowOutgoingSegmentId`)
+2. identifica slot que sera sobrescrito (`ResolveWindowDropIndexByDirection`)
+3. constroi/prepara segmento de entrada (`ResolveWindowIncomingSegmentId`)
+4. grava no slot de drop e avanca `head` (`AdvanceWindowHeadByDirection`)
 
-### 1. `BeginFrame(uint32_t frameId)`
-- Reseta contadores de runtime/telemetria.
-- Calcula orcamento de prefetch do frame.
-- Ajusta cooldowns de manutencao/LOD.
+Isso evita `erase/insert` no vetor durante runtime.
 
-### 2. `RenderFrame(...)`
-Fluxo principal:
-1. `TrackMaintenanceStage::RunInitial`
-2. `TrackWindowStage::Run` -> chama `RunWindowStage`/`UpdateActiveSegmentWindowForPosition`
-3. `TrackPrefetchStage::RunCompaction`
-4. `TrackPrefetchStage::RunPrefetch` -> chama `RunPrefetchStage`
-5. `TrackMaintenanceStage::RunPostSlide`
-6. `TrackMaintenanceStage::RunLegacy`
-7. `BuildAndApplyFramePlanStage`
-8. `TrackLodStage::RunRecovery`
-9. `BuildOrderedHandlesStage`
-10. `TrackWorkingSetStage::Run` -> `RunWorkingSetStage`
-11. `RunDrawStage`
+## 4) Funcoes centrais (funcao a funcao)
 
-### 3. `EndFrame()`
-- Fecha telemetria/coordenador.
-- Executa `ReleaseUnusedFamilyResourcesEndFrame()`.
-- Faz flush de slots aposentados pendentes.
-- Atualiza breakdown de LWR e validacoes de invariantes.
+### `RenderFrame(...)`
+Coordena o frame: manutencao, slide de janela, prefetch, recuperacao de LOD, draw e cleanup.
 
-## Mapa Funcao a Funcao (renderizacao de segmentos)
-- `RunWindowStage`: orquestra atualizacao da janela ativa e prepara slide quando necessario.
-- `UpdateActiveSegmentWindowForPosition`: decide deslocamento da janela com base no segmento observado do carro.
-- `SlideActiveSegmentWindow`: executa N passos de slide com guardas de memoria.
-- `ExecuteDeterministicStabilizedSlide`: caminho principal de slide estabilizado; reaproveita prefetch e comita novo segmento na janela.
-- `PrepareStabilizedSlideBackBuffer`: prepara update de fronteira para commit em duas fases.
-- `CommitStabilizedSlideBackBuffer`: aplica entrada preparada no estado ativo.
-- `TryPrefetchUpcomingSegment`: escolhe proximo segmento candidato de prefetch.
-- `BuildSegmentIntoPrefetch`: preconstroi metadata/renderer do proximo segmento.
-- `BuildSegmentIntoSlideScratch`: reaproveita renderer prefetch quando pronto ou faz fallback sincrono.
-- `BuildSegmentIntoRenderer`: converte blob de runtime em `TrackRenderer` pronto.
-- `RunWorkingSetStage`: ajusta familias/LOD efetivos usados pelo draw do frame.
-- `BuildTrackFamilyLodSlots`: consolida familias usadas na janela para resolver slots por LOD.
-- `MergeCurrentWindowFamilies`: merge incremental das familias vivas para reduzir rebuild caro.
-- `BuildSegmentHandleTable`: reconstrucao de handles estaveis usados no sort/draw.
-- `BuildVisibleSegmentOrder`: gera ordem visivel candidata para render.
-- `BuildOrderedHandlesStage`: integra ordenacao estabilizada e producer/coordinator.
-- `RunDrawStage`: render efetivo dos segmentos visiveis.
-- `RenderVisibleSegmentOrderStabilized`: draw com validacao/repair de renderer e face slots.
-- `ReleaseUnusedFamilyResourcesEndFrame`: libera recursos nao usados no frame e recicla slots.
-- `TrimWorkRamRetainedCapacities`: compacta capacidades ociosas de vetores para recuperar RAM.
-- `PrimeRuntimeScratchCapacities`: define pisos de capacidade para scratch/caches no boot.
-- `ValidateStabilizedWindowInvariants`: detecta inconsistencias de janela/familias/prefetch.
-
-## Janela Ativa e Slide
-
-### `UpdateActiveSegmentWindowForPosition(...)`
-- Decide se precisa deslizar janela de segmentos com base no segmento observado do carro.
-- Encaminha para `SlideActiveSegmentWindow(stepCount, direction)`.
-
-### `SlideActiveSegmentWindow(...)`
-- Modo estabilizado: usa slide deterministico incremental.
-- Para cada passo:
-  - Resolve `nextId`.
-  - Verifica pressao de memoria.
-  - Executa `ExecuteDeterministicStabilizedSlide(...)`.
+### `SlideActiveSegmentWindow(stepCount, direction)`
+Executa o deslocamento da janela. Em modo estabilizado usa caminho deterministico para evitar rebuild completo.
 
 ### `ExecuteDeterministicStabilizedSlide(...)`
-- Garante que slots aposentados pendentes sejam drenados antes do novo tail.
-- Usa prefetch se disponivel; senao build sincrono de fallback.
-- Prepara segmento de entrada em scratch persistente.
-- Atualiza familias/slots de fronteira quando necessario.
-- Comita estado e invalida caches/lookup da janela.
+Caminho principal de slide em runtime estabilizado:
+- drena slots aposentados
+- garante metadata/prefetch do proximo segmento
+- prepara textura/familia do incoming
+- aplica swap de renderer/estado no slot de drop
+- atualiza inicio da janela + head + lookup + targets de LOD
 
-### Caminho alternativo de duas fases
-- `PrepareStabilizedSlideBackBuffer(...)`
-- `CommitStabilizedSlideBackBuffer()`
+### `PrepareStabilizedSlideBackBuffer(...)` / `CommitStabilizedSlideBackBuffer()`
+Caminho alternativo com backbuffer de slide (prepare + commit).
 
-## Prefetch
-
-### `TryPrefetchUpcomingSegment()`
-- Determina o proximo segmento esperado da janela.
-- Aplica cooldown e guardas de memoria.
-- Dispara `BuildSegmentIntoPrefetch(nextId, false)`.
+### `BuildSegmentIntoRenderer(segmentId, renderer, outCenter, outFamilyIds)`
+Monta geometria/material do segmento no renderer informado, preenchendo centro e familias.
 
 ### `BuildSegmentIntoPrefetch(segmentId, allowSlotWarmup)`
-- Fase 1: metadata de familias e centro.
-- Fase 2: pre-build do renderer no scratch.
-- Mantem `slidePrefetchSegmentId_`, `slidePrefetchFamilyIds_`, `slidePrefetchRendererReady_`.
+Prepara adiantado o proximo segmento para reduzir stall no frame da troca.
 
-## Build de Renderer
+### `RebuildActiveSegmentWindow(startId, loadLimit, direction)`
+Reconstroi a janela quando necessario (ex: init, fallback). Em modo `fixed storage` reutiliza slots fixos dos renderers.
 
-### `BuildSegmentIntoRenderer(...)`
-- Carrega blob runtime (`RDR`/`SDR`) e instancia `TrackRenderer`.
-- Configura defaults via `ConfigureStreamedRendererDefaults`.
+### `RebuildActiveWindowLookupTables()`
+Reconstroi lookup da janela ativa.
+Estado atual: lookup compacto por janela (N entradas), sem vetor indexado por `totalSegmentCount`.
 
-### `BuildSegmentIntoSlideScratch(...)`
-- Reusa renderer de prefetch quando pronto.
-- Fallback: build sincrono para scratch renderer.
+### `TryResolveWindowEntryIndexBySegmentId(...)` / `TryGetWindowLogicalRank(...)`
+Resolucoes de id->indice fisico e id->rank logico usando lookup compacto.
 
-## LOD e Slots por Face
+### `UpdateDesiredStabilizedWindowLodTargets()`
+Define alvo de LOD por `logicalRank` na janela atual.
 
-### `BuildTrackFamilyLodSlots(...)`
-- Monta conjunto de familias usadas na janela ativa.
+### `RunPendingLodRecoveryStage(...)`
+Aplica recuperacao incremental de LOD quando ha pendencias.
 
-### `RebuildSegmentFaceSlotsForLod(...)` / `RebuildSegmentFaceSlotsForBaseRank(...)`
-- Resolve slots VDP1 por face para o LOD/rank alvo.
+### `RenderVisibleSegmentOrderStabilized(...)`
+Submete render dos segmentos visiveis em ordem estabilizada, com fallback de reaplicacao de slots quando necessario.
 
-### `RefreshFamilyWorkingSet(...)`
-- Reconstroi referencias de trabalho por familia/LOD.
+### `MergeCurrentWindowFamilies()`
+Mantem cache de familias limitado ao conjunto da janela ativa e enfileira reciclagem de slots de familias que sairam da janela.
 
-## Draw
+### `ReleaseUnusedFamilyResourcesEndFrame()`
+No fim do frame, libera slots nao referenciados por grace-frame e devolve para fila de reuso.
 
-### `BuildOrderedHandlesStage(...)`
-- Constroi ordem de render (depth sort estabilizado + producer/coordinator).
+### `RunTextureCompactionStage(windowSlid)`
+Compactacao/rebuild de residencia de textura sob gatilhos de pressao (slack, backlog aposentado, queda de baseline etc).
 
-### `RunDrawStage(...)`
-- Chama `RenderVisibleSegmentOrder(...)`.
-- Aplica guardas de integridade (`TryRepairRendererState`).
-- Submete draw calls de cada segmento.
+## 5) Causas de queda de memoria tratadas
 
-## Memoria e Telemetria
+### 5.1 Lookup global por id (churn)
+Problema anterior:
+- lookup era reconstruido com `assign(totalSegmentCount)` (catalogo grande).
+- custo e churn cresciam com numero total de segmentos, nao com janela ativa.
 
-### Contadores exibidos
-- `WLWR free/df`: LWR livre e delta por frame.
-- `LWC1/LWC2`: breakdown de bytes (renderers, slot state, working set, family cache, transient, metadata).
-- `LWP rst/bld/prp/cmt/mrg/hnd/drw/efr`: delta LWR por estagio instrumentado.
+Correcao aplicada:
+- lookup compacto por janela ativa (`N` entradas).
+- custo por rebuild passa a ser O(N), N pequeno (janela visivel).
 
-### Ponto critico observado
-Os logs mostravam drift de LWR com `LWP efr` negativo recorrente, apontando para churn em `ReleaseUnusedFamilyResourcesEndFrame()` (fim de frame), onde filas de slots reciclaveis cresciam/encolhiam ao longo da corrida.
+### 5.2 Overflow de id de segmento
+Problema anterior:
+- ids em `int16_t` no pipeline principal.
+- em catalogos >32767 segmentos ocorria overflow e lookup/planejamento quebravam.
 
-### Camera e estado por frame
-- `CameraSystem` mantem estado pequeno e fixo (vetores/escalars), sem crescimento dinamico por frame.
-- O consumo relevante vinha do contexto de rota em `GameLoopSystem` (buffers `autoLapRoute*`/`autoLapGuideLines_`) quando o caminho path-guided era preparado.
-- Refatoracao aplicada: quando `kPathGuidedChaseEnabled=false`, o game loop nao constroi contexto de rota para camera e libera buffers de rota quando auto-lap desliga.
+Correcao aplicada:
+- ids principais migrados para `int32_t` (janela, slide, frame-plan, snapshot).
 
-## Refatoracao Aplicada (neste ciclo)
+### 5.3 Planejamento de LOD por id limitado
+Problema anterior:
+- frame-plan indexava arrays por `segmentId` limitado a `kTrackSegmentLimit`.
+- fora desse range, segmentos nao recebiam planejamento correto.
 
-### 1. Piso de capacidade para filas de slots reciclaveis
-- Adicionado piso persistente para:
-  - `g_trackReusableTextureSlots`
-  - `g_trackPendingRetiredTextureSlots`
-- Inicializacao do piso no reset e reforco no prime de runtime.
-- Objetivo: evitar realloc incremental em fim de frame.
+Correcao aplicada:
+- frame-plan indexado por `logicalRank` da janela ativa.
 
-### 2. Trim sem oscillation nessas filas
-- `TrimWorkRamRetainedCapacities()` agora respeita piso dessas filas, inclusive sob pressao.
-- Objetivo: evitar ciclo `trim -> realloc` durante corrida longa.
+## 6) Sobre camera e memoria
+- A camera em si nao deve acumular memoria por frame nesse pipeline.
+- O consumo dominante vem de:
+  - build/prefetch de segmentos
+  - cache de familias/texturas
+  - filas de slots reutilizaveis/aposentados
+  - scratch buffers de slide e render
 
-### 3. Piso de capacidade para cache de familias
-- Novo campo: `familySlotCapacityFloor_`.
-- Definido em `PrimeRuntimeScratchCapacities()` a partir de `maxFamilyCount` do runtime pack (com piso minimo).
-- Aplicado em:
-  - `BuildTrackFamilyLodSlots()`
-  - reservas de `seg1FamilySlots_`, `familyMergeCurrentWindowScratch_`, `slidePrefetchFamilySlotsScratch_`
-  - trim de vetores de familia
+## 7) Invariantes recomendadas para monitorar
+- ids unicos na janela ativa
+- `head` valido (`head < windowCount`)
+- `activeWindowStartId_` coerente com `windowDirection_`
+- ausencia de `missing required face slots` apos commit de slide
+- slope de memoria apos warm-up proxima de zero
 
-## Plano de Acao de Refatoracao (proximas iteracoes)
-1. Instrumentar serie temporal de:
-   - `g_trackReusableTextureSlots.size/capacity`
-   - `g_trackPendingRetiredTextureSlots.size/capacity`
-   - `seg1FamilySlots_.size/capacity`
-2. Validar soak de longa duracao com foco em `LWP efr` e `WLWR df`.
-3. Se ainda houver drift, migrar filas de slots reciclaveis para estrutura fixa (array + count) sem alocacao dinamica.
-4. Consolidar caminho estabilizado (remover caminhos legacy nao usados em runtime final) para reduzir superficie de churn.
+## 8) Proximos passos de refatoracao
+1. Introduzir estrutura ring dedicada (`TrackWindowRing`) com API unica (`push/pop/swap/replace`).
+2. Migrar slide para operacoes explicitas de fila (sem conhecimento direto de vetor no call site).
+3. Harden de compactacao de textura com soak longo e telemetria de slope.
+4. Validar 30+ min com logs de FPS/memoria sem tendencia de degradacao.
 
-## Arquivos-Chave
-- `src/track_system.hpp`
-- `src/track_system.cxx`
-- `src/track_renderer.hpp`
-- `src/game_loop_system.hpp`
+## 9) Modo de isolamento (teste de vazamento)
+- Flag: `kEnableTrackLeakIsolationFixed64Pipeline` em `src/track_system.cxx`.
+- Configuracao atual:
+  - janela fixa de `10` segmentos (`kTrackLeakIsolationWindowSegments`),
+  - LOD forçado em `64x64` para todos os segmentos (`ResolveSegmentLodIndexByRank -> 3`),
+  - sem slide de janela em runtime,
+  - sem prefetch runtime,
+  - sem recovery incremental de LOD,
+  - sem compactacao de textura em runtime.
+- Objetivo: isolar vazamento/churn fora do pipeline dinamico de troca de segmento/textura.

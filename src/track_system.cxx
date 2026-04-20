@@ -32,6 +32,10 @@ struct LwrStageProbeAccum
     int32_t buildHandleTable = 0;
     int32_t drawStage        = 0;
     int32_t releaseEndFrame  = 0;
+    int32_t maintenanceTrim  = 0;
+    int32_t flushRetiredSlots = 0; // FlushPendingRetiredTrackTextureSlots + ReacquireEmergencyReserve
+    int32_t validateWindow   = 0; // ValidateStabilizedWindowInvariants + breakdown sampling
+    int32_t beginFrameOps    = 0; // BeginFrame catch-up slide + TryPrefetchUpcomingSegment
 };
 static LwrStageProbeAccum g_lwrStageAccum{};
 
@@ -58,9 +62,14 @@ void TrackSystem::PrintLwrStageProbes()
                       static_cast<int>(g_lwrStageAccum.commitSlide),
                       static_cast<int>(g_lwrStageAccum.mergeFamilies),
                       static_cast<int>(g_lwrStageAccum.buildHandleTable));
-    SRL::Debug::Print(2, 11, "LWP drw:%d efr:%d              ",
+    SRL::Debug::Print(2, 11, "LWP drw:%d efr:%d mnt:%d       ",
                       static_cast<int>(g_lwrStageAccum.drawStage),
-                      static_cast<int>(g_lwrStageAccum.releaseEndFrame));
+                      static_cast<int>(g_lwrStageAccum.releaseEndFrame),
+                      static_cast<int>(g_lwrStageAccum.maintenanceTrim));
+    SRL::Debug::Print(2, 12, "LWP frs:%d vld:%d bfr:%d       ",
+                      static_cast<int>(g_lwrStageAccum.flushRetiredSlots),
+                      static_cast<int>(g_lwrStageAccum.validateWindow),
+                      static_cast<int>(g_lwrStageAccum.beginFrameOps));
     g_lwrStageAccum = LwrStageProbeAccum{};
 }
 
@@ -183,7 +192,9 @@ static constexpr uint32_t kLodBand16Count = 5u;
 static constexpr uint32_t kLodBand8Count = 6u;
 static constexpr size_t kWorkRamPlanningHeadroomBytes = 48u * 1024u;
 static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
-static constexpr size_t kWorkRamSlideSafeFloorBytes = kWorkRamHardFloorBytes;
+// Release the emergency reserve slightly earlier so runtime maintenance does
+// not stay stuck in "critical" mode when HWR hovers around 28-32 KiB.
+static constexpr size_t kWorkRamSlideSafeFloorBytes = kWorkRamHardFloorBytes + (8u * 1024u);
 static constexpr size_t kWorkRamCatastrophicFloorBytes = 8u * 1024u;
 static constexpr size_t kWorkRamLodDegradeBytes = 8u * 1024u;
 static constexpr size_t kWorkRamLodPendingMinBytes = 16u * 1024u;
@@ -230,6 +241,17 @@ static constexpr size_t kLodRecoveryFreeBytes = kWorkRamHardFloorBytes + (48u * 
 // - disable destructive texture/palette release while racing
 // This isolates runtime lifetime bugs from the offline asset pipeline.
 static constexpr bool kEnableTrackRuntimeStabilization = true;
+// Leak isolation mode:
+// - fixed 10-segment window
+// - force 64x64 LOD for every visible segment
+// - keep runtime sliding active (new segments keep entering/leaving the 10-slot window)
+// - disable prefetch/recovery/texture-compaction dynamics
+// Use this mode to isolate allocator/retention behavior without texture churn.
+static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
+static constexpr size_t kTrackLeakIsolationWindowSegments = 10u;
+// Keep active window storage persistent and reuse slot renderers on rebuild.
+// This is a stepping stone before migrating to a full fixed ring N+staging pool.
+static constexpr bool kEnableTrackWindowFixedStorage = true;
 // Even in stabilized runtime, end-of-frame recycle for palettes that were
 // already detached from draw usage is safe and prevents CRAM accumulation.
 // No estado atual, reciclar palette no fim de frame causa flashes roxos
@@ -255,6 +277,9 @@ static constexpr bool kEnableRuntimeWindowRebuildRepairs = false;
 // Compactacao de heap de textura no meio da corrida pode causar churn e
 // flashes (rebind de slots/paleta). Mantemos desabilitada no caminho critico.
 static constexpr bool kEnableRuntimeTextureCompaction = false;
+// Keep leak-isolation mode conservative: texture compaction during runtime
+// introduced visible corruption/stalls in long runs.
+static constexpr bool kEnableLeakIsolationTextureCompaction = false;
 // Reciclagem pesada por manutencao durante slide tende a introduzir oscillation
 // de slots/texturas; mantemos desligado e deixamos so liberacoes deterministicas.
 static constexpr bool kEnableRuntimeTextureRecycleOnMaintenance = false;
@@ -486,8 +511,13 @@ static uint32_t VectorCapacityElementsSafe(const VecT& v)
         : static_cast<uint32_t>(v.capacity());
 }
 
+// lwrFreeHint: pre-queried LowWorkRam free bytes from the caller. SIZE_MAX = query inline.
+// Callers that invoke TrimVectorSlack in a tight loop MUST query LowWorkRam::GetReport()
+// ONCE before the loop and pass the result here — repeated TLSF free-list scans inside
+// a single bulk trim are O(n * free_blocks) and will stall the frame on fragmented heaps.
 template <typename VecT>
-static bool TrimVectorSlack(VecT& v, size_t keepCapacityElements, bool aggressive)
+static bool TrimVectorSlack(VecT& v, size_t keepCapacityElements, bool aggressive,
+                             size_t lwrFreeHint = SIZE_MAX)
 {
     using T = typename VecT::value_type;
     const size_t desired = std::max(keepCapacityElements, v.size());
@@ -508,7 +538,10 @@ static bool TrimVectorSlack(VecT& v, size_t keepCapacityElements, bool aggressiv
     if (compactBytes > 0u)
     {
         static constexpr size_t kTrimLwrSafetyMarginBytes = 2u * 1024u;
-        if (SRL::Memory::LowWorkRam::GetReport().FreeSize < compactBytes + kTrimLwrSafetyMarginBytes)
+        const size_t lwrFree = (lwrFreeHint != SIZE_MAX)
+            ? lwrFreeHint
+            : static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+        if (lwrFree < compactBytes + kTrimLwrSafetyMarginBytes)
             return false;
     }
 
@@ -520,7 +553,8 @@ static bool TrimVectorSlack(VecT& v, size_t keepCapacityElements, bool aggressiv
 }
 
 template <typename VecT>
-static bool CompactEmptyVectorForTarget(VecT& v, size_t targetCapacityElements)
+static bool CompactEmptyVectorForTarget(VecT& v, size_t targetCapacityElements,
+                                         size_t lwrFreeHint = SIZE_MAX)
 {
     using T = typename VecT::value_type;
     if (!v.empty()) return false;
@@ -531,6 +565,19 @@ static bool CompactEmptyVectorForTarget(VecT& v, size_t targetCapacityElements)
     const size_t slackElements = cap - targetCapacityElements;
     const size_t slackBytes = slackElements * sizeof(T);
     if (slackBytes < 512u) return false;
+
+    // Same double-alloc safety as TrimVectorSlack: compact.reserve() and old block
+    // coexist in LWR until the swap — guard against exhausting the last bytes.
+    const size_t compactBytes = targetCapacityElements * sizeof(T);
+    if (compactBytes > 0u)
+    {
+        static constexpr size_t kTrimLwrSafetyMarginBytes = 2u * 1024u;
+        const size_t lwrFree = (lwrFreeHint != SIZE_MAX)
+            ? lwrFreeHint
+            : static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+        if (lwrFree < compactBytes + kTrimLwrSafetyMarginBytes)
+            return false;
+    }
 
     VecT compact{};
     compact.reserve(targetCapacityElements);
@@ -568,7 +615,10 @@ static size_t CapacityFloorTrimTarget(size_t size, size_t floor, bool aggressive
 template <typename TBlob>
 static void ResetBlobBytes(TBlob& blob)
 {
-    decltype(blob.bytes){}.swap(blob.bytes);
+    // Use clear() not swap-to-empty: preserves pre-allocated capacity in LWR to
+    // avoid a free+realloc TLSF overhead cycle when the next prefetch immediately
+    // needs the same buffer. This mirrors the verts/faces/attrs treatment above.
+    blob.bytes.clear();
     blob.size = 0;
     blob.loaded = false;
 }
@@ -593,16 +643,19 @@ static void TrimRuntimeBlobScratchCaches(bool aggressive)
         return;
     }
 
-    (void)TrimVectorSlack(g_rdrBuildScratch.blob.bytes, 0u, true);
-    (void)TrimVectorSlack(g_sdrBuildScratch.blob.bytes, 0u, true);
-    (void)TrimVectorSlack(g_rdrFamilyIdsScratch.bytes, 0u, true);
-    (void)TrimVectorSlack(g_sdrFamilyIdsScratch.bytes, 0u, true);
-    (void)TrimVectorSlack(g_rdrBuildScratch.verts, 0u, true);
-    (void)TrimVectorSlack(g_sdrBuildScratch.verts, 0u, true);
-    (void)TrimVectorSlack(g_rdrBuildScratch.faces, 0u, true);
-    (void)TrimVectorSlack(g_sdrBuildScratch.faces, 0u, true);
-    (void)TrimVectorSlack(g_rdrBuildScratch.attrs, 0u, true);
-    (void)TrimVectorSlack(g_sdrBuildScratch.attrs, 0u, true);
+    // Query once for the non-aggressive blob trim pass.
+    const size_t blobLwrFreeHint =
+        static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+    (void)TrimVectorSlack(g_rdrBuildScratch.blob.bytes, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_sdrBuildScratch.blob.bytes, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_rdrFamilyIdsScratch.bytes, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_sdrFamilyIdsScratch.bytes, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_rdrBuildScratch.verts, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_sdrBuildScratch.verts, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_rdrBuildScratch.faces, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_sdrBuildScratch.faces, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_rdrBuildScratch.attrs, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_sdrBuildScratch.attrs, 0u, true, blobLwrFreeHint);
 }
 
 static uint32_t EstimateRuntimeBlobScratchBytesHigh()
@@ -698,10 +751,14 @@ static void ConfigureStreamedRendererDefaults(TrackRenderer& renderer)
     renderer.SetForceDoubleSided(false);
     renderer.SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
     renderer.SetDrawLimit(renderer.MeshCount());
-    // Streamed segment slots must not inherit the worst-case capacity of the
-    // shared scratch vectors; compact to the current segment size immediately
-    // after each rebuild so the 20-slot window stays close to constant.
-    (void)renderer.CompactRuntimeState(true);
+    // Leak-isolation mode focuses on lifetime behavior. Avoid aggressive
+    // compact/realloc churn on every incoming segment.
+    if (!kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        // Streamed segment slots must not inherit the worst-case capacity of the
+        // shared scratch vectors; compact to the current segment size.
+        (void)renderer.CompactRuntimeState(true);
+    }
 }
 
 struct CartTextCacheEntry
@@ -1832,9 +1889,15 @@ static constexpr bool kDisableTrackReusableSlotReuseForDiagnostics = false;
 // In stabilized runtime, keep family merge cadence short enough to recycle
 // outgoing families promptly without forcing a merge every single slide.
 static constexpr uint8_t kStabilizedFamilyMergeCooldownFrames = 2u;
+// In fixed64 leak-isolation runs, aggressive maintenance on every frame/slide
+// costs too much CPU and collapses FPS. Keep emergency reaction immediate, but
+// run regular maintenance at a lower cadence.
+static constexpr uint8_t kLeakIsolationInitialMaintenanceCadenceFrames = 6u;
+static constexpr uint8_t kLeakIsolationPostSlideMaintenanceCadenceFrames = 10u;
 
 static uint8_t ResolveFamilyMergeCooldownFrames(bool fullTrackFamilyCacheReady)
 {
+    if (kEnableTrackLeakIsolationFixed64Pipeline) return 0u;
     return fullTrackFamilyCacheReady ? 1u : kStabilizedFamilyMergeCooldownFrames;
 }
 
@@ -5653,7 +5716,7 @@ TrackSystem::SegmentEntryVector TrackSystem::CopyAllTrackSegments(size_t maxSegm
             SRL::Debug::Print(1, 12, "Segment %03u path missing (%u variants)", unsigned(i), unsigned(kSegmentPathTemplates_.size()));
             break;
         }
-        segments.push_back({ static_cast<int16_t>(i), copy });
+        segments.push_back({ static_cast<int32_t>(i), copy });
         if (copy.cartPtr)
         {
             SRL::Debug::Print(1, 11, "Segment %03u copied (%u bytes)", unsigned(i), unsigned(copy.size));
@@ -6276,6 +6339,18 @@ bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
     std::array<uint32_t, kSegmentFamilyDedupScratchCap> seenKeys{};
     std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
     size_t seenCount = 0u;
+    constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
+    auto findOverflowWorkingSetIndex = [&](uint16_t familyId, uint8_t lodIndex) -> size_t
+    {
+        for (size_t wi = 0; wi < entry.lodState.workingSetFamilies.size(); ++wi)
+        {
+            if (entry.lodState.workingSetFamilies[wi] != familyId) continue;
+            if (wi >= entry.lodState.workingSetLodIndices.size()) continue;
+            if (entry.lodState.workingSetLodIndices[wi] != lodIndex) continue;
+            return wi;
+        }
+        return kInvalidIndex;
+    };
 
     for (size_t fi = 0; fi < faceCount; ++fi)
     {
@@ -6326,6 +6401,24 @@ bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
                 }
             }
             continue;
+        }
+        if (seenCount >= kSegmentFamilyDedupScratchCap)
+        {
+            // Overflow path: dedup against already-built working set entries.
+            // Without this, segments with >kSegmentFamilyDedupScratchCap unique
+            // families keep appending duplicate keys per face and inflate LWR.
+            const size_t overflowCached = findOverflowWorkingSetIndex(fam, resolvedLod);
+            if (overflowCached != kInvalidIndex)
+            {
+                if (slotHint >= 0 &&
+                    overflowCached < entry.lodState.workingSetSlots.size() &&
+                    entry.lodState.workingSetSlots[overflowCached] < 0)
+                {
+                    entry.lodState.workingSetSlots[overflowCached] =
+                        static_cast<int16_t>(slotHint);
+                }
+                continue;
+            }
         }
 
         if (seenCount < kSegmentFamilyDedupScratchCap)
@@ -6766,6 +6859,11 @@ uint8_t TrackSystem::GetTextureUploadBudgetPerFrame() const
 
 uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
 {
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        (void)rank;
+        return 3u; // force 64x64 in leak-isolation pipeline
+    }
     if (kEnableTrackRuntimeStabilization && !kEnableTrackLodBandsInStabilization)
     {
         (void)rank;
@@ -6787,11 +6885,16 @@ bool TrackSystem::TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) co
     outRank = 0;
     if (segmentId <= 0 || totalSegmentCount_ == 0) return false;
     const_cast<TrackSystem*>(this)->RebuildActiveWindowLookupTables();
-    if (static_cast<size_t>(segmentId) >= activeWindowLogicalRankBySegmentId_.size()) return false;
-    const int16_t rank = activeWindowLogicalRankBySegmentId_[static_cast<size_t>(segmentId)];
-    if (rank < 0) return false;
-    outRank = static_cast<size_t>(rank);
-    return true;
+    for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
+    {
+        if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
+        if (i >= activeWindowLogicalRankBySegmentId_.size()) return false;
+        const int16_t rank = activeWindowLogicalRankBySegmentId_[i];
+        if (rank < 0) return false;
+        outRank = static_cast<size_t>(rank);
+        return true;
+    }
+    return false;
 }
 
 void TrackSystem::InvalidateActiveWindowLookupTables()
@@ -6799,40 +6902,168 @@ void TrackSystem::InvalidateActiveWindowLookupTables()
     activeWindowLookupDirty_ = true;
 }
 
+size_t TrackSystem::LogicalToPhysicalWindowIndex(size_t logicalIndex, size_t windowCount) const
+{
+    if (windowCount == 0) return 0;
+    const size_t safeHead = (activeWindowHead_ < windowCount)
+        ? static_cast<size_t>(activeWindowHead_)
+        : 0u;
+    return (safeHead + (logicalIndex % windowCount)) % windowCount;
+}
+
+int32_t TrackSystem::ResolveWindowOutgoingSegmentId(int8_t direction, size_t windowCount) const
+{
+    if (windowCount == 0 || totalSegmentCount_ == 0) return -1;
+    const int32_t dir = (direction < 0) ? -1 : 1;
+    return (dir > 0)
+        ? WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_)
+        : WrapSegmentIdToRange(activeWindowStartId_ - (static_cast<int32_t>(windowCount) - 1),
+                               totalSegmentCount_);
+}
+
+int32_t TrackSystem::ResolveWindowIncomingSegmentId(int8_t direction, size_t windowCount) const
+{
+    if (windowCount == 0 || totalSegmentCount_ == 0) return -1;
+    const int32_t dir = (direction < 0) ? -1 : 1;
+    return (dir > 0)
+        ? WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(windowCount),
+                               totalSegmentCount_)
+        : WrapSegmentIdToRange(activeWindowStartId_ - static_cast<int32_t>(windowCount),
+                               totalSegmentCount_);
+}
+
+bool TrackSystem::TryResolveWindowEntryIndexBySegmentId(int32_t segmentId, size_t& outIndex)
+{
+    outIndex = 0;
+    if (segmentId <= 0 || segmentRenderers_.empty() || totalSegmentCount_ == 0) return false;
+    RebuildActiveWindowLookupTables();
+    for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
+    {
+        if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
+        if (i >= activeWindowEntryIndexBySegmentId_.size()) return false;
+        const int16_t idx = activeWindowEntryIndexBySegmentId_[i];
+        if (idx < 0 || static_cast<size_t>(idx) >= segmentRenderers_.size()) return false;
+        outIndex = static_cast<size_t>(idx);
+        return true;
+    }
+    return false;
+}
+
+bool TrackSystem::TryResolveWindowEntryIndexBySegmentId(int32_t segmentId, size_t& outIndex) const
+{
+    return const_cast<TrackSystem*>(this)->TryResolveWindowEntryIndexBySegmentId(segmentId, outIndex);
+}
+
+bool TrackSystem::ResolveWindowDropIndexByDirection(int8_t direction,
+                                                    size_t windowCount,
+                                                    size_t& outDropIdx)
+{
+    outDropIdx = 0;
+    if (windowCount == 0) return false;
+    const int32_t outgoingId = ResolveWindowOutgoingSegmentId(direction, windowCount);
+    size_t resolvedIdx = 0;
+    if (TryResolveWindowEntryIndexBySegmentId(outgoingId, resolvedIdx))
+    {
+        outDropIdx = resolvedIdx;
+        return true;
+    }
+
+    const int32_t dir = (direction < 0) ? -1 : 1;
+    const size_t logicalDrop = (dir > 0) ? 0u : (windowCount - 1u);
+    outDropIdx = LogicalToPhysicalWindowIndex(logicalDrop, windowCount);
+    return true;
+}
+
+bool TrackSystem::ResolveWindowHeadByStartId(size_t fallbackIndex)
+{
+    if (segmentRenderers_.empty())
+    {
+        activeWindowHead_ = 0;
+        return false;
+    }
+
+    size_t resolvedIdx = 0;
+    if (TryResolveWindowEntryIndexBySegmentId(activeWindowStartId_, resolvedIdx))
+    {
+        activeWindowHead_ = static_cast<uint16_t>(resolvedIdx);
+        return true;
+    }
+
+    activeWindowHead_ = static_cast<uint16_t>(fallbackIndex % segmentRenderers_.size());
+    return false;
+}
+
+bool TrackSystem::AdvanceWindowHeadByDirection(int8_t direction, size_t windowCount)
+{
+    if (windowCount == 0)
+    {
+        activeWindowHead_ = 0;
+        return false;
+    }
+
+    const int32_t dir = (direction < 0) ? -1 : 1;
+    size_t head = (activeWindowHead_ < windowCount)
+        ? static_cast<size_t>(activeWindowHead_)
+        : 0u;
+    if (dir > 0)
+    {
+        head = (head + 1u) % windowCount;
+    }
+    else
+    {
+        head = (head + windowCount - 1u) % windowCount;
+    }
+    activeWindowHead_ = static_cast<uint16_t>(head);
+    return true;
+}
+
 void TrackSystem::RebuildActiveWindowLookupTables()
 {
     if (!activeWindowLookupDirty_) return;
 
-    const size_t lookupSize = static_cast<size_t>(std::max<int32_t>(0, totalSegmentCount_)) + 1u;
-    activeWindowEntryIndexBySegmentId_.assign(lookupSize, static_cast<int16_t>(-1));
-    activeWindowLogicalRankBySegmentId_.assign(lookupSize, static_cast<int16_t>(-1));
-    if (lookupSize == 0 || segmentRenderers_.empty() || totalSegmentCount_ == 0)
+    activeWindowLookupSegmentIds_.clear();
+    activeWindowEntryIndexBySegmentId_.clear();
+    activeWindowLogicalRankBySegmentId_.clear();
+    if (segmentRenderers_.empty() || totalSegmentCount_ == 0)
     {
         activeWindowLookupDirty_ = false;
         return;
     }
 
-    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+    const size_t windowCount = segmentRenderers_.size();
+    if (activeWindowLookupSegmentIds_.capacity() < windowCount)
     {
-        const int32_t id = segmentRenderers_[i].id;
-        if (id <= 0 || static_cast<size_t>(id) >= lookupSize) continue;
-        activeWindowEntryIndexBySegmentId_[static_cast<size_t>(id)] = static_cast<int16_t>(i);
+        activeWindowLookupSegmentIds_.reserve(windowCount);
+    }
+    if (activeWindowEntryIndexBySegmentId_.capacity() < windowCount)
+    {
+        activeWindowEntryIndexBySegmentId_.reserve(windowCount);
+    }
+    if (activeWindowLogicalRankBySegmentId_.capacity() < windowCount)
+    {
+        activeWindowLogicalRankBySegmentId_.reserve(windowCount);
     }
 
-    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    if (startId > 0)
+    for (size_t logicalRank = 0; logicalRank < windowCount; ++logicalRank)
     {
-        const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
-        for (size_t logicalRank = 0; logicalRank < segmentRenderers_.size(); ++logicalRank)
+        const size_t physicalIdx = LogicalToPhysicalWindowIndex(logicalRank, windowCount);
+        if (physicalIdx >= windowCount) continue;
+        const int32_t segmentId =
+            WrapSegmentIdToRange(segmentRenderers_[physicalIdx].id, totalSegmentCount_);
+        if (segmentId <= 0) continue;
+
+        bool alreadyAdded = false;
+        for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
         {
-            const int32_t expectedId = WrapSegmentIdToRange(
-                startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
-                                   : -static_cast<int32_t>(logicalRank)),
-                totalSegmentCount_);
-            if (expectedId <= 0 || static_cast<size_t>(expectedId) >= lookupSize) continue;
-            activeWindowLogicalRankBySegmentId_[static_cast<size_t>(expectedId)] =
-                static_cast<int16_t>(logicalRank);
+            if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
+            alreadyAdded = true;
+            break;
         }
+        if (alreadyAdded) continue;
+
+        activeWindowLookupSegmentIds_.push_back(segmentId);
+        activeWindowEntryIndexBySegmentId_.push_back(static_cast<int16_t>(physicalIdx));
+        activeWindowLogicalRankBySegmentId_.push_back(static_cast<int16_t>(logicalRank));
     }
 
     activeWindowLookupDirty_ = false;
@@ -6840,12 +7071,9 @@ void TrackSystem::RebuildActiveWindowLookupTables()
 
 TrackSystem::SegmentRenderEntry* TrackSystem::FindWindowEntryByIdFast(int32_t segmentId)
 {
-    if (segmentId <= 0 || totalSegmentCount_ == 0) return nullptr;
-    RebuildActiveWindowLookupTables();
-    if (static_cast<size_t>(segmentId) >= activeWindowEntryIndexBySegmentId_.size()) return nullptr;
-    const int16_t idx = activeWindowEntryIndexBySegmentId_[static_cast<size_t>(segmentId)];
-    if (idx < 0 || static_cast<size_t>(idx) >= segmentRenderers_.size()) return nullptr;
-    return &segmentRenderers_[static_cast<size_t>(idx)];
+    size_t idx = 0;
+    if (!TryResolveWindowEntryIndexBySegmentId(segmentId, idx)) return nullptr;
+    return &segmentRenderers_[idx];
 }
 
 const TrackSystem::SegmentRenderEntry* TrackSystem::FindWindowEntryByIdFast(int32_t segmentId) const
@@ -6865,32 +7093,25 @@ void TrackSystem::UpdateDesiredStabilizedWindowLodTargets()
         entry.lodState.desiredBaseRank = -1;
     }
 
-    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    if (startId <= 0) return;
-    RebuildActiveWindowLookupTables();
-    const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
-    for (size_t logicalRank = 0; logicalRank < segmentRenderers_.size(); ++logicalRank)
+    const size_t windowCount = segmentRenderers_.size();
+    for (size_t logicalRank = 0; logicalRank < windowCount; ++logicalRank)
     {
-        const int32_t expectedId = WrapSegmentIdToRange(
-            startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
-                               : -static_cast<int32_t>(logicalRank)),
-            totalSegmentCount_);
-        if (expectedId <= 0) continue;
-        SegmentRenderEntry* entry = FindWindowEntryByIdFast(expectedId);
-        if (!entry) continue;
-        entry->lodState.desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
-        entry->lodState.desiredBaseRank = entry->lodState.hasPerFaceRankOffsets
+        const size_t physicalIdx = LogicalToPhysicalWindowIndex(logicalRank, windowCount);
+        if (physicalIdx >= windowCount) continue;
+        SegmentRenderEntry& entry = segmentRenderers_[physicalIdx];
+        entry.lodState.desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        entry.lodState.desiredBaseRank = entry.lodState.hasPerFaceRankOffsets
             ? static_cast<int16_t>(logicalRank)
             : -1;
         if (kEnableDeterministicStabilizedSlide) continue;
-        const bool needsUpdate = entry->lodState.hasPerFaceRankOffsets
-            ? (entry->lodState.currentLodIndex != entry->lodState.desiredLodIndex ||
-               entry->lodState.currentBaseRank != entry->lodState.desiredBaseRank ||
-               HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
-                                                  &entry->lodState.faceFamilyIds))
-            : (entry->lodState.currentLodIndex != entry->lodState.desiredLodIndex ||
-               HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
-                                                  &entry->lodState.faceFamilyIds));
+        const bool needsUpdate = entry.lodState.hasPerFaceRankOffsets
+            ? (entry.lodState.currentLodIndex != entry.lodState.desiredLodIndex ||
+               entry.lodState.currentBaseRank != entry.lodState.desiredBaseRank ||
+               HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
+                                                  &entry.lodState.faceFamilyIds))
+            : (entry.lodState.currentLodIndex != entry.lodState.desiredLodIndex ||
+               HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
+                                                  &entry.lodState.faceFamilyIds));
         if (needsUpdate) QueuePendingStabilizedLodRank(logicalRank);
     }
 }
@@ -7021,28 +7242,23 @@ void TrackSystem::SeedPendingStabilizedLodRanksForWindow()
 
     for (size_t logicalRank = 0; logicalRank < segmentRenderers_.size(); ++logicalRank)
     {
-        const int32_t segmentId = WrapSegmentIdToRange(
-            activeWindowStartId_ + (windowDirection_ >= 0
-                ? static_cast<int32_t>(logicalRank)
-                : -static_cast<int32_t>(logicalRank)),
-            totalSegmentCount_);
-        if (segmentId <= 0) continue;
-
-        SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
-        if (!entry || !entry->renderer || !entry->lodState.ready) continue;
+        const size_t physicalIdx = LogicalToPhysicalWindowIndex(logicalRank, segmentRenderers_.size());
+        if (physicalIdx >= segmentRenderers_.size()) continue;
+        SegmentRenderEntry& entry = segmentRenderers_[physicalIdx];
+        if (!entry.renderer || !entry.lodState.ready) continue;
 
         const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
-        const int16_t desiredBaseRank = entry->lodState.hasPerFaceRankOffsets
+        const int16_t desiredBaseRank = entry.lodState.hasPerFaceRankOffsets
             ? static_cast<int16_t>(logicalRank)
             : -1;
-        const bool needsUpdate = entry->lodState.hasPerFaceRankOffsets
-            ? (entry->lodState.currentLodIndex != desiredLodIndex ||
-               entry->lodState.currentBaseRank != desiredBaseRank ||
-               HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
-                                                  &entry->lodState.faceFamilyIds))
-            : (entry->lodState.currentLodIndex != desiredLodIndex ||
-               HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
-                                                  &entry->lodState.faceFamilyIds));
+        const bool needsUpdate = entry.lodState.hasPerFaceRankOffsets
+            ? (entry.lodState.currentLodIndex != desiredLodIndex ||
+               entry.lodState.currentBaseRank != desiredBaseRank ||
+               HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
+                                                  &entry.lodState.faceFamilyIds))
+            : (entry.lodState.currentLodIndex != desiredLodIndex ||
+               HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
+                                                  &entry.lodState.faceFamilyIds));
         if (needsUpdate) QueuePendingStabilizedLodRank(logicalRank);
     }
 }
@@ -7056,18 +7272,10 @@ bool TrackSystem::ApplyStabilizedLodForLogicalRank(size_t logicalRank)
     if (logicalRank >= windowCount) return true;
 
     FamilySlotVector& familySlots = seg1FamilySlots_;
-    const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
-    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    if (startId <= 0) return false;
-
-    const int32_t segmentId = WrapSegmentIdToRange(
-        startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
-                           : -static_cast<int32_t>(logicalRank)),
-        totalSegmentCount_);
-    if (segmentId <= 0) return false;
-
-    SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
-    if (!entry || !entry->renderer || !entry->lodState.ready) return false;
+    const size_t physicalIdx = LogicalToPhysicalWindowIndex(logicalRank, windowCount);
+    if (physicalIdx >= windowCount) return false;
+    SegmentRenderEntry* entry = &segmentRenderers_[physicalIdx];
+    if (!entry->renderer || !entry->lodState.ready) return false;
 
     const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
     const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
@@ -7585,9 +7793,13 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
     const size_t windowCount = std::min<size_t>(
         std::min<size_t>(loadLimit, kTrackSegmentLimit),
         static_cast<size_t>(totalSegmentCount_));
+    const bool useFixedWindowStorage = kEnableTrackWindowFixedStorage;
 
     segmentEntries_.clear();
-    segmentRenderers_.clear();
+    if (!useFixedWindowStorage)
+    {
+        segmentRenderers_.clear();
+    }
     segmentHandles_.clear();
     segmentPool_.Reset();
     activeWindowHead_ = 0;
@@ -7596,8 +7808,20 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
     slideScratchRenderer_.reset();
     ResetSlidePrefetchState();
     familyMergeCooldown_ = 0;
-    segmentEntries_.reserve(windowCount);
-    segmentRenderers_.reserve(windowCount);
+    // Reserve fixed capacities so runtime window rebuilds do not keep resizing
+    // active storage as load limits vary.
+    segmentEntries_.reserve(kTrackSegmentLimit);
+    segmentRenderers_.reserve(kTrackSegmentLimit + 1u); // +1 keeps room for future staging slot
+    if (useFixedWindowStorage)
+    {
+        segmentEntries_.resize(windowCount);
+        segmentRenderers_.resize(windowCount);
+        for (auto& slot : segmentRenderers_)
+        {
+            if (!slot.renderer) continue;
+            ApplyActiveRendererCapacityFloor(*slot.renderer);
+        }
+    }
 
     // Runtime streaming path: keep package fixed at one segment to minimize
     // transient allocations and avoid heavy planner probes every window shift.
@@ -7625,7 +7849,7 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
                 wrappedStartId + (static_cast<int32_t>(logicalSid + i) * static_cast<int32_t>(direction)),
                 totalSegmentCount_);
             if (sid <= 0) continue;
-            batchEntries.push_back({ static_cast<int16_t>(sid), {} });
+            batchEntries.push_back({ sid, {} });
         }
 
         if (batchEntries.empty())
@@ -7634,10 +7858,87 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
             continue;
         }
 
+        const int32_t segmentId = batchEntries.front().id;
+        if (useFixedWindowStorage)
+        {
+            if (builtCount >= segmentRenderers_.size())
+            {
+                break;
+            }
+            SegmentRenderEntry& builtEntry = segmentRenderers_[builtCount];
+            if (!builtEntry.renderer)
+            {
+                builtEntry.renderer = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
+                if (!builtEntry.renderer)
+                {
+                    SRL::Debug::Print(1, 11, "PKG slot alloc fail id:%d", segmentId);
+                    break;
+                }
+            }
+            ApplyActiveRendererCapacityFloor(*builtEntry.renderer);
+            builtEntry.lodState.faceFamilyIds.clear();
+            Vector3D builtCenter(0.0, 0.0, 0.0);
+            if (!BuildSegmentIntoRenderer(segmentId,
+                                          *builtEntry.renderer,
+                                          builtCenter,
+                                          builtEntry.lodState.faceFamilyIds) ||
+                builtEntry.lodState.faceFamilyIds.empty())
+            {
+                SRL::Debug::Print(1, 11, "PKG build fail id:%d", segmentId);
+                break;
+            }
+
+            builtEntry.id = segmentId;
+            builtEntry.logicalSegmentCount = 1;
+            builtEntry.center = builtCenter;
+            builtEntry.lodState.ready = true;
+            builtEntry.lodState.hasPerFaceRankOffsets = false;
+            builtEntry.lodState.currentLodIndex = 0xFF;
+            builtEntry.lodState.currentBaseRank = -1;
+            builtEntry.lodState.desiredLodIndex = 0xFF;
+            builtEntry.lodState.desiredBaseRank = -1;
+            builtEntry.lodState.faceRankOffsets.assign(builtEntry.lodState.faceFamilyIds.size(), 0u);
+            builtEntry.lodState.currentFaceSlots.assign(builtEntry.lodState.faceFamilyIds.size(), -1);
+            EnsureVectorCapacityFloor(builtEntry.lodState.faceFamilyIds, slotFaceCapacityFloor_);
+            EnsureVectorCapacityFloor(builtEntry.lodState.faceRankOffsets, slotFaceCapacityFloor_);
+            EnsureVectorCapacityFloor(builtEntry.lodState.currentFaceSlots, slotFaceCapacityFloor_);
+            EnsureVectorCapacityFloor(builtEntry.lodState.workingSetFamilies,
+                                     static_cast<size_t>(slotFaceCapacityFloor_));
+            EnsureVectorCapacityFloor(builtEntry.lodState.workingSetLodIndices,
+                                     static_cast<size_t>(slotFaceCapacityFloor_));
+            EnsureVectorCapacityFloor(builtEntry.lodState.workingSetSlots,
+                                     static_cast<size_t>(slotFaceCapacityFloor_));
+
+            if (kEnableTrackRuntimeStabilization && kEnableTrackLodBandsInStabilization)
+            {
+                const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalSid);
+                const bool remapOk = !builtEntry.lodState.hasPerFaceRankOffsets
+                    ? RebuildSegmentFaceSlotsForLod(builtEntry, desiredLodIndex, seg1FamilySlots_)
+                    : RebuildSegmentFaceSlotsForBaseRank(builtEntry, logicalSid, seg1FamilySlots_);
+                if (remapOk &&
+                    !HasMissingRequiredFaceTextureSlots(builtEntry.lodState.currentFaceSlots,
+                                                       &builtEntry.lodState.faceFamilyIds))
+                {
+                    (void)builtEntry.renderer->ApplyFaceTextureSlotsGlobal(builtEntry.lodState.currentFaceSlots);
+                    builtEntry.lodState.currentLodIndex = desiredLodIndex;
+                    builtEntry.lodState.currentBaseRank = builtEntry.lodState.hasPerFaceRankOffsets
+                        ? static_cast<int16_t>(logicalSid)
+                        : -1;
+                    builtEntry.lodState.desiredLodIndex = desiredLodIndex;
+                    builtEntry.lodState.desiredBaseRank = builtEntry.lodState.currentBaseRank;
+                    InvalidateEntryWorkingSetCache(builtEntry);
+                }
+            }
+            segmentEntries_[builtCount] = { segmentId, {} };
+            ++builtCount;
+            logicalSid += chosenCount;
+            continue;
+        }
+
         auto built = BuildSegmentRenderers(batchEntries);
         if (built.empty())
         {
-            SRL::Debug::Print(1, 11, "PKG build fail id:%d", batchEntries.front().id);
+            SRL::Debug::Print(1, 11, "PKG build fail id:%d", segmentId);
             break;
         }
 
@@ -7733,14 +8034,26 @@ void TrackSystem::ResetSlidePrefetchState()
     slidePrefetchSegmentId_ = -1;
     slidePrefetchCenter_    = Vector3D(0.0, 0.0, 0.0);
 
-    // Usar clear() em vez de swap-free para preservar capacity no LWR
+    // Clear for immediate reuse; oversized buffers are compacted back to floor
+    // so prefetch does not keep a hidden backup across laps.
     slidePrefetchFamilyIds_.clear();
     slidePrefetchFaceSlots_.clear();
     slidePrefetchFamilySlotsScratch_.clear();
 
+    const size_t lwrFreeHint =
+        static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+    const size_t faceFloor = std::max<size_t>(1u, static_cast<size_t>(slotFaceCapacityFloor_));
+    const size_t familyFloor =
+        std::max<size_t>(256u, static_cast<size_t>(familySlotCapacityFloor_));
+    (void)CompactEmptyVectorForTarget(slidePrefetchFamilyIds_, faceFloor, lwrFreeHint);
+    (void)CompactEmptyVectorForTarget(slidePrefetchFaceSlots_, faceFloor, lwrFreeHint);
+    (void)CompactEmptyVectorForTarget(slidePrefetchFamilySlotsScratch_, familyFloor, lwrFreeHint);
+
     if (slidePrefetchRenderer_)
     {
         slidePrefetchRenderer_->RecycleRuntimeState();
+        // Prevent outlier segments from leaving oversized component buffers alive.
+        (void)slidePrefetchRenderer_->CompactRuntimeState(false);
     }
 
     slidePrefetchRendererReady_ = false;
@@ -7771,6 +8084,19 @@ void TrackSystem::ResetSlideBackBuffer()
         update.desiredBaseRank = -1;
         update.preparedFaceSlots.clear();
     }
+    // In deterministic mode the backbuffer is inactive; keep it empty to avoid
+    // retaining stale per-slide vectors as latent backups.
+    if (kEnableDeterministicStabilizedSlide)
+    {
+        const size_t lwrFreeHint =
+            static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+        (void)CompactEmptyVectorForTarget(slideBackBuffer_.incomingFamilyIds, 0u, lwrFreeHint);
+        (void)CompactEmptyVectorForTarget(slideBackBuffer_.incomingFaceSlots, 0u, lwrFreeHint);
+        for (auto& update : slideBackBuffer_.boundaryUpdates)
+        {
+            (void)CompactEmptyVectorForTarget(update.preparedFaceSlots, 0u, lwrFreeHint);
+        }
+    }
     LWR_PROBE_END(g_lwrStageAccum.resetBackBuf);
 }
 
@@ -7791,7 +8117,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
             static_cast<uint32_t>(releasedEndFrameSlotsThisFrame_) +
                 static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
 
-    slideHwrTraceSegmentId_ = static_cast<int16_t>(nextId);
+    slideHwrTraceSegmentId_ = nextId;
 
     auto prefetchMetadataReady = [&]() -> bool
     {
@@ -7907,7 +8233,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     // Usar membro persistente para evitar alloc/free de LWR por slide.
     // faceFamilyIds já preenchido por BuildSegmentIntoSlideScratch acima — sem swap necessário.
     SegmentRenderEntry& incomingPrepared = slideScratchEntry_;
-    incomingPrepared.id = static_cast<int16_t>(nextId);
+    incomingPrepared.id = nextId;
     incomingPrepared.logicalSegmentCount = 1;
     incomingPrepared.renderer = std::move(slideScratchRenderer_);
     incomingPrepared.center = incomingCenter;
@@ -8064,7 +8390,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         slideScratchRenderer_->RecycleRuntimeState();
     }
 
-    slot.id = static_cast<int16_t>(nextId);
+    slot.id = nextId;
     slot.logicalSegmentCount = 1;
     slot.center = incomingCenter;
     slot.lodState.ready = true;
@@ -8081,27 +8407,18 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     slot.lodState.currentBaseRank = -1;
     slot.lodState.desiredLodIndex = slot.lodState.currentLodIndex;
     slot.lodState.desiredBaseRank = -1;
-    meta.id = static_cast<int16_t>(nextId);
+    meta.id = nextId;
     ApplyActiveRendererCapacityFloor(*slot.renderer);
     (void)slot.renderer->ApplyFaceTextureSlotsGlobal(slot.lodState.currentFaceSlots);
     ++runtimeFaceRemapsThisFrame_;
     InvalidateEntryWorkingSetCache(slot);
 
-    activeWindowStartId_ = static_cast<int16_t>(nextStartId);
-    bool foundStart = false;
-    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
-    {
-        if (segmentRenderers_[i].id != activeWindowStartId_) continue;
-        activeWindowHead_ = i;
-        foundStart = true;
-        break;
-    }
-    if (!foundStart)
-    {
-        activeWindowHead_ = dropIdx % segmentRenderers_.size();
-    }
-
     InvalidateActiveWindowLookupTables();
+    activeWindowStartId_ = nextStartId;
+    if (!AdvanceWindowHeadByDirection(direction, segmentRenderers_.size()))
+    {
+        (void)ResolveWindowHeadByStartId(dropIdx);
+    }
     UpdateDesiredStabilizedWindowLodTargets();
     familyWorkingSetDirty_ = true;
 
@@ -8154,7 +8471,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
                                                    int32_t nextStartId)
 {
     LWR_PROBE_BEGIN();
-    slideHwrTraceSegmentId_ = static_cast<int16_t>(nextId);
+    slideHwrTraceSegmentId_ = nextId;
     ResetSlideBackBuffer();
     if (!kEnableTrackRuntimeStabilization) return false;
     if (segmentRenderers_.empty()) return false;
@@ -8225,9 +8542,9 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
 
     slideBackBuffer_.direction = (direction < 0) ? -1 : 1;
     slideBackBuffer_.dropIdx = dropIdx;
-    slideBackBuffer_.incomingSegmentId = static_cast<int16_t>(nextId);
+    slideBackBuffer_.incomingSegmentId = nextId;
     slideBackBuffer_.outgoingSegmentId = segmentRenderers_[dropIdx].id;
-    slideBackBuffer_.nextStartId = static_cast<int16_t>(nextStartId);
+    slideBackBuffer_.nextStartId = nextStartId;
     const size_t windowCount = segmentRenderers_.size();
     const size_t incomingLogicalRank =
         (slideBackBuffer_.direction >= 0) ? (windowCount - 1u) : 0u;
@@ -8278,7 +8595,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     // Usar membro persistente para evitar alloc/free de LWR por slide.
     // faceFamilyIds já preenchido por BuildSegmentIntoSlideScratch acima — sem swap necessário.
     SegmentRenderEntry& incomingPrepared = slideScratchEntry_;
-    incomingPrepared.id = static_cast<int16_t>(nextId);
+    incomingPrepared.id = nextId;
     incomingPrepared.logicalSegmentCount = 1;
     incomingPrepared.renderer = std::move(slideScratchRenderer_);
     incomingPrepared.center = incomingCenter;
@@ -8461,43 +8778,32 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     ++runtimeFaceRemapsThisFrame_;
     InvalidateEntryWorkingSetCache(slot);
 
+    InvalidateActiveWindowLookupTables();
     activeWindowStartId_ = slideBackBuffer_.nextStartId;
-    bool foundStart = false;
-    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+    if (!AdvanceWindowHeadByDirection(slideBackBuffer_.direction, segmentRenderers_.size()))
     {
-        if (segmentRenderers_[i].id != activeWindowStartId_) continue;
-        activeWindowHead_ = i;
-        foundStart = true;
-        break;
-    }
-    if (!foundStart)
-    {
-        activeWindowHead_ = slideBackBuffer_.dropIdx % segmentRenderers_.size();
+        (void)ResolveWindowHeadByStartId(slideBackBuffer_.dropIdx);
     }
 
     for (auto& update : slideBackBuffer_.boundaryUpdates)
     {
         if (!update.active) continue;
-        for (auto& entry : segmentRenderers_)
-        {
-            if (entry.id != update.segmentId) continue;
-            // Swap entre membros persistentes — nenhum free de LWR ocorre
-            entry.lodState.currentFaceSlots.swap(update.preparedFaceSlots);
-            entry.lodState.currentLodIndex = update.desiredLodIndex;
-            entry.lodState.currentBaseRank = update.desiredBaseRank;
-            entry.lodState.desiredLodIndex = update.desiredLodIndex;
-            entry.lodState.desiredBaseRank = update.desiredBaseRank;
-            EnsureVectorCapacityFloor(entry.lodState.workingSetFamilies, static_cast<size_t>(slotFaceCapacityFloor_));
-            EnsureVectorCapacityFloor(entry.lodState.workingSetLodIndices, static_cast<size_t>(slotFaceCapacityFloor_));
-            EnsureVectorCapacityFloor(entry.lodState.workingSetSlots, static_cast<size_t>(slotFaceCapacityFloor_));
-            (void)entry.renderer->ApplyFaceTextureSlotsGlobal(entry.lodState.currentFaceSlots);
-            ++runtimeFaceRemapsThisFrame_;
-            ++runtimeLodSegmentUpdatesThisFrame_;
-            InvalidateEntryWorkingSetCache(entry);
-            break;
-        }
+        SegmentRenderEntry* entry = FindWindowEntryByIdFast(update.segmentId);
+        if (!entry) continue;
+        // Swap entre membros persistentes — nenhum free de LWR ocorre
+        entry->lodState.currentFaceSlots.swap(update.preparedFaceSlots);
+        entry->lodState.currentLodIndex = update.desiredLodIndex;
+        entry->lodState.currentBaseRank = update.desiredBaseRank;
+        entry->lodState.desiredLodIndex = update.desiredLodIndex;
+        entry->lodState.desiredBaseRank = update.desiredBaseRank;
+        EnsureVectorCapacityFloor(entry->lodState.workingSetFamilies, static_cast<size_t>(slotFaceCapacityFloor_));
+        EnsureVectorCapacityFloor(entry->lodState.workingSetLodIndices, static_cast<size_t>(slotFaceCapacityFloor_));
+        EnsureVectorCapacityFloor(entry->lodState.workingSetSlots, static_cast<size_t>(slotFaceCapacityFloor_));
+        (void)entry->renderer->ApplyFaceTextureSlotsGlobal(entry->lodState.currentFaceSlots);
+        ++runtimeFaceRemapsThisFrame_;
+        ++runtimeLodSegmentUpdatesThisFrame_;
+        InvalidateEntryWorkingSetCache(*entry);
     }
-    InvalidateActiveWindowLookupTables();
     UpdateDesiredStabilizedWindowLodTargets();
     if (familyMergeCooldown_ == 0u)
     {
@@ -8569,7 +8875,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
             {
                 return false;
             }
-            slidePrefetchSegmentId_ = static_cast<int16_t>(segmentId);
+            slidePrefetchSegmentId_ = segmentId;
             if (segmentId > 0 &&
                 static_cast<size_t>(segmentId) <= segmentCenterCatalog_.size())
             {
@@ -8816,12 +9122,20 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     const size_t maxFamilies = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFamilyCount));
     const size_t familyFloor = std::max<size_t>(256u, maxFamilies + 16u);
     familySlotCapacityFloor_ = static_cast<uint16_t>(std::min<size_t>(familyFloor, 0xFFFFu));
+    const size_t faceReserveFloor =
+        kEnableTrackRuntimeStabilization
+            ? std::min<size_t>(maxFaces, kStabilizedFaceCapacityFloorCap)
+            : maxFaces;
+    const size_t vertReserveFloor =
+        kEnableTrackRuntimeStabilization
+            ? std::min<size_t>(maxVerts, kStabilizedVertexCapacityFloorCap)
+            : maxVerts;
     if (kEnableTrackRuntimeStabilization)
     {
         // Keep fixed floors in stabilized mode to avoid progressive growth and
         // reallocation churn while sliding through heavier sections.
-        const size_t faceFloor = std::min<size_t>(maxFaces, kStabilizedFaceCapacityFloorCap);
-        const size_t vertFloor = std::min<size_t>(maxVerts, kStabilizedVertexCapacityFloorCap);
+        const size_t faceFloor = faceReserveFloor;
+        const size_t vertFloor = vertReserveFloor;
         slotFaceCapacityFloor_ = static_cast<uint16_t>(std::min<size_t>(faceFloor, 0xFFFFu));
         rendererVertexCapacityFloor_ = static_cast<uint16_t>(std::min<size_t>(vertFloor, 0xFFFFu));
         rendererFaceCapacityFloor_ = static_cast<uint16_t>(std::min<size_t>(faceFloor, 0xFFFFu));
@@ -8835,24 +9149,24 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
 
     if (!kEnableTrackRuntimeStabilization)
     {
-        if (g_rdrBuildScratch.verts.capacity() < maxVerts) g_rdrBuildScratch.verts.reserve(maxVerts);
-        if (g_rdrBuildScratch.faces.capacity() < maxFaces) g_rdrBuildScratch.faces.reserve(maxFaces);
-        if (g_rdrBuildScratch.attrs.capacity() < maxFaces) g_rdrBuildScratch.attrs.reserve(maxFaces);
+        if (g_rdrBuildScratch.verts.capacity() < vertReserveFloor) g_rdrBuildScratch.verts.reserve(vertReserveFloor);
+        if (g_rdrBuildScratch.faces.capacity() < faceReserveFloor) g_rdrBuildScratch.faces.reserve(faceReserveFloor);
+        if (g_rdrBuildScratch.attrs.capacity() < faceReserveFloor) g_rdrBuildScratch.attrs.reserve(faceReserveFloor);
     }
     else
     {
         // In stabilized mode reserve a bounded floor once and keep it.
-        const size_t reserveVerts = std::min<size_t>(maxVerts, kStabilizedVertexCapacityFloorCap);
-        const size_t reserveFaces = std::min<size_t>(maxFaces, kStabilizedFaceCapacityFloorCap);
+        const size_t reserveVerts = vertReserveFloor;
+        const size_t reserveFaces = faceReserveFloor;
         if (g_rdrBuildScratch.verts.capacity() < reserveVerts) g_rdrBuildScratch.verts.reserve(reserveVerts);
         if (g_rdrBuildScratch.faces.capacity() < reserveFaces) g_rdrBuildScratch.faces.reserve(reserveFaces);
         if (g_rdrBuildScratch.attrs.capacity() < reserveFaces) g_rdrBuildScratch.attrs.reserve(reserveFaces);
     }
-    if (slideIncomingFamilyIdsScratch_.capacity() < maxFaces) slideIncomingFamilyIdsScratch_.reserve(maxFaces);
-    if (slideIncomingFaceRankOffsetsScratch_.capacity() < maxFaces) slideIncomingFaceRankOffsetsScratch_.reserve(maxFaces);
-    if (slideIncomingFaceSlotsScratch_.capacity() < maxFaces) slideIncomingFaceSlotsScratch_.reserve(maxFaces);
-    if (slidePrefetchFamilyIds_.capacity() < maxFaces) slidePrefetchFamilyIds_.reserve(maxFaces);
-    if (slidePrefetchFaceSlots_.capacity() < maxFaces) slidePrefetchFaceSlots_.reserve(maxFaces);
+    if (slideIncomingFamilyIdsScratch_.capacity() < faceReserveFloor) slideIncomingFamilyIdsScratch_.reserve(faceReserveFloor);
+    if (slideIncomingFaceRankOffsetsScratch_.capacity() < faceReserveFloor) slideIncomingFaceRankOffsetsScratch_.reserve(faceReserveFloor);
+    if (slideIncomingFaceSlotsScratch_.capacity() < faceReserveFloor) slideIncomingFaceSlotsScratch_.reserve(faceReserveFloor);
+    if (slidePrefetchFamilyIds_.capacity() < faceReserveFloor) slidePrefetchFamilyIds_.reserve(faceReserveFloor);
+    if (slidePrefetchFaceSlots_.capacity() < faceReserveFloor) slidePrefetchFaceSlots_.reserve(faceReserveFloor);
     if (seg1FamilySlots_.capacity() < familyFloor) seg1FamilySlots_.reserve(familyFloor);
     if (familyMergeCurrentWindowScratch_.capacity() < familyFloor) familyMergeCurrentWindowScratch_.reserve(familyFloor);
     if (slidePrefetchFamilySlotsScratch_.capacity() < familyFloor) slidePrefetchFamilySlotsScratch_.reserve(familyFloor);
@@ -8872,12 +9186,12 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     }
     for (auto& entry : segmentRenderers_)
     {
-        EnsureVectorCapacityFloor(entry.lodState.faceFamilyIds, maxFaces);
-        EnsureVectorCapacityFloor(entry.lodState.faceRankOffsets, maxFaces);
-        EnsureVectorCapacityFloor(entry.lodState.currentFaceSlots, maxFaces);
-        EnsureVectorCapacityFloor(entry.lodState.workingSetFamilies, maxFaces);
-        EnsureVectorCapacityFloor(entry.lodState.workingSetLodIndices, maxFaces);
-        EnsureVectorCapacityFloor(entry.lodState.workingSetSlots, maxFaces);
+        EnsureVectorCapacityFloor(entry.lodState.faceFamilyIds, faceReserveFloor);
+        EnsureVectorCapacityFloor(entry.lodState.faceRankOffsets, faceReserveFloor);
+        EnsureVectorCapacityFloor(entry.lodState.currentFaceSlots, faceReserveFloor);
+        EnsureVectorCapacityFloor(entry.lodState.workingSetFamilies, faceReserveFloor);
+        EnsureVectorCapacityFloor(entry.lodState.workingSetLodIndices, faceReserveFloor);
+        EnsureVectorCapacityFloor(entry.lodState.workingSetSlots, faceReserveFloor);
         if (entry.renderer)
         {
             ApplyActiveRendererCapacityFloor(*entry.renderer);
@@ -8894,22 +9208,22 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     // Prime scratch vectors not covered by the segmentRenderers_ loop:
     // runtimeRenderFaceSlotsScratch_ grows lazily on first render per entry —
     // pre-floor it to avoid one-time alloc during the first rendered frame.
-    if (runtimeRenderFaceSlotsScratch_.capacity() < maxFaces)
-        runtimeRenderFaceSlotsScratch_.reserve(maxFaces);
-    if (slideRollbackFaceSlotsScratch_.capacity() < maxFaces)
-        slideRollbackFaceSlotsScratch_.reserve(maxFaces);
+    if (runtimeRenderFaceSlotsScratch_.capacity() < faceReserveFloor)
+        runtimeRenderFaceSlotsScratch_.reserve(faceReserveFloor);
+    if (slideRollbackFaceSlotsScratch_.capacity() < faceReserveFloor)
+        slideRollbackFaceSlotsScratch_.reserve(faceReserveFloor);
     // slideScratchEntry_ is a persistent entry used as staging — give it the
     // same floor as all segmentRenderers_ entries.
-    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceFamilyIds, maxFaces);
-    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceRankOffsets, maxFaces);
-    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.currentFaceSlots, maxFaces);
-    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetFamilies, maxFaces);
-    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetLodIndices, maxFaces);
-    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetSlots, maxFaces);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceFamilyIds, faceReserveFloor);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceRankOffsets, faceReserveFloor);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.currentFaceSlots, faceReserveFloor);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetFamilies, faceReserveFloor);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetLodIndices, faceReserveFloor);
+    EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetSlots, faceReserveFloor);
     // slideScratchBoundarySlots_ entries grow on first boundary prepare — floor them.
     for (auto& s : slideScratchBoundarySlots_)
     {
-        if (s.capacity() < maxFaces) s.reserve(maxFaces);
+        if (s.capacity() < faceReserveFloor) s.reserve(faceReserveFloor);
     }
 }
 
@@ -9332,6 +9646,7 @@ uint32_t TrackSystem::EstimateLowWorkRamRetainedBytes() const
     bytes += VectorCapacityBytesSafe(g_trackPendingRetiredTextureSlots);
     bytes += coordinator_.RetainedBytesLowWork();
     bytes += VectorCapacityBytesSafe(segmentCenterCatalog_);
+    bytes += VectorCapacityBytesSafe(activeWindowLookupSegmentIds_);
     bytes += VectorCapacityBytesSafe(activeWindowEntryIndexBySegmentId_);
     bytes += VectorCapacityBytesSafe(activeWindowLogicalRankBySegmentId_);
     bytes += VectorCapacityBytesSafe(segmentEntries_);
@@ -9416,6 +9731,7 @@ TrackSystem::LowWorkCategoryBreakdown TrackSystem::CaptureLowWorkBreakdown() con
     out.metadata += VectorCapacityBytesSafe(g_trackPendingRetiredTextureSlots);
     out.metadata += coordinator_.RetainedBytesLowWork();
     out.metadata += VectorCapacityBytesSafe(segmentCenterCatalog_);
+    out.metadata += VectorCapacityBytesSafe(activeWindowLookupSegmentIds_);
     out.metadata += VectorCapacityBytesSafe(activeWindowEntryIndexBySegmentId_);
     out.metadata += VectorCapacityBytesSafe(activeWindowLogicalRankBySegmentId_);
     out.metadata += VectorCapacityBytesSafe(segmentEntries_);
@@ -9532,12 +9848,17 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
     const size_t freeBefore = GetHighWorkRamFreeBytesSafe(&freeValidBefore);
     bool trimmed = false;
 
+    // Query LWR free once for the entire trim pass. Passing this hint to every
+    // TrimVectorSlack call avoids O(n * free_blocks) TLSF scans — each scan walks
+    // the entire free list, so 95+ calls per invocation was stalling the frame.
+    const size_t lwrFreeHint =
+        static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+
     const size_t windowTarget = std::max<size_t>(
         segmentRenderers_.size(),
         std::max<size_t>(1u, static_cast<size_t>(fixedVisibleSegmentCap_)));
-    const size_t segmentCatalogTarget = (totalSegmentCount_ > 0)
-        ? (static_cast<size_t>(totalSegmentCount_) + 1u)
-        : 0u;
+    const size_t windowLookupTarget =
+        std::max<size_t>(kTrackSegmentLimit + 2u, segmentRenderers_.size() + 2u);
     const size_t faceCapacityFloor = static_cast<size_t>(slotFaceCapacityFloor_);
     const size_t queueCapacityFloor = std::max<size_t>(64u, g_trackTextureSlotQueueCapacityFloor);
     const size_t familySlotVectorFloor =
@@ -9553,95 +9874,96 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
     }
     else
     {
-        trimmed |= TrimVectorSlack(g_textCache, g_textCache.size(), aggressive);
+        trimmed |= TrimVectorSlack(g_textCache, g_textCache.size(), aggressive, lwrFreeHint);
     }
     trimmed |= TrimVectorSlack(g_trackReusableTextureSlots,
                                std::max<size_t>(
                                    queueCapacityFloor,
                                    aggressive ? g_trackReusableTextureSlots.size()
                                               : (g_trackReusableTextureSlots.size() + 16u)),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(g_trackPendingRetiredTextureSlots,
                                std::max<size_t>(
                                    queueCapacityFloor,
                                    aggressive ? g_trackPendingRetiredTextureSlots.size()
                                               : (g_trackPendingRetiredTextureSlots.size() + 16u)),
-                               aggressive);
-    trimmed |= TrimVectorSlack(activeWindowEntryIndexBySegmentId_, segmentCatalogTarget, aggressive);
-    trimmed |= TrimVectorSlack(activeWindowLogicalRankBySegmentId_, segmentCatalogTarget, aggressive);
+                               aggressive, lwrFreeHint);
+    trimmed |= TrimVectorSlack(activeWindowLookupSegmentIds_, windowLookupTarget, aggressive, lwrFreeHint);
+    trimmed |= TrimVectorSlack(activeWindowEntryIndexBySegmentId_, windowLookupTarget, aggressive, lwrFreeHint);
+    trimmed |= TrimVectorSlack(activeWindowLogicalRankBySegmentId_, windowLookupTarget, aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(segmentEntries_,
                                aggressive ? segmentEntries_.size() : (windowTarget + 2u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(seg1FamilySlots_,
                                std::max<size_t>(familySlotVectorFloor,
                                                 aggressive ? seg1FamilySlots_.size()
                                                            : (seg1FamilySlots_.size() + 16u)),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(familyMergeCurrentWindowScratch_,
                                std::max<size_t>(familySlotVectorFloor,
                                                 aggressive ? familyMergeCurrentWindowScratch_.size()
                                                            : (familyMergeCurrentWindowScratch_.size() + 16u)),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slidePrefetchFamilySlotsScratch_,
                                std::max<size_t>(familySlotVectorFloor,
                                                 aggressive ? slidePrefetchFamilySlotsScratch_.size()
                                                            : (slidePrefetchFamilySlotsScratch_.size() + 16u)),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(stabilizedDepthItemsScratch_,
                                aggressive ? 0u : (stabilizedDepthItemsScratch_.size() + 8u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(stabilizedSortedHandlesScratch_,
                                aggressive ? 0u : (stabilizedSortedHandlesScratch_.size() + 8u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slideIncomingFamilyIdsScratch_,
                                CapacityFloorTrimTarget(slideIncomingFamilyIdsScratch_.size(),
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       16u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slideIncomingFaceRankOffsetsScratch_,
                                CapacityFloorTrimTarget(slideIncomingFaceRankOffsetsScratch_.size(),
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       16u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slidePrefetchFamilyIds_,
                                CapacityFloorTrimTarget(slidePrefetchFamilyIds_.size(),
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       16u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(seg1SingleFaceSlots_,
                                aggressive ? seg1SingleFaceSlots_.size()
                                           : (seg1SingleFaceSlots_.size() + 8u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
 
-    trimmed |= TrimVectorSlack(segmentHandles_, windowTarget + 2u, aggressive);
+    trimmed |= TrimVectorSlack(segmentHandles_, windowTarget + 2u, aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slideIncomingFaceSlotsScratch_,
                                CapacityFloorTrimTarget(slideIncomingFaceSlotsScratch_.size(),
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       0u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slideRollbackFaceSlotsScratch_,
                                CapacityFloorTrimTarget(slideRollbackFaceSlotsScratch_.size(),
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       0u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     trimmed |= TrimVectorSlack(slidePrefetchFaceSlots_,
                                CapacityFloorTrimTarget(slidePrefetchFaceSlots_.size(),
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       0u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
     if (!kEnableDeterministicStabilizedSlide)
     {
-        trimmed |= TrimVectorSlack(slideBackBuffer_.incomingFaceSlots, aggressive ? 0u : 128u, aggressive);
+        trimmed |= TrimVectorSlack(slideBackBuffer_.incomingFaceSlots, aggressive ? 0u : 128u, aggressive, lwrFreeHint);
         for (auto& update : slideBackBuffer_.boundaryUpdates)
         {
             const size_t keep = aggressive ? 0u : (update.preparedFaceSlots.size() + 8u);
-            trimmed |= TrimVectorSlack(update.preparedFaceSlots, keep, aggressive);
+            trimmed |= TrimVectorSlack(update.preparedFaceSlots, keep, aggressive, lwrFreeHint);
         }
     }
 
@@ -9657,10 +9979,10 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
 
     if (!seg1ComponentEnabled_)
     {
-        trimmed |= TrimVectorSlack(seg1ComponentVerts_, 0u, aggressive);
-        trimmed |= TrimVectorSlack(seg1ComponentFaces_, 0u, aggressive);
-        trimmed |= TrimVectorSlack(seg1ComponentAttrs_, 0u, aggressive);
-        trimmed |= TrimVectorSlack(seg1FaceFamilyIds_, 0u, aggressive);
+        trimmed |= TrimVectorSlack(seg1ComponentVerts_, 0u, aggressive, lwrFreeHint);
+        trimmed |= TrimVectorSlack(seg1ComponentFaces_, 0u, aggressive, lwrFreeHint);
+        trimmed |= TrimVectorSlack(seg1ComponentAttrs_, 0u, aggressive, lwrFreeHint);
+        trimmed |= TrimVectorSlack(seg1FaceFamilyIds_, 0u, aggressive, lwrFreeHint);
     }
 
     trimmed |= TrimVectorSlack(runtimeRenderFaceSlotsScratch_,
@@ -9668,12 +9990,12 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
                                                       faceCapacityFloor,
                                                       aggressive,
                                                       0u),
-                               aggressive);
+                               aggressive, lwrFreeHint);
 
     for (size_t li = 0; li < seg1RendererFaceSlotsByLod_.size(); ++li)
     {
         const size_t keep = aggressive ? 0u : (seg1RendererFaceSlotsByLod_[li].size() + 8u);
-        trimmed |= TrimVectorSlack(seg1RendererFaceSlotsByLod_[li], keep, aggressive);
+        trimmed |= TrimVectorSlack(seg1RendererFaceSlotsByLod_[li], keep, aggressive, lwrFreeHint);
     }
 
     for (size_t i = 0; i < segmentRenderers_.size(); ++i)
@@ -9684,19 +10006,19 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
                                                           faceCapacityFloor,
                                                           aggressive,
                                                           8u),
-                                   aggressive);
+                                   aggressive, lwrFreeHint);
         trimmed |= TrimVectorSlack(lod.faceRankOffsets,
                                    CapacityFloorTrimTarget(lod.faceRankOffsets.size(),
                                                           faceCapacityFloor,
                                                           aggressive,
                                                           8u),
-                                   aggressive);
+                                   aggressive, lwrFreeHint);
         trimmed |= TrimVectorSlack(lod.currentFaceSlots,
                                    CapacityFloorTrimTarget(lod.currentFaceSlots.size(),
                                                           faceCapacityFloor,
                                                           aggressive,
                                                           8u),
-                                   aggressive);
+                                   aggressive, lwrFreeHint);
         // Working set vectors: never trim below the current capacity in non-aggressive
         // mode — the capacity IS the self-tracking high-water mark for this slot.
         // Trimming below it causes TLSF alloc/free oscillation every lap when a segment
@@ -9707,17 +10029,17 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
                                    aggressive ? std::max(lod.workingSetFamilies.size(),
                                                          kSegmentFamilyDedupScratchCap)
                                               : lod.workingSetFamilies.capacity(),
-                                   aggressive);
+                                   aggressive, lwrFreeHint);
         trimmed |= TrimVectorSlack(lod.workingSetLodIndices,
                                    aggressive ? std::max(lod.workingSetLodIndices.size(),
                                                          kSegmentFamilyDedupScratchCap)
                                               : lod.workingSetLodIndices.capacity(),
-                                   aggressive);
+                                   aggressive, lwrFreeHint);
         trimmed |= TrimVectorSlack(lod.workingSetSlots,
                                    aggressive ? std::max(lod.workingSetSlots.size(),
                                                          kSegmentFamilyDedupScratchCap)
                                               : lod.workingSetSlots.capacity(),
-                                   aggressive);
+                                   aggressive, lwrFreeHint);
         if (segmentRenderers_[i].renderer)
         {
             trimmed |= segmentRenderers_[i].renderer->CompactRuntimeState(aggressive);
@@ -9737,14 +10059,23 @@ bool TrackSystem::TrimWorkRamRetainedCapacities(bool aggressive, int32_t* outFre
     if (segmentRenderers_.capacity() > desiredRendererCap &&
         (aggressive || segmentRenderers_.capacity() > (desiredRendererCap + 8u)))
     {
-        TrackLowWorkVector<SegmentRenderEntry> compact{};
-        compact.reserve(desiredRendererCap);
-        for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+        // Same double-alloc safety: compact.reserve() and old segmentRenderers_ block
+        // coexist in LWR until the swap.
+        const size_t rendererCompactBytes = desiredRendererCap * sizeof(SegmentRenderEntry);
+        const bool lwrSafeToCompact =
+            (rendererCompactBytes == 0u) ||
+            (lwrFreeHint >= rendererCompactBytes + 2u * 1024u);
+        if (lwrSafeToCompact)
         {
-            compact.push_back(std::move(segmentRenderers_[i]));
+            TrackLowWorkVector<SegmentRenderEntry> compact{};
+            compact.reserve(desiredRendererCap);
+            for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+            {
+                compact.push_back(std::move(segmentRenderers_[i]));
+            }
+            segmentRenderers_.swap(compact);
+            trimmed = true;
         }
-        segmentRenderers_.swap(compact);
-        trimmed = true;
     }
 
     if (trimmed)
@@ -10010,13 +10341,12 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
         ReleaseWorkRamEmergencyReserve();
         freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
     }
-    const uint32_t trackOwnedHwrBytes =
-        ResolveTrackOwnedHighWorkBytesForPressure(EstimateWorkRamRetainedBytes());
-    const uint32_t trackOwnedLwrBytes = EstimateLowWorkRamRetainedBytes();
+    // Hot path: prefer exact tagged usage over deep retained-bytes walks.
+    // The retained estimators traverse renderer/vector capacities and were
+    // dominating maintenance ticks in long sessions.
+    const uint32_t trackOwnedHwrBytes = GetTrackOwnedHighWorkBytesExact();
     const bool trackOwnsLittleHwr =
         trackOwnedHwrBytes <= static_cast<uint32_t>(kWorkRamTrackOwnedBypassBytes);
-    const bool trackOwnsLittleLwr =
-        trackOwnedLwrBytes <= static_cast<uint32_t>(8u * 1024u);
     const MemoryPressureLevel pressure = ClassifyMemoryPressure(freeBytes, freeValid);
     memoryPressureLevelThisFrame_ = std::max<uint8_t>(memoryPressureLevelThisFrame_,
                                                       static_cast<uint8_t>(pressure));
@@ -10035,9 +10365,7 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             trackOwnsLittleHwr &&
             !softLowLowWork &&
             !criticalLowLowWork;
-        if (bypassHwrRecoveryWork &&
-            !windowSlid &&
-            runtimeSlidesThisFrame_ == 0u)
+        if (bypassHwrRecoveryWork)
         {
             if (workRamTrimCooldown_ > 0)
             {
@@ -10087,9 +10415,11 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             ranTrimThisCall = true;
             const bool aggressiveTrim =
                 criticalLowMemory || softLowMemory || criticalLowLowWork;
+            LWR_PROBE_BEGIN();
             TrimRuntimeBlobScratchCaches(aggressiveTrim || softLowLowWork || shouldTrimForWindowReuse);
             int32_t freeDelta = 0;
             const bool trimmed = TrimWorkRamRetainedCapacities(aggressiveTrim, &freeDelta);
+            LWR_PROBE_END(g_lwrStageAccum.maintenanceTrim);
             if (trimmed)
             {
                 if (runtimeStatsLogsEnabled_)
@@ -10132,7 +10462,7 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             if (freeValidAfterTrim && freeAfterTrim <= kWorkRamCatastrophicFloorBytes)
             {
                 const size_t projectedFreeAfterRelease =
-                    freeAfterTrim + ResolveTrackOwnedHighWorkBytesForPressure(EstimateWorkRamRetainedBytes());
+                    freeAfterTrim + static_cast<size_t>(trackOwnedHwrBytes);
                 SRL::Debug::Print(1, 17, "WM rebuild skip e:%u f:%u   ",
                                   0u,
                                   static_cast<unsigned>(projectedFreeAfterRelease));
@@ -10354,13 +10684,9 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
     {
         for (size_t step = 0; step < stepCount; ++step)
         {
-            const int32_t nextId = (direction > 0)
-                ? WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(windowCount),
-                                       totalSegmentCount_)
-                : WrapSegmentIdToRange(activeWindowStartId_ - static_cast<int32_t>(windowCount),
-                                       totalSegmentCount_);
+            const int32_t nextId = ResolveWindowIncomingSegmentId(direction, windowCount);
             if (nextId <= 0) return false;
-            slideHwrTraceSegmentId_ = static_cast<int16_t>(nextId);
+            slideHwrTraceSegmentId_ = nextId;
             const auto hasResidentPrefetchForNextId = [&]() -> bool
             {
                 return slidePrefetchSegmentId_ == nextId &&
@@ -10482,25 +10808,8 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
                 }
             }
 
-            const int32_t outgoingId = (direction > 0)
-                ? WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_)
-                : WrapSegmentIdToRange(activeWindowStartId_ - (static_cast<int32_t>(windowCount) - 1),
-                                       totalSegmentCount_);
-            size_t dropIdx = activeWindowHead_ % windowCount;
-            bool foundOutgoing = false;
-            for (size_t i = 0; i < windowCount; ++i)
-            {
-                if (segmentRenderers_[i].id != outgoingId) continue;
-                dropIdx = i;
-                foundOutgoing = true;
-                break;
-            }
-            if (!foundOutgoing)
-            {
-                dropIdx = (direction > 0)
-                    ? (activeWindowHead_ % windowCount)
-                    : ((activeWindowHead_ + windowCount - 1) % windowCount);
-            }
+            size_t dropIdx = 0;
+            if (!ResolveWindowDropIndexByDirection(direction, windowCount, dropIdx)) return false;
 
             const int32_t nextStartId = WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(direction),
                                                              totalSegmentCount_);
@@ -10555,11 +10864,8 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         bool allowImmediatePrefetch = false;
         if (kEnableTrackRuntimeStabilization)
         {
-            const int32_t upcomingAfterSlideId = (windowDirection_ > 0)
-                ? WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(windowCount),
-                                       totalSegmentCount_)
-                : WrapSegmentIdToRange(activeWindowStartId_ - static_cast<int32_t>(windowCount),
-                                       totalSegmentCount_);
+            const int32_t upcomingAfterSlideId =
+                ResolveWindowIncomingSegmentId(windowDirection_, windowCount);
             const auto upcomingTailReady = [&]() -> bool
             {
                 return slidePrefetchSegmentId_ == upcomingAfterSlideId &&
@@ -10638,32 +10944,11 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             }
         }
 
-        const int32_t nextId = (direction > 0)
-            ? WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(windowCount),
-                                   totalSegmentCount_)
-            : WrapSegmentIdToRange(activeWindowStartId_ - static_cast<int32_t>(windowCount),
-                                   totalSegmentCount_);
+        const int32_t nextId = ResolveWindowIncomingSegmentId(direction, windowCount);
         if (nextId <= 0) return false;
 
-        const int32_t outgoingId = (direction > 0)
-            ? WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_)
-            : WrapSegmentIdToRange(activeWindowStartId_ - (static_cast<int32_t>(windowCount) - 1),
-                                   totalSegmentCount_);
-        size_t dropIdx = activeWindowHead_ % windowCount;
-        bool foundOutgoing = false;
-        for (size_t i = 0; i < windowCount; ++i)
-        {
-            if (segmentRenderers_[i].id != outgoingId) continue;
-            dropIdx = i;
-            foundOutgoing = true;
-            break;
-        }
-        if (!foundOutgoing)
-        {
-            dropIdx = (direction > 0)
-                ? (activeWindowHead_ % windowCount)
-                : ((activeWindowHead_ + windowCount - 1) % windowCount);
-        }
+        size_t dropIdx = 0;
+        if (!ResolveWindowDropIndexByDirection(direction, windowCount, dropIdx)) return false;
 
         Vector3D center(0.0, 0.0, 0.0);
         slideIncomingFamilyIdsScratch_.clear();
@@ -10902,20 +11187,13 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         MergeCurrentWindowFamilies();
         familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(fullTrackFamilyCacheReady_);
         ResetSlidePrefetchState();
+        InvalidateActiveWindowLookupTables();
         activeWindowStartId_ = WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(direction),
                                                     totalSegmentCount_);
         if (activeWindowStartId_ <= 0) return false;
-        bool foundStart = false;
-        for (size_t i = 0; i < windowCount; ++i)
+        if (!AdvanceWindowHeadByDirection(direction, windowCount))
         {
-            if (segmentRenderers_[i].id != activeWindowStartId_) continue;
-            activeWindowHead_ = i;
-            foundStart = true;
-            break;
-        }
-        if (!foundStart)
-        {
-            activeWindowHead_ = dropIdx % windowCount;
+            (void)ResolveWindowHeadByStartId(dropIdx);
         }
         if (prewarmCooldown_ == 0)
         {
@@ -10957,11 +11235,7 @@ void TrackSystem::PrewarmNextSegmentLod8()
         if (freeValidAfter && freeAfter <= (kWorkRamHardFloorBytes + (16u * 1024u))) return;
     }
     const size_t windowCount = segmentRenderers_.size();
-    const int32_t preloadId = (windowDirection_ > 0)
-        ? WrapSegmentIdToRange(activeWindowStartId_ + static_cast<int32_t>(windowCount),
-                               totalSegmentCount_)
-        : WrapSegmentIdToRange(activeWindowStartId_ - static_cast<int32_t>(windowCount),
-                               totalSegmentCount_);
+    const int32_t preloadId = ResolveWindowIncomingSegmentId(windowDirection_, windowCount);
     if (preloadId <= 0) return;
 
     if (slidePrefetchSegmentId_ == preloadId &&
@@ -11845,6 +12119,7 @@ void TrackSystem::ResetInitializationState()
     lastWindowFreeValid_ = false;
     activeWindowLookupDirty_ = true;
     familyWorkingSetDirty_ = true;
+    activeWindowLookupSegmentIds_.clear();
     activeWindowEntryIndexBySegmentId_.clear();
     activeWindowLogicalRankBySegmentId_.clear();
     usedTextureSlotsThisFrame_.fill(0u);
@@ -11856,6 +12131,10 @@ void TrackSystem::ResetInitializationState()
 
 size_t TrackSystem::ResolveInitialLoadLimit(const Config& config) const
 {
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        return std::min<size_t>(kTrackLeakIsolationWindowSegments, kTrackSegmentLimit);
+    }
     // Test mode: keep the loaded catalog aligned with the configured visible segment budget
     // so we can isolate experiments on SEG_001 only. The full-catalog path stays available
     // behind this switch for future broader texture-mapping validation.
@@ -12101,6 +12380,11 @@ bool TrackSystem::Initialize(const Config& config)
     // focused on slide/runtime behavior.
     const size_t loadLimit = ResolveInitialLoadLimit(config);
     PrepareInitialSegmentPackages(loadLimit);
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        SRL::Debug::Print(1, 28, "TRK iso64 on n:%u slide:0 pf:0",
+                          static_cast<unsigned>(loadLimit));
+    }
     // disabled
     CaptureTrackTextureHeapBase();
     SegmentRuntimeDraw::HeaderV1 warmRdrHeader{};
@@ -13219,50 +13503,56 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     frameSnapshotScratch_ = {};
     ResetFramePlan(framePlanCurrent_);
     framePlanSortedHandles_.clear();
-    if (kEnableTrackRuntimeStabilization && segmentsReady_ && totalSegmentCount_ > 0)
     {
-        const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-        const int32_t targetStartId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
-        if (currentStartId > 0 && targetStartId > 0)
+        LWR_PROBE_BEGIN();
+        if (kEnableTrackRuntimeStabilization &&
+            segmentsReady_ &&
+            totalSegmentCount_ > 0)
         {
-            const int32_t total = static_cast<int32_t>(totalSegmentCount_);
-            int32_t backlog = (targetStartId - currentStartId) % total;
-            if (backlog < 0) backlog += total;
-            if (backlog > 0 && backlog < (total / 2))
+            const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+            const int32_t targetStartId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
+            if (currentStartId > 0 && targetStartId > 0)
             {
-                // Safe mode must still behave as a strict sliding window, but
-                // when the car moves faster than one segment per frame we need
-                // limited catch-up. Otherwise the car outruns the 20-segment
-                // window even without an explicit slide stall.
-                // Avoid 2-slide bursts in normal pressure; they create visible
-                // frame spikes exactly at segment boundaries.
-                const uint8_t maxCatchupSlides = 1u;
-                const uint8_t slideBudget = static_cast<uint8_t>(
-                    std::min<int32_t>(backlog, static_cast<int32_t>(maxCatchupSlides)));
-                for (uint8_t i = 0; i < slideBudget; ++i)
+                const int32_t total = static_cast<int32_t>(totalSegmentCount_);
+                int32_t backlog = (targetStartId - currentStartId) % total;
+                if (backlog < 0) backlog += total;
+                if (backlog > 0 && backlog < (total / 2))
                 {
-                    TryPrefetchUpcomingSegment();
-                    if (!SlideActiveSegmentWindow(1, +1))
+                    // Safe mode must still behave as a strict sliding window, but
+                    // when the car moves faster than one segment per frame we need
+                    // limited catch-up. Otherwise the car outruns the 20-segment
+                    // window even without an explicit slide stall.
+                    // Avoid 2-slide bursts in normal pressure; they create visible
+                    // frame spikes exactly at segment boundaries.
+                    const uint8_t maxCatchupSlides = 1u;
+                    const uint8_t slideBudget = static_cast<uint8_t>(
+                        std::min<int32_t>(backlog, static_cast<int32_t>(maxCatchupSlides)));
+                    for (uint8_t i = 0; i < slideBudget; ++i)
                     {
-                        bool freeValid = false;
-                        const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
-                        const uint8_t stallCooldown =
-                            (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u))) ? 6u :
-                            (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (32u * 1024u))) ? 3u :
-                            2u;
-                        activeWindowSwitchCooldown_ =
-                            std::max<uint8_t>(activeWindowSwitchCooldown_, stallCooldown);
-                        prefetchRetryCooldown_ =
-                            std::max<uint8_t>(prefetchRetryCooldown_, stallCooldown);
-                        break;
-                    }
+                        TryPrefetchUpcomingSegment();
+                        if (!SlideActiveSegmentWindow(1, +1))
+                        {
+                            bool freeValid = false;
+                            const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+                            const uint8_t stallCooldown =
+                                (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u))) ? 6u :
+                                (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (32u * 1024u))) ? 3u :
+                                2u;
+                            activeWindowSwitchCooldown_ =
+                                std::max<uint8_t>(activeWindowSwitchCooldown_, stallCooldown);
+                            prefetchRetryCooldown_ =
+                                std::max<uint8_t>(prefetchRetryCooldown_, stallCooldown);
+                            break;
+                        }
 
-                    const int32_t progressedStartId =
-                        WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-                    if (progressedStartId == targetStartId) break;
+                        const int32_t progressedStartId =
+                            WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+                        if (progressedStartId == targetStartId) break;
+                    }
                 }
             }
         }
+        LWR_PROBE_END(g_lwrStageAccum.beginFrameOps);
     }
     stabilizedDepthSorter_.BeginFrame(frameId);
     coordinator_.BeginFrame(frameId);
@@ -13307,6 +13597,31 @@ bool TrackSystem::ShouldRunPostSlideMaintenance(bool slidThisFrame) const
     const size_t postSlideFreeBytes = GetHighWorkRamFreeBytesSafe(&postSlideFreeValid);
     bool postSlideLowFreeValid = false;
     const size_t postSlideLowFreeBytes = GetLowWorkRamFreeBytesSafe(&postSlideLowFreeValid);
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        // Leak-isolation mode focuses on long-run behavior. Running full
+        // maintenance every slide with chronic low HWR hurts frame time more
+        // than it helps memory. Keep only true emergencies immediate.
+        static uint8_t sLeakIsoPostSlideCooldown = 0u;
+        const bool emergencyHighPressure =
+            postSlideFreeValid &&
+            postSlideFreeBytes <= kWorkRamCatastrophicFloorBytes;
+        const bool emergencyLowPressure =
+            postSlideLowFreeValid &&
+            postSlideLowFreeBytes <= kLowWorkRamHardFloorBytes;
+        if (emergencyHighPressure || emergencyLowPressure)
+        {
+            sLeakIsoPostSlideCooldown = 0u;
+            return true;
+        }
+        if (sLeakIsoPostSlideCooldown > 0u)
+        {
+            --sLeakIsoPostSlideCooldown;
+            return false;
+        }
+        sLeakIsoPostSlideCooldown = kLeakIsolationPostSlideMaintenanceCadenceFrames;
+        return true;
+    }
     const bool postSlideHighPressure =
         postSlideFreeValid &&
         postSlideFreeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u));
@@ -13342,6 +13657,11 @@ bool TrackSystem::ShouldRunPostSlideMaintenance(bool slidThisFrame) const
 
 bool TrackSystem::RunPendingLodRecoveryStage(bool slidThisFrame)
 {
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        (void)slidThisFrame;
+        return false;
+    }
     bool mandatoryBandPending = false;
     if (kEnableTrackRuntimeStabilization &&
         kEnableTrackLodBandsInStabilization &&
@@ -13365,16 +13685,15 @@ bool TrackSystem::RunPendingLodRecoveryStage(bool slidThisFrame)
                 : static_cast<int16_t>(-1);
             if (framePlanCurrent_.valid &&
                 framePlanCurrent_.frameId == frameIdThisFrame_ &&
-                segmentId > 0 &&
-                segmentId <= static_cast<int32_t>(kTrackSegmentLimit))
+                logicalRank < framePlanCurrent_.desiredLodByLogicalRank.size())
             {
-                const size_t planIdx = static_cast<size_t>(segmentId);
-                const uint8_t plannedLod = framePlanCurrent_.desiredLodBySegment[planIdx];
+                const uint8_t plannedLod =
+                    framePlanCurrent_.desiredLodByLogicalRank[logicalRank];
                 if (plannedLod <= 3u)
                 {
                     desiredLodIndex = plannedLod;
                     desiredBaseRank = entry->lodState.hasPerFaceRankOffsets
-                        ? framePlanCurrent_.desiredBaseRankBySegment[planIdx]
+                        ? framePlanCurrent_.desiredBaseRankByLogicalRank[logicalRank]
                         : static_cast<int16_t>(-1);
                 }
             }
@@ -14463,18 +14782,52 @@ bool TrackSystem::RunInitialMaintenanceStage()
     const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
     bool lowFreeValid = false;
     const size_t lowFreeBytes = GetLowWorkRamFreeBytesSafe(&lowFreeValid);
+    const size_t initialHighPressureThreshold =
+        kEnableTrackLeakIsolationFixed64Pipeline
+            ? kWorkRamHardFloorBytes
+            : (kWorkRamHardFloorBytes + (16u * 1024u));
+    const size_t initialCriticalPressureThreshold =
+        kEnableTrackLeakIsolationFixed64Pipeline
+            ? kWorkRamCatastrophicFloorBytes
+            : (kWorkRamHardFloorBytes + (8u * 1024u));
     const bool highPressure =
-        freeValid && freeBytes <= (kWorkRamHardFloorBytes + (16u * 1024u));
+        freeValid && freeBytes <= initialHighPressureThreshold;
     const bool lowPressure =
         lowFreeValid && lowFreeBytes <= (kLowWorkRamHardFloorBytes + (48u * 1024u));
     const bool criticalPressure =
-        (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u))) ||
+        (freeValid && freeBytes <= initialCriticalPressureThreshold) ||
         (lowFreeValid && lowFreeBytes <= (kLowWorkRamHardFloorBytes + (24u * 1024u)));
     static uint8_t sInitialMaintenanceCooldown = 0u;
     const bool moderatePressure =
         highPressure ||
         lowPressure ||
         (memoryPressureLevelThisFrame_ != static_cast<uint8_t>(MemoryPressureLevel::Normal));
+
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        // Fixed64 leak-isolation mode favors frame pacing: run heavy
+        // maintenance periodically and react immediately only to true emergency.
+        if (!criticalPressure)
+        {
+            if (sInitialMaintenanceCooldown > 0u)
+            {
+                --sInitialMaintenanceCooldown;
+                sh2MasterMaintenanceTicksThisFrame_ = 0u;
+                return false;
+            }
+            sInitialMaintenanceCooldown = kLeakIsolationInitialMaintenanceCadenceFrames;
+        }
+        else
+        {
+            sInitialMaintenanceCooldown = 0u;
+        }
+
+        const uint16_t maintenanceTicksStart = Sh2FrtProfiler::Now();
+        RunWorkRamMaintenance(false);
+        sh2MasterMaintenanceTicksThisFrame_ =
+            Sh2FrtProfiler::Elapsed(maintenanceTicksStart, Sh2FrtProfiler::Now());
+        return true;
+    }
 
     if (!moderatePressure)
     {
@@ -14523,11 +14876,18 @@ bool TrackSystem::RunWindowStage(const Vector3D& carWorldPosition,
 
 void TrackSystem::RunTextureCompactionStage(bool windowSlid)
 {
+    const bool leakIsolationCompactionEnabled =
+        kEnableTrackLeakIsolationFixed64Pipeline && kEnableLeakIsolationTextureCompaction;
+    if (kEnableTrackLeakIsolationFixed64Pipeline && !leakIsolationCompactionEnabled)
+    {
+        (void)windowSlid;
+        return;
+    }
     if (!kEnableTrackRuntimeStabilization)
     {
         return;
     }
-    if (!kEnableRuntimeTextureCompaction)
+    if (!kEnableRuntimeTextureCompaction && !leakIsolationCompactionEnabled)
     {
         return;
     }
@@ -14587,6 +14947,14 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
         lwrValidNow &&
         lwrFreeNow32 <= static_cast<uint32_t>(kLowWorkRamHardFloorBytes + (32u * 1024u)) &&
         trackTexUsed >= 96u;
+    const bool compactByLeakIsolationBudget =
+        leakIsolationCompactionEnabled &&
+        textureHeapCompactCooldown_ == 0u &&
+        trackTextureHeapBaseValid_ &&
+        !slideBackBuffer_.ready &&
+        (trackTexUsed >= 48u ||
+         retiredSlots >= 12u ||
+         (lwrValidNow && lwrDrop >= static_cast<uint32_t>(16u * 1024u)));
 
     bool compactByPressure = false;
     if (!compactByIdleSlack &&
@@ -14641,6 +15009,7 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
         !compactByHardCap &&
         !compactByRetireBacklog &&
         !compactByLowWorkEmergency &&
+        !compactByLeakIsolationBudget &&
         !compactByPressure &&
         !compactByBaselineDrop &&
         !compactByStaleResidency)
@@ -14676,6 +15045,7 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
         textureHeapCompactCooldown_ =
             compactByHardCap ? 24u :
             compactByRetireBacklog ? 10u :
+            compactByLeakIsolationBudget ? 8u :
             compactByStaleResidency ? 12u : 20u;
     }
     const size_t heapUsedAfter = SRL::VDP1::GetUsedMemory();
@@ -14695,7 +15065,8 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
             (compactByBaselineDrop ? 8u : 0u) |
             (compactByHardCap ? 16u : 0u) |
             (compactByLowWorkEmergency ? 32u : 0u) |
-            (compactByRetireBacklog ? 64u : 0u);
+            (compactByRetireBacklog ? 64u : 0u) |
+            (compactByLeakIsolationBudget ? 128u : 0u);
         SRL::Debug::Print(1, 17, "TRK tex compact tb:%u ta:%u hp:%u>%u rs:%u sl:%u rt:%u ld:%u",
                           static_cast<unsigned>(texBefore),
                           static_cast<unsigned>(SRL::VDP1::GetTextureCount()),
@@ -14728,6 +15099,12 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
 
 void TrackSystem::RunPrefetchStage(bool windowSlid)
 {
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        (void)windowSlid;
+        sh2MasterPrefetchTicksThisFrame_ = 0u;
+        return;
+    }
     const uint16_t prefetchTicksStart = Sh2FrtProfiler::Now();
     // Mantém pipeline alimentado mesmo com slide no frame anterior.
     // Isso reduz miss síncrono exatamente na borda de criação de segmento.
@@ -14779,9 +15156,9 @@ void TrackSystem::ResetFramePlan(TrackFramePlan& plan) const
     plan.flags = 0u;
     plan.plannerTicksSlave = 0u;
     plan.sortedCount = 0u;
-    plan.sortedSegmentIds.fill(static_cast<int16_t>(-1));
-    plan.desiredLodBySegment.fill(static_cast<uint8_t>(0xFF));
-    plan.desiredBaseRankBySegment.fill(static_cast<int16_t>(-1));
+    plan.sortedSegmentIds.fill(-1);
+    plan.desiredLodByLogicalRank.fill(static_cast<uint8_t>(0xFF));
+    plan.desiredBaseRankByLogicalRank.fill(static_cast<int16_t>(-1));
 }
 
 void TrackSystem::BuildFrameSnapshot(const Vector3D& trackOffset,
@@ -14793,7 +15170,7 @@ void TrackSystem::BuildFrameSnapshot(const Vector3D& trackOffset,
     outSnapshot.trackOffset = trackOffset;
     outSnapshot.cameraLocation = cameraLocation;
     outSnapshot.carWorldPosition = carWorldPosition;
-    outSnapshot.windowStartId = static_cast<int16_t>(activeWindowStartId_);
+    outSnapshot.windowStartId = activeWindowStartId_;
     outSnapshot.windowDirection = static_cast<int8_t>((windowDirection_ < 0) ? -1 : 1);
     outSnapshot.fixedVisibleSegmentCap = static_cast<uint8_t>(
         std::min<size_t>(fixedVisibleSegmentCap_, static_cast<size_t>(kTrackSegmentLimit)));
@@ -14859,29 +15236,21 @@ void TrackSystem::BuildAndApplyFramePlanStage(const Vector3D& trackOffset,
         }
     }
 
-    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    if (startId > 0)
+    const size_t planRankCount = std::min<size_t>(
+        segmentRenderers_.size(),
+        framePlanCurrent_.desiredLodByLogicalRank.size());
+    for (size_t logicalRank = 0; logicalRank < planRankCount; ++logicalRank)
     {
-        const int32_t dir = (windowDirection_ < 0) ? -1 : 1;
-        for (size_t logicalRank = 0; logicalRank < segmentRenderers_.size(); ++logicalRank)
-        {
-            const int32_t segmentId = WrapSegmentIdToRange(
-                startId + (dir > 0 ? static_cast<int32_t>(logicalRank)
-                                   : -static_cast<int32_t>(logicalRank)),
-                totalSegmentCount_);
-            if (segmentId <= 0 || segmentId > static_cast<int32_t>(kTrackSegmentLimit))
-            {
-                continue;
-            }
-
-            const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
-            framePlanCurrent_.desiredLodBySegment[static_cast<size_t>(segmentId)] = desiredLodIndex;
-            SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
-            framePlanCurrent_.desiredBaseRankBySegment[static_cast<size_t>(segmentId)] =
-                (entry && entry->lodState.hasPerFaceRankOffsets)
-                    ? static_cast<int16_t>(logicalRank)
-                    : static_cast<int16_t>(-1);
-        }
+        const size_t physicalIdx =
+            LogicalToPhysicalWindowIndex(logicalRank, segmentRenderers_.size());
+        if (physicalIdx >= segmentRenderers_.size()) continue;
+        SegmentRenderEntry& entry = segmentRenderers_[physicalIdx];
+        const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
+        framePlanCurrent_.desiredLodByLogicalRank[logicalRank] = desiredLodIndex;
+        framePlanCurrent_.desiredBaseRankByLogicalRank[logicalRank] =
+            entry.lodState.hasPerFaceRankOffsets
+                ? static_cast<int16_t>(logicalRank)
+                : static_cast<int16_t>(-1);
     }
 
     framePlanCurrent_.frameId = frameIdThisFrame_;
@@ -14909,24 +15278,22 @@ void TrackSystem::BuildAndApplyFramePlanStage(const Vector3D& trackOffset,
 
     if (framePlanCurrent_.valid)
     {
-        for (auto& entry : segmentRenderers_)
+        const size_t planApplyCount = std::min<size_t>(
+            segmentRenderers_.size(),
+            framePlanCurrent_.desiredLodByLogicalRank.size());
+        for (size_t logicalRank = 0; logicalRank < planApplyCount; ++logicalRank)
         {
-            const int32_t segmentId = entry.id;
-            if (segmentId > 0 && segmentId <= static_cast<int32_t>(kTrackSegmentLimit))
-            {
-                const size_t idx = static_cast<size_t>(segmentId);
-                const uint8_t desiredLodIndex = framePlanCurrent_.desiredLodBySegment[idx];
-                entry.lodState.desiredLodIndex = desiredLodIndex;
-                entry.lodState.desiredBaseRank =
-                    (desiredLodIndex <= 3u && entry.lodState.hasPerFaceRankOffsets)
-                        ? framePlanCurrent_.desiredBaseRankBySegment[idx]
-                        : static_cast<int16_t>(-1);
-            }
-            else
-            {
-                entry.lodState.desiredLodIndex = 0xFF;
-                entry.lodState.desiredBaseRank = -1;
-            }
+            const size_t physicalIdx =
+                LogicalToPhysicalWindowIndex(logicalRank, segmentRenderers_.size());
+            if (physicalIdx >= segmentRenderers_.size()) continue;
+            SegmentRenderEntry& entry = segmentRenderers_[physicalIdx];
+            const uint8_t desiredLodIndex =
+                framePlanCurrent_.desiredLodByLogicalRank[logicalRank];
+            entry.lodState.desiredLodIndex = desiredLodIndex;
+            entry.lodState.desiredBaseRank =
+                (desiredLodIndex <= 3u && entry.lodState.hasPerFaceRankOffsets)
+                    ? framePlanCurrent_.desiredBaseRankByLogicalRank[logicalRank]
+                    : static_cast<int16_t>(-1);
         }
     }
     else
@@ -15357,12 +15724,16 @@ void TrackSystem::EndFrame()
         phaseHwrEnd_ = static_cast<uint32_t>(hwr.FreeSize);
         phaseLwrEnd_ = static_cast<uint32_t>(lwr.FreeSize);
     }
-    releasedEndFrameSlotsThisFrame_ = static_cast<uint16_t>(
-        std::min<uint32_t>(
-            static_cast<uint32_t>(releasedEndFrameSlotsThisFrame_) +
-            static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots()),
-            static_cast<uint32_t>(std::numeric_limits<uint16_t>::max())));
-    ReacquireWorkRamEmergencyReserve();
+    {
+        LWR_PROBE_BEGIN();
+        releasedEndFrameSlotsThisFrame_ = static_cast<uint16_t>(
+            std::min<uint32_t>(
+                static_cast<uint32_t>(releasedEndFrameSlotsThisFrame_) +
+                static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots()),
+                static_cast<uint32_t>(std::numeric_limits<uint16_t>::max())));
+        ReacquireWorkRamEmergencyReserve();
+        LWR_PROBE_END(g_lwrStageAccum.flushRetiredSlots);
+    }
     if constexpr (kEnableLegacyTrackOverlayTelemetry)
     {
         SRL::Debug::Print(1, 19, "RT rdr:%u sdr:%u rm:%u lod:%u",
@@ -15441,32 +15812,41 @@ void TrackSystem::EndFrame()
     }
     // Slots aposentados no fim do frame precisam entrar imediatamente na fila
     // de reuso; esperar o proximo frame aumenta churn/alocacao nova no slide.
-    releasedEndFrameSlotsThisFrame_ = static_cast<uint16_t>(
-        std::min<uint32_t>(
-            static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
-            static_cast<uint32_t>(releasedEndFrameSlotsThisFrame_) +
-                static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
-    if (!kEnableTrackRuntimeStabilization || kEnableStabilizedEndFramePaletteRecycle)
     {
-        (void)ReleaseReusableTrackSlotPalettesEndFrame(usedTextureSlotsThisFrame_);
+        LWR_PROBE_BEGIN();
+        releasedEndFrameSlotsThisFrame_ = static_cast<uint16_t>(
+            std::min<uint32_t>(
+                static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+                static_cast<uint32_t>(releasedEndFrameSlotsThisFrame_) +
+                    static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
+        if (!kEnableTrackRuntimeStabilization || kEnableStabilizedEndFramePaletteRecycle)
+        {
+            (void)ReleaseReusableTrackSlotPalettesEndFrame(usedTextureSlotsThisFrame_);
+        }
+        LWR_PROBE_END(g_lwrStageAccum.flushRetiredSlots);
     }
     EmitFamilyWorkingSetTelemetry();
-    // Breakdown sampling is expensive (renderer retained-bytes walk + vector
-    // capacity accounting). Sample at cadence and reuse last snapshot.
+    // ValidateStabilizedWindowInvariants + breakdown sampling probed together.
     {
-        static uint8_t sBreakdownSampleCooldown = 0u;
-        const uint8_t sampleCadence = runtimeStatsLogsEnabled_ ? 3u : 8u;
-        if (sBreakdownSampleCooldown == 0u)
+        LWR_PROBE_BEGIN();
+        // Breakdown sampling is expensive (renderer retained-bytes walk + vector
+        // capacity accounting). Sample at cadence and reuse last snapshot.
         {
-            lowWorkBreakdownEnd_ = CaptureLowWorkBreakdown();
-            sBreakdownSampleCooldown = sampleCadence;
+            static uint8_t sBreakdownSampleCooldown = 0u;
+            const uint8_t sampleCadence = runtimeStatsLogsEnabled_ ? 3u : 8u;
+            if (sBreakdownSampleCooldown == 0u)
+            {
+                lowWorkBreakdownEnd_ = CaptureLowWorkBreakdown();
+                sBreakdownSampleCooldown = sampleCadence;
+            }
+            else
+            {
+                --sBreakdownSampleCooldown;
+            }
         }
-        else
-        {
-            --sBreakdownSampleCooldown;
-        }
+        ValidateStabilizedWindowInvariants();
+        LWR_PROBE_END(g_lwrStageAccum.validateWindow);
     }
-    ValidateStabilizedWindowInvariants();
     {
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
         phaseLwrEnd_ = static_cast<uint32_t>(lwr.FreeSize);
@@ -15478,22 +15858,54 @@ void TrackSystem::EndFrame()
     if (runtimeStatsLogsEnabled_ && runtimeSlidesThisFrame_ > 0u)
     {
         static uint8_t sLeakOldestProbeCooldown = 0u;
+        static bool sLeakBreakdownPrevValid = false;
+        static LowWorkCategoryBreakdown sLeakBreakdownPrev{};
         const auto hwr = SRL::Memory::HighWorkRam::GetReport();
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
         const uint32_t hwrFree = static_cast<uint32_t>(hwr.FreeSize);
         const uint32_t lwrFree = static_cast<uint32_t>(lwr.FreeSize);
         const uint32_t retainedHwr = static_cast<uint32_t>(EstimateWorkRamRetainedBytes());
         const uint32_t retainedLwr = static_cast<uint32_t>(EstimateLowWorkRamRetainedBytes());
+        const LowWorkCategoryBreakdown leakBreakdownNow = CaptureLowWorkBreakdown();
+        lowWorkBreakdownEnd_ = leakBreakdownNow;
+        const uint16_t reusableSlots = CountReusableTrackTextureSlots();
+        const uint16_t pendingRetiredSlots = static_cast<uint16_t>(std::min<size_t>(
+            g_trackPendingRetiredTextureSlots.size(),
+            static_cast<size_t>(std::numeric_limits<uint16_t>::max())));
         int32_t deltaHwrFree = 0;
         int32_t deltaLwrFree = 0;
         int32_t deltaRetainedHwr = 0;
         int32_t deltaRetainedLwr = 0;
+        int32_t deltaLeakRenderers = 0;
+        int32_t deltaLeakSlotState = 0;
+        int32_t deltaLeakWorkingSet = 0;
+        int32_t deltaLeakFamilyCache = 0;
+        int32_t deltaLeakTransient = 0;
+        int32_t deltaLeakMetadata = 0;
+        int32_t deltaLeakTotal = 0;
         if (leakProbePrevValid_)
         {
             deltaHwrFree = static_cast<int32_t>(hwrFree) - static_cast<int32_t>(leakProbePrevHwrFree_);
             deltaLwrFree = static_cast<int32_t>(lwrFree) - static_cast<int32_t>(leakProbePrevLwrFree_);
             deltaRetainedHwr = static_cast<int32_t>(retainedHwr) - static_cast<int32_t>(leakProbePrevRetainedHwr_);
             deltaRetainedLwr = static_cast<int32_t>(retainedLwr) - static_cast<int32_t>(leakProbePrevRetainedLwr_);
+        }
+        if (sLeakBreakdownPrevValid)
+        {
+            deltaLeakRenderers = static_cast<int32_t>(leakBreakdownNow.renderers) -
+                                 static_cast<int32_t>(sLeakBreakdownPrev.renderers);
+            deltaLeakSlotState = static_cast<int32_t>(leakBreakdownNow.slotState) -
+                                 static_cast<int32_t>(sLeakBreakdownPrev.slotState);
+            deltaLeakWorkingSet = static_cast<int32_t>(leakBreakdownNow.workingSet) -
+                                  static_cast<int32_t>(sLeakBreakdownPrev.workingSet);
+            deltaLeakFamilyCache = static_cast<int32_t>(leakBreakdownNow.familyCache) -
+                                   static_cast<int32_t>(sLeakBreakdownPrev.familyCache);
+            deltaLeakTransient = static_cast<int32_t>(leakBreakdownNow.transient) -
+                                 static_cast<int32_t>(sLeakBreakdownPrev.transient);
+            deltaLeakMetadata = static_cast<int32_t>(leakBreakdownNow.metadata) -
+                                static_cast<int32_t>(sLeakBreakdownPrev.metadata);
+            deltaLeakTotal = static_cast<int32_t>(leakBreakdownNow.total) -
+                             static_cast<int32_t>(sLeakBreakdownPrev.total);
         }
         leakProbeSlidesObserved_ = static_cast<uint32_t>(
             std::min<uint64_t>(static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
@@ -15510,6 +15922,25 @@ void TrackSystem::EndFrame()
                           static_cast<int>(deltaLwrFree),
                           static_cast<int>(deltaRetainedHwr),
                           static_cast<int>(deltaRetainedLwr));
+        SRL::Debug::Print(1, 16, "LEAK C r:%u s:%u w:%u f:%u",
+                          static_cast<unsigned>(leakBreakdownNow.renderers),
+                          static_cast<unsigned>(leakBreakdownNow.slotState),
+                          static_cast<unsigned>(leakBreakdownNow.workingSet),
+                          static_cast<unsigned>(leakBreakdownNow.familyCache));
+        SRL::Debug::Print(1, 17, "LEAK C2 t:%u m:%u q:%u/%u",
+                          static_cast<unsigned>(leakBreakdownNow.transient),
+                          static_cast<unsigned>(leakBreakdownNow.metadata),
+                          static_cast<unsigned>(reusableSlots),
+                          static_cast<unsigned>(pendingRetiredSlots));
+        SRL::Debug::Print(1, 18, "LEAK dC r:%d s:%d w:%d f:%d",
+                          static_cast<int>(deltaLeakRenderers),
+                          static_cast<int>(deltaLeakSlotState),
+                          static_cast<int>(deltaLeakWorkingSet),
+                          static_cast<int>(deltaLeakFamilyCache));
+        SRL::Debug::Print(1, 19, "LEAK d2 t:%d m:%d o:%d",
+                          static_cast<int>(deltaLeakTransient),
+                          static_cast<int>(deltaLeakMetadata),
+                          static_cast<int>(deltaLeakTotal));
         if (sLeakOldestProbeCooldown == 0u)
         {
             SRL::Memory::LiveBlockInfo txOldest[1]{};
@@ -15539,7 +15970,7 @@ void TrackSystem::EndFrame()
                 (prepCount > 0u || backendCount > 0u)
                     ? (static_cast<unsigned long>(wkOldest[0].Address) & 0x000FFFFFul)
                     : 0ul;
-            SRL::Debug::Print(1, 16, "LEAK P tx:%05lx %u/%u wk:%05lx %u/%u",
+            SRL::Debug::Print(1, 20, "LEAK P tx:%05lx %u/%u wk:%05lx %u/%u",
                               txOff,
                               (txCount > 0u) ? static_cast<unsigned>(txOldest[0].Size) : 0u,
                               (txCount > 0u) ? static_cast<unsigned>(txOldest[0].Age) : 0u,
@@ -15561,6 +15992,8 @@ void TrackSystem::EndFrame()
         leakProbePrevLwrFree_ = lwrFree;
         leakProbePrevRetainedHwr_ = retainedHwr;
         leakProbePrevRetainedLwr_ = retainedLwr;
+        sLeakBreakdownPrev = leakBreakdownNow;
+        sLeakBreakdownPrevValid = true;
     }
     constexpr bool kEnablePerFrameDebugPrints = false;
     if (!kEnablePerFrameDebugPrints) return;
