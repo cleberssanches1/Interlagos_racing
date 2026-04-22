@@ -136,7 +136,9 @@ private:
     // estao desligados em main.cxx.
     static constexpr bool kEnableLowWorkFreeOverlayRequireRuntimeStats = false;
     // Lower overhead while keeping memory visibility on-screen.
-    static constexpr uint16_t kLowWorkFreeOverlayCadenceFrames = 20u;
+    // Full allocator/tag overlay is expensive. Sample less often to keep frame
+    // pacing stable during long soak runs.
+    static constexpr uint16_t kLowWorkFreeOverlayCadenceFrames = 180u;
     static constexpr bool kEnableCameraRuntimeLogs = false;
     static constexpr bool kEnableAutoPathLogs = false;
     static constexpr bool kEnableSh2ToggleLogs = false;

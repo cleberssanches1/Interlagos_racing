@@ -1892,8 +1892,8 @@ static constexpr uint8_t kStabilizedFamilyMergeCooldownFrames = 2u;
 // In fixed64 leak-isolation runs, aggressive maintenance on every frame/slide
 // costs too much CPU and collapses FPS. Keep emergency reaction immediate, but
 // run regular maintenance at a lower cadence.
-static constexpr uint8_t kLeakIsolationInitialMaintenanceCadenceFrames = 6u;
-static constexpr uint8_t kLeakIsolationPostSlideMaintenanceCadenceFrames = 10u;
+static constexpr uint8_t kLeakIsolationInitialMaintenanceCadenceFrames = 18u;
+static constexpr uint8_t kLeakIsolationPostSlideMaintenanceCadenceFrames = 24u;
 
 static uint8_t ResolveFamilyMergeCooldownFrames(bool fullTrackFamilyCacheReady)
 {
@@ -10350,7 +10350,10 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
     const MemoryPressureLevel pressure = ClassifyMemoryPressure(freeBytes, freeValid);
     memoryPressureLevelThisFrame_ = std::max<uint8_t>(memoryPressureLevelThisFrame_,
                                                       static_cast<uint8_t>(pressure));
-    const bool softLowMemory = freeValid && freeBytes <= (kWorkRamHardFloorBytes + (48u * 1024u));
+    // Keep soft pressure conservative. In long sessions we often stabilize near
+    // ~50 KiB free HWR without real risk; treating that as "soft low" triggers
+    // unnecessary trims and hurts frame pacing.
+    const bool softLowMemory = freeValid && freeBytes <= (kWorkRamHardFloorBytes + (24u * 1024u));
     const bool criticalLowMemory = freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u));
     const bool catastrophicLowMemory = freeValid && freeBytes <= kWorkRamCatastrophicFloorBytes;
     const bool softLowLowWork = lowFreeValid && lowFreeBytes <= kLowWorkRamSoftFloorBytes;
@@ -11699,7 +11702,7 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
 {
     if (!kEnableTrackRuntimeStabilization) return;
     static uint8_t sInvariantCadence = 0u;
-    const uint8_t cadenceFrames = runtimeStatsLogsEnabled_ ? 8u : 24u;
+    const uint8_t cadenceFrames = runtimeStatsLogsEnabled_ ? 24u : 32u;
     if (sInvariantCadence > 0u)
     {
         --sInvariantCadence;
@@ -14838,7 +14841,14 @@ bool TrackSystem::RunInitialMaintenanceStage()
             return false;
         }
         // Under stable memory, run initial maintenance at a lower cadence.
-        sInitialMaintenanceCooldown = 5u;
+        const bool steadyHeadroomHighWork =
+            freeValid && freeBytes > (kWorkRamHardFloorBytes + (20u * 1024u));
+        const bool veryHealthyLowWork =
+            lowFreeValid && lowFreeBytes > (kLowWorkRamSoftFloorBytes + (128u * 1024u));
+        sInitialMaintenanceCooldown =
+            (steadyHeadroomHighWork && veryHealthyLowWork) ? 40u :
+            steadyHeadroomHighWork ? 24u :
+            12u;
     }
     else if (!criticalPressure)
     {
@@ -15472,6 +15482,15 @@ void TrackSystem::RenderFrame(bool renderTrack,
         memoryPressureLevelThisFrame_ == static_cast<uint8_t>(MemoryPressureLevel::Normal) &&
         !pendingLodWorkExists_)
     {
+        // In long stable runs, planning every frame (or every other frame) adds
+        // avoidable CPU cost. Keep responsiveness by running periodically, with
+        // a slightly lower cadence when prefetch is already resident.
+        const bool prefetchResident =
+            slidePrefetchSegmentId_ > 0 &&
+            !slidePrefetchFamilyIds_.empty();
+        // Planner is one of the dominant steady-state costs in long sessions.
+        // Run it less frequently when window/preload are stable.
+        const uint8_t steadyPlanSkipFrames = prefetchResident ? 8u : 4u;
         if (sFramePlanDecimator > 0u)
         {
             --sFramePlanDecimator;
@@ -15479,8 +15498,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
         }
         else
         {
-            // Run planner every other steady frame.
-            sFramePlanDecimator = 1u;
+            sFramePlanDecimator = steadyPlanSkipFrames;
         }
     }
     else
@@ -15857,17 +15875,34 @@ void TrackSystem::EndFrame()
     }
     if (runtimeStatsLogsEnabled_ && runtimeSlidesThisFrame_ > 0u)
     {
+        static uint8_t sLeakHeavySampleCooldown = 0u;
         static uint8_t sLeakOldestProbeCooldown = 0u;
         static bool sLeakBreakdownPrevValid = false;
         static LowWorkCategoryBreakdown sLeakBreakdownPrev{};
+        const bool runHeavyLeakSampling = (sLeakHeavySampleCooldown == 0u);
+        if (sLeakHeavySampleCooldown == 0u)
+        {
+            sLeakHeavySampleCooldown = 60u;
+        }
+        else
+        {
+            --sLeakHeavySampleCooldown;
+        }
+
         const auto hwr = SRL::Memory::HighWorkRam::GetReport();
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
         const uint32_t hwrFree = static_cast<uint32_t>(hwr.FreeSize);
         const uint32_t lwrFree = static_cast<uint32_t>(lwr.FreeSize);
-        const uint32_t retainedHwr = static_cast<uint32_t>(EstimateWorkRamRetainedBytes());
-        const uint32_t retainedLwr = static_cast<uint32_t>(EstimateLowWorkRamRetainedBytes());
-        const LowWorkCategoryBreakdown leakBreakdownNow = CaptureLowWorkBreakdown();
-        lowWorkBreakdownEnd_ = leakBreakdownNow;
+        uint32_t retainedHwr = leakProbePrevRetainedHwr_;
+        uint32_t retainedLwr = leakProbePrevRetainedLwr_;
+        LowWorkCategoryBreakdown leakBreakdownNow = lowWorkBreakdownEnd_;
+        if (runHeavyLeakSampling)
+        {
+            retainedHwr = static_cast<uint32_t>(EstimateWorkRamRetainedBytes());
+            retainedLwr = static_cast<uint32_t>(EstimateLowWorkRamRetainedBytes());
+            leakBreakdownNow = CaptureLowWorkBreakdown();
+            lowWorkBreakdownEnd_ = leakBreakdownNow;
+        }
         const uint16_t reusableSlots = CountReusableTrackTextureSlots();
         const uint16_t pendingRetiredSlots = static_cast<uint16_t>(std::min<size_t>(
             g_trackPendingRetiredTextureSlots.size(),
@@ -15911,81 +15946,84 @@ void TrackSystem::EndFrame()
             std::min<uint64_t>(static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
                                static_cast<uint64_t>(leakProbeSlidesObserved_) +
                                    static_cast<uint64_t>(runtimeSlidesThisFrame_)));
-        SRL::Debug::Print(1, 14, "LEAK sl:%u id:%d hs:%u hf:%u lf:%u",
-                          static_cast<unsigned>(leakProbeSlidesObserved_),
-                          static_cast<int>(slideHwrTraceSegmentId_),
-                          static_cast<unsigned>(runtimeSlidesThisFrame_),
-                          static_cast<unsigned>(hwrFree),
-                          static_cast<unsigned>(lwrFree));
-        SRL::Debug::Print(1, 15, "LEAK dF h:%d l:%d dR h:%d l:%d",
-                          static_cast<int>(deltaHwrFree),
-                          static_cast<int>(deltaLwrFree),
-                          static_cast<int>(deltaRetainedHwr),
-                          static_cast<int>(deltaRetainedLwr));
-        SRL::Debug::Print(1, 16, "LEAK C r:%u s:%u w:%u f:%u",
-                          static_cast<unsigned>(leakBreakdownNow.renderers),
-                          static_cast<unsigned>(leakBreakdownNow.slotState),
-                          static_cast<unsigned>(leakBreakdownNow.workingSet),
-                          static_cast<unsigned>(leakBreakdownNow.familyCache));
-        SRL::Debug::Print(1, 17, "LEAK C2 t:%u m:%u q:%u/%u",
-                          static_cast<unsigned>(leakBreakdownNow.transient),
-                          static_cast<unsigned>(leakBreakdownNow.metadata),
-                          static_cast<unsigned>(reusableSlots),
-                          static_cast<unsigned>(pendingRetiredSlots));
-        SRL::Debug::Print(1, 18, "LEAK dC r:%d s:%d w:%d f:%d",
-                          static_cast<int>(deltaLeakRenderers),
-                          static_cast<int>(deltaLeakSlotState),
-                          static_cast<int>(deltaLeakWorkingSet),
-                          static_cast<int>(deltaLeakFamilyCache));
-        SRL::Debug::Print(1, 19, "LEAK d2 t:%d m:%d o:%d",
-                          static_cast<int>(deltaLeakTransient),
-                          static_cast<int>(deltaLeakMetadata),
-                          static_cast<int>(deltaLeakTotal));
-        if (sLeakOldestProbeCooldown == 0u)
+        if (runHeavyLeakSampling)
         {
-            SRL::Memory::LiveBlockInfo txOldest[1]{};
-            SRL::Memory::LiveBlockInfo wkOldest[1]{};
-            const size_t txCount = SRL::Memory::LowWorkRam::GetOldestLiveBlocksByTag(
-                SRL::Memory::DebugTag::TrackTexture,
-                txOldest,
-                1u);
-            const size_t prepCount = SRL::Memory::LowWorkRam::GetOldestLiveBlocksByTag(
-                SRL::Memory::DebugTag::TrackPrepare,
-                wkOldest,
-                1u);
-            SRL::Memory::LiveBlockInfo backendOldest[1]{};
-            const size_t backendCount = SRL::Memory::LowWorkRam::GetOldestLiveBlocksByTag(
-                SRL::Memory::DebugTag::TrackBackend,
-                backendOldest,
-                1u);
-            if (backendCount > 0u && (prepCount == 0u || backendOldest[0].Age > wkOldest[0].Age))
+            SRL::Debug::Print(1, 14, "LEAK sl:%u id:%d hs:%u hf:%u lf:%u",
+                              static_cast<unsigned>(leakProbeSlidesObserved_),
+                              static_cast<int>(slideHwrTraceSegmentId_),
+                              static_cast<unsigned>(runtimeSlidesThisFrame_),
+                              static_cast<unsigned>(hwrFree),
+                              static_cast<unsigned>(lwrFree));
+            SRL::Debug::Print(1, 15, "LEAK dF h:%d l:%d dR h:%d l:%d",
+                              static_cast<int>(deltaHwrFree),
+                              static_cast<int>(deltaLwrFree),
+                              static_cast<int>(deltaRetainedHwr),
+                              static_cast<int>(deltaRetainedLwr));
+            SRL::Debug::Print(1, 16, "LEAK C r:%u s:%u w:%u f:%u",
+                              static_cast<unsigned>(leakBreakdownNow.renderers),
+                              static_cast<unsigned>(leakBreakdownNow.slotState),
+                              static_cast<unsigned>(leakBreakdownNow.workingSet),
+                              static_cast<unsigned>(leakBreakdownNow.familyCache));
+            SRL::Debug::Print(1, 17, "LEAK C2 t:%u m:%u q:%u/%u",
+                              static_cast<unsigned>(leakBreakdownNow.transient),
+                              static_cast<unsigned>(leakBreakdownNow.metadata),
+                              static_cast<unsigned>(reusableSlots),
+                              static_cast<unsigned>(pendingRetiredSlots));
+            SRL::Debug::Print(1, 18, "LEAK dC r:%d s:%d w:%d f:%d",
+                              static_cast<int>(deltaLeakRenderers),
+                              static_cast<int>(deltaLeakSlotState),
+                              static_cast<int>(deltaLeakWorkingSet),
+                              static_cast<int>(deltaLeakFamilyCache));
+            SRL::Debug::Print(1, 19, "LEAK d2 t:%d m:%d o:%d",
+                              static_cast<int>(deltaLeakTransient),
+                              static_cast<int>(deltaLeakMetadata),
+                              static_cast<int>(deltaLeakTotal));
+            if (sLeakOldestProbeCooldown == 0u)
             {
-                wkOldest[0] = backendOldest[0];
+                SRL::Memory::LiveBlockInfo txOldest[1]{};
+                SRL::Memory::LiveBlockInfo wkOldest[1]{};
+                const size_t txCount = SRL::Memory::LowWorkRam::GetOldestLiveBlocksByTag(
+                    SRL::Memory::DebugTag::TrackTexture,
+                    txOldest,
+                    1u);
+                const size_t prepCount = SRL::Memory::LowWorkRam::GetOldestLiveBlocksByTag(
+                    SRL::Memory::DebugTag::TrackPrepare,
+                    wkOldest,
+                    1u);
+                SRL::Memory::LiveBlockInfo backendOldest[1]{};
+                const size_t backendCount = SRL::Memory::LowWorkRam::GetOldestLiveBlocksByTag(
+                    SRL::Memory::DebugTag::TrackBackend,
+                    backendOldest,
+                    1u);
+                if (backendCount > 0u && (prepCount == 0u || backendOldest[0].Age > wkOldest[0].Age))
+                {
+                    wkOldest[0] = backendOldest[0];
+                }
+                const unsigned long txOff =
+                    (txCount > 0u)
+                        ? (static_cast<unsigned long>(txOldest[0].Address) & 0x000FFFFFul)
+                        : 0ul;
+                const unsigned long wkOff =
+                    (prepCount > 0u || backendCount > 0u)
+                        ? (static_cast<unsigned long>(wkOldest[0].Address) & 0x000FFFFFul)
+                        : 0ul;
+                SRL::Debug::Print(1, 20, "LEAK P tx:%05lx %u/%u wk:%05lx %u/%u",
+                                  txOff,
+                                  (txCount > 0u) ? static_cast<unsigned>(txOldest[0].Size) : 0u,
+                                  (txCount > 0u) ? static_cast<unsigned>(txOldest[0].Age) : 0u,
+                                  wkOff,
+                                  (prepCount > 0u || backendCount > 0u)
+                                      ? static_cast<unsigned>(wkOldest[0].Size)
+                                      : 0u,
+                                  (prepCount > 0u || backendCount > 0u)
+                                      ? static_cast<unsigned>(wkOldest[0].Age)
+                                      : 0u);
+                sLeakOldestProbeCooldown = 15u;
             }
-            const unsigned long txOff =
-                (txCount > 0u)
-                    ? (static_cast<unsigned long>(txOldest[0].Address) & 0x000FFFFFul)
-                    : 0ul;
-            const unsigned long wkOff =
-                (prepCount > 0u || backendCount > 0u)
-                    ? (static_cast<unsigned long>(wkOldest[0].Address) & 0x000FFFFFul)
-                    : 0ul;
-            SRL::Debug::Print(1, 20, "LEAK P tx:%05lx %u/%u wk:%05lx %u/%u",
-                              txOff,
-                              (txCount > 0u) ? static_cast<unsigned>(txOldest[0].Size) : 0u,
-                              (txCount > 0u) ? static_cast<unsigned>(txOldest[0].Age) : 0u,
-                              wkOff,
-                              (prepCount > 0u || backendCount > 0u)
-                                  ? static_cast<unsigned>(wkOldest[0].Size)
-                                  : 0u,
-                              (prepCount > 0u || backendCount > 0u)
-                                  ? static_cast<unsigned>(wkOldest[0].Age)
-                                  : 0u);
-            sLeakOldestProbeCooldown = 5u;
-        }
-        else
-        {
-            --sLeakOldestProbeCooldown;
+            else
+            {
+                --sLeakOldestProbeCooldown;
+            }
         }
         leakProbePrevValid_ = true;
         leakProbePrevHwrFree_ = hwrFree;
