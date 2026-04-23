@@ -1892,8 +1892,8 @@ static constexpr uint8_t kStabilizedFamilyMergeCooldownFrames = 2u;
 // In fixed64 leak-isolation runs, aggressive maintenance on every frame/slide
 // costs too much CPU and collapses FPS. Keep emergency reaction immediate, but
 // run regular maintenance at a lower cadence.
-static constexpr uint8_t kLeakIsolationInitialMaintenanceCadenceFrames = 18u;
-static constexpr uint8_t kLeakIsolationPostSlideMaintenanceCadenceFrames = 24u;
+static constexpr uint8_t kLeakIsolationInitialMaintenanceCadenceFrames = 90u;
+static constexpr uint8_t kLeakIsolationPostSlideMaintenanceCadenceFrames = 90u;
 
 static uint8_t ResolveFamilyMergeCooldownFrames(bool fullTrackFamilyCacheReady)
 {
@@ -2298,6 +2298,46 @@ struct DecodedTgaTexture
     TrackLowWorkVector<SRL::Types::HighColor> palette{};
     TrackLowWorkVector<uint8_t> pixels{};
 };
+
+// Keep decode scratch bounded. The decoder uses a static scratch object so one
+// oversized texture can otherwise keep TrackTexture-tagged LWR capacity high
+// for the whole race session.
+static void NormalizeDecodedTextureScratch(DecodedTgaTexture& decoded)
+{
+    decoded.width = 0;
+    decoded.height = 0;
+    decoded.mode = SRL::CRAM::TextureColorMode::RGB555;
+    decoded.palette.clear();
+    decoded.pixels.clear();
+
+    constexpr size_t kPaletteFloorEntries = 256u;
+    constexpr size_t kPixelFloorBytes = 16u * 1024u;
+    constexpr size_t kPaletteCompactThresholdEntries = kPaletteFloorEntries * 4u;
+    constexpr size_t kPixelCompactThresholdBytes = kPixelFloorBytes * 4u;
+
+    const size_t lwrFreeHint =
+        static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+    const bool lowWorkPressure =
+        lwrFreeHint <= (kLowWorkRamHardFloorBytes + (16u * 1024u));
+
+    if (lowWorkPressure || decoded.palette.capacity() > kPaletteCompactThresholdEntries)
+    {
+        (void)CompactEmptyVectorForTarget(decoded.palette, kPaletteFloorEntries, lwrFreeHint);
+    }
+    else
+    {
+        EnsureVectorCapacityFloor(decoded.palette, kPaletteFloorEntries);
+    }
+
+    if (lowWorkPressure || VectorCapacityBytesSafe(decoded.pixels) > kPixelCompactThresholdBytes)
+    {
+        (void)CompactEmptyVectorForTarget(decoded.pixels, kPixelFloorBytes, lwrFreeHint);
+    }
+    else
+    {
+        EnsureVectorCapacityFloor(decoded.pixels, kPixelFloorBytes);
+    }
+}
 
 // Compact paletted TGA data down to the indices that are actually used.
 template <typename PaletteVecT, typename OutPaletteVecT, typename OutIndexVecT>
@@ -6098,6 +6138,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
             DecodePalettedTgaMemory(bankBytes + bankEntry->offset, bankEntry->size, decoded);
         if (!decodedOk)
         {
+            NormalizeDecodedTextureScratch(decoded);
             SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
             SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
             if (outSawDecodeFail) *outSawDecodeFail = true;
@@ -6105,6 +6146,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         }
 
         const int32_t slot = UploadDecodedTextureToVdp1(decoded);
+        NormalizeDecodedTextureScratch(decoded);
         SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
         SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
         if (slot < 0)
@@ -6274,14 +6316,17 @@ bool TrackSystem::BuildTrackFamilyLodSlots(FamilySlotVector& outSlots)
         if (!seg.renderer) continue;
         if (!seg.lodState.ready) continue;
         SegmentRenderEntry& mutableSeg = const_cast<SegmentRenderEntry&>(seg);
-        if (mutableSeg.lodState.workingSetCacheDirty)
+        const bool strictLeakIsolationFamilies = kEnableTrackLeakIsolationFixed64Pipeline;
+        if (!strictLeakIsolationFamilies && mutableSeg.lodState.workingSetCacheDirty)
         {
             (void)RebuildEntryWorkingSetCache(mutableSeg);
         }
 
-        const auto& familySource = !mutableSeg.lodState.workingSetFamilies.empty()
-            ? mutableSeg.lodState.workingSetFamilies
-            : mutableSeg.lodState.faceFamilyIds;
+        const auto& familySource = strictLeakIsolationFamilies
+            ? mutableSeg.lodState.faceFamilyIds
+            : (!mutableSeg.lodState.workingSetFamilies.empty()
+                ? mutableSeg.lodState.workingSetFamilies
+                : mutableSeg.lodState.faceFamilyIds);
         for (size_t fi = 0; fi < familySource.size(); ++fi)
         {
             const uint16_t fam = familySource[fi];
@@ -11440,7 +11485,8 @@ void TrackSystem::MergeCurrentWindowFamilies()
             if (!entry.renderer) continue;
             if (!entry.lodState.ready) continue;
 
-            if (entry.lodState.workingSetCacheDirty)
+            const bool useWorkingSetCache = !kEnableTrackLeakIsolationFixed64Pipeline;
+            if (useWorkingSetCache && entry.lodState.workingSetCacheDirty)
             {
                 (void)RebuildEntryWorkingSetCache(entry);
             }
@@ -11478,7 +11524,7 @@ void TrackSystem::MergeCurrentWindowFamilies()
                 target->unusedFrames[resolvedLodIndex] = 0u;
             };
 
-            if (!entry.lodState.workingSetFamilies.empty())
+            if (useWorkingSetCache && !entry.lodState.workingSetFamilies.empty())
             {
                 for (size_t fi = 0; fi < entry.lodState.workingSetFamilies.size(); ++fi)
                 {
@@ -11527,13 +11573,28 @@ void TrackSystem::MergeCurrentWindowFamilies()
         if (!old) continue;
         for (size_t li = 0; li < old->lodSlots.size(); ++li)
         {
-            if (!IsVdp1TextureSlotLive(old->lodSlots[li]) && IsVdp1TextureSlotLive(family.lodSlots[li]))
+            if (kEnableTrackLeakIsolationFixed64Pipeline)
             {
-                old->lodSlots[li] = family.lodSlots[li];
+                // Leak-isolation mode: never inherit retired/reusable slots.
+                const uint16_t oldSlot = old->lodSlots[li];
+                const uint16_t newSlot = family.lodSlots[li];
+                const bool oldOwned = IsVdp1TextureSlotActiveAndOwned(oldSlot);
+                const bool newOwned = IsVdp1TextureSlotActiveAndOwned(newSlot);
+                if (!newOwned && oldOwned)
+                {
+                    family.lodSlots[li] = oldSlot;
+                }
             }
-            if (IsVdp1TextureSlotLive(old->lodSlots[li]) && !IsVdp1TextureSlotLive(family.lodSlots[li]))
+            else
             {
-                family.lodSlots[li] = old->lodSlots[li];
+                if (!IsVdp1TextureSlotLive(old->lodSlots[li]) && IsVdp1TextureSlotLive(family.lodSlots[li]))
+                {
+                    old->lodSlots[li] = family.lodSlots[li];
+                }
+                if (IsVdp1TextureSlotLive(old->lodSlots[li]) && !IsVdp1TextureSlotLive(family.lodSlots[li]))
+                {
+                    family.lodSlots[li] = old->lodSlots[li];
+                }
             }
         }
     }
@@ -11613,6 +11674,24 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
         if (!entry.renderer) continue;
         if (!entry.lodState.ready) continue;
         if (entry.lodState.faceFamilyIds.empty()) continue;
+
+        const bool strictLeakIsolationRefs = kEnableTrackLeakIsolationFixed64Pipeline;
+        if (strictLeakIsolationRefs)
+        {
+            const uint8_t fallbackLodIndex =
+                (entry.lodState.currentLodIndex <= 3u) ? entry.lodState.currentLodIndex : 0u;
+            for (size_t fi = 0; fi < entry.lodState.faceFamilyIds.size(); ++fi)
+            {
+                const uint16_t fam = entry.lodState.faceFamilyIds[fi];
+                const int32_t slotHint =
+                    (fi < entry.lodState.currentFaceSlots.size())
+                        ? entry.lodState.currentFaceSlots[fi]
+                        : -1;
+                addRef(fam, slotHint, fallbackLodIndex);
+            }
+            continue;
+        }
+
         if (entry.lodState.workingSetCacheDirty)
         {
             (void)RebuildEntryWorkingSetCache(entry);
@@ -11637,7 +11716,9 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
 {
     if (seg1FamilySlots_.empty()) return;
     const bool strictWindowRecycling = kEnableTrackRuntimeStabilization;
-    const uint8_t graceFrames = strictWindowRecycling
+    const uint8_t graceFrames = kEnableTrackLeakIsolationFixed64Pipeline
+        ? 0u
+        : strictWindowRecycling
         ? 1u
         : (memoryPressureLevelThisFrame_ >= static_cast<uint8_t>(MemoryPressureLevel::Critical)) ? 0u :
           (memoryPressureLevelThisFrame_ >= static_cast<uint8_t>(MemoryPressureLevel::Pressure)) ? 1u :
@@ -11654,7 +11735,7 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
             // pinned forever here, which let far-band slots accumulate lap after
             // lap even after their source segments left the 20-segment window.
             const uint8_t lodGraceFrames = strictWindowRecycling
-                ? 1u
+                ? (kEnableTrackLeakIsolationFixed64Pipeline ? 0u : 1u)
                 : (kEnableTrackRuntimeStabilization &&
                    kEnableTrackLodBandsInStabilization &&
                    li == 0u)
@@ -11702,7 +11783,10 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
 {
     if (!kEnableTrackRuntimeStabilization) return;
     static uint8_t sInvariantCadence = 0u;
-    const uint8_t cadenceFrames = runtimeStatsLogsEnabled_ ? 24u : 32u;
+    const uint8_t cadenceFrames =
+        kEnableTrackLeakIsolationFixed64Pipeline
+            ? (runtimeStatsLogsEnabled_ ? 180u : 240u)
+            : (runtimeStatsLogsEnabled_ ? 24u : 32u);
     if (sInvariantCadence > 0u)
     {
         --sInvariantCadence;
@@ -14231,6 +14315,14 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
     {
         plannedHandles = &framePlanSortedHandles_;
     }
+    else if (kEnableTrackLeakIsolationFixed64Pipeline &&
+             runtimeSlidesThisFrame_ == 0u &&
+             !framePlanSortedHandles_.empty())
+    {
+        // Leak-isolation fixed64 mode: when the window didn't slide, reusing the
+        // last sorted plan avoids re-sorting every frame and keeps pacing stable.
+        plannedHandles = &framePlanSortedHandles_;
+    }
     const auto& orderedHandles = plannedHandles
         ? *plannedHandles
         : BuildStabilizedSortedHandles(trackOffset, cameraLocation);
@@ -15490,7 +15582,10 @@ void TrackSystem::RenderFrame(bool renderTrack,
             !slidePrefetchFamilyIds_.empty();
         // Planner is one of the dominant steady-state costs in long sessions.
         // Run it less frequently when window/preload are stable.
-        const uint8_t steadyPlanSkipFrames = prefetchResident ? 8u : 4u;
+        const uint8_t steadyPlanSkipFrames =
+            kEnableTrackLeakIsolationFixed64Pipeline
+                ? (prefetchResident ? 20u : 12u)
+                : (prefetchResident ? 8u : 4u);
         if (sFramePlanDecimator > 0u)
         {
             --sFramePlanDecimator;
@@ -15882,7 +15977,8 @@ void TrackSystem::EndFrame()
         const bool runHeavyLeakSampling = (sLeakHeavySampleCooldown == 0u);
         if (sLeakHeavySampleCooldown == 0u)
         {
-            sLeakHeavySampleCooldown = 60u;
+            sLeakHeavySampleCooldown =
+                kEnableTrackLeakIsolationFixed64Pipeline ? 180u : 60u;
         }
         else
         {

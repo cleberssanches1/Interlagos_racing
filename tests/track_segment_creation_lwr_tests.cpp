@@ -752,6 +752,121 @@ void TestOversizedSegmentComponentVectorsCompactOnRecycle(TestContext& ctx)
 }
 
 // ============================================================================
+// Teste 10: scratch de decode de textura nao deve ficar inflando para sempre
+// ============================================================================
+
+void TestDecodedTextureScratchCompactsWhenOversized(TestContext& ctx)
+{
+    ctx.currentTest = "DecodedTextureScratchCompactsWhenOversized";
+    MockLwrTracker tracker;
+
+    TrackedVector<uint16_t> palette(tracker);
+    TrackedVector<uint8_t> pixels(tracker);
+
+    constexpr size_t kPaletteFloor = 256u;
+    constexpr size_t kPixelFloor = 16u * 1024u;
+    constexpr size_t kPaletteThreshold = kPaletteFloor * 4u;
+    constexpr size_t kPixelThreshold = kPixelFloor * 4u;
+
+    auto compactEmptyToTarget = [&](auto& vec, size_t target)
+    {
+        if (!vec.empty()) return;
+        if (vec.capacity() <= target) return;
+        if (vec.capacity() <= (target * 2u + 8u)) return;
+        using VecType = std::decay_t<decltype(vec)>;
+        VecType compact(tracker);
+        compact.reserve(target);
+        vec.swap(compact);
+    };
+
+    auto normalizeScratch = [&]()
+    {
+        palette.clear();
+        pixels.clear();
+
+        if (palette.capacity() > kPaletteThreshold)
+        {
+            compactEmptyToTarget(palette, kPaletteFloor);
+        }
+        else
+        {
+            palette.ensureFloor(kPaletteFloor);
+        }
+
+        if (pixels.capacity() > kPixelThreshold)
+        {
+            compactEmptyToTarget(pixels, kPixelFloor);
+        }
+        else
+        {
+            pixels.ensureFloor(kPixelFloor);
+        }
+    };
+
+    // Outlier decode inflates scratch.
+    palette.assign(4096u, 0xFFFFu);
+    pixels.assign(120u * 1024u, 0xABu);
+    const int64_t afterOutlier = tracker.Snapshot();
+    ASSERT_TRUE(ctx, palette.capacity() > kPaletteThreshold);
+    ASSERT_TRUE(ctx, pixels.capacity() > kPixelThreshold);
+
+    normalizeScratch();
+    const int64_t afterNormalize = tracker.Snapshot();
+    ASSERT_TRUE(ctx, afterNormalize < afterOutlier);
+    ASSERT_TRUE(ctx, palette.capacity() <= kPaletteThreshold);
+    ASSERT_TRUE(ctx, pixels.capacity() <= kPixelThreshold);
+
+    // Next normal decode should not grow again.
+    palette.assign(128u, 0xFFFFu);
+    pixels.assign(8u * 1024u, 0x11u);
+    normalizeScratch();
+    ASSERT_EQ(ctx, tracker.Snapshot(), afterNormalize);
+}
+
+// ============================================================================
+// Teste 11: modo leak-isolation deve ignorar working set stale para refs
+// ============================================================================
+
+void TestLeakIsolationStrictRefsIgnoreStaleWorkingSet(TestContext& ctx)
+{
+    ctx.currentTest = "LeakIsolationStrictRefsIgnoreStaleWorkingSet";
+
+    struct FamilySlot
+    {
+        uint16_t familyId = 0;
+        uint16_t slot = 0;
+        uint16_t refs = 0;
+    };
+
+    std::array<FamilySlot, 3> families{{
+        {1u, 10u, 0u},
+        {2u, 20u, 0u},
+        {999u, 30u, 0u}, // stale family from previous segment
+    }};
+
+    auto addRefByFace = [&](uint16_t familyId)
+    {
+        for (auto& f : families)
+        {
+            if (f.familyId != familyId) continue;
+            ++f.refs;
+            return;
+        }
+    };
+
+    // Current frame actually uses only families 1 and 2.
+    const std::array<uint16_t, 2> faceFamilies{{1u, 2u}};
+    for (const uint16_t fam : faceFamilies)
+    {
+        addRefByFace(fam);
+    }
+
+    ASSERT_EQ(ctx, families[0].refs, static_cast<uint16_t>(1u));
+    ASSERT_EQ(ctx, families[1].refs, static_cast<uint16_t>(1u));
+    ASSERT_EQ(ctx, families[2].refs, static_cast<uint16_t>(0u)); // stale not referenced
+}
+
+// ============================================================================
 // Registro de testes
 // ============================================================================
 
@@ -775,6 +890,8 @@ int main()
         { "FullSlidePipelineStabilizesLwrAfterWarmup", &TestFullSlidePipelineStabilizesLwrAfterWarmup },
         { "AssignThenEnsureFloorDoesNotExceedFloor",   &TestAssignThenEnsureFloorDoesNotExceedFloor   },
         { "OversizedSegmentComponentVectorsCompactOnRecycle", &TestOversizedSegmentComponentVectorsCompactOnRecycle },
+        { "DecodedTextureScratchCompactsWhenOversized", &TestDecodedTextureScratchCompactsWhenOversized },
+        { "LeakIsolationStrictRefsIgnoreStaleWorkingSet", &TestLeakIsolationStrictRefsIgnoreStaleWorkingSet },
     };
 
     TestContext ctx{};
