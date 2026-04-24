@@ -18,8 +18,14 @@ SGL_MAX_POLYGONS = 1700         # Values above this overflow WORK_AREA and corru
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 
-# Extra compile flags (LWR stage tracing for leak diagnosis)
+# Extra compile flags — two profiles:
+#   make                      → debug (default): LWR stage tracing enabled
+#   make BUILD_PROFILE=perf   → perf: tracing disabled, cleanest LWR baseline
+ifeq ($(BUILD_PROFILE),perf)
+SRL_CUSTOM_CCFLAGS =
+else
 SRL_CUSTOM_CCFLAGS = -DTRACK_LWR_STAGE_TRACE
+endif
 
 # Disk name
 CD_NAME = Interlagos_racing

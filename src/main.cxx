@@ -846,8 +846,11 @@ int GameApp::Run()
     static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 20;
-    trackConfig.minSegments = 20;
+    // In leak-isolation fixed-64 mode the runtime window is capped at 10 segments;
+    // mirror that here so the coordinator budget and adaptive limiter are consistent.
+    static constexpr bool kFixed64Mode = true; // mirrors kEnableTrackLeakIsolationFixed64Pipeline
+    trackConfig.initialSegments = kFixed64Mode ? 10u : 20u;
+    trackConfig.minSegments     = kFixed64Mode ? 10u : 20u;
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);

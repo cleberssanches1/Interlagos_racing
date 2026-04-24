@@ -388,6 +388,7 @@ private:
     void InvalidateEntryWorkingSetCache(SegmentRenderEntry& entry);
     bool RebuildEntryWorkingSetCache(SegmentRenderEntry& entry);
     void RebuildUsedTextureSlotFlagsFromWorkingRefs();
+    void RebuildUsedTextureSlotFlagsFromCurrentFaces();
     uint32_t GetStrictPendingLodPriority(size_t logicalRank) const;
     bool HasPendingStabilizedWindowLodChanges() const;
     void ResetPendingStabilizedLodRanks();
@@ -463,6 +464,8 @@ private:
     bool RunPostSlideMaintenanceStage(bool slidThisFrame);
     bool RunLegacyMaintenanceStage(bool windowSlid);
     void ResetFramePlan(TrackFramePlan& plan) const;
+    void ApplyFramePlanLodTargets(const TrackFramePlan& plan);
+    void PromoteLastValidFramePlanForCurrentFrame(bool markStale);
     void BuildFrameSnapshot(const SRL::Math::Types::Vector3D& trackOffset,
                             const SRL::Math::Types::Vector3D& cameraLocation,
                             const SRL::Math::Types::Vector3D& carWorldPosition,
@@ -581,10 +584,13 @@ private:
     uint16_t rendererFaceCapacityFloor_ = 0;
     CenterCatalogVector segmentCenterCatalog_{};
     // === FIXED SLOT POOL ===
-    // 21 slots pré-alocados em LWR: 20 ativos + 1 staging.
+    // Slots pré-alocados em LWR: N ativos + 1 staging.
+    // Em fixed64 mode: 10 ativos + 1 staging = 11 slots.
+    // Em produção (todos os LOD bands): 20 ativos + 1 staging = 21 slots.
     // Slides são realizados como permutação de ponteiros O(1), sem malloc/free.
-    static constexpr size_t kSlotPoolSize = 21;
-    uint8_t stagingSlotIdx_ = 20;
+    // NOTA: o pool ainda não está alocado — vide RebuildActiveSegmentWindow.
+    static constexpr size_t kSlotPoolSize = 11; // fixed64 mode: 10 active + 1 staging
+    uint8_t stagingSlotIdx_ = 10;              // = kSlotPoolSize - 1
     std::array<SegmentRenderEntry*, kSlotPoolSize> slotPool_{};
     // === FIM FIXED SLOT POOL ===
     // === SLIDE SCRATCH BUFFERS (persistent LWR — evita alloc/free por slide no caminho estabilizado) ===

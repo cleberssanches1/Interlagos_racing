@@ -243,12 +243,17 @@ static constexpr size_t kLodRecoveryFreeBytes = kWorkRamHardFloorBytes + (48u * 
 static constexpr bool kEnableTrackRuntimeStabilization = true;
 // Leak isolation mode:
 // - fixed 10-segment window
-// - force 64x64 LOD for every visible segment
 // - keep runtime sliding active (new segments keep entering/leaving the 10-slot window)
 // - disable prefetch/recovery/texture-compaction dynamics
-// Use this mode to isolate allocator/retention behavior without texture churn.
+// - by default uses a mixed profile to reduce fill/bandwidth cost:
+//   first ranks in 64x64, far ranks in 32x32
+// Use this mode to isolate allocator/retention behavior with controlled texture churn.
 static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
 static constexpr size_t kTrackLeakIsolationWindowSegments = 10u;
+static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
+static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
+static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
+static constexpr size_t kLeakIsolationNearLodCount = 2u;
 // Keep active window storage persistent and reuse slot renderers on rebuild.
 // This is a stepping stone before migrating to a full fixed ring N+staging pool.
 static constexpr bool kEnableTrackWindowFixedStorage = true;
@@ -261,9 +266,9 @@ static constexpr bool kEnableTrackLodBandsInStabilization = true;
 static constexpr bool kEnableDeterministicStabilizedSlide = true;
 static constexpr bool kEnableStabilizedDepthSortOnSlave = true;
 static constexpr bool kEnableStabilizedProducerOnSlave = true;
-// Lockstep mode: master waits for slave plan jobs in the same frame.
-// Target is 30 FPS, so this favors determinism over maximum overlap.
-static constexpr bool kEnableTrackSlaveBarrierLockstep = true;
+// Non-lockstep: master never blocks for slave planner/producer in the same frame.
+// Keeps overlap high and avoids long stalls when slave job latency spikes.
+static constexpr bool kEnableTrackSlaveBarrierLockstep = false;
 static constexpr bool kEnableSafeModeSingleRenderBackend = false;
 static constexpr bool kEnableTrackOverlayRows16To22 = false;
 static constexpr bool kEnableTrackPhaseRamTelemetry = false;
@@ -2401,6 +2406,20 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
     size_t off = 18 + static_cast<size_t>(idLen);
     if (colorMapType == 1 && imageType == 1)
     {
+        // Reuse decode scratch to avoid alloc/free churn in TrackTexture-tagged LWR.
+        static TrackLowWorkVector<SRL::Types::HighColor> sSrcPaletteScratch{};
+        static TrackLowWorkVector<SRL::Types::HighColor> sCompactPaletteScratch{};
+        static TrackLowWorkVector<uint8_t> sCompactIndicesScratch{};
+        if (sSrcPaletteScratch.capacity() < 256u) sSrcPaletteScratch.reserve(256u);
+        if (sCompactPaletteScratch.capacity() < 256u) sCompactPaletteScratch.reserve(256u);
+        if (sCompactIndicesScratch.capacity() < (16u * 1024u))
+        {
+            sCompactIndicesScratch.reserve(16u * 1024u);
+        }
+        sSrcPaletteScratch.clear();
+        sCompactPaletteScratch.clear();
+        sCompactIndicesScratch.clear();
+
         const uint16_t cmapFirst = ReadLe16(data + 3);
         const uint16_t cmapLen = ReadLe16(data + 5);
         const uint8_t cmapDepth = data[7];
@@ -2412,8 +2431,7 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
         const size_t cmapBytes = static_cast<size_t>(cmapLen) * static_cast<size_t>(cmapDepth / 8);
         if (off + cmapBytes > size) return false;
 
-        TrackLowWorkVector<SRL::Types::HighColor> srcPalette{};
-        srcPalette.resize(cmapLen);
+        sSrcPaletteScratch.resize(cmapLen);
         for (size_t i = 0; i < cmapLen; ++i)
         {
             const uint8_t* c = data + off + i * (cmapDepth / 8);
@@ -2437,7 +2455,7 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
             {
                 hc = SRL::Types::HighColor::FromARGB15(ReadLe16(c));
             }
-            srcPalette[i] = hc;
+            sSrcPaletteScratch[i] = hc;
         }
         off += cmapBytes;
 
@@ -2445,17 +2463,19 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
         if (off + srcPixels > size) return false;
         const uint8_t* src = data + off;
 
-        TrackLowWorkVector<SRL::Types::HighColor> compactPalette{};
-        TrackLowWorkVector<uint8_t> compactIndices{};
-        size_t usedPaletteCount = CompactUsedPalette(src, srcPixels, srcPalette, compactPalette, compactIndices);
+        size_t usedPaletteCount = CompactUsedPalette(src,
+                                                     srcPixels,
+                                                     sSrcPaletteScratch,
+                                                     sCompactPaletteScratch,
+                                                     sCompactIndicesScratch);
         if (usedPaletteCount == 0)
         {
-            compactPalette = srcPalette;
-            compactIndices.assign(src, src + srcPixels);
-            usedPaletteCount = compactPalette.size();
+            sCompactPaletteScratch = sSrcPaletteScratch;
+            sCompactIndicesScratch.assign(src, src + srcPixels);
+            usedPaletteCount = sCompactPaletteScratch.size();
         }
 
-        out.palette = compactPalette;
+        out.palette = sCompactPaletteScratch;
 
         if (usedPaletteCount <= 16)
         {
@@ -2463,27 +2483,29 @@ static bool DecodePalettedTgaMemory(const uint8_t* data, size_t size, DecodedTga
             out.pixels.resize((srcPixels + 1) / 2);
             for (size_t i = 0; i + 1 < srcPixels; i += 2)
             {
-                out.pixels[i / 2] = static_cast<uint8_t>(((compactIndices[i] & 0x0F) << 4) | (compactIndices[i + 1] & 0x0F));
+                out.pixels[i / 2] = static_cast<uint8_t>(((sCompactIndicesScratch[i] & 0x0F) << 4) |
+                                                         (sCompactIndicesScratch[i + 1] & 0x0F));
             }
             if ((srcPixels & 1u) != 0u)
             {
-                out.pixels[srcPixels / 2] = static_cast<uint8_t>((compactIndices[srcPixels - 1] & 0x0F) << 4);
+                out.pixels[srcPixels / 2] =
+                    static_cast<uint8_t>((sCompactIndicesScratch[srcPixels - 1] & 0x0F) << 4);
             }
         }
         else if (usedPaletteCount <= 64)
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted64;
-            out.pixels = compactIndices;
+            out.pixels = sCompactIndicesScratch;
         }
         else if (usedPaletteCount <= 128)
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted128;
-            out.pixels = compactIndices;
+            out.pixels = sCompactIndicesScratch;
         }
         else
         {
             out.mode = SRL::CRAM::TextureColorMode::Paletted256;
-            out.pixels = compactIndices;
+            out.pixels = sCompactIndicesScratch;
         }
         return true;
     }
@@ -6167,8 +6189,27 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
 {
     const int lodValues[4] = { 8, 16, 32, 64 };
     const bool useAllLodBanks = !kEnableTrackRuntimeStabilization || kEnableTrackLodBandsInStabilization;
-    const size_t loadBankCount = useAllLodBanks ? seg1Texbanks_.size() : 1u;
-    for (size_t li = 0; li < loadBankCount; ++li)
+    // In leak-isolation mode load only the banks needed by the active profile:
+    // - fixed64 legacy profile: only 64x64 (index 3)
+    // - mixed profile: 32x32 + 64x64 (indices 2..3)
+    // This avoids cart RAM usage for banks that are never rendered.
+    const size_t leakIsolationLoadBankStart =
+        kEnableLeakIsolationMixedLodProfile ? 2u : 3u;
+    const size_t loadBankStart = kEnableTrackLeakIsolationFixed64Pipeline
+        ? leakIsolationLoadBankStart
+        : 0u;
+    const size_t loadBankCount = kEnableTrackLeakIsolationFixed64Pipeline
+        ? 4u  // loadBankEnd = 4 (exclusive), active banks are [loadBankStart..3]
+        : (useAllLodBanks ? seg1Texbanks_.size() : 1u);
+    // Free/reset banks that fall before loadBankStart (indices 0–2 in fixed64 mode).
+    for (size_t li = 0; li < loadBankStart; ++li)
+    {
+        auto& bank = seg1Texbanks_[li];
+        if (bank.cartPtr) { SRL::Memory::CartRam::Free(bank.cartPtr); bank.cartPtr = nullptr; }
+        bank = {};
+        bank.lod = lodValues[li];
+    }
+    for (size_t li = loadBankStart; li < loadBankCount; ++li)
     {
         if (!LoadSeg1TexbankIndexToCart(li, lodValues[li]))
         {
@@ -6192,7 +6233,7 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
     std::array<uint8_t, 4096> seenFamilies{};
     for (size_t i = 0; i < seenFamilies.size(); ++i) seenFamilies[i] = 0u;
 
-    for (size_t li = 0; li < loadBankCount; ++li)
+    for (size_t li = loadBankStart; li < loadBankCount; ++li)
     {
         const auto& bank = seg1Texbanks_[li];
         for (size_t i = 0; i < bank.entries.size(); ++i)
@@ -6491,6 +6532,47 @@ void TrackSystem::RebuildUsedTextureSlotFlagsFromWorkingRefs()
             if (family.workingRefs[li] == 0u) continue;
             const uint16_t slot = family.lodSlots[li];
             if (!IsVdp1TextureSlotLive(slot)) continue;
+            usedTextureSlotsThisFrame_[slot] = 1u;
+        }
+    }
+}
+
+void TrackSystem::RebuildUsedTextureSlotFlagsFromCurrentFaces()
+{
+    usedTextureSlotsThisFrame_.fill(0u);
+    if (seg1FamilySlots_.empty()) return;
+    for (size_t ei = 0; ei < segmentRenderers_.size(); ++ei)
+    {
+        const auto& entry = segmentRenderers_[ei];
+        if (!entry.renderer) continue;
+        if (!entry.lodState.ready) continue;
+        if (entry.lodState.faceFamilyIds.empty()) continue;
+        if (kEnableTrackLeakIsolationFixed64Pipeline)
+        {
+            size_t logicalRank = 0u;
+            if (!TryGetWindowLogicalRank(entry.id, logicalRank)) continue;
+            (void)logicalRank;
+        }
+        for (size_t fi = 0; fi < entry.lodState.faceFamilyIds.size(); ++fi)
+        {
+            const uint16_t fam = entry.lodState.faceFamilyIds[fi];
+            if (fam == 0u) continue;
+            if (fi >= entry.lodState.currentFaceSlots.size()) continue;
+            const int32_t slotHint = entry.lodState.currentFaceSlots[fi];
+            if (slotHint < 0) continue;
+            if (slotHint >= static_cast<int32_t>(usedTextureSlotsThisFrame_.size())) continue;
+            const uint16_t slot = static_cast<uint16_t>(slotHint);
+            const Seg1FamilySlotEntry* family = FindFamilySlot(seg1FamilySlots_, fam);
+            if (!family) continue;
+            bool ownsSlot = false;
+            for (uint8_t li = 0u; li < 4u; ++li)
+            {
+                if (family->lodSlots[li] != slot) continue;
+                if (!IsVdp1TextureSlotActiveAndOwned(slot)) continue;
+                ownsSlot = true;
+                break;
+            }
+            if (!ownsSlot) continue;
             usedTextureSlotsThisFrame_[slot] = 1u;
         }
     }
@@ -6906,8 +6988,15 @@ uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
 {
     if (kEnableTrackLeakIsolationFixed64Pipeline)
     {
+        if (kEnableLeakIsolationMixedLodProfile)
+        {
+            const size_t nearCount = std::min<size_t>(
+                kLeakIsolationNearLodCount,
+                kTrackLeakIsolationWindowSegments);
+            return (rank < nearCount) ? kLeakIsolationNearLodIndex : kLeakIsolationFarLodIndex;
+        }
         (void)rank;
-        return 3u; // force 64x64 in leak-isolation pipeline
+        return 3u; // legacy fixed64 profile
     }
     if (kEnableTrackRuntimeStabilization && !kEnableTrackLodBandsInStabilization)
     {
@@ -8849,10 +8938,19 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
         ++runtimeLodSegmentUpdatesThisFrame_;
         InvalidateEntryWorkingSetCache(*entry);
     }
+    // === POST-SLIDE COST INSTRUMENTATION (Passo C do DUAL_SH2_OPTIMIZATION_PLAN) ===
+    // Medição de ticks SH2 para as fases mais pesadas do commit.
+    // Remover ou desabilitar quando o diagnóstico estiver concluído.
+    const uint16_t lodUpdateStart = Sh2FrtProfiler::Now();
     UpdateDesiredStabilizedWindowLodTargets();
+    const uint16_t lodUpdateTicks = Sh2FrtProfiler::Elapsed(lodUpdateStart, Sh2FrtProfiler::Now());
+
+    uint16_t mergeTicks = 0u;
     if (familyMergeCooldown_ == 0u)
     {
+        const uint16_t mergeStart = Sh2FrtProfiler::Now();
         MergeCurrentWindowFamilies();
+        mergeTicks = Sh2FrtProfiler::Elapsed(mergeStart, Sh2FrtProfiler::Now());
         familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(fullTrackFamilyCacheReady_);
     }
     else
@@ -8860,7 +8958,16 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
         --familyMergeCooldown_;
     }
     familyWorkingSetDirty_ = true;
+    const uint16_t handleStart = Sh2FrtProfiler::Now();
     BuildSegmentHandleTable();
+    const uint16_t handleTicks = Sh2FrtProfiler::Elapsed(handleStart, Sh2FrtProfiler::Now());
+
+    SRL::Debug::Print(1, 31, "SL tks lod:%u mrg:%u hdl:%u sid:%d",
+                      static_cast<unsigned>(lodUpdateTicks),
+                      static_cast<unsigned>(mergeTicks),
+                      static_cast<unsigned>(handleTicks),
+                      static_cast<int>(slideBackBuffer_.incomingSegmentId));
+    // === FIM INSTRUMENTAÇÃO ===
     ResetSlidePrefetchState();
     ResetSlideBackBuffer();
     ++runtimeSlidesThisFrame_;
@@ -9165,16 +9272,44 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     const size_t maxFaces = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFaceCount));
     const size_t maxVerts = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxVertexCount));
     const size_t maxFamilies = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFamilyCount));
-    const size_t familyFloor = std::max<size_t>(256u, maxFamilies + 16u);
+    SRL::Debug::Print(1, 31, "TRK prm mxF:%u mxV:%u mxFam:%u",
+                      static_cast<unsigned>(maxFaces),
+                      static_cast<unsigned>(maxVerts),
+                      static_cast<unsigned>(maxFamilies));
+    // In fixed64 test mode the pack contains only 64x64 geometry; the hard floor
+    // cap can be set lower than the full-production 768 ceiling.  Outlier segments
+    // that exceed this cap are handled by the RecycleRuntimeState compact (capacity >
+    // 2×floor triggers a swap-to-floor), so we trade a rare one-time compact for
+    // substantially lower steady-state LWR retention.
+    // Calibration: set kFixed64FaceCapFloor / kFixed64VertCapFloor to
+    //   maxFaces_printed_above * 1.2  (round up to nearest power of two).
+    static constexpr size_t kFixed64FaceCapFloor = 256u;
+    static constexpr size_t kFixed64VertCapFloor = 256u;
+    // Family catalog is much smaller for 64x64-only packs.
+    static constexpr size_t kFixed64FamilyFloorMin = 64u;
+    const size_t familyFloorMin = kEnableTrackLeakIsolationFixed64Pipeline
+        ? kFixed64FamilyFloorMin
+        : 256u;
+    const size_t familyFloor = std::max<size_t>(familyFloorMin, maxFamilies + 16u);
     familySlotCapacityFloor_ = static_cast<uint16_t>(std::min<size_t>(familyFloor, 0xFFFFu));
+    const size_t effectiveFaceCap = kEnableTrackLeakIsolationFixed64Pipeline
+        ? kFixed64FaceCapFloor
+        : kStabilizedFaceCapacityFloorCap;
+    const size_t effectiveVertCap = kEnableTrackLeakIsolationFixed64Pipeline
+        ? kFixed64VertCapFloor
+        : kStabilizedVertexCapacityFloorCap;
     const size_t faceReserveFloor =
         kEnableTrackRuntimeStabilization
-            ? std::min<size_t>(maxFaces, kStabilizedFaceCapacityFloorCap)
+            ? std::min<size_t>(maxFaces, effectiveFaceCap)
             : maxFaces;
     const size_t vertReserveFloor =
         kEnableTrackRuntimeStabilization
-            ? std::min<size_t>(maxVerts, kStabilizedVertexCapacityFloorCap)
+            ? std::min<size_t>(maxVerts, effectiveVertCap)
             : maxVerts;
+    SRL::Debug::Print(1, 31, "TRK prm fF:%u vF:%u famF:%u",
+                      static_cast<unsigned>(faceReserveFloor),
+                      static_cast<unsigned>(vertReserveFloor),
+                      static_cast<unsigned>(familyFloor));
     if (kEnableTrackRuntimeStabilization)
     {
         // Keep fixed floors in stabilized mode to avoid progressive growth and
@@ -11678,6 +11813,9 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
         const bool strictLeakIsolationRefs = kEnableTrackLeakIsolationFixed64Pipeline;
         if (strictLeakIsolationRefs)
         {
+            size_t logicalRank = 0u;
+            if (!TryGetWindowLogicalRank(entry.id, logicalRank)) continue;
+            (void)logicalRank;
             const uint8_t fallbackLodIndex =
                 (entry.lodState.currentLodIndex <= 3u) ? entry.lodState.currentLodIndex : 0u;
             for (size_t fi = 0; fi < entry.lodState.faceFamilyIds.size(); ++fi)
@@ -11756,7 +11894,11 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
             const bool referencedByFace =
                 (slot < usedTextureSlotsThisFrame_.size()) && (usedTextureSlotsThisFrame_[slot] != 0u);
             const bool referencedByFamily = family.workingRefs[li] != 0u;
-            if (referencedByFace || referencedByFamily)
+            const bool keepSlot =
+                strictWindowRecycling
+                    ? referencedByFace
+                    : (referencedByFace || referencedByFamily);
+            if (keepSlot)
             {
                 unusedFrames = 0u;
                 continue;
@@ -12290,16 +12432,16 @@ void TrackSystem::ConfigureCoordinatorAndBudget(const Config& config)
     }
     trackSlaveModeRequested_ = config.useSlave;
     ApplyTrackSlaveMode();
-    producer_.SetMaxFramesInFlight(2);
+    producer_.SetMaxFramesInFlight(3);
     producer_.SetRecoveryFrames(120);
-    producer_.SetSafeModeStallThreshold(4);
-    producer_.SetSafeModeCooldownFrames(90);
+    producer_.SetSafeModeStallThreshold(6);
+    producer_.SetSafeModeCooldownFrames(45);
     trackSlaveBarrierLockstep_ = kEnableTrackSlaveBarrierLockstep;
     producer_.SetBlockUntilDone(trackSlaveBarrierLockstep_);
-    stabilizedDepthSorter_.SetMaxFramesInFlight(1);
-    stabilizedDepthSorter_.SetRecoveryFrames(90);
-    stabilizedDepthSorter_.SetSafeModeStallThreshold(3);
-    stabilizedDepthSorter_.SetSafeModeCooldownFrames(60);
+    stabilizedDepthSorter_.SetMaxFramesInFlight(2);
+    stabilizedDepthSorter_.SetRecoveryFrames(120);
+    stabilizedDepthSorter_.SetSafeModeStallThreshold(5);
+    stabilizedDepthSorter_.SetSafeModeCooldownFrames(45);
     stabilizedDepthSorter_.SetBlockUntilDone(trackSlaveBarrierLockstep_);
     SRL::Debug::Print(1, 31, "TRK slv d:%u s:%u",
                       trackSlaveProducerRequested_ ? 1u : 0u,
@@ -15302,6 +15444,49 @@ void TrackSystem::BuildFrameSnapshot(const Vector3D& trackOffset,
     }
 }
 
+void TrackSystem::ApplyFramePlanLodTargets(const TrackFramePlan& plan)
+{
+    if (!plan.valid) return;
+
+    const size_t planApplyCount = std::min<size_t>(
+        segmentRenderers_.size(),
+        plan.desiredLodByLogicalRank.size());
+    for (size_t logicalRank = 0; logicalRank < planApplyCount; ++logicalRank)
+    {
+        const size_t physicalIdx =
+            LogicalToPhysicalWindowIndex(logicalRank, segmentRenderers_.size());
+        if (physicalIdx >= segmentRenderers_.size()) continue;
+        SegmentRenderEntry& entry = segmentRenderers_[physicalIdx];
+        const uint8_t desiredLodIndex = plan.desiredLodByLogicalRank[logicalRank];
+        entry.lodState.desiredLodIndex = desiredLodIndex;
+        entry.lodState.desiredBaseRank =
+            (desiredLodIndex <= 3u && entry.lodState.hasPerFaceRankOffsets)
+                ? plan.desiredBaseRankByLogicalRank[logicalRank]
+                : static_cast<int16_t>(-1);
+    }
+}
+
+void TrackSystem::PromoteLastValidFramePlanForCurrentFrame(bool markStale)
+{
+    if (!framePlanLastValid_.valid)
+    {
+        ResetFramePlan(framePlanCurrent_);
+        framePlanCurrent_.frameId = frameIdThisFrame_;
+        framePlanCurrent_.flags |= kTrackFramePlanFlagFallback;
+        framePlanSortedHandles_.clear();
+        return;
+    }
+
+    framePlanCurrent_ = framePlanLastValid_;
+    framePlanCurrent_.frameId = frameIdThisFrame_;
+    framePlanCurrent_.flags |= kTrackFramePlanFlagFallback;
+    if (markStale)
+    {
+        framePlanCurrent_.flags |= kTrackFramePlanFlagStale;
+    }
+    framePlanSortedHandles_ = framePlanLastValidSortedHandles_;
+}
+
 void TrackSystem::BuildAndApplyFramePlanStage(const Vector3D& trackOffset,
                                               const Vector3D& cameraLocation,
                                               const Vector3D& carWorldPosition)
@@ -15364,39 +15549,14 @@ void TrackSystem::BuildAndApplyFramePlanStage(const Vector3D& trackOffset,
         framePlanLastValid_ = framePlanCurrent_;
         framePlanLastValidSortedHandles_ = framePlanSortedHandles_;
     }
-    else if (framePlanLastValid_.valid)
-    {
-        framePlanCurrent_ = framePlanLastValid_;
-        framePlanCurrent_.frameId = frameIdThisFrame_;
-        framePlanCurrent_.flags |= (kTrackFramePlanFlagFallback | kTrackFramePlanFlagStale);
-        framePlanSortedHandles_ = framePlanLastValidSortedHandles_;
-    }
     else
     {
-        framePlanCurrent_.flags |= kTrackFramePlanFlagFallback;
-        framePlanCurrent_.valid = false;
-        framePlanSortedHandles_.clear();
+        PromoteLastValidFramePlanForCurrentFrame(true);
     }
 
     if (framePlanCurrent_.valid)
     {
-        const size_t planApplyCount = std::min<size_t>(
-            segmentRenderers_.size(),
-            framePlanCurrent_.desiredLodByLogicalRank.size());
-        for (size_t logicalRank = 0; logicalRank < planApplyCount; ++logicalRank)
-        {
-            const size_t physicalIdx =
-                LogicalToPhysicalWindowIndex(logicalRank, segmentRenderers_.size());
-            if (physicalIdx >= segmentRenderers_.size()) continue;
-            SegmentRenderEntry& entry = segmentRenderers_[physicalIdx];
-            const uint8_t desiredLodIndex =
-                framePlanCurrent_.desiredLodByLogicalRank[logicalRank];
-            entry.lodState.desiredLodIndex = desiredLodIndex;
-            entry.lodState.desiredBaseRank =
-                (desiredLodIndex <= 3u && entry.lodState.hasPerFaceRankOffsets)
-                    ? framePlanCurrent_.desiredBaseRankByLogicalRank[logicalRank]
-                    : static_cast<int16_t>(-1);
-        }
+        ApplyFramePlanLodTargets(framePlanCurrent_);
     }
     else
     {
@@ -15606,8 +15766,18 @@ void TrackSystem::RenderFrame(bool renderTrack,
     }
     else
     {
+        PromoteLastValidFramePlanForCurrentFrame(true);
+        if (framePlanCurrent_.valid)
+        {
+            ApplyFramePlanLodTargets(framePlanCurrent_);
+            sh2SlavePlanTicksThisFrame_ = framePlanCurrent_.plannerTicksSlave;
+        }
+        else
+        {
+            UpdateDesiredStabilizedWindowLodTargets();
+            sh2SlavePlanTicksThisFrame_ = 0u;
+        }
         sh2MasterPlanTicksThisFrame_ = 0u;
-        sh2SlavePlanTicksThisFrame_ = 0u;
     }
     if (TrackPipeline::TrackLodStage::RunRecovery(*this, slidThisFrame))
     {
@@ -15709,6 +15879,11 @@ void TrackSystem::RenderFrame(bool renderTrack,
 
 void TrackSystem::EndFrame()
 {
+    // Keep slot liveness tied to what the renderer actually references in the
+    // current frame. This avoids stale working-set references pinning old slots
+    // and causing long-run TrackTexture growth.
+    RebuildUsedTextureSlotFlagsFromCurrentFaces();
+
     coordinator_.PresentTelemetry();
     soakMonitor_.Update(ready_, coordinator_.Telemetry());
     soakMonitor_.Present();

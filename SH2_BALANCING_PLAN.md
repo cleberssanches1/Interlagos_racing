@@ -13,40 +13,51 @@ O codigo atual ja tem a abstracao para isso:
 - `TrackRenderCoordinator` mede budget e aplica a fila preparada
 - `TrackDrawProducerStats` expoe os sinais de saude da pipeline
 
-## Status atual (implementado)
+## Status atual (implementado em 2026-04-23)
 
-Foi aplicado um primeiro passo de lockstep para alvo de 30 FPS:
+Foi aplicada a estrategia de paralelismo sem bloqueio no frame critico:
 
-1. `SlaveTrackDepthSorter` e `SlaveTrackDrawProducer` agora suportam `SetBlockUntilDone(true)`.
-2. A Master pode aguardar conclusao do job da Slave no mesmo frame (com guarda de timeout).
-3. O modo lockstep e configurado no `TrackSystem::ConfigureCoordinatorAndBudget`.
-4. Overlay SH2 mostra `lk:1` quando lockstep esta ativo.
-5. `RenderFrame` agora executa `BuildAndApplyFramePlanStage(...)` antes de LOD/draw.
-6. O draw estabilizado consome `framePlanSortedHandles_` no mesmo frame (evita recomputar ordem).
-7. `RunPendingLodRecoveryStage` reaproveita `desiredLodBySegment` do plano quando valido.
-8. Overlay SH2 agora mostra ticks de planejamento: `SH2M ... pl:%u` e `SH2S ... pl:%u`.
+1. `kEnableTrackSlaveBarrierLockstep = false` no `TrackSystem`:
+   - a Master nao bloqueia para esperar job da Slave no mesmo frame.
+2. `SlaveTrackDrawProducer` tunado para corrida longa:
+   - `maxFramesInFlight = 3`
+   - `safeModeStallThreshold = 6`
+   - `safeModeCooldownFrames = 45`
+3. `SlaveTrackDepthSorter` tunado para corrida longa:
+   - `maxFramesInFlight = 2`
+   - `safeModeStallThreshold = 5`
+   - `safeModeCooldownFrames = 45`
+4. `BuildAndApplyFramePlanStage(...)` manteve aplicacao de plano por frame.
+5. Foi extraido `ApplyFramePlanLodTargets(...)` para aplicar os targets de LOD de forma centralizada.
+6. Foi adicionado `PromoteLastValidFramePlanForCurrentFrame(...)`:
+   - quando o planner e pulado por decimator, o sistema reaproveita o ultimo plano valido no frame atual.
+   - evita perder targets de LOD e evita fallback agressivo desnecessario.
+7. No caminho `runFramePlan == false`, o frame:
+   - reaplica plano valido (quando existe),
+   - so cai para `UpdateDesiredStabilizedWindowLodTargets()` quando realmente nao ha plano valido.
+8. Resultado esperado desta fase:
+   - menos stalls da Master por espera da Slave,
+   - menor jitter em longa duracao,
+   - menor custo de planejamento em frames decimados sem quebrar estabilidade da janela.
+9. Validacao host executada:
+   - `track_streaming_policy_tests`: 10/10 PASS
+   - `run_lwr_tests.exe`: 8/8 PASS
+10. Build Saturn completo nao validado neste ambiente local por ausencia do toolchain `sh2eb-elf-gcc`.
 
-Resultado esperado desta fase:
-
-- maior determinismo de ordem/planos por frame
-- menos reutilizacao de lista anterior por latencia assincrona
-- base pronta para mover planejamento puro (`FrameSnapshot/FramePlan`) para Slave
-
-Contrato de dados desta proxima etapa:
+Contrato de dados desta etapa continua em:
 
 - [SH2_FRAME_PLAN_CONTRACT.md](./SH2_FRAME_PLAN_CONTRACT.md)
-
-Hoje, na estabilizacao, o runtime desliga o uso do slave por politica. Este plano descreve como sair desse modo de forma incremental e mensuravel.
 
 ## Estado atual observado
 
 No estado atual do codigo:
 
-- `TrackSystem::ConfigureCoordinatorAndBudget()` forca `effectiveUseSlave = false` quando a estabilizacao esta ativa
-- o producer pode operar sincronamente
-- o caminho com slave assincrono existe, mas nao e o hot path estabilizado
+- estabilizacao usa Slave para producer e depth-sort quando `config.useSlave = true`
+- lockstep esta desativado por padrao (`lk:0` no overlay)
+- fallback sincronico continua habilitado (safe mode/timeout)
+- planejamento de frame agora pode ser reutilizado de forma controlada nos frames decimados
 
-Portanto, a meta nao e "inventar" suporte dual. A meta e reativar o que ja existe, com gates e metricas de saida claros.
+Portanto, a meta nao e mais "reativar o dual SH2", e sim estabilizar throughput/latencia em corrida longa com metricas objetivas.
 
 ## Principios de execucao
 
@@ -97,10 +108,10 @@ Objetivo:
 Passos executaveis:
 
 1. Permitir `useSlave = true` fora da politica de estabilizacao mais restrita
-2. Manter `maxFramesInFlight = 2`
+2. Manter `maxFramesInFlight = 3` para producer e `2` para depth-sort
 3. Manter `recoveryFrames = 120`
-4. Manter `safeModeStallThreshold = 4`
-5. Manter `safeModeCooldownFrames = 90`
+4. Manter `safeModeStallThreshold = 6` (producer) e `5` (depth-sort)
+5. Manter `safeModeCooldownFrames = 45`
 6. Validar que o master continua desenhando com a ultima lista completa quando o slave ainda esta em voo
 
 Metricas:
@@ -207,7 +218,7 @@ O uso dual do SH2 so pode ser considerado aprovado quando estes sinais estiverem
 
 - `jobsCompleted / jobsSubmitted` proximo de `1.0`
 - `timeoutFallbacks == 0` em varias voltas
-- `lastLatencyFrames <= 2` na maior parte do tempo
+- `lastLatencyFrames <= 3` na maior parte do tempo
 - `maxLatencyFrames` dentro do teto acordado
 - `safeModeTriggers == 0` ou extremamente raro em corrida normal
 - `sh2MasterDrawTicksThisFrame_` menor do que o baseline sincronico
