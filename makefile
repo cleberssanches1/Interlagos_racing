@@ -2,7 +2,7 @@
 SRL_MAX_TEXTURES = 1000         # Number of VDP1 texture slots
 SRL_MODE = NTSC                 # Valid options are PAL or NTSC
 SRL_HIGH_RES = 0                # 480i mode
-SRL_FRAMERATE = 1               # Framerate control (0=dynamic, 1=60fps, 2=30fps, etc.)
+SRL_FRAMERATE = 0               # Framerate control (0=dynamic VDP1 double-buffer, 1=fixed, 2=30fps, etc.)
 SRL_MAX_CD_BACKGROUND_JOBS = 1  # Maximum number of files GFS can open at once
 SRL_MAX_CD_FILES = 4096         # Maximum number of files on a CD
 SRL_MAX_CD_RETRIES = 5          # Number of times to retry on unsuccessful read

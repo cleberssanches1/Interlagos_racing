@@ -242,18 +242,18 @@ static constexpr size_t kLodRecoveryFreeBytes = kWorkRamHardFloorBytes + (48u * 
 // This isolates runtime lifetime bugs from the offline asset pipeline.
 static constexpr bool kEnableTrackRuntimeStabilization = true;
 // Leak isolation mode:
-// - fixed 10-segment window
-// - keep runtime sliding active (new segments keep entering/leaving the 10-slot window)
+// - fixed 20-segment window
+// - keep runtime sliding active (new segments keep entering/leaving the 20-slot window)
 // - disable prefetch/recovery/texture-compaction dynamics
-// - by default uses a mixed profile to reduce fill/bandwidth cost:
-//   first ranks in 64x64, far ranks in 32x32
+// - mixed profile fixed in leak-isolation:
+//   first 10 ranks in 64x64, next 10 ranks in 32x32
 // Use this mode to isolate allocator/retention behavior with controlled texture churn.
 static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
-static constexpr size_t kTrackLeakIsolationWindowSegments = 10u;
+static constexpr size_t kTrackLeakIsolationWindowSegments = 20u;
 static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
 static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
 static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
-static constexpr size_t kLeakIsolationNearLodCount = 2u;
+static constexpr size_t kLeakIsolationNearLodCount = 10u;
 // Keep active window storage persistent and reuse slot renderers on rebuild.
 // This is a stepping stone before migrating to a full fixed ring N+staging pool.
 static constexpr bool kEnableTrackWindowFixedStorage = true;

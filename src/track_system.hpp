@@ -585,12 +585,12 @@ private:
     CenterCatalogVector segmentCenterCatalog_{};
     // === FIXED SLOT POOL ===
     // Slots pré-alocados em LWR: N ativos + 1 staging.
-    // Em fixed64 mode: 10 ativos + 1 staging = 11 slots.
+    // Em leak-isolation mode: 20 ativos + 1 staging = 21 slots.
     // Em produção (todos os LOD bands): 20 ativos + 1 staging = 21 slots.
     // Slides são realizados como permutação de ponteiros O(1), sem malloc/free.
     // NOTA: o pool ainda não está alocado — vide RebuildActiveSegmentWindow.
-    static constexpr size_t kSlotPoolSize = 11; // fixed64 mode: 10 active + 1 staging
-    uint8_t stagingSlotIdx_ = 10;              // = kSlotPoolSize - 1
+    static constexpr size_t kSlotPoolSize = 21; // leak-isolation window: 20 active + 1 staging
+    uint8_t stagingSlotIdx_ = 20;               // = kSlotPoolSize - 1
     std::array<SegmentRenderEntry*, kSlotPoolSize> slotPool_{};
     // === FIM FIXED SLOT POOL ===
     // === SLIDE SCRATCH BUFFERS (persistent LWR — evita alloc/free por slide no caminho estabilizado) ===
