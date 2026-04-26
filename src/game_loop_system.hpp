@@ -1259,6 +1259,7 @@ private:
                                              context_.trackSegOffset,
                                              context_.lightDirection,
                                              camera.location,
+                                             camera.lookTarget,
                                              context_.carWorldPosition);
             hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
             lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();

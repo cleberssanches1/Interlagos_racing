@@ -101,6 +101,7 @@ public:
                      const SRL::Math::Types::Vector3D& trackOffset,
                      const SRL::Math::Types::Vector3D& lightDirection,
                      const SRL::Math::Types::Vector3D& cameraLocation,
+                     const SRL::Math::Types::Vector3D& cameraLookTarget,
                      const SRL::Math::Types::Vector3D& carWorldPosition);
     void SetObservedCarSegmentId(int32_t segmentId);
 
@@ -505,6 +506,12 @@ private:
         bool& segment01Prepared);
     bool UpdateActiveSegmentWindowForPosition(const SRL::Math::Types::Vector3D& worldPosition,
                                               const SRL::Math::Types::Vector3D& trackOffset);
+    int8_t ResolveCameraWindowDirection(const SRL::Math::Types::Vector3D& trackOffset,
+                                        const SRL::Math::Types::Vector3D& cameraLocation,
+                                        const SRL::Math::Types::Vector3D& cameraLookTarget) const;
+    void UpdateCameraDrivenWindowDirection(const SRL::Math::Types::Vector3D& trackOffset,
+                                           const SRL::Math::Types::Vector3D& cameraLocation,
+                                           const SRL::Math::Types::Vector3D& cameraLookTarget);
     std::vector<SegmentHandle> BuildVisibleSegmentOrder(const SRL::Math::Types::Vector3D& trackOffset,
                                                         const SRL::Math::Types::Vector3D& cameraLocation);
     void RunSeg1DiagnosticsForFrame();
@@ -571,6 +578,7 @@ private:
     int32_t activeWindowStartId_ = 1;
     uint16_t activeWindowHead_ = 0;
     int8_t windowDirection_ = 1;
+    int8_t cameraWindowDirection_ = 1;
     uint8_t activeWindowSwitchCooldown_ = 0;
     int32_t targetWindowStartId_ = 1;
     int32_t trackedCarSegmentId_ = 1;

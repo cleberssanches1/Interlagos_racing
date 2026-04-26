@@ -91,6 +91,7 @@ void TrackSystem::PrintLwrStageProbes()
 #include "sh2_frt_profiler.hpp"
 #include "srl_tga.hpp"
 
+using SRL::Math::Types::Fxp;
 using SRL::Math::Types::Vector3D;
 
 namespace
@@ -329,6 +330,23 @@ static int32_t WrapDistanceForward(int32_t fromId, int32_t toId, uint16_t totalS
     int32_t d = (toId - fromId) % total;
     if (d < 0) d += total;
     return d;
+}
+
+static bool BuildNormalizedFlatDirectionRaw(int32_t dxRaw,
+                                            int32_t dzRaw,
+                                            Vector3D& outDirection)
+{
+    const int32_t adx = (dxRaw < 0) ? -dxRaw : dxRaw;
+    const int32_t adz = (dzRaw < 0) ? -dzRaw : dzRaw;
+    const int32_t maxAxis = (adx > adz) ? adx : adz;
+    if (maxAxis <= 0) return false;
+
+    const int64_t nxRaw = (static_cast<int64_t>(dxRaw) << 16) / maxAxis;
+    const int64_t nzRaw = (static_cast<int64_t>(dzRaw) << 16) / maxAxis;
+    outDirection = Vector3D(Fxp::BuildRaw(static_cast<int32_t>(nxRaw)),
+                            Fxp::BuildRaw(0),
+                            Fxp::BuildRaw(static_cast<int32_t>(nzRaw)));
+    return true;
 }
 
 static bool IsVdp1TextureSlotLive(uint16_t slot)
@@ -12088,12 +12106,123 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal256)));
 }
 
+int8_t TrackSystem::ResolveCameraWindowDirection(const Vector3D& trackOffset,
+                                                 const Vector3D& cameraLocation,
+                                                 const Vector3D& cameraLookTarget) const
+{
+    const int8_t currentDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
+    if (totalSegmentCount_ == 0 || segmentCenterCatalog_.empty()) return currentDirection;
+
+    int32_t anchorId = -1;
+    if (observedCarSegmentId_ > 0)
+    {
+        anchorId = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
+    }
+    else if (trackedCarSegmentValid_ && trackedCarSegmentId_ > 0)
+    {
+        anchorId = WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_);
+    }
+    else
+    {
+        anchorId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    }
+    if (anchorId <= 0) return currentDirection;
+
+    const int32_t nextId = WrapSegmentIdToRange(anchorId + 1, totalSegmentCount_);
+    if (nextId <= 0) return currentDirection;
+    if (static_cast<size_t>(anchorId) > segmentCenterCatalog_.size()) return currentDirection;
+    if (static_cast<size_t>(nextId) > segmentCenterCatalog_.size()) return currentDirection;
+
+    const Vector3D anchorCenter = segmentCenterCatalog_[static_cast<size_t>(anchorId - 1)] + trackOffset;
+    const Vector3D nextCenter = segmentCenterCatalog_[static_cast<size_t>(nextId - 1)] + trackOffset;
+
+    Vector3D cameraForward{};
+    if (!BuildNormalizedFlatDirectionRaw(
+            cameraLookTarget.X.RawValue() - cameraLocation.X.RawValue(),
+            cameraLookTarget.Z.RawValue() - cameraLocation.Z.RawValue(),
+            cameraForward))
+    {
+        return currentDirection;
+    }
+
+    Vector3D trackForward{};
+    if (!BuildNormalizedFlatDirectionRaw(
+            nextCenter.X.RawValue() - anchorCenter.X.RawValue(),
+            nextCenter.Z.RawValue() - anchorCenter.Z.RawValue(),
+            trackForward))
+    {
+        return currentDirection;
+    }
+
+    const int32_t dotRaw = ((cameraForward.X * trackForward.X) +
+                            (cameraForward.Z * trackForward.Z)).RawValue();
+    constexpr int32_t kSwitchToReverseDotRaw = -11380; // cos(100 deg)
+    constexpr int32_t kSwitchToForwardDotRaw = 11380;  // cos(80 deg)
+    if (currentDirection > 0)
+    {
+        return (dotRaw <= kSwitchToReverseDotRaw) ? -1 : +1;
+    }
+    return (dotRaw >= kSwitchToForwardDotRaw) ? +1 : -1;
+}
+
+void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
+                                                    const Vector3D& cameraLocation,
+                                                    const Vector3D& cameraLookTarget)
+{
+    if (!segmentsReady_ || totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
+
+    const int8_t desiredDirection =
+        ResolveCameraWindowDirection(trackOffset, cameraLocation, cameraLookTarget);
+    cameraWindowDirection_ = desiredDirection;
+
+    int32_t anchorId = -1;
+    if (observedCarSegmentId_ > 0)
+    {
+        anchorId = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
+    }
+    else if (trackedCarSegmentValid_ && trackedCarSegmentId_ > 0)
+    {
+        anchorId = WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_);
+    }
+    else
+    {
+        anchorId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    }
+    if (anchorId <= 0) return;
+
+    bool needsRebuild = false;
+    if (desiredDirection < 0)
+    {
+        needsRebuild = (windowDirection_ >= 0) || (activeWindowStartId_ != anchorId);
+    }
+    else
+    {
+        needsRebuild = (windowDirection_ < 0);
+    }
+    if (!needsRebuild) return;
+
+    const size_t windowCount = segmentRenderers_.size();
+    if (!RebuildActiveSegmentWindow(anchorId, windowCount, desiredDirection)) return;
+
+    targetWindowStartId_ = anchorId;
+    trackedCarSegmentId_ = anchorId;
+    trackedCarSegmentValid_ = true;
+    activeWindowSwitchCooldown_ = 0;
+    if (runtimeStatsLogsEnabled_)
+    {
+        SRL::Debug::Print(1, 13, "TRK cam dir:%d anchor:%d",
+                          static_cast<int>(desiredDirection),
+                          static_cast<int>(anchorId));
+    }
+}
+
 bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosition,
                                                        const Vector3D& trackOffset)
 {
     if (!segmentsReady_ || totalSegmentCount_ == 0) return false;
     if (segmentCenterCatalog_.empty()) return false;
-    if (windowDirection_ < 0) windowDirection_ = 1;
+    if (cameraWindowDirection_ < 0) return false;
+    if (windowDirection_ < 0) return false;
     if (activeWindowSwitchCooldown_ > 0)
     {
         --activeWindowSwitchCooldown_;
@@ -12260,6 +12389,7 @@ void TrackSystem::ResetInitializationState()
     activeWindowStartId_ = 1;
     activeWindowHead_ = 0;
     windowDirection_ = 1;
+    cameraWindowDirection_ = 1;
     activeWindowSwitchCooldown_ = 0;
     targetWindowStartId_ = 1;
     trackedCarSegmentId_ = 1;
@@ -14145,6 +14275,13 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
 
     const int32_t observedId = WrapSegmentIdToRange(segmentId, totalSegmentCount_);
     if (observedId <= 0) return;
+    if (cameraWindowDirection_ < 0)
+    {
+        targetWindowStartId_ = observedId;
+        trackedCarSegmentId_ = observedId;
+        trackedCarSegmentValid_ = true;
+        return;
+    }
 
     const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
     const int32_t currentTargetId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
@@ -15642,6 +15779,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
                               const Vector3D& trackOffset,
                               const Vector3D& lightDirection,
                               const Vector3D& cameraLocation,
+                              const Vector3D& cameraLookTarget,
                               const Vector3D& carWorldPosition)
 {
     if (!renderTrack || !ready_)
@@ -15703,6 +15841,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
         lowWorkProbeCursor = after;
     };
 
+    UpdateCameraDrivenWindowDirection(trackOffset, cameraLocation, cameraLookTarget);
     TickRuntimeFrameCooldowns();
 
     bool segment01Logged = false;
