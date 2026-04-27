@@ -196,8 +196,6 @@ private:
             uint8_t desiredLodIndex = 0xFF;
             int16_t desiredBaseRank = -1;
             bool workingSetCacheDirty = true;
-            // Expensive slot validation runs only when a remap happened or on periodic sweep.
-            bool slotValidationDirty = true;
             TrackLowWorkU16Vector faceFamilyIds{};
             TrackLowWorkU8Vector faceRankOffsets{};
             TrackLowWorkI16Vector currentFaceSlots{};

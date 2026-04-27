@@ -846,24 +846,14 @@ int GameApp::Run()
     static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    // Keep coordinator/adaptive budget aligned with the stabilized runtime window.
+    // In leak-isolation fixed-64 mode the runtime window is capped at 10 segments;
+    // mirror that here so the coordinator budget and adaptive limiter are consistent.
     static constexpr bool kFixed64Mode = true; // mirrors kEnableTrackLeakIsolationFixed64Pipeline
-    static constexpr uint32_t kStabilizedWindowSegments = 20u;
-    trackConfig.initialSegments = kFixed64Mode ? kStabilizedWindowSegments : 20u;
-    trackConfig.minSegments     = kFixed64Mode ? kStabilizedWindowSegments : 20u;
+    trackConfig.initialSegments = kFixed64Mode ? 10u : 20u;
+    trackConfig.minSegments     = kFixed64Mode ? 10u : 20u;
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
-    static constexpr uint32_t kFallbackCarFaceReserve = 1024u;
-    const uint32_t carFaceReserve = renderCar
-        ? std::max<uint32_t>(faceCount, kFallbackCarFaceReserve)
-        : 0u;
-    const uint32_t polygonBudget = static_cast<uint32_t>(SGL_MAX_POLYGONS);
-    const uint32_t trackFaceBudget = (polygonBudget > carFaceReserve)
-        ? (polygonBudget - carFaceReserve)
-        : (polygonBudget / 2u);
-    // Keep a safe floor to avoid over-throttling the track coordinator on heavy cars.
-    trackConfig.initialFaces = std::max<uint32_t>(1000u, trackFaceBudget);
-    trackConfig.initialFaces = std::min<uint32_t>(trackConfig.initialFaces, polygonBudget);
+    trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;

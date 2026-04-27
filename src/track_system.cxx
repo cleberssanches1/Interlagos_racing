@@ -6435,7 +6435,6 @@ bool TrackSystem::BuildTrackFamilyLodSlots(FamilySlotVector& outSlots)
 void TrackSystem::InvalidateEntryWorkingSetCache(SegmentRenderEntry& entry)
 {
     entry.lodState.workingSetCacheDirty = true;
-    entry.lodState.slotValidationDirty = true;
 }
 
 bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
@@ -6851,7 +6850,6 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
         }
     }
 
-    entry.lodState.slotValidationDirty = true;
     return true;
 }
 
@@ -6901,7 +6899,6 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
         }
     }
 
-    entry.lodState.slotValidationDirty = true;
     return true;
 }
 
@@ -9809,7 +9806,6 @@ void TrackSystem::RecycleTrackTextureHeap()
         auto& lod = segmentRenderers_[i].lodState;
         lod.currentLodIndex = 0xFF;
         lod.currentBaseRank = -1;
-        lod.slotValidationDirty = true;
         if (!lod.currentFaceSlots.empty())
         {
             lod.currentFaceSlots.assign(lod.currentFaceSlots.size(), -1);
@@ -12761,7 +12757,6 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
                 ? static_cast<int16_t>(logicalRank)
                 : -1;
         seg.lodState.currentLodIndex = missing ? 0xFF : desiredLodIndex;
-        seg.lodState.slotValidationDirty = missing;
         logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
         ++matOk;
     }
@@ -14737,7 +14732,6 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
         coordinator_.SetProducerStats(producer_.Stats());
     }
-    const bool periodicSlotValidation = ((frameIdThisFrame_ & 0x1Fu) == 0u);
     for (size_t i = 0; i < drawHandleCount; ++i)
     {
         auto* entry = segmentPool_.Resolve(drawHandles[i]);
@@ -14760,22 +14754,11 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                 continue;
             }
         }
-        const bool shouldValidateSlots =
-            entry->lodState.slotValidationDirty || periodicSlotValidation;
-        uint32_t missingSlots = 0u;
-        if (shouldValidateSlots)
-        {
-            missingSlots = CountMissingOrDeadRequiredFaceTextureSlots(
-                entry->lodState.currentFaceSlots,
-                &entry->lodState.faceFamilyIds);
-            if (missingSlots == 0u)
-            {
-                entry->lodState.slotValidationDirty = false;
-            }
-        }
+        const uint32_t missingSlots = CountMissingOrDeadRequiredFaceTextureSlots(
+            entry->lodState.currentFaceSlots,
+            &entry->lodState.faceFamilyIds);
         if (missingSlots > 0)
         {
-            entry->lodState.slotValidationDirty = true;
             const bool deterministicTextureState =
                 kEnableTrackRuntimeStabilization &&
                 kEnableTrackLodBandsInStabilization &&
@@ -14913,19 +14896,9 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                                           static_cast<unsigned>(missingSlots));
                     }
                 }
-                if (!remapped)
-                {
-                    entry->lodState.slotValidationDirty = true;
-                }
-                uint32_t postRepairMissingSlots = 0u;
-                if (remapped)
-                {
-                    postRepairMissingSlots =
-                        CountMissingOrDeadRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
-                                                                   &entry->lodState.faceFamilyIds);
-                    entry->lodState.slotValidationDirty = (postRepairMissingSlots > 0u);
-                }
-                if (!remapped || postRepairMissingSlots > 0u)
+                if (!remapped ||
+                    CountMissingOrDeadRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                               &entry->lodState.faceFamilyIds) > 0)
                 {
                     const bool previousStillUsable =
                         !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
@@ -14938,10 +14911,6 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                         ++runtimeSafeSkippedThisFrame_;
                         continue;
                     }
-                }
-                else
-                {
-                    entry->lodState.slotValidationDirty = false;
                 }
             }
         }
@@ -15982,7 +15951,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
         // Run it less frequently when window/preload are stable.
         const uint8_t steadyPlanSkipFrames =
             kEnableTrackLeakIsolationFixed64Pipeline
-                ? (prefetchResident ? 30u : 18u)
+                ? (prefetchResident ? 20u : 12u)
                 : (prefetchResident ? 8u : 4u);
         if (sFramePlanDecimator > 0u)
         {
