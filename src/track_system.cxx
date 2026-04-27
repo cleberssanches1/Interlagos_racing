@@ -332,6 +332,20 @@ static int32_t WrapDistanceForward(int32_t fromId, int32_t toId, uint16_t totalS
     return d;
 }
 
+static int32_t ResolveWindowStartFromCarSegment(int32_t carSegmentId,
+                                                uint16_t totalSegmentCount,
+                                                int8_t windowDirection)
+{
+    if (totalSegmentCount == 0) return -1;
+    const int32_t carId = WrapSegmentIdToRange(carSegmentId, totalSegmentCount);
+    if (carId <= 0) return -1;
+    const int32_t dir = (windowDirection < 0) ? -1 : 1;
+    // Keep the car on the 2nd rendered segment:
+    // dir +1 => [car-1, car, car+1...]
+    // dir -1 => [car+1, car, car-1...]
+    return WrapSegmentIdToRange(carId - dir, totalSegmentCount);
+}
+
 static bool BuildNormalizedFlatDirectionRaw(int32_t dxRaw,
                                             int32_t dzRaw,
                                             Vector3D& outDirection)
@@ -6421,6 +6435,7 @@ bool TrackSystem::BuildTrackFamilyLodSlots(FamilySlotVector& outSlots)
 void TrackSystem::InvalidateEntryWorkingSetCache(SegmentRenderEntry& entry)
 {
     entry.lodState.workingSetCacheDirty = true;
+    entry.lodState.slotValidationDirty = true;
 }
 
 bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
@@ -6836,6 +6851,7 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
         }
     }
 
+    entry.lodState.slotValidationDirty = true;
     return true;
 }
 
@@ -6885,6 +6901,7 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
         }
     }
 
+    entry.lodState.slotValidationDirty = true;
     return true;
 }
 
@@ -9792,6 +9809,7 @@ void TrackSystem::RecycleTrackTextureHeap()
         auto& lod = segmentRenderers_[i].lodState;
         lod.currentLodIndex = 0xFF;
         lod.currentBaseRank = -1;
+        lod.slotValidationDirty = true;
         if (!lod.currentFaceSlots.empty())
         {
             lod.currentFaceSlots.assign(lod.currentFaceSlots.size(), -1);
@@ -12189,11 +12207,14 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
         anchorId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
     }
     if (anchorId <= 0) return;
+    const int32_t desiredStartId =
+        ResolveWindowStartFromCarSegment(anchorId, totalSegmentCount_, desiredDirection);
+    if (desiredStartId <= 0) return;
 
     bool needsRebuild = false;
     if (desiredDirection < 0)
     {
-        needsRebuild = (windowDirection_ >= 0) || (activeWindowStartId_ != anchorId);
+        needsRebuild = (windowDirection_ >= 0) || (activeWindowStartId_ != desiredStartId);
     }
     else
     {
@@ -12202,17 +12223,18 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
     if (!needsRebuild) return;
 
     const size_t windowCount = segmentRenderers_.size();
-    if (!RebuildActiveSegmentWindow(anchorId, windowCount, desiredDirection)) return;
+    if (!RebuildActiveSegmentWindow(desiredStartId, windowCount, desiredDirection)) return;
 
-    targetWindowStartId_ = anchorId;
+    targetWindowStartId_ = desiredStartId;
     trackedCarSegmentId_ = anchorId;
     trackedCarSegmentValid_ = true;
     activeWindowSwitchCooldown_ = 0;
     if (runtimeStatsLogsEnabled_)
     {
-        SRL::Debug::Print(1, 13, "TRK cam dir:%d anchor:%d",
+        SRL::Debug::Print(1, 13, "TRK cam dir:%d anchor:%d start:%d",
                           static_cast<int>(desiredDirection),
-                          static_cast<int>(anchorId));
+                          static_cast<int>(anchorId),
+                          static_cast<int>(desiredStartId));
     }
 }
 
@@ -12233,8 +12255,8 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     if (startId <= 0) return false;
     const size_t windowCount = segmentRenderers_.size();
     if (windowCount == 0) return false;
-    const int32_t nextId = WrapSegmentIdToRange(startId + 1, totalSegmentCount_);
-    if (nextId <= 0) return false;
+    const int32_t currentAnchorId = WrapSegmentIdToRange(startId + 1, totalSegmentCount_);
+    if (currentAnchorId <= 0) return false;
 
     auto scoreToId = [&](int32_t id) -> SRL::Math::Types::Fxp
     {
@@ -12326,12 +12348,49 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     const int32_t observedId = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
     if (observedCarSegmentId_ > 0 && observedId > 0)
     {
+        const int32_t observedStartId =
+            ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, windowDirection_);
+        if (observedStartId > 0)
+        {
+            const int32_t observedForwardDistance = wrapDistanceForward(startId, observedStartId);
+            const int32_t observedBackwardDistance = wrapDistanceForward(observedStartId, startId);
+            if (observedForwardDistance > 0 &&
+                observedForwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2))
+            {
+                trackedCarSegmentId_ = observedId;
+                trackedCarSegmentValid_ = true;
+                return queueDeferredSlide(+1, observedStartId);
+            }
+            if (observedForwardDistance == 0)
+            {
+                trackedCarSegmentId_ = observedId;
+                trackedCarSegmentValid_ = true;
+                return false;
+            }
+            if (observedBackwardDistance == 1)
+            {
+                trackedCarSegmentId_ = observedId;
+                trackedCarSegmentValid_ = true;
+                if (kEnableTrackRuntimeStabilization)
+                {
+                    if (RebuildActiveSegmentWindow(observedStartId, windowCount, windowDirection_))
+                    {
+                        targetWindowStartId_ = observedStartId;
+                        activeWindowSwitchCooldown_ = 0;
+                        return true;
+                    }
+                    return false;
+                }
+                return queueDeferredSlide(-1, observedStartId);
+            }
+        }
+
         const int32_t observedForwardDistance = wrapDistanceForward(startId, observedId);
         if (observedForwardDistance > 0 && observedForwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2))
         {
             trackedCarSegmentId_ = observedId;
             trackedCarSegmentValid_ = true;
-            return queueDeferredSlide(+1, observedId);
+            return queueDeferredSlide(+1, ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, windowDirection_));
         }
         if (observedForwardDistance == 0)
         {
@@ -12358,21 +12417,25 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         trackedCarSegmentId_ = localSegmentId;
         trackedCarSegmentValid_ = true;
 
-        const int32_t forwardDistance = wrapDistanceForward(startId, localSegmentId);
-        if (forwardDistance > 0)
+        const int32_t localStartId =
+            ResolveWindowStartFromCarSegment(localSegmentId, totalSegmentCount_, windowDirection_);
+        const int32_t forwardDistance = (localStartId > 0) ? wrapDistanceForward(startId, localStartId) : 0;
+        if (localStartId > 0 && forwardDistance > 0)
         {
-            return queueDeferredSlide(+1, localSegmentId);
+            return queueDeferredSlide(+1, localStartId);
         }
     }
 
-    const SRL::Math::Types::Fxp currentScore = scoreToId(startId);
-    const SRL::Math::Types::Fxp nextScore = scoreToId(nextId);
+    const int32_t nextAnchorId = WrapSegmentIdToRange(currentAnchorId + 1, totalSegmentCount_);
+    if (nextAnchorId <= 0) return false;
+    const SRL::Math::Types::Fxp currentScore = scoreToId(currentAnchorId);
+    const SRL::Math::Types::Fxp nextScore = scoreToId(nextAnchorId);
     const SRL::Math::Types::Fxp crossingHysteresis = SRL::Math::Types::Fxp::BuildRaw(8 << 16);
     if ((nextScore + crossingHysteresis) < currentScore)
     {
-        trackedCarSegmentId_ = nextId;
+        trackedCarSegmentId_ = nextAnchorId;
         trackedCarSegmentValid_ = true;
-        return queueDeferredSlide(+1, nextId);
+        return queueDeferredSlide(+1, WrapSegmentIdToRange(startId + 1, totalSegmentCount_));
     }
 
     return false;
@@ -12698,6 +12761,7 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
                 ? static_cast<int16_t>(logicalRank)
                 : -1;
         seg.lodState.currentLodIndex = missing ? 0xFF : desiredLodIndex;
+        seg.lodState.slotValidationDirty = missing;
         logicalRank += std::max<size_t>(1, static_cast<size_t>(seg.logicalSegmentCount));
         ++matOk;
     }
@@ -14275,9 +14339,13 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
 
     const int32_t observedId = WrapSegmentIdToRange(segmentId, totalSegmentCount_);
     if (observedId <= 0) return;
+    const int8_t desiredDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
+    const int32_t desiredStartId =
+        ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection);
+    if (desiredStartId <= 0) return;
     if (cameraWindowDirection_ < 0)
     {
-        targetWindowStartId_ = observedId;
+        targetWindowStartId_ = desiredStartId;
         trackedCarSegmentId_ = observedId;
         trackedCarSegmentValid_ = true;
         return;
@@ -14287,7 +14355,9 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
     const int32_t currentTargetId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
     const size_t windowCount = segmentRenderers_.size();
     const int32_t windowForwardDistance =
-        WrapDistanceForward(currentStartId, observedId, totalSegmentCount_);
+        WrapDistanceForward(currentStartId, desiredStartId, totalSegmentCount_);
+    const int32_t windowBackwardDistance =
+        WrapDistanceForward(desiredStartId, currentStartId, totalSegmentCount_);
     const bool bootstrapWindow =
         currentStartId == 1 &&
         currentTargetId == 1 &&
@@ -14296,30 +14366,33 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
         activeWindowHead_ == 0;
     if (bootstrapWindow &&
         windowCount > 0 &&
-        windowForwardDistance >= static_cast<int32_t>(windowCount))
+        (windowForwardDistance >= static_cast<int32_t>(windowCount) || windowBackwardDistance == 1))
     {
         // Avoid full 20-segment rebuild on runtime bootstrap alignment.
         // Keep the deterministic sliding window and converge through normal
         // incremental slides to prevent frame spikes and transient memory churn.
-        targetWindowStartId_ = observedId;
+        targetWindowStartId_ = desiredStartId;
         trackedCarSegmentId_ = observedId;
         trackedCarSegmentValid_ = true;
         activeWindowSwitchCooldown_ = 0;
         if (runtimeStatsLogsEnabled_)
         {
-            SRL::Debug::Print(1, 13, "TRK align defer s:%d o:%d",
+            SRL::Debug::Print(1, 13, "TRK align defer s:%d o:%d ws:%d",
                               currentStartId,
-                              observedId);
+                              observedId,
+                              desiredStartId);
         }
         return;
     }
 
     const int32_t anchorId = (currentTargetId > 0) ? currentTargetId : currentStartId;
-    const int32_t forwardDistance = WrapDistanceForward(anchorId, observedId, totalSegmentCount_);
+    const int32_t forwardDistance = WrapDistanceForward(anchorId, desiredStartId, totalSegmentCount_);
+    const int32_t backwardDistance = WrapDistanceForward(desiredStartId, anchorId, totalSegmentCount_);
     if (forwardDistance == 0 ||
-        (forwardDistance > 0 && forwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2)))
+        (forwardDistance > 0 && forwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2)) ||
+        backwardDistance == 1)
     {
-        targetWindowStartId_ = observedId;
+        targetWindowStartId_ = desiredStartId;
         trackedCarSegmentId_ = observedId;
         trackedCarSegmentValid_ = true;
     }
@@ -14664,6 +14737,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
         coordinator_.SetProducerStats(producer_.Stats());
     }
+    const bool periodicSlotValidation = ((frameIdThisFrame_ & 0x1Fu) == 0u);
     for (size_t i = 0; i < drawHandleCount; ++i)
     {
         auto* entry = segmentPool_.Resolve(drawHandles[i]);
@@ -14686,11 +14760,22 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                 continue;
             }
         }
-        const uint32_t missingSlots = CountMissingOrDeadRequiredFaceTextureSlots(
-            entry->lodState.currentFaceSlots,
-            &entry->lodState.faceFamilyIds);
+        const bool shouldValidateSlots =
+            entry->lodState.slotValidationDirty || periodicSlotValidation;
+        uint32_t missingSlots = 0u;
+        if (shouldValidateSlots)
+        {
+            missingSlots = CountMissingOrDeadRequiredFaceTextureSlots(
+                entry->lodState.currentFaceSlots,
+                &entry->lodState.faceFamilyIds);
+            if (missingSlots == 0u)
+            {
+                entry->lodState.slotValidationDirty = false;
+            }
+        }
         if (missingSlots > 0)
         {
+            entry->lodState.slotValidationDirty = true;
             const bool deterministicTextureState =
                 kEnableTrackRuntimeStabilization &&
                 kEnableTrackLodBandsInStabilization &&
@@ -14828,9 +14913,19 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                                           static_cast<unsigned>(missingSlots));
                     }
                 }
-                if (!remapped ||
-                    CountMissingOrDeadRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
-                                                               &entry->lodState.faceFamilyIds) > 0)
+                if (!remapped)
+                {
+                    entry->lodState.slotValidationDirty = true;
+                }
+                uint32_t postRepairMissingSlots = 0u;
+                if (remapped)
+                {
+                    postRepairMissingSlots =
+                        CountMissingOrDeadRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
+                                                                   &entry->lodState.faceFamilyIds);
+                    entry->lodState.slotValidationDirty = (postRepairMissingSlots > 0u);
+                }
+                if (!remapped || postRepairMissingSlots > 0u)
                 {
                     const bool previousStillUsable =
                         !HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
@@ -14843,6 +14938,10 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                         ++runtimeSafeSkippedThisFrame_;
                         continue;
                     }
+                }
+                else
+                {
+                    entry->lodState.slotValidationDirty = false;
                 }
             }
         }
@@ -15883,7 +15982,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
         // Run it less frequently when window/preload are stable.
         const uint8_t steadyPlanSkipFrames =
             kEnableTrackLeakIsolationFixed64Pipeline
-                ? (prefetchResident ? 20u : 12u)
+                ? (prefetchResident ? 30u : 18u)
                 : (prefetchResident ? 8u : 4u);
         if (sFramePlanDecimator > 0u)
         {
@@ -16282,7 +16381,8 @@ void TrackSystem::EndFrame()
             lowWorkBaselineFree_ = phaseLwrEnd_;
         }
     }
-    if (runtimeStatsLogsEnabled_ && runtimeSlidesThisFrame_ > 0u)
+    constexpr bool kEnableLeakTrackingLogs = false;
+    if (kEnableLeakTrackingLogs && runtimeStatsLogsEnabled_ && runtimeSlidesThisFrame_ > 0u)
     {
         static uint8_t sLeakHeavySampleCooldown = 0u;
         static uint8_t sLeakOldestProbeCooldown = 0u;
@@ -16443,6 +16543,85 @@ void TrackSystem::EndFrame()
         sLeakBreakdownPrev = leakBreakdownNow;
         sLeakBreakdownPrevValid = true;
     }
+    if (runtimeStatsLogsEnabled_)
+    {
+        constexpr uint32_t kVdp1FaceCostBytes = 64u;
+        constexpr uint32_t kVdp1FrameBudgetBytes = 512u * 1024u;
+        static uint64_t sCmdPctAccum = 0u;
+        static uint64_t sHeapPctAccum = 0u;
+        static uint64_t sTrackFacesAccum = 0u;
+        static uint32_t sSamples = 0u;
+        static uint32_t sPeakCmdPct = 0u;
+        static uint32_t sPeakHeapPct = 0u;
+        static uint32_t sPeakTrackFaces = 0u;
+        static uint16_t sPeakTexCount = 0u;
+
+        const auto& telemetry = coordinator_.Telemetry();
+        const uint32_t trackFaces = telemetry.submittedTrackFaces;
+        const uint32_t trackSegments = telemetry.submittedTrackSegments;
+        const uint32_t cmdBytesRaw = trackFaces * kVdp1FaceCostBytes;
+        const uint32_t cmdBytes = (cmdBytesRaw > kVdp1FrameBudgetBytes) ? kVdp1FrameBudgetBytes : cmdBytesRaw;
+        const uint32_t cmdPct = (kVdp1FrameBudgetBytes > 0u)
+            ? static_cast<uint32_t>((cmdBytes * 100u) / kVdp1FrameBudgetBytes)
+            : 0u;
+
+        const size_t heapUsed = SRL::VDP1::GetUsedMemory();
+        const size_t heapFree = SRL::VDP1::GetAvailableMemory();
+        const size_t heapTotal = heapUsed + heapFree;
+        const uint32_t heapPct = (heapTotal > 0u)
+            ? static_cast<uint32_t>((heapUsed * 100u) / heapTotal)
+            : 0u;
+        const uint16_t texCount = SRL::VDP1::GetTextureCount();
+
+        sCmdPctAccum += static_cast<uint64_t>(cmdPct);
+        sHeapPctAccum += static_cast<uint64_t>(heapPct);
+        sTrackFacesAccum += static_cast<uint64_t>(trackFaces);
+        sSamples += 1u;
+        if (cmdPct > sPeakCmdPct) sPeakCmdPct = cmdPct;
+        if (heapPct > sPeakHeapPct) sPeakHeapPct = heapPct;
+        if (trackFaces > sPeakTrackFaces) sPeakTrackFaces = trackFaces;
+        if (texCount > sPeakTexCount) sPeakTexCount = texCount;
+
+        const uint32_t avgCmdPct = (sSamples > 0u) ? static_cast<uint32_t>(sCmdPctAccum / sSamples) : 0u;
+        const uint32_t avgHeapPct = (sSamples > 0u) ? static_cast<uint32_t>(sHeapPctAccum / sSamples) : 0u;
+        const uint32_t avgTrackFaces = (sSamples > 0u) ? static_cast<uint32_t>(sTrackFacesAccum / sSamples) : 0u;
+
+        // Keep rows fixed and refreshed every frame so old diagnostics do not linger.
+        SRL::Debug::Print(1, 14, "VDP1 trk s:%u f:%u cmd:%u%%",
+                          static_cast<unsigned>(trackSegments),
+                          static_cast<unsigned>(trackFaces),
+                          static_cast<unsigned>(cmdPct));
+        SRL::Debug::Print(1, 15, "VDP1 hp u:%u f:%u %u%% tx:%u",
+                          static_cast<unsigned>(heapUsed),
+                          static_cast<unsigned>(heapFree),
+                          static_cast<unsigned>(heapPct),
+                          static_cast<unsigned>(texCount));
+        SRL::Debug::Print(1, 16, "VDP1 pk f:%u c:%u h:%u tx:%u",
+                          static_cast<unsigned>(sPeakTrackFaces),
+                          static_cast<unsigned>(sPeakCmdPct),
+                          static_cast<unsigned>(sPeakHeapPct),
+                          static_cast<unsigned>(sPeakTexCount));
+        SRL::Debug::Print(1, 17, "VDP1 av f:%u c:%u h:%u n:%u",
+                          static_cast<unsigned>(avgTrackFaces),
+                          static_cast<unsigned>(avgCmdPct),
+                          static_cast<unsigned>(avgHeapPct),
+                          static_cast<unsigned>(sSamples));
+        SRL::Debug::Print(1, 18, "                                   ");
+        SRL::Debug::Print(1, 19, "                                   ");
+        SRL::Debug::Print(1, 20, "                                   ");
+
+        if ((frameIdThisFrame_ & 0x3Fu) == 0u)
+        {
+            sCmdPctAccum = 0u;
+            sHeapPctAccum = 0u;
+            sTrackFacesAccum = 0u;
+            sSamples = 0u;
+            sPeakCmdPct = 0u;
+            sPeakHeapPct = 0u;
+            sPeakTrackFaces = 0u;
+            sPeakTexCount = 0u;
+        }
+    }
     constexpr bool kEnablePerFrameDebugPrints = false;
     if (!kEnablePerFrameDebugPrints) return;
     // Work RAM monitor for runtime stability tuning.
@@ -16589,6 +16768,199 @@ bool TrackSystem::FindNearestSegment(const Vector3D& worldPosition,
     return hasCandidate;
 }
 
+bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
+                                         const Vector3D& trackOffset,
+                                         const uint16_t familyId,
+                                         SRL::Math::Types::Fxp& outSurfaceY,
+                                         int32_t* outSegmentId) const
+{
+    outSurfaceY = worldPosition.Y;
+    if (outSegmentId) *outSegmentId = -1;
+    if (familyId == 0u) return false;
+    if (segmentRenderers_.empty()) return false;
+
+    const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
+    const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
+    const int64_t pzRaw = static_cast<int64_t>(worldPosition.Z.RawValue());
+
+    auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
+
+    auto edgeCrossXZ = [](const Vector3D& a,
+                          const Vector3D& b,
+                          const int64_t px,
+                          const int64_t pz) -> int64_t
+    {
+        const int64_t ax = static_cast<int64_t>(a.X.RawValue());
+        const int64_t az = static_cast<int64_t>(a.Z.RawValue());
+        const int64_t bx = static_cast<int64_t>(b.X.RawValue());
+        const int64_t bz = static_cast<int64_t>(b.Z.RawValue());
+        return ((px - ax) * (bz - az)) - ((pz - az) * (bx - ax));
+    };
+
+    auto isPointInTriangleXZ = [&](const Vector3D& a,
+                                   const Vector3D& b,
+                                   const Vector3D& c) -> bool
+    {
+        const int64_t c1 = edgeCrossXZ(a, b, pxRaw, pzRaw);
+        const int64_t c2 = edgeCrossXZ(b, c, pxRaw, pzRaw);
+        const int64_t c3 = edgeCrossXZ(c, a, pxRaw, pzRaw);
+        const bool hasNeg = (c1 < 0) || (c2 < 0) || (c3 < 0);
+        const bool hasPos = (c1 > 0) || (c2 > 0) || (c3 > 0);
+        return !(hasNeg && hasPos);
+    };
+
+    auto solvePlaneYRaw = [&](const Vector3D& a,
+                              const Vector3D& b,
+                              const Vector3D& c,
+                              int64_t& outYRaw) -> bool
+    {
+        const int64_t ax = static_cast<int64_t>(a.X.RawValue());
+        const int64_t ay = static_cast<int64_t>(a.Y.RawValue());
+        const int64_t az = static_cast<int64_t>(a.Z.RawValue());
+        const int64_t bx = static_cast<int64_t>(b.X.RawValue());
+        const int64_t by = static_cast<int64_t>(b.Y.RawValue());
+        const int64_t bz = static_cast<int64_t>(b.Z.RawValue());
+        const int64_t cx = static_cast<int64_t>(c.X.RawValue());
+        const int64_t cy = static_cast<int64_t>(c.Y.RawValue());
+        const int64_t cz = static_cast<int64_t>(c.Z.RawValue());
+
+        const int64_t ux = bx - ax;
+        const int64_t uy = by - ay;
+        const int64_t uz = bz - az;
+        const int64_t vx = cx - ax;
+        const int64_t vy = cy - ay;
+        const int64_t vz = cz - az;
+
+        const int64_t nx = (uy * vz) - (uz * vy);
+        const int64_t ny = (uz * vx) - (ux * vz);
+        const int64_t nz = (ux * vy) - (uy * vx);
+        if (ny == 0) return false;
+
+        const int64_t rhs = (nx * (pxRaw - ax)) + (nz * (pzRaw - az));
+        outYRaw = ay - (rhs / ny);
+        return true;
+    };
+
+    bool foundInside = false;
+    int64_t bestInsideDeltaY = std::numeric_limits<int64_t>::max();
+    int64_t bestInsideYRaw = pyRaw;
+    int32_t bestInsideSegmentId = -1;
+
+    bool foundFallback = false;
+    int64_t bestFallbackPlanar = std::numeric_limits<int64_t>::max();
+    int64_t bestFallbackDeltaY = std::numeric_limits<int64_t>::max();
+    int64_t bestFallbackYRaw = pyRaw;
+    int32_t bestFallbackSegmentId = -1;
+
+    for (const auto& segment : segmentRenderers_)
+    {
+        if (!segment.renderer) continue;
+        if (segment.lodState.faceFamilyIds.empty()) continue;
+
+        const Vector3D* verts = nullptr;
+        const SRL::Types::Polygon* faces = nullptr;
+        size_t vertCount = 0u;
+        size_t faceCount = 0u;
+        if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) continue;
+        if (!verts || !faces || vertCount == 0u || faceCount == 0u) continue;
+
+        const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
+        for (size_t fi = 0; fi < scanFaceCount; ++fi)
+        {
+            if (segment.lodState.faceFamilyIds[fi] != familyId) continue;
+
+            const SRL::Types::Polygon& face = faces[fi];
+            const uint16_t i0 = face.Vertices[0];
+            const uint16_t i1 = face.Vertices[1];
+            const uint16_t i2 = face.Vertices[2];
+            const uint16_t i3 = face.Vertices[3];
+            if (i0 >= vertCount || i1 >= vertCount || i2 >= vertCount || i3 >= vertCount) continue;
+
+            const Vector3D a = verts[i0] + trackOffset;
+            const Vector3D b = verts[i1] + trackOffset;
+            const Vector3D c = verts[i2] + trackOffset;
+            const Vector3D d = verts[i3] + trackOffset;
+
+            // Ignore near-vertical polygons for road-height sampling.
+            if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) < (1 << 10)) continue;
+
+            const bool inTri0 = isPointInTriangleXZ(a, b, c);
+            const bool inTri1 = isPointInTriangleXZ(a, c, d);
+            int64_t yRaw = 0;
+            bool yValid = false;
+            bool inside = false;
+            if (inTri0)
+            {
+                yValid = solvePlaneYRaw(a, b, c, yRaw);
+                inside = yValid;
+            }
+            else if (inTri1)
+            {
+                yValid = solvePlaneYRaw(a, c, d, yRaw);
+                inside = yValid;
+            }
+            else
+            {
+                // Fallback: project onto the first triangle plane so we still
+                // have a stable candidate when PATH point drifts outside face.
+                yValid = solvePlaneYRaw(a, b, c, yRaw) || solvePlaneYRaw(a, c, d, yRaw);
+            }
+            if (!yValid) continue;
+
+            const int64_t deltaY = abs64(yRaw - pyRaw);
+            if (inside)
+            {
+                if (!foundInside || deltaY < bestInsideDeltaY)
+                {
+                    foundInside = true;
+                    bestInsideDeltaY = deltaY;
+                    bestInsideYRaw = yRaw;
+                    bestInsideSegmentId = segment.id;
+                }
+                continue;
+            }
+
+            const int64_t cxRaw =
+                (static_cast<int64_t>(a.X.RawValue()) +
+                 static_cast<int64_t>(b.X.RawValue()) +
+                 static_cast<int64_t>(c.X.RawValue()) +
+                 static_cast<int64_t>(d.X.RawValue())) / 4;
+            const int64_t czRaw =
+                (static_cast<int64_t>(a.Z.RawValue()) +
+                 static_cast<int64_t>(b.Z.RawValue()) +
+                 static_cast<int64_t>(c.Z.RawValue()) +
+                 static_cast<int64_t>(d.Z.RawValue())) / 4;
+            const int64_t planarScore = abs64(cxRaw - pxRaw) + abs64(czRaw - pzRaw);
+            if (!foundFallback ||
+                planarScore < bestFallbackPlanar ||
+                (planarScore == bestFallbackPlanar && deltaY < bestFallbackDeltaY))
+            {
+                foundFallback = true;
+                bestFallbackPlanar = planarScore;
+                bestFallbackDeltaY = deltaY;
+                bestFallbackYRaw = yRaw;
+                bestFallbackSegmentId = segment.id;
+            }
+        }
+    }
+
+    if (foundInside)
+    {
+        outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestInsideYRaw));
+        if (outSegmentId) *outSegmentId = bestInsideSegmentId;
+        return true;
+    }
+
+    if (foundFallback)
+    {
+        outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestFallbackYRaw));
+        if (outSegmentId) *outSegmentId = bestFallbackSegmentId;
+        return true;
+    }
+
+    return false;
+}
+
 bool TrackSystem::FindSegmentCenterById(const int32_t segmentId,
                                         const Vector3D& trackOffset,
                                         Vector3D& outSegmentCenter) const
@@ -16613,6 +16985,40 @@ bool TrackSystem::FindSegmentCenterById(const int32_t segmentId,
 
     outSegmentCenter = Vector3D(0.0, 0.0, 0.0);
     return false;
+}
+
+bool TrackSystem::GetRenderWindowDebugSnapshot(int32_t& outStartSegmentId,
+                                               int8_t& outDirection,
+                                               uint16_t& outWindowCount) const
+{
+    outDirection = (windowDirection_ < 0) ? -1 : 1;
+    outWindowCount = static_cast<uint16_t>(std::min<size_t>(
+        segmentRenderers_.size(),
+        static_cast<size_t>(kTrackSegmentLimit)));
+    outStartSegmentId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+
+    if (!ready_) return false;
+    if (totalSegmentCount_ == 0) return false;
+    if (outWindowCount == 0) return false;
+    return outStartSegmentId > 0;
+}
+
+bool TrackSystem::GetRenderWindowSegmentIdAt(size_t logicalIndex, int32_t& outSegmentId) const
+{
+    outSegmentId = -1;
+    if (totalSegmentCount_ == 0) return false;
+
+    const size_t windowCount = segmentRenderers_.size();
+    if (windowCount == 0 || logicalIndex >= windowCount) return false;
+
+    const int32_t startId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    if (startId <= 0) return false;
+
+    const int32_t step = (windowDirection_ < 0)
+        ? -static_cast<int32_t>(logicalIndex)
+        : static_cast<int32_t>(logicalIndex);
+    outSegmentId = WrapSegmentIdToRange(startId + step, totalSegmentCount_);
+    return outSegmentId > 0;
 }
 
 bool TrackSystem::HasSmoothSegments() const

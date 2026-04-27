@@ -1566,6 +1566,26 @@ public:
         }
     }
 
+    // Expose component-mode geometry for runtime systems that need direct
+    // spatial queries (for example, placing gameplay objects on road faces).
+    bool GetComponentGeometry(const SRL::Math::Types::Vector3D*& outVerts,
+                              size_t& outVertCount,
+                              const SRL::Types::Polygon*& outFaces,
+                              size_t& outFaceCount) const
+    {
+        outVerts = nullptr;
+        outVertCount = 0u;
+        outFaces = nullptr;
+        outFaceCount = 0u;
+        if (!componentMode_) return false;
+        if (componentVerts_.empty() || componentFaces_.empty()) return false;
+        outVerts = componentVerts_.data();
+        outVertCount = componentVerts_.size();
+        outFaces = componentFaces_.data();
+        outFaceCount = componentFaces_.size();
+        return true;
+    }
+
     // Release CPU-side buffers so streamed windows do not accumulate peak sizes.
     // compact=false (default): keeps all vector capacities intact for immediate reuse.
     // compact=true: aggressively shrinks all vectors after a permanent release.

@@ -48,6 +48,7 @@ public:
         const size_t vdp1HeapUsed = SRL::VDP1::GetUsedMemory();
         const size_t vdp1HeapFree = SRL::VDP1::GetAvailableMemory();
         const size_t vdp1HeapTotal = vdp1HeapUsed + vdp1HeapFree;
+        const uint16_t vdp1TexCount = SRL::VDP1::GetTextureCount();
         const uint32_t vdp1HeapPct = (vdp1HeapTotal > 0) ? static_cast<uint32_t>((vdp1HeapUsed * 100u) / vdp1HeapTotal) : 0;
         if (!heapPctFilterInit_)
         {
@@ -70,8 +71,8 @@ public:
         if (vdp1ClampedNow > peakVdp1Used_) peakVdp1Used_ = vdp1ClampedNow;
 
         // Always show a compact VDP1 usage line every frame on multiple debug layers.
-        SRL::Debug::Print(0, 23, "VDP1 FR%%:%u HP%%:%u F:%u", (unsigned)vdp1PctNow, (unsigned)heapPctFiltered_, (unsigned)submittedFacesNow);
-        SRL::Debug::Print(1, 1,  "VDP1 FR%%:%u HP%%:%u F:%u", (unsigned)vdp1PctNow, (unsigned)heapPctFiltered_, (unsigned)submittedFacesNow);
+        SRL::Debug::Print(0, 23, "VDP1 FR%%:%u HP%%:%u T:%u F:%u", (unsigned)vdp1PctNow, (unsigned)heapPctFiltered_, (unsigned)vdp1TexCount, (unsigned)submittedFacesNow);
+        SRL::Debug::Print(1, 1,  "VDP1 FR%%:%u HP%%:%u T:%u F:%u", (unsigned)vdp1PctNow, (unsigned)heapPctFiltered_, (unsigned)vdp1TexCount, (unsigned)submittedFacesNow);
 
         if ((frameCounter & 63) != 0) return;
 
@@ -95,7 +96,7 @@ public:
             SRL::Debug::Print(0, 28, "VDP1 use A:%u P:%u", (unsigned)vdp1Used, (unsigned)peakVdp1Used_);
             SRL::Debug::Print(0, 29, "VDP1 %% A:%u P:%u", (unsigned)vdp1Pct, (unsigned)peakPct);
         }
-        SRL::Debug::Print(0, 30, "VDP1 free:%u", (unsigned)vdp1Free);
+        SRL::Debug::Print(0, 30, "VDP1 tx:%u free:%u", (unsigned)vdp1TexCount, (unsigned)vdp1Free);
 
         accumSubmittedFaces_ = 0;
         accumSamples_ = 0;

@@ -113,9 +113,18 @@ public:
                             const SRL::Math::Types::Vector3D& trackOffset,
                             int32_t& outSegmentId,
                             SRL::Math::Types::Vector3D& outSegmentCenter) const;
+    bool FindSurfaceYByFamilyId(const SRL::Math::Types::Vector3D& worldPosition,
+                                const SRL::Math::Types::Vector3D& trackOffset,
+                                uint16_t familyId,
+                                SRL::Math::Types::Fxp& outSurfaceY,
+                                int32_t* outSegmentId = nullptr) const;
     bool FindSegmentCenterById(int32_t segmentId,
                                const SRL::Math::Types::Vector3D& trackOffset,
                                SRL::Math::Types::Vector3D& outSegmentCenter) const;
+    bool GetRenderWindowDebugSnapshot(int32_t& outStartSegmentId,
+                                      int8_t& outDirection,
+                                      uint16_t& outWindowCount) const;
+    bool GetRenderWindowSegmentIdAt(size_t logicalIndex, int32_t& outSegmentId) const;
 
     bool Ready() const { return ready_; }
     const char* LastResolvedPath() const { return lastSegmentPath_; }
@@ -187,6 +196,8 @@ private:
             uint8_t desiredLodIndex = 0xFF;
             int16_t desiredBaseRank = -1;
             bool workingSetCacheDirty = true;
+            // Expensive slot validation runs only when a remap happened or on periodic sweep.
+            bool slotValidationDirty = true;
             TrackLowWorkU16Vector faceFamilyIds{};
             TrackLowWorkU8Vector faceRankOffsets{};
             TrackLowWorkI16Vector currentFaceSlots{};
