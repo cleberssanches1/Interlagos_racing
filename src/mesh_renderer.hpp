@@ -20,6 +20,9 @@ public:
         bool useBudget{true};
         bool rotateModelX180{false};
         bool rotateModelZ180{false};
+        // When true, patches each polygon's sort mode to UseMin (nearest vertex Z)
+        // so this mesh always wins Z-sort ties against track polygons at the same depth.
+        bool sortPriorityBoost{false};
     };
 
     MeshRenderer(ModelObject& model, bool isSmooth, const Config& cfg);

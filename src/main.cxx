@@ -779,6 +779,9 @@ int GameApp::Run()
     // Balanced FOV: reduce fisheye without flattening car proportions.
     constexpr float kCameraFovDeg = 34.0f;
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
+    // Depth display level 4 (1/16 of projection distance) reduces the near-camera
+    // zone where large track quads distort when their vertices approach the clip plane.
+    SRL::Scene3D::SetDepthDisplayLevel(4);
 
 
 

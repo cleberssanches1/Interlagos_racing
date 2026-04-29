@@ -312,6 +312,11 @@ static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
 static constexpr uint8_t kTrackFramePlanFlagFallback = 1u << 0;
 static constexpr uint8_t kTrackFramePlanFlagPartial = 1u << 1;
 static constexpr uint8_t kTrackFramePlanFlagStale = 1u << 2;
+// Segments whose camera L1-distance (in Fxp 16.16 raw) falls below this threshold
+// are excluded from the render list. At very small distances the large road quads
+// straddle the SGL near-clip plane and their vertices distort on screen.
+// 1.5 world units = 0x00018000 in Fxp 16.16. Calibrate on hardware if gaps appear.
+static constexpr int32_t kNearSegmentCullDistanceRaw = 0x00018000;
 
 static int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount)
 {
@@ -14248,6 +14253,9 @@ const TrackLowWorkVector<TrackSystem::SegmentHandle>& TrackSystem::BuildStabiliz
         const SegmentHandle handle = segmentHandles_[i];
         auto* entry = segmentPool_.Resolve(handle);
         if (!entry || !entry->renderer) continue;
+        // Exclude segments that are extremely close to the camera: their large road
+        // quads straddle the SGL near-clip plane and distort on screen.
+        if (depthMetricRaw(entry) < kNearSegmentCullDistanceRaw) continue;
         TrackDepthSortItem<SegmentHandle, int64_t> item{};
         item.handle = handle;
         item.depthKey = depthKey(entry);

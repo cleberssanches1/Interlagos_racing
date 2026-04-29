@@ -80,6 +80,20 @@ bool MeshRenderer::DrawMesh(size_t meshId)
         if (mesh && mesh->FaceCount > 0 && mesh->VertexCount > 0)
         {
             hasFaces = true;
+            if (config_.sortPriorityBoost && mesh->Attributes)
+            {
+                // Force sort mode to Minimum (nearest vertex Z) so this mesh wins
+                // any Z-sort tie against track polygons at the same depth.
+                // Sort bits [1:0]: 0b01 = UseMin, 0b11 = UseCenter (default).
+                constexpr uint8_t kSortModeMask = 0xFCu;
+                constexpr uint8_t kSortModeMin =
+                    static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Minimum);
+                for (size_t f = 0; f < mesh->FaceCount; ++f)
+                {
+                    mesh->Attributes[f].Sort =
+                        static_cast<uint8_t>((mesh->Attributes[f].Sort & kSortModeMask) | kSortModeMin);
+                }
+            }
             model_.Draw(meshId, config_.lightDirection);
         }
     }
@@ -89,6 +103,17 @@ bool MeshRenderer::DrawMesh(size_t meshId)
         if (mesh && mesh->FaceCount > 0 && mesh->VertexCount > 0)
         {
             hasFaces = true;
+            if (config_.sortPriorityBoost && mesh->Attributes)
+            {
+                constexpr uint8_t kSortModeMask = 0xFCu;
+                constexpr uint8_t kSortModeMin =
+                    static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Minimum);
+                for (size_t f = 0; f < mesh->FaceCount; ++f)
+                {
+                    mesh->Attributes[f].Sort =
+                        static_cast<uint8_t>((mesh->Attributes[f].Sort & kSortModeMask) | kSortModeMin);
+                }
+            }
             model_.Draw(meshId);
         }
     }

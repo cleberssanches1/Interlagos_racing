@@ -56,6 +56,8 @@ CarSystem::CarSystem(ModelObject* carObj, bool smooth, const Config& config)
         rendererConfig.drawOrder[i] = config_.drawOrder[i];
     }
     rendererConfig.wireframeOnly = config_.wireframeOnly;
+    // Car must always sort "in front of" track polygons at the same depth.
+    rendererConfig.sortPriorityBoost = true;
 
     renderer_ = std::make_unique<MeshRenderer>(*carObj, smooth, rendererConfig);
     if (!renderer_) return;
