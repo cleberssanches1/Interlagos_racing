@@ -8,15 +8,33 @@ namespace Game
 class SimpleGameplayTick final : public IGameplayTick
 {
 public:
+    static constexpr uint16_t kAsphaltFamilyId = 0u;
+
     void Tick(GameplayFrameState& ioFrameState, const ITrackCollisionQuery* trackQuery) override
     {
         int32_t segmentId = -1;
         Vector3D surfaceNormal{};
+        TrackSurfaceSample surfaceSample{};
+        bool hasSurfaceSample = false;
         if (trackQuery)
         {
-            (void)trackQuery->Sample(ioFrameState.carWorldPosition, surfaceNormal, segmentId);
+            hasSurfaceSample = trackQuery->SampleSurface(ioFrameState.carWorldPosition,
+                                                         kAsphaltFamilyId,
+                                                         surfaceSample);
+            if (hasSurfaceSample)
+            {
+                surfaceNormal = surfaceSample.surfaceNormal;
+                segmentId = surfaceSample.segmentId;
+            }
+            else
+            {
+                (void)trackQuery->Sample(ioFrameState.carWorldPosition, surfaceNormal, segmentId);
+            }
         }
         ioFrameState.activeSegmentId = segmentId;
+        ioFrameState.cachedSurfaceSample = surfaceSample;
+        ioFrameState.cachedSurfaceFamilyId = kAsphaltFamilyId;
+        ioFrameState.hasCachedSurfaceSample = hasSurfaceSample;
 
         if (ioFrameState.phase == GameplayFrameState::RacePhase::Idle)
         {
@@ -36,9 +54,10 @@ public:
             }
         }
 
-        // Safety respawn when car drifts too far from track center area.
+        // Safety respawn when car drifts too far from the spawn point.
         const SRL::Math::Types::Fxp maxDrift = SRL::Math::Types::Fxp::BuildRaw(0x012C0000); // 300
-        if (ioFrameState.carWorldPosition.X.Abs() > maxDrift || ioFrameState.carWorldPosition.Z.Abs() > maxDrift)
+        const SRL::Math::Types::Vector3D driftDelta = ioFrameState.carWorldPosition - spawnPosition_;
+        if (driftDelta.X.Abs() > maxDrift || driftDelta.Z.Abs() > maxDrift)
         {
             ioFrameState.resetRequested = true;
             ioFrameState.respawnPosition = spawnPosition_;
@@ -48,9 +67,12 @@ public:
             lastCheckpointSegmentId_ = -1;
             return;
         }
+    }
 
-        // Keep Y stable for now until full suspension and collision are available.
-        ioFrameState.carWorldPosition.Y = spawnPosition_.Y;
+    void SetSpawnPosition(const Vector3D& pos, int32_t yawDeg)
+    {
+        spawnPosition_ = pos;
+        spawnYawDeg_ = yawDeg;
     }
 
 private:

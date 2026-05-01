@@ -779,9 +779,9 @@ int GameApp::Run()
     // Balanced FOV: reduce fisheye without flattening car proportions.
     constexpr float kCameraFovDeg = 34.0f;
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
-    // Depth display level 4 (1/16 of projection distance) reduces the near-camera
+    // Depth display level 5 (1/32 of projection distance) tightens the near-camera
     // zone where large track quads distort when their vertices approach the clip plane.
-    SRL::Scene3D::SetDepthDisplayLevel(4);
+    SRL::Scene3D::SetDepthDisplayLevel(5);
 
 
 
@@ -1049,9 +1049,10 @@ int GameApp::Run()
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
+    gameplayTick.SetSpawnPosition(carWorldPosition, 0);
     Game::SimpleAudioEvents audioEvents;
-    // Safety mode: keep runtime simulation disabled while stabilizing render path.
-    const bool enableRuntimeSimulation = false;
+    // Runtime simulation must stay enabled for manual driving physics.
+    const bool enableRuntimeSimulation = true;
 
     GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
                                                                enableBg,

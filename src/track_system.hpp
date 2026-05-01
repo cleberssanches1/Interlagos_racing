@@ -14,6 +14,7 @@
 
 #include "frame_budget.hpp"
 #include "frame_budget_controller.hpp"
+#include "drive_surface_map_loader.hpp"
 #include "resource_loader.hpp"
 #include "segment_component_loader.hpp"
 #include "soak_monitor.hpp"
@@ -117,7 +118,8 @@ public:
                                 const SRL::Math::Types::Vector3D& trackOffset,
                                 uint16_t familyId,
                                 SRL::Math::Types::Fxp& outSurfaceY,
-                                int32_t* outSegmentId = nullptr) const;
+                                int32_t* outSegmentId = nullptr,
+                                SRL::Math::Types::Vector3D* outSurfaceNormal = nullptr) const;
     bool FindSegmentCenterById(int32_t segmentId,
                                const SRL::Math::Types::Vector3D& trackOffset,
                                SRL::Math::Types::Vector3D& outSegmentCenter) const;
@@ -130,6 +132,24 @@ public:
     const char* LastResolvedPath() const { return lastSegmentPath_; }
     const FrameTelemetry& Telemetry() const { return coordinator_.Telemetry(); }
     uint16_t SegmentCount() const { return totalSegmentCount_; }
+    bool DriveSurfaceMapReady() const { return driveSurfaceMapReady_; }
+    uint32_t DriveSurfaceMapLoadAttempts() const { return driveSurfaceMapLoadAttempts_; }
+    uint32_t DriveSurfaceMapLoadFailures() const { return driveSurfaceMapLoadFailures_; }
+    uint32_t DriveSurfaceMapReadFailures() const { return driveSurfaceMapReadFailures_; }
+    uint32_t DriveSurfaceMapParseFailures() const { return driveSurfaceMapParseFailures_; }
+    uint32_t DriveSurfaceMapLastBlobBytes() const { return driveSurfaceMapLastBlobBytes_; }
+    uint32_t DriveSurfaceMapLastMagic() const { return driveSurfaceMapLastMagic_; }
+    uint16_t DriveSurfaceMapLastVersion() const { return driveSurfaceMapLastVersion_; }
+    uint16_t DriveSurfaceMapLastHeaderSize() const { return driveSurfaceMapLastHeaderSize_; }
+    uint16_t DriveSurfaceMapLastMaxSegmentId() const { return driveSurfaceMapLastMaxSegmentId_; }
+    uint32_t DriveSurfaceMapLastTriangleCount() const { return driveSurfaceMapLastTriangleCount_; }
+    uint32_t DriveSurfaceMapLastSegmentEntrySize() const { return driveSurfaceMapLastSegmentEntrySize_; }
+    uint32_t DriveSurfaceMapLastTriangleEntrySize() const { return driveSurfaceMapLastTriangleEntrySize_; }
+    uint32_t DriveSurfaceMapResidentBytes() const { return driveSurfaceMapCartBytes_; }
+    uint16_t DriveSurfaceMapLastStatusCode() const { return driveSurfaceMapLastStatusCode_; }
+    uint32_t DriveSurfaceMapQueryHits() const { return driveSurfaceMapQueryHits_; }
+    uint32_t DriveSurfaceMapQueryMisses() const { return driveSurfaceMapQueryMisses_; }
+    uint32_t DriveSurfaceMapFallbackQueries() const { return driveSurfaceMapFallbackQueries_; }
     bool HasSmoothSegments() const;
     uint32_t MaxSegmentFaceCount() const;
     uint32_t MaxSegmentVertexCount() const;
@@ -546,6 +566,13 @@ private:
     void ApplyTrackSlaveMode();
     void LogInitialSegmentDiagnostics() const;
     void ApplyInitialSdrFamilySlots();
+    bool EnsureDriveSurfaceMapLoaded() const;
+    bool TrySampleDriveSurfaceMap(const SRL::Math::Types::Vector3D& worldPosition,
+                                  const SRL::Math::Types::Vector3D& trackOffset,
+                                  int32_t seedSegmentId,
+                                  SRL::Math::Types::Fxp& outSurfaceY,
+                                  int32_t* outSegmentId,
+                                  SRL::Math::Types::Vector3D* outSurfaceNormal) const;
 
     static constexpr std::array<const char*, 28> kSegmentPathTemplates_ = {{
         "CD/SETORES/SEG_%03u.NYA",
@@ -771,6 +798,30 @@ private:
     FamilySlotVector slidePrefetchFamilySlotsScratch_{};
     std::array<Seg1TexbankCart, 4> seg1Texbanks_{};
     TrackLowWorkVector<Seg1TgaCartEntry> seg1TgaCatalog_{};
+    mutable std::vector<uint8_t> driveSurfaceMapBytes_{};
+    mutable void* driveSurfaceMapCartPtr_ = nullptr;
+    mutable uint32_t driveSurfaceMapCartBytes_ = 0;
+    mutable DriveSurfaceMap::Loader::View driveSurfaceMapView_{};
+    mutable bool driveSurfaceMapViewValid_ = false;
+    mutable bool driveSurfaceMapLoadAttempted_ = false;
+    mutable bool driveSurfaceMapReady_ = false;
+    mutable uint32_t driveSurfaceMapLoadAttempts_ = 0;
+    mutable uint32_t driveSurfaceMapLoadFailures_ = 0;
+    mutable uint32_t driveSurfaceMapReadFailures_ = 0;
+    mutable uint32_t driveSurfaceMapParseFailures_ = 0;
+    mutable uint32_t driveSurfaceMapLastBlobBytes_ = 0;
+    mutable uint32_t driveSurfaceMapLastMagic_ = 0;
+    mutable uint16_t driveSurfaceMapLastVersion_ = 0;
+    mutable uint16_t driveSurfaceMapLastHeaderSize_ = 0;
+    mutable uint16_t driveSurfaceMapLastMaxSegmentId_ = 0;
+    mutable uint32_t driveSurfaceMapLastTriangleCount_ = 0;
+    mutable uint32_t driveSurfaceMapLastSegmentEntrySize_ = 0;
+    mutable uint32_t driveSurfaceMapLastTriangleEntrySize_ = 0;
+    mutable uint16_t driveSurfaceMapLastStatusCode_ = 0;
+    mutable uint16_t driveSurfaceMapRetryCooldownQueries_ = 0;
+    mutable uint32_t driveSurfaceMapQueryHits_ = 0;
+    mutable uint32_t driveSurfaceMapQueryMisses_ = 0;
+    mutable uint32_t driveSurfaceMapFallbackQueries_ = 0;
     std::array<TrackLowWorkI16Vector, 4> seg1RendererFaceSlotsByLod_{};
     uint16_t seg1TgaPreloadCount_ = 0;
     uint16_t seg1TgaAttemptCount_ = 0;

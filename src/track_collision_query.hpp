@@ -61,6 +61,64 @@ public:
         return found;
     }
 
+    bool SampleSurface(const SRL::Math::Types::Vector3D& worldPosition,
+                       const uint16_t surfaceFamilyId,
+                       Game::TrackSurfaceSample& outSample) const override
+    {
+        outSample.worldPosition = worldPosition;
+        outSample.surfaceNormal = SRL::Math::Types::Vector3D(0.0, -1.0, 0.0);
+        outSample.surfaceY = worldPosition.Y;
+        outSample.segmentId = -1;
+        outSample.hasSurfaceY = false;
+
+        SRL::Math::Types::Vector3D sampledNormal{};
+        int32_t sampledSegmentId = -1;
+        const bool sampled = Sample(worldPosition, sampledNormal, sampledSegmentId);
+        if (sampled)
+        {
+            outSample.surfaceNormal = sampledNormal;
+            outSample.segmentId = sampledSegmentId;
+        }
+
+        if (!trackSystem_ || !trackSystem_->Ready())
+        {
+            return sampled;
+        }
+
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+
+        SRL::Math::Types::Fxp surfaceY{};
+        SRL::Math::Types::Vector3D surfaceNormal{};
+        int32_t segmentId = outSample.segmentId;
+        const bool surfaceFound =
+            trackSystem_->FindSurfaceYByFamilyId(worldPosition,
+                                                 offset,
+                                                 surfaceFamilyId,
+                                                 surfaceY,
+                                                 &segmentId,
+                                                 &surfaceNormal);
+        if (!surfaceFound)
+        {
+            if (sampled && outSample.segmentId > 0)
+            {
+                SRL::Math::Types::Vector3D center{};
+                if (trackSystem_->FindSegmentCenterById(outSample.segmentId, offset, center))
+                {
+                    outSample.surfaceY = center.Y;
+                    outSample.hasSurfaceY = true;
+                }
+            }
+            return sampled;
+        }
+
+        outSample.surfaceY = surfaceY;
+        outSample.surfaceNormal = surfaceNormal;
+        outSample.segmentId = segmentId;
+        outSample.hasSurfaceY = true;
+        return true;
+    }
+
 private:
     static SRL::Math::Types::Fxp ScoreToCenter(const SRL::Math::Types::Vector3D& worldPosition,
                                                const SRL::Math::Types::Vector3D& center)

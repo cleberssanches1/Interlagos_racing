@@ -75,6 +75,7 @@ public:
         if (offsetDeg > 180) offsetDeg -= 360;
         carForwardYawOffsetDeg_ = static_cast<int16_t>(offsetDeg);
     }
+    void SetVehicleDynamics(int16_t pitchDeg, int16_t rollDeg, const Vector3D& surfaceNormal);
     // Runtime flag to enable/disable camera debug overlay logs.
     void SetDebugLogsEnabled(bool enabled) { debugLogsEnabled_ = enabled; }
     bool DebugLogsEnabled() const { return debugLogsEnabled_; }
@@ -131,9 +132,13 @@ private:
     ChasePreset chasePreset_ = ChasePreset::ChaseNear;
     int32_t cachedCarYawDeg_ = 180;
     int16_t carForwardYawOffsetDeg_ = 180;
+    int16_t vehiclePitchDeg_ = 0;
+    int16_t vehicleRollDeg_ = 0;
+    Vector3D vehicleSurfaceNormal_{0.0, -1.0, 0.0};
     mutable Vector3D headingForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D movementForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lookForwardWorld_{0.0, 0.0, 1.0f};
+    mutable Vector3D resolvedOffsetForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
     mutable bool hasObservedCarWorldPosition_ = false;
     PathFrameContext pathFrameContext_{};

@@ -1,10 +1,20 @@
 #pragma once
 
 #include <srl.hpp>
+#include <cstdint>
 
 namespace Game
 {
 using Vector3D = SRL::Math::Types::Vector3D;
+
+struct TrackSurfaceSample
+{
+    Vector3D worldPosition{};
+    Vector3D surfaceNormal{0.0, -1.0, 0.0};
+    SRL::Math::Types::Fxp surfaceY{SRL::Math::Types::Fxp::BuildRaw(0)};
+    int32_t segmentId = -1;
+    bool hasSurfaceY = false;
+};
 
 struct GameplayFrameState
 {
@@ -23,11 +33,18 @@ struct GameplayFrameState
     bool wheelsSpinning = false;
     int16_t speedProxy = 0;
     int32_t activeSegmentId = -1;
+    Vector3D surfaceNormalWorld{0.0, -1.0, 0.0};
+    int16_t carPitchDeg = 0;
+    int16_t carRollDeg = 0;
+    int16_t yawRateDeg = 0;
     uint32_t checkpointsPassed = 0;
     RacePhase phase = RacePhase::Idle;
     bool resetRequested = false;
     Vector3D respawnPosition{};
     int32_t respawnYawDeg = 0;
+    TrackSurfaceSample cachedSurfaceSample{};
+    uint16_t cachedSurfaceFamilyId = 0u;
+    bool hasCachedSurfaceSample = false;
 };
 
 struct ICarCommand
@@ -67,6 +84,27 @@ struct ITrackCollisionQuery
 {
     virtual ~ITrackCollisionQuery() = default;
     virtual bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) const = 0;
+    virtual bool SampleSurface(const Vector3D& worldPosition,
+                               uint16_t surfaceFamilyId,
+                               TrackSurfaceSample& outSample) const
+    {
+        (void)surfaceFamilyId;
+        outSample.worldPosition = worldPosition;
+        outSample.surfaceY = worldPosition.Y;
+        outSample.hasSurfaceY = false;
+        outSample.segmentId = -1;
+        outSample.surfaceNormal = Vector3D(0.0, -1.0, 0.0);
+
+        Vector3D normal{};
+        int32_t segmentId = -1;
+        const bool ok = Sample(worldPosition, normal, segmentId);
+        if (ok)
+        {
+            outSample.surfaceNormal = normal;
+            outSample.segmentId = segmentId;
+        }
+        return ok;
+    }
 };
 
 // Car physics contract executed each frame.

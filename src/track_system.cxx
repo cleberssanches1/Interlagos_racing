@@ -88,6 +88,8 @@ void TrackSystem::PrintLwrStageProbes()
 #include "track_runtime_pack_loader.hpp"
 #include "batch_draw_ready_loader.hpp"
 #include "track_pipeline_stages.hpp"
+#include "drive_surface_map_loader.hpp"
+#include "drive_surface_map_query.hpp"
 #include "sh2_frt_profiler.hpp"
 #include "srl_tga.hpp"
 
@@ -96,6 +98,32 @@ using SRL::Math::Types::Vector3D;
 
 namespace
 {
+constexpr bool IsDrivableGroundFamilyId(const uint16_t familyId)
+{
+    switch (familyId)
+    {
+        case 1u:
+        case 2u:
+        case 3u:
+        case 4u:
+        case 5u:
+        case 10u:
+        case 18u:
+        case 25u:
+        case 43u:
+        case 46u:
+        case 47u:
+        case 54u:
+        case 55u:
+        case 61u:
+        case 62u:
+        case 63u:
+            return true;
+        default:
+            return false;
+    }
+}
+
 struct Segment1TextureJson
 {
     int familyIds[512]{};
@@ -312,11 +340,12 @@ static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
 static constexpr uint8_t kTrackFramePlanFlagFallback = 1u << 0;
 static constexpr uint8_t kTrackFramePlanFlagPartial = 1u << 1;
 static constexpr uint8_t kTrackFramePlanFlagStale = 1u << 2;
-// Segments whose camera L1-distance (in Fxp 16.16 raw) falls below this threshold
-// are excluded from the render list. At very small distances the large road quads
-// straddle the SGL near-clip plane and their vertices distort on screen.
-// 1.5 world units = 0x00018000 in Fxp 16.16. Calibrate on hardware if gaps appear.
-static constexpr int32_t kNearSegmentCullDistanceRaw = 0x00018000;
+// Segments whose camera XZ L1-distance falls below this threshold AND whose id matches
+// the car's current segment are excluded from the render list. These are road quads
+// that sit directly under the camera position — their trailing vertices have near-zero
+// Z in camera space, causing SGL near-clip distortion.
+// 30 world units = 0x001E0000 in Fxp 16.16.
+static constexpr int32_t kNearSegmentCullDistanceRaw = 0x001E0000;
 
 static int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount)
 {
@@ -1066,6 +1095,66 @@ static bool ReadLocalSegmentsMap(std::vector<char>& outText)
     return false;
 }
 
+static bool ReadLocalDriveSurfaceMap(std::vector<uint8_t>& outData)
+{
+    const char* names[] = {
+        "DRVMAP.BIN",
+        "drvmap.bin",
+        "drvm.bin"
+    };
+    const char* dirs[] = {
+        "",
+        ".",
+        "..",
+        "../cd/data",
+        "../../cd/data",
+        "../../../cd/data",
+        "cd/data",
+        "CD/DATA",
+        "c:/saturn/SaturnRingLib-main/Projects/Interlagos_racing/cd/data",
+        "C:/saturn/SaturnRingLib-main/Projects/Interlagos_racing/cd/data"
+    };
+
+    for (size_t d = 0; d < sizeof(dirs) / sizeof(dirs[0]); ++d)
+    {
+        const char* dir = dirs[d];
+        for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
+        {
+            const char* base = names[i];
+            char path[256]{};
+            if (dir[0] == '\0')
+            {
+                std::snprintf(path, sizeof(path), "%s", base);
+            }
+            else
+            {
+                std::snprintf(path, sizeof(path), "%s/%s", dir, base);
+            }
+
+            FILE* f = std::fopen(path, "rb");
+            if (!f) continue;
+            std::fseek(f, 0, SEEK_END);
+            const long size = std::ftell(f);
+            if (size <= 0)
+            {
+                std::fclose(f);
+                continue;
+            }
+            std::fseek(f, 0, SEEK_SET);
+            outData.assign(static_cast<size_t>(size), 0u);
+            const size_t read = std::fread(outData.data(), 1, static_cast<size_t>(size), f);
+            std::fclose(f);
+            if (read != static_cast<size_t>(size))
+            {
+                outData.clear();
+                continue;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool ReadCdFileBinary(const char* const* names, size_t count, std::vector<uint8_t>& outData)
 {
     auto tryReadOne = [&](const char* path) -> bool
@@ -1086,7 +1175,6 @@ static bool ReadCdFileBinary(const char* const* names, size_t count, std::vector
             if (got <= 0) break;
             outData.insert(outData.end(), chunk.begin(), chunk.begin() + got);
             totalRead += static_cast<size_t>(got);
-            if (got < want) break;
         }
         if (outData.empty()) return false;
         return true;
@@ -1106,6 +1194,86 @@ static bool ReadCdFileBinary(const char* const* names, size_t count, std::vector
                 std::snprintf(nv, sizeof(nv), "%s;%d", n, v);
                 if (tryReadOne(nv)) return true;
             }
+        }
+    }
+    return false;
+}
+
+static bool TryParseDriveSurfaceMapBlob(const std::vector<uint8_t>& inputBytes,
+                                        std::vector<uint8_t>& outNormalizedBytes,
+                                        DriveSurfaceMap::Loader::View& outView,
+                                        uint32_t* outHeaderOffset = nullptr)
+{
+    outView = {};
+    outNormalizedBytes.clear();
+    if (outHeaderOffset) *outHeaderOffset = 0u;
+    if (inputBytes.empty()) return false;
+
+    if (DriveSurfaceMap::Loader::Parse(inputBytes, outView))
+    {
+        outNormalizedBytes.assign(inputBytes.begin(), inputBytes.end());
+        return true;
+    }
+
+    if (inputBytes.size() < 64u) return false;
+
+    static constexpr uint8_t kMagicBytes[4] = { 'D', 'M', 'V', '1' };
+    const size_t scanLimit = std::min<size_t>(inputBytes.size() - 64u, 8192u);
+    for (size_t off = 1u; off <= scanLimit; ++off)
+    {
+        if (inputBytes[off + 0u] != kMagicBytes[0] ||
+            inputBytes[off + 1u] != kMagicBytes[1] ||
+            inputBytes[off + 2u] != kMagicBytes[2] ||
+            inputBytes[off + 3u] != kMagicBytes[3])
+        {
+            continue;
+        }
+
+        std::vector<uint8_t> tailBytes{};
+        tailBytes.assign(inputBytes.begin() + static_cast<std::ptrdiff_t>(off), inputBytes.end());
+        DriveSurfaceMap::Loader::View shiftedView{};
+        if (!DriveSurfaceMap::Loader::Parse(tailBytes, shiftedView)) continue;
+
+        outNormalizedBytes = std::move(tailBytes);
+        outView = shiftedView;
+        if (outHeaderOffset) *outHeaderOffset = static_cast<uint32_t>(off);
+        return true;
+    }
+
+    return false;
+}
+
+static bool TryParseDriveSurfaceMapMemory(const uint8_t* data,
+                                          size_t size,
+                                          DriveSurfaceMap::Loader::View& outView,
+                                          uint32_t* outHeaderOffset = nullptr)
+{
+    outView = {};
+    if (outHeaderOffset) *outHeaderOffset = 0u;
+    if (!data || size == 0u) return false;
+
+    if (DriveSurfaceMap::Loader::Parse(data, size, outView))
+    {
+        return true;
+    }
+
+    if (size < 64u) return false;
+
+    static constexpr uint8_t kMagicBytes[4] = { 'D', 'M', 'V', '1' };
+    const size_t scanLimit = std::min<size_t>(size - 64u, 8192u);
+    for (size_t off = 1u; off <= scanLimit; ++off)
+    {
+        if (data[off + 0u] != kMagicBytes[0] ||
+            data[off + 1u] != kMagicBytes[1] ||
+            data[off + 2u] != kMagicBytes[2] ||
+            data[off + 3u] != kMagicBytes[3])
+        {
+            continue;
+        }
+        if (DriveSurfaceMap::Loader::Parse(data + off, size - off, outView))
+        {
+            if (outHeaderOffset) *outHeaderOffset = static_cast<uint32_t>(off);
+            return true;
         }
     }
     return false;
@@ -9027,6 +9195,11 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
 {
     LWR_PROBE_BEGIN();
     if (segmentId <= 0) return false;
+    if (totalSegmentCount_ > 0)
+    {
+        segmentId = WrapSegmentIdToRange(segmentId, totalSegmentCount_);
+        if (segmentId <= 0) return false;
+    }
 
     if (kEnableTrackRuntimeStabilization)
     {
@@ -9235,6 +9408,11 @@ bool TrackSystem::BuildSegmentIntoRenderer(int32_t segmentId,
                                            FamilyIdVector& outFamilyIds)
 {
     if (segmentId <= 0) return false;
+    if (totalSegmentCount_ > 0)
+    {
+        segmentId = WrapSegmentIdToRange(segmentId, totalSegmentCount_);
+        if (segmentId <= 0) return false;
+    }
 
     outFamilyIds.clear();
     bool usedRdr = false;
@@ -9251,6 +9429,11 @@ bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
                                                FamilyIdVector& outFamilyIds)
 {
     if (segmentId <= 0) return false;
+    if (totalSegmentCount_ > 0)
+    {
+        segmentId = WrapSegmentIdToRange(segmentId, totalSegmentCount_);
+        if (segmentId <= 0) return false;
+    }
     // Se o renderer foi pré-construído pelo prefetch para este segmento, reutilizá-lo diretamente.
     // O slideScratchRenderer_ já contém a geometria; apenas copiar os family IDs do cache.
     if (kEnableTrackRuntimeStabilization &&
@@ -12472,6 +12655,34 @@ void TrackSystem::ResetInitializationState()
     seg1ComponentAttrs_.clear();
     seg1FaceFamilyIds_.clear();
     seg1FamilySlots_.clear();
+    if (driveSurfaceMapCartPtr_)
+    {
+        SRL::Memory::CartRam::Free(driveSurfaceMapCartPtr_);
+        driveSurfaceMapCartPtr_ = nullptr;
+    }
+    driveSurfaceMapCartBytes_ = 0;
+    driveSurfaceMapBytes_.clear();
+    driveSurfaceMapView_ = {};
+    driveSurfaceMapViewValid_ = false;
+    driveSurfaceMapLoadAttempted_ = false;
+    driveSurfaceMapReady_ = false;
+    driveSurfaceMapLoadAttempts_ = 0;
+    driveSurfaceMapLoadFailures_ = 0;
+    driveSurfaceMapReadFailures_ = 0;
+    driveSurfaceMapParseFailures_ = 0;
+    driveSurfaceMapLastBlobBytes_ = 0;
+    driveSurfaceMapLastMagic_ = 0;
+    driveSurfaceMapLastVersion_ = 0;
+    driveSurfaceMapLastHeaderSize_ = 0;
+    driveSurfaceMapLastMaxSegmentId_ = 0;
+    driveSurfaceMapLastTriangleCount_ = 0;
+    driveSurfaceMapLastSegmentEntrySize_ = 0;
+    driveSurfaceMapLastTriangleEntrySize_ = 0;
+    driveSurfaceMapLastStatusCode_ = 0;
+    driveSurfaceMapRetryCooldownQueries_ = 0;
+    driveSurfaceMapQueryHits_ = 0;
+    driveSurfaceMapQueryMisses_ = 0;
+    driveSurfaceMapFallbackQueries_ = 0;
     familyMergeCurrentWindowScratch_.clear();
     slidePrefetchFamilySlotsScratch_.clear();
     InvalidateFamilySlotIndex();
@@ -12779,6 +12990,420 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
                       fullTrackFamilyCacheReady_ ? 1u : 0u);
 }
 
+bool TrackSystem::EnsureDriveSurfaceMapLoaded() const
+{
+    if (driveSurfaceMapReady_) return true;
+    if (driveSurfaceMapLoadAttempted_ && driveSurfaceMapRetryCooldownQueries_ > 0u)
+    {
+        --driveSurfaceMapRetryCooldownQueries_;
+        return false;
+    }
+    driveSurfaceMapLoadAttempted_ = true;
+    ++driveSurfaceMapLoadAttempts_;
+    driveSurfaceMapReady_ = false;
+    driveSurfaceMapBytes_.clear();
+    driveSurfaceMapView_ = {};
+    driveSurfaceMapViewValid_ = false;
+    driveSurfaceMapLastBlobBytes_ = 0;
+    driveSurfaceMapLastMagic_ = 0;
+    driveSurfaceMapLastVersion_ = 0;
+    driveSurfaceMapLastHeaderSize_ = 0;
+    driveSurfaceMapLastMaxSegmentId_ = 0;
+    driveSurfaceMapLastTriangleCount_ = 0;
+    driveSurfaceMapLastSegmentEntrySize_ = 0;
+    driveSurfaceMapLastTriangleEntrySize_ = 0;
+    driveSurfaceMapLastStatusCode_ = 2u; // attempt begin
+
+    const char* mapCandidates[] = {
+        "/CD/DATA/DRVMAP.BIN",
+        "/CD/DATA/DRVMAP.BIN;1",
+        "/DATA/DRVMAP.BIN",
+        "/DATA/DRVMAP.BIN;1",
+        "CD/DATA/DRVMAP.BIN",
+        "CD/DATA/DRVMAP.BIN;1",
+        "DATA/DRVMAP.BIN",
+        "DATA/DRVMAP.BIN;1",
+        "cd/data/DRVMAP.BIN",
+        "cd/data/DRVMAP.BIN;1",
+        "data/DRVMAP.BIN",
+        "data/DRVMAP.BIN;1",
+        "DRVMAP.BIN",
+        "DRVMAP.BIN;1",
+        "/CD/DATA/drvmap.bin",
+        "/CD/DATA/drvmap.bin;1",
+        "/DATA/drvmap.bin",
+        "/DATA/drvmap.bin;1",
+        "CD/DATA/drvmap.bin",
+        "CD/DATA/drvmap.bin;1",
+        "DATA/drvmap.bin",
+        "DATA/drvmap.bin;1",
+        "cd/data/drvmap.bin",
+        "cd/data/drvmap.bin;1",
+        "data/drvmap.bin",
+        "data/drvmap.bin;1",
+        "drvmap.bin",
+        "drvmap.bin;1",
+        "/CD/DATA/drvm.bin",
+        "/CD/DATA/drvm.bin;1",
+        "/DATA/drvm.bin",
+        "/DATA/drvm.bin;1",
+        "CD/DATA/drvm.bin",
+        "CD/DATA/drvm.bin;1",
+        "DATA/drvm.bin",
+        "DATA/drvm.bin;1",
+        "cd/data/drvm.bin",
+        "cd/data/drvm.bin;1",
+        "data/drvm.bin",
+        "data/drvm.bin;1",
+        "drvm.bin",
+        "drvm.bin;1"
+    };
+
+    static constexpr uint16_t kDriveSurfaceMapRetryMinCooldownQueries = 1u;
+    static constexpr uint16_t kDriveSurfaceMapRetryMaxCooldownQueries = 64u;
+    auto computeRetryCooldown = [&](uint32_t failures) -> uint16_t
+    {
+        uint32_t cooldown = kDriveSurfaceMapRetryMinCooldownQueries;
+        uint32_t shift = (failures > 8u) ? 8u : failures;
+        cooldown <<= shift;
+        if (cooldown > kDriveSurfaceMapRetryMaxCooldownQueries)
+        {
+            cooldown = kDriveSurfaceMapRetryMaxCooldownQueries;
+        }
+        return static_cast<uint16_t>(cooldown);
+    };
+    auto updateParseProbeFromView = [&](uint32_t blobBytes, const DriveSurfaceMap::Loader::View& parsedView)
+    {
+        driveSurfaceMapLastBlobBytes_ = blobBytes;
+        driveSurfaceMapLastMagic_ = parsedView.header.magic;
+        driveSurfaceMapLastVersion_ = parsedView.header.version;
+        driveSurfaceMapLastHeaderSize_ = parsedView.header.headerSize;
+        driveSurfaceMapLastMaxSegmentId_ = parsedView.header.maxSegmentId;
+        driveSurfaceMapLastTriangleCount_ = parsedView.header.triangleCount;
+        driveSurfaceMapLastSegmentEntrySize_ = parsedView.header.segmentEntrySize;
+        driveSurfaceMapLastTriangleEntrySize_ = parsedView.header.triangleEntrySize;
+    };
+    auto clearProbe = [&]()
+    {
+        driveSurfaceMapLastBlobBytes_ = 0;
+        driveSurfaceMapLastMagic_ = 0;
+        driveSurfaceMapLastVersion_ = 0;
+        driveSurfaceMapLastHeaderSize_ = 0;
+        driveSurfaceMapLastMaxSegmentId_ = 0;
+        driveSurfaceMapLastTriangleCount_ = 0;
+        driveSurfaceMapLastSegmentEntrySize_ = 0;
+        driveSurfaceMapLastTriangleEntrySize_ = 0;
+    };
+    auto freeCartResident = [&]()
+    {
+        if (driveSurfaceMapCartPtr_)
+        {
+            SRL::Memory::CartRam::Free(driveSurfaceMapCartPtr_);
+            driveSurfaceMapCartPtr_ = nullptr;
+        }
+        driveSurfaceMapCartBytes_ = 0;
+    };
+    auto readCdExact = [&](const char* path, std::vector<uint8_t>& outBytes) -> bool
+    {
+        outBytes.clear();
+        if (!path || path[0] == '\0') return false;
+        SRL::Cd::File f(path);
+        if (!f.Exists() || f.Size.Bytes <= 0) return false;
+        if (!f.Open()) return false;
+        const uint32_t bytes = static_cast<uint32_t>(f.Size.Bytes);
+        outBytes.assign(bytes, 0u);
+        uint32_t readBytes = 0u;
+        if (!ReadCdFileFully(f, bytes, outBytes.data(), readBytes))
+        {
+            outBytes.clear();
+            return false;
+        }
+        return !outBytes.empty();
+    };
+
+    // Reuse existing resident cart buffer when valid.
+    if (driveSurfaceMapCartPtr_ && driveSurfaceMapCartBytes_ >= 64u)
+    {
+        DriveSurfaceMap::Loader::View cachedView{};
+        uint32_t headerOffset = 0u;
+        if (TryParseDriveSurfaceMapMemory(static_cast<const uint8_t*>(driveSurfaceMapCartPtr_),
+                                          static_cast<size_t>(driveSurfaceMapCartBytes_),
+                                          cachedView,
+                                          &headerOffset))
+        {
+            driveSurfaceMapView_ = cachedView;
+            driveSurfaceMapViewValid_ = true;
+            driveSurfaceMapReady_ = true;
+            driveSurfaceMapLastStatusCode_ = (headerOffset == 0u) ? 16u : 23u; // ready / shifted-ready
+            updateParseProbeFromView(driveSurfaceMapCartBytes_, cachedView);
+            driveSurfaceMapRetryCooldownQueries_ = 0u;
+            return true;
+        }
+        // Corrupted resident copy; reload from sources.
+        freeCartResident();
+        clearProbe();
+        driveSurfaceMapLastStatusCode_ = 21u; // resident parse fail
+    }
+
+    DriveSurfaceMap::Loader::View parsedView{};
+    std::vector<uint8_t> mapBin{};
+    bool loadedAndParsed = false;
+    bool hadAnyCdBytes = false;
+
+    // Host-local mirrors are the most stable source in PC/emulator workflows.
+    // Parse first, then copy normalized bytes to cart resident.
+    std::vector<uint8_t> localMapFirst{};
+    if (ReadLocalDriveSurfaceMap(localMapFirst))
+    {
+        driveSurfaceMapLastStatusCode_ = 3u; // local read ok
+        std::vector<uint8_t> normalizedBytes{};
+        uint32_t headerOffset = 0u;
+        if (TryParseDriveSurfaceMapBlob(localMapFirst, normalizedBytes, parsedView, &headerOffset))
+        {
+            driveSurfaceMapLastStatusCode_ = (headerOffset == 0u) ? 4u : 17u; // local parse ok/shifted
+            mapBin = std::move(normalizedBytes);
+            loadedAndParsed = true;
+            updateParseProbeFromView(static_cast<uint32_t>(mapBin.size()), parsedView);
+        }
+        else
+        {
+            driveSurfaceMapLastStatusCode_ = 5u; // local parse fail
+            ++driveSurfaceMapParseFailures_;
+            driveSurfaceMapLastBlobBytes_ = static_cast<uint32_t>(localMapFirst.size());
+        }
+    }
+
+    // Try all CD path variants and accept only a payload that parses.
+    for (size_t i = 0; !loadedAndParsed && i < sizeof(mapCandidates) / sizeof(mapCandidates[0]); ++i)
+    {
+        const char* candidate = mapCandidates[i];
+        std::vector<uint8_t> candidateBytes{};
+        if (!readCdExact(candidate, candidateBytes)) continue;
+        hadAnyCdBytes = true;
+        driveSurfaceMapLastStatusCode_ = 6u; // cd read ok
+
+        DriveSurfaceMap::Loader::View candidateView{};
+        std::vector<uint8_t> normalizedBytes{};
+        uint32_t headerOffset = 0u;
+        if (!TryParseDriveSurfaceMapBlob(candidateBytes, normalizedBytes, candidateView, &headerOffset))
+        {
+            driveSurfaceMapLastStatusCode_ = 7u; // cd parse fail
+            ++driveSurfaceMapParseFailures_;
+            driveSurfaceMapLastBlobBytes_ = static_cast<uint32_t>(candidateBytes.size());
+            continue;
+        }
+
+        driveSurfaceMapLastStatusCode_ = (headerOffset == 0u) ? 8u : 18u; // cd parse ok/shifted
+        mapBin = std::move(normalizedBytes);
+        parsedView = candidateView;
+        loadedAndParsed = true;
+        updateParseProbeFromView(static_cast<uint32_t>(mapBin.size()), parsedView);
+        break;
+    }
+
+    // CD payload may be stale/partial; fallback to host-local mirrors and parse.
+    if (!loadedAndParsed)
+    {
+        std::vector<uint8_t> localMap{};
+        if (!ReadLocalDriveSurfaceMap(localMap))
+        {
+            driveSurfaceMapLastStatusCode_ = 9u; // fallback local read fail
+            ++driveSurfaceMapLoadFailures_;
+            if (!hadAnyCdBytes) ++driveSurfaceMapReadFailures_;
+            driveSurfaceMapRetryCooldownQueries_ = computeRetryCooldown(driveSurfaceMapLoadFailures_);
+            driveSurfaceMapView_ = {};
+            driveSurfaceMapViewValid_ = false;
+            return false;
+        }
+
+        driveSurfaceMapLastStatusCode_ = 10u; // fallback local read ok
+        std::vector<uint8_t> normalizedBytes{};
+        uint32_t headerOffset = 0u;
+        if (!TryParseDriveSurfaceMapBlob(localMap, normalizedBytes, parsedView, &headerOffset))
+        {
+            driveSurfaceMapLastStatusCode_ = 11u; // fallback local parse fail
+            ++driveSurfaceMapLoadFailures_;
+            ++driveSurfaceMapParseFailures_;
+            driveSurfaceMapLastBlobBytes_ = static_cast<uint32_t>(localMap.size());
+            driveSurfaceMapRetryCooldownQueries_ = computeRetryCooldown(driveSurfaceMapLoadFailures_);
+            driveSurfaceMapView_ = {};
+            driveSurfaceMapViewValid_ = false;
+            return false;
+        }
+        driveSurfaceMapLastStatusCode_ = (headerOffset == 0u) ? 12u : 19u; // fallback local parse ok/shifted
+        mapBin = std::move(normalizedBytes);
+        updateParseProbeFromView(static_cast<uint32_t>(mapBin.size()), parsedView);
+    }
+
+    // Copy parsed DRVMAP bytes to cart resident and only then use it.
+    freeCartResident();
+    driveSurfaceMapLastStatusCode_ = 13u; // copying to cart resident
+    if (mapBin.empty())
+    {
+        driveSurfaceMapLastStatusCode_ = 14u; // source empty
+        ++driveSurfaceMapLoadFailures_;
+        ++driveSurfaceMapReadFailures_;
+        driveSurfaceMapRetryCooldownQueries_ = computeRetryCooldown(driveSurfaceMapLoadFailures_);
+        driveSurfaceMapReady_ = false;
+        return false;
+    }
+
+    void* cartMem = SRL::Memory::CartRam::Malloc(static_cast<uint32_t>(mapBin.size()));
+    if (!cartMem)
+    {
+        driveSurfaceMapLastStatusCode_ = 22u; // cart alloc fail
+        ++driveSurfaceMapLoadFailures_;
+        driveSurfaceMapRetryCooldownQueries_ = computeRetryCooldown(driveSurfaceMapLoadFailures_);
+        driveSurfaceMapReady_ = false;
+        return false;
+    }
+    ::memcpy(cartMem, mapBin.data(), mapBin.size());
+    driveSurfaceMapCartPtr_ = cartMem;
+    driveSurfaceMapCartBytes_ = static_cast<uint32_t>(mapBin.size());
+
+    driveSurfaceMapView_ = {};
+    uint32_t residentHeaderOffset = 0u;
+    driveSurfaceMapViewValid_ = TryParseDriveSurfaceMapMemory(
+        static_cast<const uint8_t*>(driveSurfaceMapCartPtr_),
+        static_cast<size_t>(driveSurfaceMapCartBytes_),
+        driveSurfaceMapView_,
+        &residentHeaderOffset);
+    if (!driveSurfaceMapViewValid_)
+    {
+        driveSurfaceMapLastStatusCode_ = 15u; // resident parse fail
+        ++driveSurfaceMapLoadFailures_;
+        ++driveSurfaceMapParseFailures_;
+        freeCartResident();
+        driveSurfaceMapRetryCooldownQueries_ = computeRetryCooldown(driveSurfaceMapLoadFailures_);
+        driveSurfaceMapReady_ = false;
+        return false;
+    }
+
+    driveSurfaceMapLastStatusCode_ = (residentHeaderOffset == 0u) ? 16u : 24u; // ready / shifted-ready
+    updateParseProbeFromView(driveSurfaceMapCartBytes_, driveSurfaceMapView_);
+    driveSurfaceMapReady_ = true;
+    driveSurfaceMapRetryCooldownQueries_ = 0u;
+    return true;
+}
+
+bool TrackSystem::TrySampleDriveSurfaceMap(const Vector3D& worldPosition,
+                                           const Vector3D& trackOffset,
+                                           int32_t seedSegmentId,
+                                           Fxp& outSurfaceY,
+                                           int32_t* outSegmentId,
+                                           Vector3D* outSurfaceNormal) const
+{
+    if (!EnsureDriveSurfaceMapLoaded()) return false;
+    if (!driveSurfaceMapCartPtr_ || driveSurfaceMapCartBytes_ == 0u) return false;
+
+    if (!driveSurfaceMapViewValid_)
+    {
+        uint32_t headerOffset = 0u;
+        if (!TryParseDriveSurfaceMapMemory(static_cast<const uint8_t*>(driveSurfaceMapCartPtr_),
+                                           static_cast<size_t>(driveSurfaceMapCartBytes_),
+                                           driveSurfaceMapView_,
+                                           &headerOffset))
+        {
+            driveSurfaceMapView_ = {};
+            driveSurfaceMapViewValid_ = false;
+            driveSurfaceMapReady_ = false;
+            return false;
+        }
+        driveSurfaceMapViewValid_ = true;
+        driveSurfaceMapLastStatusCode_ = (headerOffset == 0u) ? 16u : 24u;
+    }
+    const DriveSurfaceMap::Loader::View& view = driveSurfaceMapView_;
+
+    const int64_t pxRaw =
+        static_cast<int64_t>(worldPosition.X.RawValue()) - static_cast<int64_t>(trackOffset.X.RawValue());
+    const int64_t pyRaw =
+        static_cast<int64_t>(worldPosition.Y.RawValue()) - static_cast<int64_t>(trackOffset.Y.RawValue());
+    const int64_t pzRaw =
+        static_cast<int64_t>(worldPosition.Z.RawValue()) - static_cast<int64_t>(trackOffset.Z.RawValue());
+
+    int32_t normalizedSeed = seedSegmentId;
+    if (normalizedSeed > 0)
+    {
+        normalizedSeed = WrapSegmentIdToRange(normalizedSeed, totalSegmentCount_);
+    }
+    if (normalizedSeed <= 0 && observedCarSegmentId_ > 0)
+    {
+        normalizedSeed = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
+    }
+    if (normalizedSeed <= 0 && trackedCarSegmentValid_ && trackedCarSegmentId_ > 0)
+    {
+        normalizedSeed = WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_);
+    }
+    if (normalizedSeed <= 0)
+    {
+        normalizedSeed = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    }
+    if (normalizedSeed <= 0) return false;
+
+    auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
+    auto scoreToSegmentCenter = [&](const int32_t segmentId) -> int64_t
+    {
+        if (segmentId <= 0) return std::numeric_limits<int64_t>::max();
+        const SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
+        if (!entry) return std::numeric_limits<int64_t>::max();
+        const Vector3D center = entry->center + trackOffset;
+        const int64_t dx = abs64(static_cast<int64_t>(center.X.RawValue()) -
+                                 static_cast<int64_t>(worldPosition.X.RawValue()));
+        const int64_t dz = abs64(static_cast<int64_t>(center.Z.RawValue()) -
+                                 static_cast<int64_t>(worldPosition.Z.RawValue()));
+        return dx + dz;
+    };
+
+    int32_t segmentIds[2]{};
+    size_t segmentCount = 0;
+    segmentIds[segmentCount++] = normalizedSeed;
+
+    const int32_t prevId = WrapSegmentIdToRange(normalizedSeed - 1, totalSegmentCount_);
+    const int32_t nextId = WrapSegmentIdToRange(normalizedSeed + 1, totalSegmentCount_);
+    const int64_t prevScore = scoreToSegmentCenter(prevId);
+    const int64_t nextScore = scoreToSegmentCenter(nextId);
+    const int32_t secondId = (prevScore <= nextScore) ? prevId : nextId;
+    if (secondId > 0 && secondId != normalizedSeed)
+    {
+        segmentIds[segmentCount++] = secondId;
+    }
+
+    DriveSurfaceMap::Query::SampleResult result{};
+    const bool ok = DriveSurfaceMap::Query::SampleSegments(
+        view,
+        segmentIds,
+        segmentCount,
+        pxRaw,
+        pyRaw,
+        pzRaw,
+        result);
+    if (!ok)
+    {
+        ++driveSurfaceMapQueryMisses_;
+        return false;
+    }
+
+    ++driveSurfaceMapQueryHits_;
+    int64_t worldYRaw = result.yRaw + static_cast<int64_t>(trackOffset.Y.RawValue());
+    if (worldYRaw > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
+    {
+        worldYRaw = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    }
+    if (worldYRaw < static_cast<int64_t>(std::numeric_limits<int32_t>::min()))
+    {
+        worldYRaw = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+    }
+    outSurfaceY = Fxp::BuildRaw(static_cast<int32_t>(worldYRaw));
+    if (outSegmentId) *outSegmentId = result.segmentId;
+    if (outSurfaceNormal)
+    {
+        outSurfaceNormal->X = Fxp::BuildRaw(result.normalXRaw);
+        outSurfaceNormal->Y = Fxp::BuildRaw(result.normalYRaw);
+        outSurfaceNormal->Z = Fxp::BuildRaw(result.normalZRaw);
+    }
+    return true;
+}
+
 bool TrackSystem::Initialize(const Config& config)
 {
     auto printInitRam = [](int row, const char* tag)
@@ -12799,6 +13424,7 @@ bool TrackSystem::Initialize(const Config& config)
         SRL::Debug::Print(1, 28, "Track catalog missing");
         return false;
     }
+    (void)EnsureDriveSurfaceMapLoaded();
     // Boot-time init RAM snapshots disabled to keep the on-screen diagnostics
     // focused on slide/runtime behavior.
     const size_t loadLimit = ResolveInitialLoadLimit(config);
@@ -14253,9 +14879,11 @@ const TrackLowWorkVector<TrackSystem::SegmentHandle>& TrackSystem::BuildStabiliz
         const SegmentHandle handle = segmentHandles_[i];
         auto* entry = segmentPool_.Resolve(handle);
         if (!entry || !entry->renderer) continue;
-        // Exclude segments that are extremely close to the camera: their large road
-        // quads straddle the SGL near-clip plane and distort on screen.
-        if (depthMetricRaw(entry) < kNearSegmentCullDistanceRaw) continue;
+        // Exclude the segment the car is currently on when it is within
+        // kNearSegmentCullDistanceRaw of the camera: its trailing road-quad vertices
+        // have near-zero Z in camera space and distort via SGL near-clip.
+        const bool isCarSegment = (observedCarSegmentId_ > 0 && entry->id == observedCarSegmentId_);
+        if (isCarSegment && depthMetricRaw(entry) < kNearSegmentCullDistanceRaw) continue;
         TrackDepthSortItem<SegmentHandle, int64_t> item{};
         item.handle = handle;
         item.depthKey = depthKey(entry);
@@ -16749,12 +17377,29 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                                          const Vector3D& trackOffset,
                                          const uint16_t familyId,
                                          SRL::Math::Types::Fxp& outSurfaceY,
-                                         int32_t* outSegmentId) const
+                                         int32_t* outSegmentId,
+                                         Vector3D* outSurfaceNormal) const
 {
+    const int32_t inputHintSegmentId = (outSegmentId && *outSegmentId > 0) ? *outSegmentId : -1;
     outSurfaceY = worldPosition.Y;
     if (outSegmentId) *outSegmentId = -1;
-    if (familyId == 0u) return false;
+    if (outSurfaceNormal) *outSurfaceNormal = Vector3D(0.0, -1.0, 0.0);
     if (segmentRenderers_.empty()) return false;
+
+    if (familyId == 0u)
+    {
+        const int32_t driveSeed = (inputHintSegmentId > 0) ? inputHintSegmentId : -1;
+        if (TrySampleDriveSurfaceMap(worldPosition,
+                                     trackOffset,
+                                     driveSeed,
+                                     outSurfaceY,
+                                     outSegmentId,
+                                     outSurfaceNormal))
+        {
+            return true;
+        }
+        ++driveSurfaceMapFallbackQueries_;
+    }
 
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
@@ -16821,30 +17466,77 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
     bool foundInside = false;
     int64_t bestInsideDeltaY = std::numeric_limits<int64_t>::max();
     int64_t bestInsideYRaw = pyRaw;
+    Vector3D bestInsideNormal(0.0, -1.0, 0.0);
     int32_t bestInsideSegmentId = -1;
 
     bool foundFallback = false;
     int64_t bestFallbackPlanar = std::numeric_limits<int64_t>::max();
     int64_t bestFallbackDeltaY = std::numeric_limits<int64_t>::max();
     int64_t bestFallbackYRaw = pyRaw;
+    Vector3D bestFallbackNormal(0.0, -1.0, 0.0);
     int32_t bestFallbackSegmentId = -1;
 
-    for (const auto& segment : segmentRenderers_)
+    auto buildApproxNormal = [](const Vector3D& a,
+                                const Vector3D& b,
+                                const Vector3D& c) -> Vector3D
     {
-        if (!segment.renderer) continue;
-        if (segment.lodState.faceFamilyIds.empty()) continue;
+        const int64_t ax = static_cast<int64_t>(a.X.RawValue());
+        const int64_t ay = static_cast<int64_t>(a.Y.RawValue());
+        const int64_t az = static_cast<int64_t>(a.Z.RawValue());
+        const int64_t bx = static_cast<int64_t>(b.X.RawValue());
+        const int64_t by = static_cast<int64_t>(b.Y.RawValue());
+        const int64_t bz = static_cast<int64_t>(b.Z.RawValue());
+        const int64_t cx = static_cast<int64_t>(c.X.RawValue());
+        const int64_t cy = static_cast<int64_t>(c.Y.RawValue());
+        const int64_t cz = static_cast<int64_t>(c.Z.RawValue());
+
+        const int64_t ux = bx - ax;
+        const int64_t uy = by - ay;
+        const int64_t uz = bz - az;
+        const int64_t vx = cx - ax;
+        const int64_t vy = cy - ay;
+        const int64_t vz = cz - az;
+        const int64_t nx = (uy * vz) - (uz * vy);
+        const int64_t ny = (uz * vx) - (ux * vz);
+        const int64_t nz = (ux * vy) - (uy * vx);
+
+        const int64_t maxComp =
+            std::max<int64_t>(1, std::max<int64_t>(std::abs(nx), std::max<int64_t>(std::abs(ny), std::abs(nz))));
+        const int64_t nnx = (nx << 16) / maxComp;
+        const int64_t nny = (ny << 16) / maxComp;
+        const int64_t nnz = (nz << 16) / maxComp;
+        return Vector3D(
+            SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(nnx)),
+            SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(nny)),
+            SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(nnz)));
+    };
+
+    auto scanSegment = [&](const SegmentRenderEntry& segment)
+    {
+        if (!segment.renderer) return;
+        if (segment.lodState.faceFamilyIds.empty()) return;
 
         const Vector3D* verts = nullptr;
         const SRL::Types::Polygon* faces = nullptr;
         size_t vertCount = 0u;
         size_t faceCount = 0u;
-        if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) continue;
-        if (!verts || !faces || vertCount == 0u || faceCount == 0u) continue;
+        if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) return;
+        if (!verts || !faces || vertCount == 0u || faceCount == 0u) return;
 
         const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
         for (size_t fi = 0; fi < scanFaceCount; ++fi)
         {
-            if (segment.lodState.faceFamilyIds[fi] != familyId) continue;
+            const uint16_t faceFamilyId = segment.lodState.faceFamilyIds[fi];
+            if (familyId == 0u)
+            {
+                // Drive surface mode (used by gameplay/car camera):
+                // only accept explicitly mapped asphalt/ground families.
+                if (!IsDrivableGroundFamilyId(faceFamilyId)) continue;
+            }
+            else if (faceFamilyId != familyId)
+            {
+                continue;
+            }
 
             const SRL::Types::Polygon& face = faces[fi];
             const uint16_t i0 = face.Vertices[0];
@@ -16866,21 +17558,33 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
             int64_t yRaw = 0;
             bool yValid = false;
             bool inside = false;
+            Vector3D sampledNormal(0.0, -1.0, 0.0);
             if (inTri0)
             {
                 yValid = solvePlaneYRaw(a, b, c, yRaw);
+                if (yValid) sampledNormal = buildApproxNormal(a, b, c);
                 inside = yValid;
             }
             else if (inTri1)
             {
                 yValid = solvePlaneYRaw(a, c, d, yRaw);
+                if (yValid) sampledNormal = buildApproxNormal(a, c, d);
                 inside = yValid;
             }
             else
             {
                 // Fallback: project onto the first triangle plane so we still
                 // have a stable candidate when PATH point drifts outside face.
-                yValid = solvePlaneYRaw(a, b, c, yRaw) || solvePlaneYRaw(a, c, d, yRaw);
+                yValid = solvePlaneYRaw(a, b, c, yRaw);
+                if (yValid)
+                {
+                    sampledNormal = buildApproxNormal(a, b, c);
+                }
+                else
+                {
+                    yValid = solvePlaneYRaw(a, c, d, yRaw);
+                    if (yValid) sampledNormal = buildApproxNormal(a, c, d);
+                }
             }
             if (!yValid) continue;
 
@@ -16892,6 +17596,7 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                     foundInside = true;
                     bestInsideDeltaY = deltaY;
                     bestInsideYRaw = yRaw;
+                    bestInsideNormal = sampledNormal;
                     bestInsideSegmentId = segment.id;
                 }
                 continue;
@@ -16916,15 +17621,95 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                 bestFallbackPlanar = planarScore;
                 bestFallbackDeltaY = deltaY;
                 bestFallbackYRaw = yRaw;
+                bestFallbackNormal = sampledNormal;
                 bestFallbackSegmentId = segment.id;
             }
         }
+    };
+
+    auto scoreToSegmentCenter = [&](const SegmentRenderEntry* segment) -> int64_t
+    {
+        if (!segment) return std::numeric_limits<int64_t>::max();
+        const Vector3D center = segment->center + trackOffset;
+        return abs64(static_cast<int64_t>(center.X.RawValue()) - pxRaw) +
+               abs64(static_cast<int64_t>(center.Z.RawValue()) - pzRaw);
+    };
+
+    auto scanSegmentById = [&](const int32_t segmentId) -> bool
+    {
+        if (segmentId <= 0) return false;
+        const SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
+        if (!entry) return false;
+        scanSegment(*entry);
+        return true;
+    };
+
+    int32_t seedSegmentId = -1;
+    if (inputHintSegmentId > 0)
+    {
+        seedSegmentId = WrapSegmentIdToRange(inputHintSegmentId, totalSegmentCount_);
+    }
+    if (seedSegmentId <= 0 && observedCarSegmentId_ > 0)
+    {
+        seedSegmentId = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
+    }
+    if (seedSegmentId <= 0 && trackedCarSegmentValid_ && trackedCarSegmentId_ > 0)
+    {
+        seedSegmentId = WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_);
+    }
+    if (seedSegmentId <= 0)
+    {
+        seedSegmentId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    }
+
+    bool scannedLocalWindow = false;
+    if (seedSegmentId > 0)
+    {
+        scannedLocalWindow |= scanSegmentById(seedSegmentId);
+
+        const int32_t prevId = WrapSegmentIdToRange(seedSegmentId - 1, totalSegmentCount_);
+        const int32_t nextId = WrapSegmentIdToRange(seedSegmentId + 1, totalSegmentCount_);
+        const SegmentRenderEntry* prevEntry = (prevId > 0) ? FindWindowEntryByIdFast(prevId) : nullptr;
+        const SegmentRenderEntry* nextEntry = (nextId > 0) ? FindWindowEntryByIdFast(nextId) : nullptr;
+        const int64_t prevScore = scoreToSegmentCenter(prevEntry);
+        const int64_t nextScore = scoreToSegmentCenter(nextEntry);
+        const int32_t secondSegmentId = (prevScore <= nextScore) ? prevId : nextId;
+        if (secondSegmentId > 0 && secondSegmentId != seedSegmentId)
+        {
+            scannedLocalWindow |= scanSegmentById(secondSegmentId);
+        }
+    }
+
+    if (scannedLocalWindow)
+    {
+        if (foundInside)
+        {
+            outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestInsideYRaw));
+            if (outSegmentId) *outSegmentId = bestInsideSegmentId;
+            if (outSurfaceNormal) *outSurfaceNormal = bestInsideNormal;
+            return true;
+        }
+        if (foundFallback)
+        {
+            outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestFallbackYRaw));
+            if (outSegmentId) *outSegmentId = bestFallbackSegmentId;
+            if (outSurfaceNormal) *outSurfaceNormal = bestFallbackNormal;
+            return true;
+        }
+        // Drive queries are restricted to the local two-segment envelope.
+        if (familyId == 0u) return false;
+    }
+
+    for (const auto& segment : segmentRenderers_)
+    {
+        scanSegment(segment);
     }
 
     if (foundInside)
     {
         outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestInsideYRaw));
         if (outSegmentId) *outSegmentId = bestInsideSegmentId;
+        if (outSurfaceNormal) *outSurfaceNormal = bestInsideNormal;
         return true;
     }
 
@@ -16932,6 +17717,7 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
     {
         outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestFallbackYRaw));
         if (outSegmentId) *outSegmentId = bestFallbackSegmentId;
+        if (outSurfaceNormal) *outSurfaceNormal = bestFallbackNormal;
         return true;
     }
 

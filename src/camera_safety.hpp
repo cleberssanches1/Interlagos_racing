@@ -38,6 +38,16 @@ inline Vector3D BuildSafeLookTarget(const Vector3D& cameraPos,
                                     const Vector3D& fallbackForward,
                                     const Config& cfg)
 {
+    Vector3D safeForward = fallbackForward;
+    const Fxp safeForwardLen2 =
+        (safeForward.X * safeForward.X) +
+        (safeForward.Y * safeForward.Y) +
+        (safeForward.Z * safeForward.Z);
+    if (safeForwardLen2 <= Fxp::BuildRaw(1 << 8))
+    {
+        safeForward = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(1 << 16));
+    }
+
     Vector3D target = desiredTarget;
     Vector3D delta = target - cameraPos;
     const Fxp d2 = delta.X * delta.X + delta.Y * delta.Y + delta.Z * delta.Z;
@@ -45,20 +55,17 @@ inline Vector3D BuildSafeLookTarget(const Vector3D& cameraPos,
 
     if (d2 <= minD2)
     {
-        Vector3D safeForward = fallbackForward;
-        const Fxp f2 = safeForward.X * safeForward.X + safeForward.Y * safeForward.Y + safeForward.Z * safeForward.Z;
-        if (f2 <= Fxp::BuildRaw(1 << 8))
-        {
-            safeForward = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(1 << 16));
-        }
-        target = cameraPos + safeForward;
+        target = cameraPos + Vector3D(safeForward.X * cfg.fallbackLookDistance,
+                                      safeForward.Y * cfg.fallbackLookDistance,
+                                      safeForward.Z * cfg.fallbackLookDistance);
     }
 
     // Keep a minimal horizontal spread to avoid near-vertical look vectors.
     delta = target - cameraPos;
     if (delta.X.Abs() + delta.Z.Abs() <= Fxp::BuildRaw(1 << 15))
     {
-        target.Z += Fxp::BuildRaw(1 << 16);
+        target.X += safeForward.X * cfg.minTargetDistance;
+        target.Z += safeForward.Z * cfg.minTargetDistance;
     }
 
     return ClampWorld(target, cfg);

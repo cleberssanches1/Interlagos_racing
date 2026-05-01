@@ -1,8 +1,8 @@
 {
     "version":  1,
-    "generated_at_utc":  "2026-04-28T22:14:13Z",
+    "generated_at_utc":  "2026-04-30T13:59:57Z",
     "data_dir":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing",
-    "copied":  243,
+    "copied":  256,
     "skipped":  0,
     "items":  [
                   {
@@ -555,6 +555,33 @@
                       "family":  "f06064"
                   },
                   {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren",
+                      "source_name":  "F06164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren\\F06164.TGA",
+                      "lod":  8,
+                      "target_name":  "F061_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F061_8.TGA",
+                      "family":  "f06164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren",
+                      "source_name":  "F06264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren\\F06264.TGA",
+                      "lod":  8,
+                      "target_name":  "F062_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F062_8.TGA",
+                      "family":  "f06264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren",
+                      "source_name":  "F06364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\8_ren\\F06364.TGA",
+                      "lod":  8,
+                      "target_name":  "F063_8.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F063_8.TGA",
+                      "family":  "f06364"
+                  },
+                  {
                       "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren",
                       "source_name":  "F00164.TGA",
                       "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren\\F00164.TGA",
@@ -1015,6 +1042,15 @@
                   },
                   {
                       "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren",
+                      "source_name":  "F05164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren\\F05164.TGA",
+                      "lod":  16,
+                      "target_name":  "F051_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F051_16.TGA",
+                      "family":  "f05164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren",
                       "source_name":  "F05264.TGA",
                       "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren\\F05264.TGA",
                       "lod":  16,
@@ -1093,6 +1129,33 @@
                       "target_name":  "F060_16.TGA",
                       "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F060_16.TGA",
                       "family":  "f06064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren",
+                      "source_name":  "F06164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren\\F06164.TGA",
+                      "lod":  16,
+                      "target_name":  "F061_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F061_16.TGA",
+                      "family":  "f06164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren",
+                      "source_name":  "F06264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren\\F06264.TGA",
+                      "lod":  16,
+                      "target_name":  "F062_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F062_16.TGA",
+                      "family":  "f06264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren",
+                      "source_name":  "F06364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\16_ren\\F06364.TGA",
+                      "lod":  16,
+                      "target_name":  "F063_16.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F063_16.TGA",
+                      "family":  "f06364"
                   },
                   {
                       "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren",
@@ -1644,6 +1707,33 @@
                       "family":  "f06064"
                   },
                   {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren",
+                      "source_name":  "F06164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren\\F06164.TGA",
+                      "lod":  32,
+                      "target_name":  "F061_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F061_32.TGA",
+                      "family":  "f06164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren",
+                      "source_name":  "F06264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren\\F06264.TGA",
+                      "lod":  32,
+                      "target_name":  "F062_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F062_32.TGA",
+                      "family":  "f06264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren",
+                      "source_name":  "F06364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\32_ren\\F06364.TGA",
+                      "lod":  32,
+                      "target_name":  "F063_32.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F063_32.TGA",
+                      "family":  "f06364"
+                  },
+                  {
                       "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren",
                       "source_name":  "F00164.TGA",
                       "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren\\F00164.TGA",
@@ -2191,6 +2281,33 @@
                       "target_name":  "F060_64.TGA",
                       "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F060_64.TGA",
                       "family":  "f06064"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren",
+                      "source_name":  "F06164.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren\\F06164.TGA",
+                      "lod":  64,
+                      "target_name":  "F061_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F061_64.TGA",
+                      "family":  "f06164"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren",
+                      "source_name":  "F06264.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren\\F06264.TGA",
+                      "lod":  64,
+                      "target_name":  "F062_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F062_64.TGA",
+                      "family":  "f06264"
+                  },
+                  {
+                      "source_folder":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren",
+                      "source_name":  "F06364.TGA",
+                      "source_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\64_ren\\F06364.TGA",
+                      "lod":  64,
+                      "target_name":  "F063_64.TGA",
+                      "target_path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\pacote_rancing\\F063_64.TGA",
+                      "family":  "f06364"
                   }
               ]
 }

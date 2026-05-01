@@ -33,6 +33,8 @@ void MeshRenderer::SetLightDirection(const SRL::Math::Types::Vector3D& dir)
 
 void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
                           const SRL::Math::Types::Angle& yaw,
+                          const SRL::Math::Types::Angle& pitch,
+                          const SRL::Math::Types::Angle& roll,
                           bool logStats)
 {
     SRL::Scene3D::PushMatrix();
@@ -42,6 +44,8 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
         SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
     }
     SRL::Scene3D::RotateY(yaw);
+    SRL::Scene3D::RotateX(pitch);
+    SRL::Scene3D::RotateZ(roll);
     if (config_.rotateModelZ180)
     {
         SRL::Scene3D::RotateZ(SRL::Math::Types::Angle::FromDegrees(180.0f));
@@ -121,7 +125,9 @@ bool MeshRenderer::DrawMesh(size_t meshId)
 }
 
 void MeshRenderer::ApplyTransform(const SRL::Math::Types::Vector3D& position,
-                                  const SRL::Math::Types::Angle& yaw)
+                                  const SRL::Math::Types::Angle& yaw,
+                                  const SRL::Math::Types::Angle& pitch,
+                                  const SRL::Math::Types::Angle& roll)
 {
     SRL::Scene3D::Translate(position + offset_);
     if (config_.rotateModelX180)
@@ -129,6 +135,8 @@ void MeshRenderer::ApplyTransform(const SRL::Math::Types::Vector3D& position,
         SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
     }
     SRL::Scene3D::RotateY(yaw);
+    SRL::Scene3D::RotateX(pitch);
+    SRL::Scene3D::RotateZ(roll);
     if (config_.rotateModelZ180)
     {
         SRL::Scene3D::RotateZ(SRL::Math::Types::Angle::FromDegrees(180.0f));

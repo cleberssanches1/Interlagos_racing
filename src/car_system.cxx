@@ -123,6 +123,10 @@ void CarSystem::SubmitRender(RenderPipeline& pipeline, bool logStats)
     const int32_t renderYawDeg = CurrentRenderYawDeg();
     SRL::Math::Types::Angle yaw =
         SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(renderYawDeg << 16));
-    pipeline.Enqueue(*renderer_, worldPosition_, yaw, logStats);
+    const SRL::Math::Types::Angle pitch =
+        SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(pitchDeg_) << 16));
+    const SRL::Math::Types::Angle roll =
+        SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(rollDeg_) << 16));
+    pipeline.Enqueue(*renderer_, worldPosition_, yaw, pitch, roll, logStats);
 }
 } // namespace Game

@@ -3,6 +3,7 @@
 #undef DOXYGEN
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace
 {
@@ -278,6 +279,25 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
     const Vector3D defaultOffset = ResolvePresetOffsetWorld();
     const Vector3D activeOffset = orbitController_.ResolveOffset(defaultOffset);
     lastResolvedCameraLocation_ = carWorldPosition + activeOffset;
+    // Guard against corrupted/unstable forward vectors producing absurd offsets.
+    {
+        const Vector3D rel = lastResolvedCameraLocation_ - carWorldPosition;
+        const Fxp planar = rel.X.Abs() + rel.Z.Abs();
+        const Fxp maxPlanar = Fxp::BuildRaw(768 << 16);
+        if (planar > maxPlanar)
+        {
+            const Vector3D fallbackForward = ForwardFromYawDeg(NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_));
+            const Fxp fallbackBehind = Fxp::BuildRaw(190 << 16);
+            const Fxp fallbackHeight = Fxp::BuildRaw(35 << 16);
+            lastResolvedCameraLocation_.X = carWorldPosition.X - (fallbackForward.X * fallbackBehind);
+            lastResolvedCameraLocation_.Y = carWorldPosition.Y - fallbackHeight;
+            lastResolvedCameraLocation_.Z = carWorldPosition.Z - (fallbackForward.Z * fallbackBehind);
+            resolvedOffsetForwardWorld_ = fallbackForward;
+            lookForwardWorld_ = fallbackForward;
+        }
+    }
+    lastResolvedCameraLocation_ =
+        CameraSafety::ResolveBoomGuard(lastResolvedCameraLocation_, carWorldPosition, safetyConfig_);
     if (debugLogsEnabled_ && chasePreset_ == ChasePreset::ChaseNear)
     {
         SRL::Debug::Print(1, 26, "CAM2 pos x:%d y:%d z:%d    ",
@@ -296,9 +316,18 @@ Vector3D CameraSystem::ViewDirection() const
 Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const
 {
     (void)modelOffset;
+    auto buildSafeTarget = [&](const Vector3D& desiredTarget, const Vector3D& fallbackForward) -> Vector3D
+    {
+        return CameraSafety::BuildSafeLookTarget(
+            lastResolvedCameraLocation_,
+            desiredTarget,
+            fallbackForward,
+            safetyConfig_);
+    };
+
     if (mode_ == Mode::Cinematic)
     {
-        lastResolvedLookTarget_ = cinematicTarget_;
+        lastResolvedLookTarget_ = buildSafeTarget(cinematicTarget_, headingForwardWorld_);
         return lastResolvedLookTarget_;
     }
 
@@ -306,6 +335,7 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
     const Fxp lookAhead = Fxp::BuildRaw(static_cast<int32_t>(cfg.lookAhead) << 16);
     const Fxp zero = Fxp::BuildRaw(0);
     const Fxp one = Fxp::BuildRaw(1 << 16);
+    const Fxp minLookSeparation = Fxp::BuildRaw(48 << 16);
 
     // Keep first-person deterministic and rigidly forward.
     if (chasePreset_ == ChasePreset::FirstPerson)
@@ -316,6 +346,7 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
                                zero,
                                lookAhead * SRL::Math::Trigonometry::Cos(yaw));
         lastResolvedLookTarget_ = lastResolvedCameraLocation_ + forward;
+        lastResolvedLookTarget_ = buildSafeTarget(lastResolvedLookTarget_, forward);
         return lastResolvedLookTarget_;
     }
 
@@ -372,14 +403,17 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
                                zero,
                                lookForwardWorld_.Z * dynamicLookAhead);
         lastResolvedLookTarget_ = carWorldPosition + forward;
-        lastResolvedLookTarget_.Y = lastResolvedCameraLocation_.Y +
+        // Keep target anchored to vehicle height to avoid horizon-lock drift
+        // that can push track/car out of frame on steep grades.
+        lastResolvedLookTarget_.Y = carWorldPosition.Y +
                                     Fxp::BuildRaw(static_cast<int32_t>(cfg.lookHeight) << 16);
+        lastResolvedLookTarget_ = buildSafeTarget(lastResolvedLookTarget_, lookForwardWorld_);
         return lastResolvedLookTarget_;
     }
 
     // Daytona-style predictive look:
     // camera position remains behind chassis; look target blends chassis-forward and movement-forward.
-    const Vector3D chassisForward = headingForwardWorld_;
+    const Vector3D chassisForward = resolvedOffsetForwardWorld_;
     const Vector3D velocityForward = movementForwardWorld_;
 
     Fxp dot = (chassisForward.X * velocityForward.X) + (chassisForward.Z * velocityForward.Z);
@@ -423,9 +457,21 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
                            zero,
                            lookForwardWorld_.Z * lookAhead);
     lastResolvedLookTarget_ = carWorldPosition + forward;
-    // Keep camera mostly horizon-locked.
-    lastResolvedLookTarget_.Y = lastResolvedCameraLocation_.Y +
+    // Anchor target to chassis height to keep vehicle and road in frame.
+    lastResolvedLookTarget_.Y = carWorldPosition.Y +
                                 Fxp::BuildRaw(static_cast<int32_t>(cfg.lookHeight) << 16);
+    // Safety: avoid near-zero look vector that causes top-down snapping.
+    const Vector3D cameraToTarget = lastResolvedLookTarget_ - lastResolvedCameraLocation_;
+    const Fxp lookPlanar = cameraToTarget.X.Abs() + cameraToTarget.Z.Abs();
+    if (lookPlanar < minLookSeparation)
+    {
+        const Fxp pushAhead = Fxp::BuildRaw(96 << 16);
+        lastResolvedLookTarget_.X = carWorldPosition.X + (chassisForward.X * pushAhead);
+        lastResolvedLookTarget_.Y = carWorldPosition.Y +
+                                    Fxp::BuildRaw(static_cast<int32_t>(cfg.lookHeight) << 16);
+        lastResolvedLookTarget_.Z = carWorldPosition.Z + (chassisForward.Z * pushAhead);
+    }
+    lastResolvedLookTarget_ = buildSafeTarget(lastResolvedLookTarget_, lookForwardWorld_);
     return lastResolvedLookTarget_;
 }
 
@@ -433,6 +479,15 @@ void CameraSystem::SetCinematicFrame(const Vector3D& location, const Vector3D& t
 {
     cinematicLocation_ = location;
     cinematicTarget_ = target;
+}
+
+void CameraSystem::SetVehicleDynamics(int16_t pitchDeg,
+                                      int16_t rollDeg,
+                                      const Vector3D& surfaceNormal)
+{
+    vehiclePitchDeg_ = pitchDeg;
+    vehicleRollDeg_ = rollDeg;
+    vehicleSurfaceNormal_ = surfaceNormal;
 }
 
 void CameraSystem::SetChaseNearFollowDistance(int16_t behindDistance)
@@ -493,7 +548,7 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
     case ChasePreset::ChaseFar:
         return ChasePresetConfig{
             0,    // offsetX
-            -30,  // offsetY
+            -38,  // offsetY
             -260, // offsetZ (far behind)
             180,  // lookAhead
             0,    // lookHeight
@@ -504,7 +559,7 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
         // Camera 2 distance is calibrated at runtime from car bounds.
         return ChasePresetConfig{
             chaseNearOffsetX_,
-            -20,  // offsetY
+            -35,  // offsetY — raised from -20 to push near-segment vertices out of SGL near-clip zone
             chaseNearOffsetZ_,
             120,  // lookAhead
             0,    // lookHeight
@@ -620,10 +675,32 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
         constexpr int32_t kMotionHeadingThresholdRaw = (1 << 12);
         const bool useMovementHeading = movementSpeedNormRaw_ > kMotionHeadingThresholdRaw;
         forward = useMovementHeading ? movementForwardWorld_ : headingForwardWorld_;
+
+        if (chasePreset_ != ChasePreset::FirstPerson)
+        {
+            const int32_t pitchAbs = std::abs(static_cast<int32_t>(vehiclePitchDeg_));
+            const int32_t rollAbs = std::abs(static_cast<int32_t>(vehicleRollDeg_));
+            const int32_t slopeAbsRaw = std::min<int32_t>(
+                (1 << 16),
+                std::abs(vehicleSurfaceNormal_.X.RawValue()) + std::abs(vehicleSurfaceNormal_.Z.RawValue()));
+            // Lift and pull camera in on steep grades to avoid asphalt clipping.
+            offsetYUnits -= std::min<int32_t>(12, ((pitchAbs * 4) + (rollAbs * 2)) / 10);
+            offsetZUnits += std::min<int32_t>(18, pitchAbs / 2);
+            offsetYUnits -= static_cast<int32_t>((static_cast<int64_t>(8) * slopeAbsRaw) >> 16);
+            // On strong downhills, keep a bit more distance to preserve track visibility.
+            if (vehiclePitchDeg_ < -8)
+            {
+                offsetZUnits -= std::min<int32_t>(10, (-vehiclePitchDeg_ - 8) / 2);
+            }
+        }
     }
     offsetXUnits = std::clamp<int32_t>(offsetXUnits, -140, 140);
     offsetYUnits = std::clamp<int32_t>(offsetYUnits, -56, 20);
     offsetZUnits = std::clamp<int32_t>(offsetZUnits, -280, 80);
+    forward = NormalizeFlatDirectionRaw(forward.X.RawValue(),
+                                        forward.Z.RawValue(),
+                                        headingForwardWorld_);
+    resolvedOffsetForwardWorld_ = forward;
     const Fxp offX = Fxp::BuildRaw(offsetXUnits * (1 << 16));
     const Fxp offY = Fxp::BuildRaw(offsetYUnits * (1 << 16));
     const Fxp offZ = Fxp::BuildRaw(offsetZUnits * (1 << 16));

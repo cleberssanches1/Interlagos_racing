@@ -12,6 +12,8 @@ public:
         MeshRenderer* renderer{nullptr};
         SRL::Math::Types::Vector3D position;
         SRL::Math::Types::Angle yaw;
+        SRL::Math::Types::Angle pitch;
+        SRL::Math::Types::Angle roll;
         bool logStats{false};
     };
 
@@ -23,9 +25,11 @@ public:
     void Enqueue(MeshRenderer& renderer,
                  const SRL::Math::Types::Vector3D& position,
                  const SRL::Math::Types::Angle& yaw,
+                 const SRL::Math::Types::Angle& pitch,
+                 const SRL::Math::Types::Angle& roll,
                  bool logStats = false)
     {
-        tasks_.push_back(Task{&renderer, position, yaw, logStats});
+        tasks_.push_back(Task{&renderer, position, yaw, pitch, roll, logStats});
     }
 
     void Flush()
@@ -33,7 +37,7 @@ public:
         for (auto& task : tasks_)
         {
             if (!task.renderer) continue;
-            task.renderer->Render(task.position, task.yaw, task.logStats);
+            task.renderer->Render(task.position, task.yaw, task.pitch, task.roll, task.logStats);
         }
     }
 

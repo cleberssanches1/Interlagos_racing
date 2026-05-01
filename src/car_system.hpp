@@ -68,6 +68,8 @@ public:
     const char* Name() const override { return name_; }
 
     void SetYawDegrees(int32_t yawDeg) { yawDeg_ = NormalizeYawDeg(yawDeg); }
+    void SetPitchDegrees(int16_t pitchDeg) { pitchDeg_ = pitchDeg; }
+    void SetRollDegrees(int16_t rollDeg) { rollDeg_ = rollDeg; }
     void SetVisualYawOffsetDegrees(int32_t offsetDeg) { visualYawOffsetDeg_ = NormalizeSignedYawDeg(offsetDeg); }
     int32_t VisualYawOffsetDegrees() const { return visualYawOffsetDeg_; }
 
@@ -124,6 +126,8 @@ private:
     Config config_;
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};
+    int16_t pitchDeg_{0};
+    int16_t rollDeg_{0};
     int32_t visualYawOffsetDeg_{0};
     char name_[32]{};
 };

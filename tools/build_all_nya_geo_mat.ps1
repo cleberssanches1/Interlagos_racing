@@ -91,6 +91,8 @@ $script:copyRenScript = Join-Path $scriptDir "copy_ren_textures_to_data.ps1"
 $script:updateSegmentsMapScript = Join-Path $scriptDir "update_segments_map_with_renamed_textures.ps1"
 $script:canonicalizeSegmentsMapScript = Join-Path $scriptDir "canonicalize_segments_map_texture_families.ps1"
 $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
+$script:driveSurfaceMapScript = Join-Path $scriptDir "generate_drive_surface_map.py"
+$script:drivableFamiliesConfigPath = Join-Path $scriptDir "drivable_surface_families.json"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -104,6 +106,8 @@ if (-not (Test-Path -LiteralPath $script:copyRenScript)) { throw "Script nao enc
 if (-not (Test-Path -LiteralPath $script:updateSegmentsMapScript)) { throw "Script nao encontrado: $script:updateSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
+if (-not (Test-Path -LiteralPath $script:driveSurfaceMapScript)) { throw "Script nao encontrado: $script:driveSurfaceMapScript" }
+if (-not (Test-Path -LiteralPath $script:drivableFamiliesConfigPath)) { throw "Config nao encontrada: $script:drivableFamiliesConfigPath" }
 
 Write-Host "=== Etapa 1/3: Exportar NYA + segments_map.json ==="
 $exportArgs = @{
@@ -125,6 +129,26 @@ if ($RebuildSegmentsMap) {
 $jsonPath = Join-Path $PackageDir "segments_map.json"
 if (-not (Test-Path -LiteralPath $jsonPath)) {
     throw "segments_map.json nao foi gerado em: $jsonPath"
+}
+$driveSurfaceMapPath = Join-Path $PackageDir "DRVMAP.BIN"
+$driveSurfaceMapDebugPath = Join-Path $PackageDir "DRVMAP_DBG.json"
+
+function Generate-DriveSurfaceMap {
+    param(
+        [string]$SegmentsMapPath,
+        [string]$RdrDir,
+        [string]$OutMapPath,
+        [string]$OutDebugPath,
+        [string]$ConfigPath,
+        [string]$GeneratorScriptPath
+    )
+
+    & python $GeneratorScriptPath `
+        --segments-map $SegmentsMapPath `
+        --rdr-dir $RdrDir `
+        --out-bin $OutMapPath `
+        --out-debug-json $OutDebugPath `
+        --config $ConfigPath
 }
 
 Write-Host "=== Etapa 2/7: Atualizar segments_map.json válido ==="
@@ -382,6 +406,15 @@ Write-Host "=== Etapa 3.6/7: Gerar blobs runtime RDR1 ==="
     -OutDir $PackageDir `
     -AllSegments
 
+Write-Host "=== Etapa 3.6.5/7: Gerar mapa rapido de superficie (DRVMAP.BIN) ==="
+Generate-DriveSurfaceMap `
+    -SegmentsMapPath $jsonPath `
+    -RdrDir $PackageDir `
+    -OutMapPath $driveSurfaceMapPath `
+    -OutDebugPath $driveSurfaceMapDebugPath `
+    -ConfigPath $script:drivableFamiliesConfigPath `
+    -GeneratorScriptPath $script:driveSurfaceMapScript
+
 Write-Host "=== Etapa 3.7/7: Gerar batches draw-ready BDR1 ==="
 & $script:bdrScript `
     -DataDir $PackageDir `
@@ -407,6 +440,43 @@ function Copy-SegmentsMapShortNames {
         "SAP.TXT",
         "sap.txt;1",
         "SAP.TXT;1"
+    )
+
+    foreach ($dir in $TargetDirs) {
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        }
+        foreach ($name in $names) {
+            $dest = Join-Path $dir $name
+            try {
+                $sameFile =
+                    [System.IO.Path]::GetFullPath($Source).TrimEnd('\').ToLowerInvariant() -eq
+                    [System.IO.Path]::GetFullPath($dest).TrimEnd('\').ToLowerInvariant()
+                if ($sameFile) { continue }
+            }
+            catch {
+                # If path normalization fails, fall back to Copy-Item and let it raise a real error.
+            }
+            Copy-Item -Force -Path $Source -Destination $dest
+        }
+    }
+}
+
+function Copy-DriveSurfaceMapShortNames {
+    param(
+        [string]$Source,
+        [string[]]$TargetDirs
+    )
+
+    if (-not (Test-Path -LiteralPath $Source)) {
+        throw "DRVMAP.BIN nao encontrado para copia: $Source"
+    }
+
+    $names = @(
+        "DRVMAP.BIN",
+        "DRVMAP.BIN;1",
+        "drvm.bin",
+        "drvm.bin;1"
     )
 
     foreach ($dir in $TargetDirs) {
@@ -462,6 +532,9 @@ $upperCdDir = Join-Path (Split-Path -Parent $CdDataDir) "CD\DATA"
 $targetDirs = @($CdDataDir)
 if ($upperCdDir -ne $CdDataDir) { $targetDirs += $upperCdDir }
 Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
+
+Write-Host "=== Etapa 4.2/7: Copiar DRVMAP.BIN para cd/data ==="
+Copy-DriveSurfaceMapShortNames -Source $driveSurfaceMapPath -TargetDirs $targetDirs
 
 Write-Host "=== Etapa 5/6: Gerar TEXBANK_*.BIN ==="
 & $script:texbanksScript `
@@ -524,6 +597,7 @@ $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
 $hasMat64Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT64.BIN")
+$hasDriveMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "DRVMAP.BIN")
 
 Write-Host ("EXPECTED SEGMENTS: {0}" -f $expectedCount)
 Write-Host ("FOUND GEO         : {0} (long:{1} short:{2})" -f $geoCount, $geoCountLong, $geoCountShort)
@@ -541,6 +615,7 @@ Write-Host ("HAS MAT8.BIN      : {0}" -f $hasMat8Bin)
 Write-Host ("HAS MAT16.BIN     : {0}" -f $hasMat16Bin)
 Write-Host ("HAS MAT32.BIN     : {0}" -f $hasMat32Bin)
 Write-Host ("HAS MAT64.BIN     : {0}" -f $hasMat64Bin)
+Write-Host ("HAS DRVMAP.BIN    : {0}" -f $hasDriveMapBin)
 Write-Host ("HAS packs manifest: {0}" -f $hasPacksManifest)
 
 $validationErrors = New-Object System.Collections.Generic.List[string]
@@ -559,6 +634,7 @@ if (-not $hasMat8Bin) { $validationErrors.Add("MAT8.BIN ausente em cd\\data") | 
 if (-not $hasMat16Bin) { $validationErrors.Add("MAT16.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat64Bin) { $validationErrors.Add("MAT64.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasDriveMapBin) { $validationErrors.Add("DRVMAP.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasPacksManifest) { $validationErrors.Add("packs_manifest.json ausente em pacote_rancing") | Out-Null }
 
 if ($validationErrors.Count -gt 0) {
@@ -586,6 +662,16 @@ if ($RebuildSegmentsMap) {
     & python $script:minifyJsonScript $jsonPath
     Write-Host "=== Recriando aliases 8.3 apos rebuild final ==="
     Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
+    Write-Host "=== Regerando DRVMAP.BIN apos rebuild final ==="
+    Generate-DriveSurfaceMap `
+        -SegmentsMapPath $jsonPath `
+        -RdrDir $PackageDir `
+        -OutMapPath $driveSurfaceMapPath `
+        -OutDebugPath $driveSurfaceMapDebugPath `
+        -ConfigPath $script:drivableFamiliesConfigPath `
+        -GeneratorScriptPath $script:driveSurfaceMapScript
+    Write-Host "=== Recopiando DRVMAP.BIN apos rebuild final ==="
+    Copy-DriveSurfaceMapShortNames -Source $driveSurfaceMapPath -TargetDirs $targetDirs
     Write-Host "=== Limpeza final: Remover auxiliares de cd/data apos rebuild ==="
     Remove-CdDataAuxFiles -TargetDirs $targetDirs
 } else {

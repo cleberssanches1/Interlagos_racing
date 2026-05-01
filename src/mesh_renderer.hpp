@@ -34,6 +34,8 @@ public:
 
     void Render(const SRL::Math::Types::Vector3D& position,
                 const SRL::Math::Types::Angle& yaw,
+                const SRL::Math::Types::Angle& pitch,
+                const SRL::Math::Types::Angle& roll,
                 bool logStats = false);
 
     const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
@@ -43,7 +45,9 @@ private:
     void ComputeMeshCenters();
     bool DrawMesh(size_t meshId);
     void ApplyTransform(const SRL::Math::Types::Vector3D& position,
-                        const SRL::Math::Types::Angle& yaw);
+                        const SRL::Math::Types::Angle& yaw,
+                        const SRL::Math::Types::Angle& pitch,
+                        const SRL::Math::Types::Angle& roll);
 
     ModelObject& model_;
     bool isSmooth_;

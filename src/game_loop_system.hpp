@@ -13,6 +13,7 @@
 
 #include "background_manager.hpp"
 #include "application_state.hpp"
+#include "camera_obstruction_solver.hpp"
 #include "camera_system.hpp"
 #include "car_system.hpp"
 #include "hud_system.hpp"
@@ -82,6 +83,7 @@ public:
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
             hwrStageTrace_.begin = MaybeCaptureHighWorkRamSnapshot();
             lwrStageTrace_.begin = MaybeCaptureLowWorkRamSnapshot(true);
+            ResetGroundYQueryCacheForFrame();
 
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
@@ -92,7 +94,7 @@ public:
             hwrStageTrace_.gameplay = MaybeCaptureHighWorkRamSnapshot();
             lwrStageTrace_.gameplay = MaybeCaptureLowWorkRamSnapshot();
 
-            if (autoLapTestEnabled_)
+            if (IsAutoLapEnabled())
             {
                 SetWorkRamDebugTag(SRL::Memory::DebugTag::AutoLap);
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
@@ -123,6 +125,12 @@ public:
     }
 
 private:
+    enum class DriveMode : uint8_t
+    {
+        Manual = 0,
+        AutoLap = 1
+    };
+
     static constexpr int32_t kAutoLapYawBiasDeg = 0;
 
     static constexpr bool kEnableDetailedWorkRamTelemetry = false;
@@ -148,6 +156,11 @@ private:
     static constexpr uint32_t kSimDrainSoftSpinLimit = 512u * 1024u;
     static constexpr uint32_t kSimDrainHardSpinLimit = 8u * 1024u * 1024u;
     static constexpr uint8_t kSimSlaveBackoffFrames = 6u;
+
+    bool IsAutoLapEnabled() const
+    {
+        return driveMode_ == DriveMode::AutoLap;
+    }
 
     struct HwrStageTrace
     {
@@ -739,6 +752,148 @@ private:
         return IsFiniteCarPos(p);
     }
 
+    void ResetGroundYQueryCacheForFrame()
+    {
+        groundYQueryCacheCount_ = 0u;
+        groundYQueryCacheNextEvict_ = 0u;
+        groundYQueryCacheHitsThisFrame_ = 0u;
+        groundYQueryTrackCallsThisFrame_ = 0u;
+    }
+
+    bool SampleGroundYCached(const SRL::Math::Types::Vector3D& worldPosition,
+                             uint16_t familyId,
+                             SRL::Math::Types::Fxp& outSurfaceY,
+                             int32_t* ioSegmentHint = nullptr)
+    {
+        if (!context_.trackSystem || !context_.trackSystemReady) return false;
+
+        auto samePoint = [](const SRL::Math::Types::Vector3D& a,
+                            const SRL::Math::Types::Vector3D& b) -> bool
+        {
+            return a.X.RawValue() == b.X.RawValue() &&
+                   a.Y.RawValue() == b.Y.RawValue() &&
+                   a.Z.RawValue() == b.Z.RawValue();
+        };
+
+        for (uint8_t i = 0u; i < groundYQueryCacheCount_; ++i)
+        {
+            const GroundYQueryCacheEntry& entry = groundYQueryCache_[i];
+            if (entry.familyId != familyId) continue;
+            if (!samePoint(entry.worldPosition, worldPosition)) continue;
+
+            ++groundYQueryCacheHitsThisFrame_;
+            outSurfaceY = entry.surfaceY;
+            if (ioSegmentHint && entry.segmentId > 0)
+            {
+                *ioSegmentHint = entry.segmentId;
+            }
+            return entry.found;
+        }
+
+        ++groundYQueryTrackCallsThisFrame_;
+        int32_t resolvedSegmentId = (ioSegmentHint && *ioSegmentHint > 0) ? *ioSegmentHint : -1;
+        SRL::Math::Types::Fxp resolvedY{};
+        const bool found = context_.trackSystem->FindSurfaceYByFamilyId(worldPosition,
+                                                                         context_.trackSegOffset,
+                                                                         familyId,
+                                                                         resolvedY,
+                                                                         &resolvedSegmentId);
+
+        outSurfaceY = found ? resolvedY : worldPosition.Y;
+        if (ioSegmentHint)
+        {
+            *ioSegmentHint = found ? resolvedSegmentId : -1;
+        }
+
+        GroundYQueryCacheEntry cached{};
+        cached.worldPosition = worldPosition;
+        cached.surfaceY = outSurfaceY;
+        cached.segmentId = found ? resolvedSegmentId : -1;
+        cached.familyId = familyId;
+        cached.found = found;
+
+        static_assert(kGroundYQueryCacheCapacity_ > 0u, "Ground query cache capacity must be > 0");
+        if (groundYQueryCacheCount_ < kGroundYQueryCacheCapacity_)
+        {
+            groundYQueryCache_[groundYQueryCacheCount_++] = cached;
+        }
+        else
+        {
+            groundYQueryCache_[groundYQueryCacheNextEvict_] = cached;
+            groundYQueryCacheNextEvict_ =
+                static_cast<uint8_t>((groundYQueryCacheNextEvict_ + 1u) % kGroundYQueryCacheCapacity_);
+        }
+
+        return found;
+    }
+
+    void ApplyCameraGroundSafety(SRL::Math::Types::Vector3D& ioCameraLocation,
+                                 SRL::Math::Types::Vector3D& ioLookTarget)
+    {
+        using SRL::Math::Types::Fxp;
+        using SRL::Math::Types::Vector3D;
+
+        if (!context_.trackSystem || !context_.trackSystemReady) return;
+        static constexpr uint16_t kAsphaltFamilyId = 0u;
+        const Fxp groundClearance = Fxp::BuildRaw(-(6 << 16));
+        int32_t groundHintSegmentId = (latestActiveSegmentId_ > 0)
+                                          ? static_cast<int32_t>(latestActiveSegmentId_)
+                                          : -1;
+
+        // Maximum height delta above the car that a valid ground sample can return.
+        // Geometry fallback can return wall faces far above the car; reject those.
+        const Fxp kGroundSanityBand = Fxp::BuildRaw(30 << 16);
+
+        auto clampPointAgainstGround = [&](Vector3D& point)
+        {
+            Fxp groundY{};
+            if (!SampleGroundYCached(point, kAsphaltFamilyId, groundY, &groundHintSegmentId))
+            {
+                return;
+            }
+            if (groundY < context_.carWorldPosition.Y - kGroundSanityBand) return;
+            const Fxp maxAllowedY = groundY + groundClearance;
+            if (point.Y > maxAllowedY)
+            {
+                point.Y = maxAllowedY;
+            }
+        };
+
+        clampPointAgainstGround(ioCameraLocation);
+
+        // One mid-point probe keeps the boom from piercing steep crests with much
+        // lower cost than multi-sample scans each frame.
+        {
+            const Fxp t = Fxp::BuildRaw(1 << 15); // 0.5
+            const Vector3D samplePoint =
+                ioCameraLocation + ((context_.carWorldPosition - ioCameraLocation) * t);
+            Fxp groundY{};
+            if (SampleGroundYCached(samplePoint, kAsphaltFamilyId, groundY, &groundHintSegmentId))
+            {
+                if (groundY >= context_.carWorldPosition.Y - kGroundSanityBand)
+                {
+                    const Fxp maxAllowedY = groundY + groundClearance;
+                    if (samplePoint.Y > maxAllowedY)
+                    {
+                        ioCameraLocation.Y -= (samplePoint.Y - maxAllowedY);
+                    }
+                }
+            }
+        }
+
+        ioCameraLocation = cameraObstructionSolver_.Resolve(context_.trackSystem,
+                                                            context_.trackSegOffset,
+                                                            context_.carWorldPosition,
+                                                            ioCameraLocation);
+        clampPointAgainstGround(ioCameraLocation);
+
+        const Vector3D lookDelta = ioLookTarget - ioCameraLocation;
+        if ((lookDelta.X.Abs() + lookDelta.Z.Abs()) <= Fxp::BuildRaw(1 << 14))
+        {
+            ioLookTarget.Z += Fxp::BuildRaw(1 << 16);
+        }
+    }
+
     struct FrameInputState
     {
         bool bHeld = false;
@@ -756,6 +911,15 @@ private:
         SRL::Math::Types::Vector3D location{};
         SRL::Math::Types::Vector3D lookTarget{};
         bool ready = false;
+    };
+
+    struct GroundYQueryCacheEntry
+    {
+        SRL::Math::Types::Vector3D worldPosition{};
+        SRL::Math::Types::Fxp surfaceY{SRL::Math::Types::Fxp::BuildRaw(0)};
+        int32_t segmentId = -1;
+        uint16_t familyId = 0u;
+        bool found = false;
     };
 
     Game::CarSystem* ActiveCarSystem() const
@@ -803,18 +967,14 @@ private:
         const bool xHeld = input.xHeld;
 
         int32_t yawForCamera = carYawDeg_;
-        const bool allowManualYawInput = !autoLapTestEnabled_;
+        const bool allowManualYawInput = false;
         context_.cameraSystem->UpdateFromPad(pad_, yawForCamera, orbitState_, allowManualYawInput);
-        if (allowManualYawInput)
-        {
-            carYawDeg_ = yawForCamera;
-        }
 
         if (Game::CarSystem* car = ActiveCarSystem())
         {
             if (xHeld)
             {
-                if (autoLapTestEnabled_)
+                if (IsAutoLapEnabled())
                 {
                     // In auto-lap, show dynamic path-driven forward offset.
                     SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", static_cast<int>(autoLapCurrentOffDeg_));
@@ -884,9 +1044,9 @@ private:
             }
             else
             {
-                autoLapTestEnabled_ = !autoLapTestEnabled_;
+                driveMode_ = IsAutoLapEnabled() ? DriveMode::Manual : DriveMode::AutoLap;
                 startupPathYawAligned_ = false;
-                if (autoLapTestEnabled_)
+                if (IsAutoLapEnabled())
                 {
                     autoLapRouteInitialized_ = false;
                     autoLapRouteBuilt_ = false;
@@ -900,7 +1060,7 @@ private:
                         ReleaseAutoLapRouteStorage();
                     }
                 }
-                SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
+                SRL::Debug::Print(1, 23, "CAR MOVE:%u", IsAutoLapEnabled() ? 1u : 0u);
             }
         }
         yHeldPrev_ = input.yHeld;
@@ -914,6 +1074,9 @@ private:
         context_.carWorldPosition = simOut.outWorldPosition;
         carYawDeg_ = simOut.outYawDeg;
         latestActiveSegmentId_ = simOut.frameState.activeSegmentId;
+        carPitchDeg_ = simOut.frameState.carPitchDeg;
+        carRollDeg_ = simOut.frameState.carRollDeg;
+        carSurfaceNormal_ = simOut.frameState.surfaceNormalWorld;
     }
 
     bool IsTrackProducerJobInFlightHint() const
@@ -1001,39 +1164,25 @@ private:
         frameState.frameId = frameCounter_;
         frameState.carWorldPosition = context_.carWorldPosition;
         frameState.carYawDeg = carYawDeg_;
+        frameState.carPitchDeg = carPitchDeg_;
+        frameState.carRollDeg = carRollDeg_;
+        frameState.surfaceNormalWorld = carSurfaceNormal_;
+        frameState.activeSegmentId = latestActiveSegmentId_;
 
         Game::CarSystem* car = ActiveCarSystem();
         if (car)
         {
-            // Keep car stopped until Y toggles movement on.
-            if (autoLapTestEnabled_)
-            {
-                if (input.cHeld) car->Command()->Accelerate();
-                if (input.bHeld) car->Command()->Brake();
-                if (input.leftHeld) car->Command()->SteerLeft();
-                if (input.rightHeld) car->Command()->SteerRight();
-                car->UpdateWheels(input.cHeld, input.bHeld);
-            }
-            else
-            {
-                car->UpdateWheels(false, true);
-            }
+            if (input.cHeld) car->Command()->Accelerate();
+            if (input.bHeld) car->Command()->Brake();
+            if (input.leftHeld) car->Command()->SteerLeft();
+            if (input.rightHeld) car->Command()->SteerRight();
+            car->UpdateWheels(input.cHeld, input.bHeld);
 
             const auto& commands = car->Commands();
-            if (autoLapTestEnabled_)
-            {
-                frameState.throttle = commands.throttle;
-                frameState.steering = commands.steering;
-                frameState.braking = commands.braking;
-                frameState.wheelsSpinning = commands.wheelsSpinning;
-            }
-            else
-            {
-                frameState.throttle = 0;
-                frameState.steering = 0;
-                frameState.braking = false;
-                frameState.wheelsSpinning = false;
-            }
+            frameState.throttle = commands.throttle;
+            frameState.steering = commands.steering;
+            frameState.braking = commands.braking;
+            frameState.wheelsSpinning = commands.wheelsSpinning;
         }
         return frameState;
     }
@@ -1064,6 +1213,9 @@ private:
         context_.carWorldPosition = frameState.carWorldPosition;
         carYawDeg_ = frameState.carYawDeg;
         latestActiveSegmentId_ = frameState.activeSegmentId;
+        carPitchDeg_ = frameState.carPitchDeg;
+        carRollDeg_ = frameState.carRollDeg;
+        carSurfaceNormal_ = frameState.surfaceNormalWorld;
     }
 
     bool TryDispatchSimulationOnSlave(const Game::GameplayFrameState& frameState)
@@ -1107,6 +1259,24 @@ private:
 
     void ExecuteGameplayFrame(Game::GameplayFrameState& frameState)
     {
+        if (IsAutoLapEnabled())
+        {
+            // Auto-lap already drives pose later in the frame; skip heavy vehicle
+            // dynamics here to avoid starving track streaming/draw on SH2.
+            if (context_.gameplayTick)
+            {
+                context_.gameplayTick->Tick(frameState, context_.trackCollision);
+            }
+            if (context_.audioEvents)
+            {
+                context_.audioEvents->OnFrame(frameState);
+            }
+            context_.carWorldPosition = frameState.carWorldPosition;
+            carYawDeg_ = frameState.carYawDeg;
+            latestActiveSegmentId_ = frameState.activeSegmentId;
+            return;
+        }
+
         const bool useSlaveSim =
             context_.enableSlaveForSimulation &&
             (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
@@ -1150,10 +1320,12 @@ private:
     CameraFrameState ResolveCameraFrameState()
     {
         UpdateCameraPathFrameContext();
-        const SRL::Math::Types::Vector3D rawCameraLocation =
+        context_.cameraSystem->SetVehicleDynamics(carPitchDeg_, carRollDeg_, carSurfaceNormal_);
+        SRL::Math::Types::Vector3D rawCameraLocation =
             context_.cameraSystem->CameraLocation(context_.carWorldPosition);
-        const SRL::Math::Types::Vector3D rawLookTarget =
+        SRL::Math::Types::Vector3D rawLookTarget =
             context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
+        ApplyCameraGroundSafety(rawCameraLocation, rawLookTarget);
         const bool cameraReady =
             IsFiniteCameraPoint(rawCameraLocation) &&
             IsFiniteCameraPoint(rawLookTarget);
@@ -1167,6 +1339,8 @@ private:
         frame.ready = cameraReady;
         frame.location = cameraReady ? rawCameraLocation : lastValidCameraLocation_;
         frame.lookTarget = cameraReady ? rawLookTarget : lastValidLookTarget_;
+        lastFrameCameraLocation_ = frame.location;
+        lastFrameCameraLookTarget_ = frame.lookTarget;
 
         if (context_.verboseFrameLogs)
         {
@@ -1204,6 +1378,8 @@ private:
         }
 
         car->SetWorldPosition(carRenderPos);
+        car->SetPitchDegrees(carPitchDeg_);
+        car->SetRollDegrees(carRollDeg_);
         if (context_.enableSlaveForCarPrepare && carPrepareHasCompleted_)
         {
             car->SetYawDegrees(carPrepareOutputYaw_[carPrepareCompletedIdx_]);
@@ -1412,6 +1588,22 @@ private:
         const int32_t deltaZ = carCenterValid
             ? fxpToInt(context_.carWorldPosition.Z - carSegmentCenter.Z)
             : 0;
+        const int32_t camX = fxpToInt(lastFrameCameraLocation_.X);
+        const int32_t camY = fxpToInt(lastFrameCameraLocation_.Y);
+        const int32_t camZ = fxpToInt(lastFrameCameraLocation_.Z);
+        const int32_t ltx = fxpToInt(lastFrameCameraLookTarget_.X);
+        const int32_t lty = fxpToInt(lastFrameCameraLookTarget_.Y);
+        const int32_t ltz = fxpToInt(lastFrameCameraLookTarget_.Z);
+        const int32_t carX = fxpToInt(context_.carWorldPosition.X);
+        const int32_t carZ = fxpToInt(context_.carWorldPosition.Z);
+        SRL::Math::Types::Vector3D segment02Center{};
+        const bool segment02Valid = context_.trackSystem->FindSegmentCenterById(
+            2,
+            context_.trackSegOffset,
+            segment02Center);
+        const int32_t s02x = segment02Valid ? fxpToInt(segment02Center.X) : 0;
+        const int32_t s02y = segment02Valid ? fxpToInt(segment02Center.Y) : 0;
+        const int32_t s02z = segment02Valid ? fxpToInt(segment02Center.Z) : 0;
 
         int32_t seq[5] = { -1, -1, -1, -1, -1 };
         if (windowValid)
@@ -1449,6 +1641,33 @@ private:
                           static_cast<unsigned>(submittedTrackFaces),
                           static_cast<unsigned>(submittedCarFaces),
                           static_cast<unsigned>(submittedFacesTotal));
+        // DRV diagnostics are rendered on plane 2 (D1/D2/D3) to avoid collisions
+        // with TrackSystem overlay lines on plane 1.
+        SRL::Debug::Print(1, 24, "CAM x:%d y:%d z:%d       ", camX, camY, camZ);
+        SRL::Debug::Print(1, 25, "LTG x:%d y:%d z:%d       ", ltx, lty, ltz);
+        SRL::Debug::Print(1, 26, "CAR x:%d y:%d z:%d       ", carX, carY, carZ);
+        SRL::Debug::Print(1, 27, "S02 x:%d y:%d z:%d       ", s02x, s02y, s02z);
+
+        // Isolated DRVMAP diagnostics (plane 2) to avoid row collisions with
+        // TrackSystem runtime overlays on plane 1.
+        SRL::Debug::Print(2, 13, "D1 r:%u a:%u lf:%u rd:%u ps:%u     ",
+                          context_.trackSystem->DriveSurfaceMapReady() ? 1u : 0u,
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapLoadAttempts()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapLoadFailures()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapReadFailures()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapParseFailures()));
+        SRL::Debug::Print(2, 14, "D2 b:%u rb:%u mg:%08lx v:%u st:%u      ",
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapLastBlobBytes()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapResidentBytes()),
+                          static_cast<unsigned long>(context_.trackSystem->DriveSurfaceMapLastMagic()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapLastVersion()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapLastStatusCode()));
+        SRL::Debug::Print(2, 15, "D3 h:%u m:%u f:%u q:%u c:%u        ",
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapQueryHits()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapQueryMisses()),
+                          static_cast<unsigned>(context_.trackSystem->DriveSurfaceMapFallbackQueries()),
+                          static_cast<unsigned>(groundYQueryTrackCallsThisFrame_),
+                          static_cast<unsigned>(groundYQueryCacheHitsThisFrame_));
 
         const bool carSegChanged =
             (carSegmentId > 0) &&
@@ -1655,7 +1874,7 @@ private:
                 autoLapRouteCenters_.capacity() > 0u ||
                 autoLapRouteYawDeg_.capacity() > 0u ||
                 autoLapRouteOffDeg_.capacity() > 0u;
-            if (!autoLapTestEnabled_ && hasRetainedRouteStorage)
+            if (!IsAutoLapEnabled() && hasRetainedRouteStorage)
             {
                 ReleaseAutoLapRouteStorage();
             }
@@ -1709,7 +1928,7 @@ private:
         // Align initial stopped-camera framing with track direction so CAM2 starts
         // looking forward even before auto-lap movement is toggled.
         if (!startupPathYawAligned_ &&
-            !autoLapTestEnabled_ &&
+            !IsAutoLapEnabled() &&
             nearestIndex < autoLapRouteYawDeg_.size())
         {
             carYawDeg_ = NormalizeYawDeg360(static_cast<int32_t>(autoLapRouteYawDeg_[nearestIndex]));
@@ -1846,9 +2065,10 @@ private:
         {
             RebuildAutoLapRouteYawData();
         }
-        // Keep only a tiny clearance above asphalt to prevent z-fighting.
-        const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-(1 << 13));
-        static constexpr uint16_t kAsphaltFamilyId = 1u; // F01064.tga
+        // Match the runtime physics clearance to keep asphalt from bleeding over
+        // the car during auto-lap while preserving consistent visual height.
+        const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-(3 << 16));
+        static constexpr uint16_t kAsphaltFamilyId = 0u; // use TrackSystem drivable-ground family set
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         auto wrapSegmentId = [&](int32_t segmentId) -> int32_t
         {
@@ -1900,16 +2120,18 @@ private:
             // segments in one frame.
             latestActiveSegmentId_ = static_cast<int16_t>(currentSegmentId);
         };
+        int32_t routeGroundSegmentHint = (latestActiveSegmentId_ > 0)
+                                             ? static_cast<int32_t>(latestActiveSegmentId_)
+                                             : -1;
         auto resolveRouteGroundYAt = [&](size_t routeIndex) -> SRL::Math::Types::Fxp
         {
             if (routeIndex < autoLapRouteCenters_.size())
             {
                 SRL::Math::Types::Fxp asphaltY{};
-                if (context.trackSystem->FindSurfaceYByFamilyId(
-                        autoLapRouteCenters_[routeIndex],
-                        context.trackSegOffset,
-                        kAsphaltFamilyId,
-                        asphaltY))
+                if (SampleGroundYCached(autoLapRouteCenters_[routeIndex],
+                                        kAsphaltFamilyId,
+                                        asphaltY,
+                                        &routeGroundSegmentHint))
                 {
                     return asphaltY;
                 }
@@ -2651,6 +2873,7 @@ private:
     uint32_t simSlaveDispatchSkipsBackoff_ = 0;
     uint32_t simDrainSoftTimeouts_ = 0;
     uint32_t simDrainHardWaits_ = 0;
+    CameraObstructionSolver cameraObstructionSolver_{};
     CarRenderPrepareTask carPrepareTask_{};
     int32_t carPrepareInputYaw_[2]{};
     int32_t carPrepareOutputYaw_[2]{};
@@ -2660,6 +2883,9 @@ private:
     uint8_t carPrepareInFlightIdx_ = 0;
     uint8_t carPrepareCompletedIdx_ = 0;
     int16_t latestActiveSegmentId_ = -1;
+    int16_t carPitchDeg_ = 0;
+    int16_t carRollDeg_ = 0;
+    SRL::Math::Types::Vector3D carSurfaceNormal_{0.0, -1.0, 0.0};
     int16_t diagPrevCarSegmentId_ = -1;
     int16_t diagPrevWindowStartId_ = -1;
     SRL::Math::Types::Vector3D lastValidCarRenderPos_{
@@ -2674,7 +2900,15 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
-    bool autoLapTestEnabled_ = false;
+    SRL::Math::Types::Vector3D lastFrameCameraLocation_{
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0)};
+    SRL::Math::Types::Vector3D lastFrameCameraLookTarget_{
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0),
+        SRL::Math::Types::Fxp::BuildRaw(0)};
+    DriveMode driveMode_ = DriveMode::Manual;
     int16_t autoLapTargetSegmentId_ = 1;
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)
@@ -2710,6 +2944,12 @@ private:
     uint32_t lastLowWorkOverheadOverlayBytes_ = 0;
     uint32_t lastLowWorkFreeBlocksOverlay_ = 0;
     bool lowWorkAllocatorOverlayValid_ = false;
+    static constexpr uint8_t kGroundYQueryCacheCapacity_ = 16u;
+    std::array<GroundYQueryCacheEntry, kGroundYQueryCacheCapacity_> groundYQueryCache_{};
+    uint8_t groundYQueryCacheCount_ = 0u;
+    uint8_t groundYQueryCacheNextEvict_ = 0u;
+    uint16_t groundYQueryCacheHitsThisFrame_ = 0u;
+    uint16_t groundYQueryTrackCallsThisFrame_ = 0u;
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;
