@@ -795,14 +795,14 @@ int GameApp::Run()
     BackgroundManager bgManager;
     bool bgReady = false;
     const char* skyPaths[] = {
-        // Ordem de preferência: assets já validados no projeto.
-               
-        "cd/data/SKY1.TGA",
-        "cd/data/SKY1.tga",
-        "cd/data/sky1.tga",       
-        "data/SKY1.TGA",
-        "SKY1.TGA",       
-        "SKY1.TGA;1"
+        "cd/data/ceup.tga",
+        "cd/data/CEUP.TGA",
+        "data/CEUP.TGA",
+        "CEUP.TGA",
+        "ceup.tga",
+        "CEUP.TGA;1",
+        "ceup.tga;1",
+        "/CD/DATA/CEUP.TGA"
     };
     const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
     if (enableBg)

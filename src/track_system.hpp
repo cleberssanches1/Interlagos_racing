@@ -190,7 +190,7 @@ private:
             bool ready = false;
             bool hasPerFaceRankOffsets = false;
             // Resident state currently visible in the renderer.
-            uint8_t currentLodIndex = 0xFF; // 0:8, 1:16, 2:32, 3:64
+            uint8_t currentLodIndex = 0xFF; // 2:32, 3:64 (0/1 reserved)
             int16_t currentBaseRank = -1;
             // Desired state derived from the logical rank in the sliding window.
             uint8_t desiredLodIndex = 0xFF;
@@ -218,7 +218,7 @@ private:
     struct Seg1FamilySlotEntry
     {
         uint16_t familyId = 0;
-        std::array<uint16_t, 4> lodSlots{{0, 0, 0, 0}}; // 0:8, 1:16, 2:32, 3:64
+        std::array<uint16_t, 4> lodSlots{{0, 0, 0, 0}}; // 2:32, 3:64 (0/1 reserved)
         std::array<uint16_t, 4> workingRefs{{0, 0, 0, 0}};
         std::array<uint8_t, 4> unusedFrames{{0, 0, 0, 0}};
     };
@@ -435,7 +435,7 @@ private:
     bool BuildSegmentCenterCatalog();
     bool RebuildActiveSegmentWindow(int32_t startSegmentId, size_t loadLimit, int8_t direction);
     bool SlideActiveSegmentWindow(size_t stepCount, int8_t direction);
-    void PrewarmNextSegmentLod8();
+    void PrewarmNextSegmentLod32();
     void PrewarmUpcomingBoundaryLods();
     void ResetSlidePrefetchState();
     bool BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarmup = true);
@@ -631,7 +631,7 @@ private:
     TrackLowWorkI16Vector slidePrefetchFaceSlots_{};
     TrackLowWorkUniquePtr<TrackRenderer> slidePrefetchRenderer_{};
     bool slidePrefetchRendererReady_ = false;
-    bool slidePrefetchLod8Ready_ = false;
+    bool slidePrefetchLodReady_ = false;
     uint16_t trackTextureHeapBase_ = 0;
     bool trackTextureHeapBaseValid_ = false;
     uint16_t trackTextureRecycleCount_ = 0;

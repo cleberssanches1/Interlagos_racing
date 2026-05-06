@@ -58,6 +58,10 @@ public:
     static constexpr size_t kVDP1FaceCostBytes = 64;
     static constexpr size_t kVDP1BudgetBytes   = 512 * 1024;
     static constexpr size_t kMaxDrawMeshes     = 2;  // conservative limit to protect VDP1 command list
+    // Keep palette index 0 transparent (SPenb) but disable end-code transparency (ECdis).
+    static constexpr uint32_t kTrackTexturedDir =
+        static_cast<uint32_t>(sprNoflip) |
+        (static_cast<uint32_t>(ECdis) << 24);
 
     // Load track file from a list of candidate paths into cart RAM and prepare caches.
     bool Load(const char* const* candidates, size_t count, size_t maxMeshes, bool /*loadAllSegments*/ = false)
@@ -1168,7 +1172,7 @@ public:
         auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t slot)
         {
             attr.Texture = slot;
-            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+            const uint32_t texturedDir = kTrackTexturedDir;
 
             const auto& meta = SRL::VDP1::Metadata[slot];
             uint16_t colorMode = CL32KRGB;
@@ -1285,7 +1289,7 @@ public:
         auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t slot)
         {
             attr.Texture = slot;
-            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+            const uint32_t texturedDir = kTrackTexturedDir;
 
             const auto& meta = SRL::VDP1::Metadata[slot];
             uint16_t colorMode = CL32KRGB;
@@ -1325,7 +1329,7 @@ public:
         {
             if (attr.Texture != slot) return false;
 
-            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+            const uint32_t texturedDir = kTrackTexturedDir;
             const auto& meta = SRL::VDP1::Metadata[slot];
             uint16_t colorMode = CL32KRGB;
             uint16_t palette = No_Palet;
@@ -1447,7 +1451,7 @@ public:
         auto applyAttrTexture = [&](SRL::Types::Attribute& attr, uint16_t actualSlot)
         {
             attr.Texture = actualSlot;
-            const uint32_t texturedDir = static_cast<uint32_t>(sprNoflip);
+            const uint32_t texturedDir = kTrackTexturedDir;
 
             const auto& meta = SRL::VDP1::Metadata[actualSlot];
             uint16_t colorMode = CL32KRGB;

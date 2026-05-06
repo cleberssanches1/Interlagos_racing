@@ -9,17 +9,13 @@
 namespace TrackStreamingPolicy
 {
 static constexpr uint16_t kNoTexture = 0u;
-static constexpr uint8_t kLod8 = 0u;
-static constexpr uint8_t kLod16 = 1u;
 static constexpr uint8_t kLod32 = 2u;
 static constexpr uint8_t kLod64 = 3u;
 
 struct LodBandConfig
 {
-    uint32_t lod64Count = 4u;
-    uint32_t lod32Count = 5u;
-    uint32_t lod16Count = 5u;
-    uint32_t lod8Count = 6u;
+    uint32_t lod64Count = 10u;
+    uint32_t lod32Count = 10u;
 };
 
 struct FamilySlotsSnapshot
@@ -31,7 +27,7 @@ struct FamilySlotsSnapshot
 struct BoundaryPrewarmTarget
 {
     size_t logicalRank = 0u;
-    uint8_t targetLodIndex = kLod8;
+    uint8_t targetLodIndex = kLod32;
 };
 
 constexpr int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount) noexcept
@@ -47,14 +43,10 @@ constexpr uint8_t ResolveLodIndexByRank(size_t rank, const LodBandConfig& config
 {
     const size_t lod64End = static_cast<size_t>(config.lod64Count);
     const size_t lod32End = lod64End + static_cast<size_t>(config.lod32Count);
-    const size_t lod16End = lod32End + static_cast<size_t>(config.lod16Count);
-    const size_t lod8End = lod16End + static_cast<size_t>(config.lod8Count);
 
     if (rank < lod64End) return kLod64;
     if (rank < lod32End) return kLod32;
-    if (rank < lod16End) return kLod16;
-    if (rank < lod8End) return kLod8;
-    return kLod8;
+    return kLod32;
 }
 
 inline std::array<size_t, 4> CountWindowSegmentsByLod(size_t windowCount,
@@ -111,10 +103,9 @@ inline std::vector<BoundaryPrewarmTarget> BuildForwardSlideBoundaryPrewarmPlan(
     const LodBandConfig& config = {})
 {
     std::vector<BoundaryPrewarmTarget> plan{};
-    const std::array<size_t, 3> boundaryRanks{{
+    const std::array<size_t, 2> boundaryRanks{{
         static_cast<size_t>(config.lod64Count),
         static_cast<size_t>(config.lod64Count + config.lod32Count),
-        static_cast<size_t>(config.lod64Count + config.lod32Count + config.lod16Count),
     }};
 
     plan.reserve(boundaryRanks.size());

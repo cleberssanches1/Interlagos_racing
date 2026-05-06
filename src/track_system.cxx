@@ -186,11 +186,9 @@ static SdrBuildScratch g_sdrBuildScratch{};
 static SegmentRuntimeDraw::Blob g_rdrFamilyIdsScratch{};
 static SegmentDrawReady::Blob g_sdrFamilyIdsScratch{};
 // Visible window LOD distribution (20 segments total):
-// 4x 64x64, 5x 32x32, 5x 16x16, 6x 8x8.
-static constexpr uint32_t kLodBand64Count = 4u;
-static constexpr uint32_t kLodBand32Count = 5u;
-static constexpr uint32_t kLodBand16Count = 5u;
-static constexpr uint32_t kLodBand8Count = 6u;
+// 10x 64x64 + 10x 32x32 only.
+static constexpr uint32_t kLodBand64Count = 10u;
+static constexpr uint32_t kLodBand32Count = 10u;
 static constexpr size_t kWorkRamPlanningHeadroomBytes = 48u * 1024u;
 static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
 // Release the emergency reserve slightly earlier so runtime maintenance does
@@ -223,7 +221,7 @@ static constexpr size_t kWorkRamTrackOwnedBypassBytes = 32u * 1024u;
 static constexpr size_t kStabilizedFaceCapacityFloorCap = 768u;
 static constexpr size_t kStabilizedVertexCapacityFloorCap = 768u;
 static constexpr size_t kLodMandatoryBandSegmentCount =
-    kLodBand64Count + kLodBand32Count + kLodBand16Count;
+    kLodBand64Count + kLodBand32Count;
 static constexpr uint16_t kTrackRuntimeMemRev = 7u;
 static constexpr uint8_t kSlideHwrTraceLowMemBit = 1u << 0;
 static constexpr uint8_t kSlideHwrTraceResetPrefetchBit = 1u << 1;
@@ -237,7 +235,7 @@ static constexpr uint8_t kLodDegradeCooldownFrames = 6u;
 static constexpr size_t kLodRecoveryFreeBytes = kWorkRamHardFloorBytes + (48u * 1024u);
 // Temporary stabilization mode:
 // - keep the sliding window running
-// - keep tail segments entering in 8x8
+// - keep tail segments entering in 32x32
 // - disable visible-segment lod promotions/demotions during gameplay
 // - disable destructive texture/palette release while racing
 // This isolates runtime lifetime bugs from the offline asset pipeline.
@@ -312,6 +310,18 @@ static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
 static constexpr uint8_t kTrackFramePlanFlagFallback = 1u << 0;
 static constexpr uint8_t kTrackFramePlanFlagPartial = 1u << 1;
 static constexpr uint8_t kTrackFramePlanFlagStale = 1u << 2;
+static constexpr uint8_t kTrackLod32Index = 2u;
+static constexpr uint8_t kTrackLod64Index = 3u;
+
+static inline uint8_t NormalizeTrackTextureLodIndex(uint8_t lodIndex)
+{
+    return (lodIndex >= kTrackLod64Index) ? kTrackLod64Index : kTrackLod32Index;
+}
+
+static inline int TrackTextureLodValue(uint8_t lodIndex)
+{
+    return (NormalizeTrackTextureLodIndex(lodIndex) == kTrackLod64Index) ? 64 : 32;
+}
 
 static int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount)
 {
@@ -1457,7 +1467,7 @@ static void BuildLodTextureName(const char* srcName, int lod, bool compactNoUnde
     };
 
     bool replaced = false;
-    const char* tails[] = { "_64", "_32", "_16", "_8", "64", "32", "16", "8" };
+    const char* tails[] = { "_64", "_32", "64", "32" };
     for (size_t i = 0; i < sizeof(tails) / sizeof(tails[0]); ++i)
     {
         if (!ends_with(base, tails[i])) continue;
@@ -1533,7 +1543,7 @@ static int32_t TryLoadTextureFromCd(const char* fileName)
         }
     }
 
-    // ISO9660 Level-1 fallback alias (8.3): e.g. ASFALTO_8.TGA -> ASFALTO_.TGA
+    // ISO9660 Level-1 fallback alias (8.3): e.g. ASFALTO_32.TGA -> ASFALTO_.TGA
     char iso83[80]{};
     {
         const char* dot = ::strrchr(upperName, '.');
@@ -6099,6 +6109,7 @@ bool TrackSystem::TryGetFamilyLodSlot(const FamilySlotVector& familySlots,
 {
     outSlot = No_Texture;
     if (lodIndex > 3) return false;
+    lodIndex = NormalizeTrackTextureLodIndex(lodIndex);
     const auto* slotEntry = FindFamilySlot(familySlots, familyId);
     if (!slotEntry) return false;
     outSlot = slotEntry->lodSlots[lodIndex];
@@ -6129,6 +6140,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
     if (outLoadedFromLodValue) *outLoadedFromLodValue = 0;
 
     if (targetLodIndex > 3) return false;
+    targetLodIndex = NormalizeTrackTextureLodIndex(targetLodIndex);
     if (slotEntry.familyId == 0) return false;
     if (slotEntry.lodSlots[targetLodIndex] != No_Texture)
     {
@@ -6139,8 +6151,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         {
             if (outLoadedFromLodValue)
             {
-                const int lodValues[4] = { 8, 16, 32, 64 };
-                *outLoadedFromLodValue = lodValues[targetLodIndex];
+                *outLoadedFromLodValue = TrackTextureLodValue(targetLodIndex);
             }
             return true;
         }
@@ -6148,30 +6159,23 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         slotEntry.lodSlots[targetLodIndex] = No_Texture;
     }
 
-    const int lodValues[4] = { 8, 16, 32, 64 };
-    uint8_t searchOrder[4]{};
+    uint8_t searchOrder[2]{};
     size_t searchCount = 0;
     searchOrder[searchCount++] = targetLodIndex;
     if (fallbackToHigherLods)
     {
-        // Prefer nearest higher lod first to reduce upload cost and memory spikes.
-        for (int li = static_cast<int>(targetLodIndex) + 1; li <= 3; ++li)
-        {
-            searchOrder[searchCount++] = static_cast<uint8_t>(li);
-        }
+        if (targetLodIndex == kTrackLod32Index) searchOrder[searchCount++] = kTrackLod64Index;
     }
     if (fallbackToLowerLods)
     {
-        for (int li = static_cast<int>(targetLodIndex) - 1; li >= 0; --li)
-        {
-            searchOrder[searchCount++] = static_cast<uint8_t>(li);
-        }
+        if (targetLodIndex == kTrackLod64Index) searchOrder[searchCount++] = kTrackLod32Index;
     }
 
     for (size_t si = 0; si < searchCount; ++si)
     {
         const uint8_t sourceLodIndex = searchOrder[si];
-        if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(sourceLodIndex), lodValues[sourceLodIndex])) continue;
+        const int sourceLodValue = TrackTextureLodValue(sourceLodIndex);
+        if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(sourceLodIndex), sourceLodValue)) continue;
         const auto& bank = seg1Texbanks_[sourceLodIndex];
         const uint8_t* bankBytes = static_cast<const uint8_t*>(bank.cartPtr);
         if (!bankBytes) continue;
@@ -6210,7 +6214,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         }
 
         slotEntry.lodSlots[targetLodIndex] = static_cast<uint16_t>(slot);
-        if (outLoadedFromLodValue) *outLoadedFromLodValue = lodValues[sourceLodIndex];
+        if (outLoadedFromLodValue) *outLoadedFromLodValue = sourceLodValue;
         return true;
     }
 
@@ -6219,31 +6223,20 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
 
 bool TrackSystem::PreloadFullTrackFamilyLodCache()
 {
-    const int lodValues[4] = { 8, 16, 32, 64 };
-    const bool useAllLodBanks = !kEnableTrackRuntimeStabilization || kEnableTrackLodBandsInStabilization;
-    // In leak-isolation mode load only the banks needed by the active profile:
-    // - fixed64 legacy profile: only 64x64 (index 3)
-    // - mixed profile: 32x32 + 64x64 (indices 2..3)
-    // This avoids cart RAM usage for banks that are never rendered.
-    const size_t leakIsolationLoadBankStart =
-        kEnableLeakIsolationMixedLodProfile ? 2u : 3u;
-    const size_t loadBankStart = kEnableTrackLeakIsolationFixed64Pipeline
-        ? leakIsolationLoadBankStart
-        : 0u;
-    const size_t loadBankCount = kEnableTrackLeakIsolationFixed64Pipeline
-        ? 4u  // loadBankEnd = 4 (exclusive), active banks are [loadBankStart..3]
-        : (useAllLodBanks ? seg1Texbanks_.size() : 1u);
-    // Free/reset banks that fall before loadBankStart (indices 0–2 in fixed64 mode).
+    // Keep only 32x32 + 64x64 banks resident.
+    const size_t loadBankStart = static_cast<size_t>(kTrackLod32Index);
+    const size_t loadBankCount = seg1Texbanks_.size(); // [2..3]
+    // Free/reset banks that fall before loadBankStart (indices 0 and 1).
     for (size_t li = 0; li < loadBankStart; ++li)
     {
         auto& bank = seg1Texbanks_[li];
         if (bank.cartPtr) { SRL::Memory::CartRam::Free(bank.cartPtr); bank.cartPtr = nullptr; }
         bank = {};
-        bank.lod = lodValues[li];
+        bank.lod = TrackTextureLodValue(static_cast<uint8_t>(li));
     }
     for (size_t li = loadBankStart; li < loadBankCount; ++li)
     {
-        if (!LoadSeg1TexbankIndexToCart(li, lodValues[li]))
+        if (!LoadSeg1TexbankIndexToCart(li, TrackTextureLodValue(static_cast<uint8_t>(li))))
         {
             fullTrackFamilyCacheReady_ = false;
             return false;
@@ -6257,7 +6250,7 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
             SRL::Memory::CartRam::Free(bank.cartPtr);
         }
         bank = {};
-        bank.lod = lodValues[li];
+        bank.lod = TrackTextureLodValue(static_cast<uint8_t>(li));
     }
 
     FamilyIdCatalogVector familyIdsUsed{};
@@ -6312,29 +6305,26 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
         const uint8_t savedTextureUploads = textureUploadsThisFrame_;
         ready_ = false;
         textureUploadsThisFrame_ = 0;
-        const uint8_t preloadLodCount = 1u;
+        const uint8_t preloadLodIndex = kTrackLod32Index;
         for (auto& family : seg1FamilySlots_)
         {
-            for (uint8_t preloadLodIndex = 0; preloadLodIndex < preloadLodCount; ++preloadLodIndex)
+            bool sawMissingFamily = false;
+            bool sawDecodeFail = false;
+            bool sawUploadFail = false;
+            if (TryLoadFamilyLodSlot(family,
+                                     preloadLodIndex,
+                                     /*fallbackToLowerLods*/false,
+                                     /*fallbackToHigherLods*/false,
+                                     &sawMissingFamily,
+                                     &sawDecodeFail,
+                                     &sawUploadFail,
+                                     nullptr))
             {
-                bool sawMissingFamily = false;
-                bool sawDecodeFail = false;
-                bool sawUploadFail = false;
-                if (TryLoadFamilyLodSlot(family,
-                                         preloadLodIndex,
-                                         /*fallbackToLowerLods*/false,
-                                         /*fallbackToHigherLods*/false,
-                                         &sawMissingFamily,
-                                         &sawDecodeFail,
-                                         &sawUploadFail,
-                                         nullptr))
-                {
-                    ++loadedLodCounts[preloadLodIndex];
-                }
-                else
-                {
-                    ++failedLodCounts[preloadLodIndex];
-                }
+                ++loadedLodCounts[preloadLodIndex];
+            }
+            else
+            {
+                ++failedLodCounts[preloadLodIndex];
             }
         }
         ready_ = savedReady;
@@ -6346,16 +6336,12 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
     const auto lwr = SRL::Memory::LowWorkRam::GetReport();
     if constexpr (kEnableTrackOverlayRows16To22)
     {
-        SRL::Debug::Print(1, 21, "TRK fam catalog fam:%u b:%u 8:%u/%u 16:%u/%u",
+        SRL::Debug::Print(1, 21, "TRK fam catalog fam:%u b:%u 32:%u/%u",
                           static_cast<unsigned>(seg1FamilySlots_.size()),
-                          static_cast<unsigned>(loadBankCount),
-                          loadedLodCounts[0],
-                          failedLodCounts[0],
-                          loadedLodCounts[1],
-                          failedLodCounts[1]);
-        SRL::Debug::Print(1, 22, "TRK fam lod32:%u/%u 64:%u/%u",
+                          static_cast<unsigned>(loadBankCount - loadBankStart),
                           loadedLodCounts[2],
-                          failedLodCounts[2],
+                          failedLodCounts[2]);
+        SRL::Debug::Print(1, 22, "TRK fam lod64:%u/%u",
                           loadedLodCounts[3],
                           failedLodCounts[3]);
     }
@@ -6377,6 +6363,7 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
 }
 
 // Build shared family ids used by the track renderer set. Texture slots are loaded lazily.
+
 bool TrackSystem::BuildTrackFamilyLodSlots(FamilySlotVector& outSlots)
 {
     outSlots.clear();
@@ -6451,8 +6438,8 @@ bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
     const bool hasRankOffsets = entry.lodState.hasPerFaceRankOffsets &&
                                 entry.lodState.faceRankOffsets.size() == faceCount;
     const uint8_t fallbackLodIndex = (entry.lodState.currentLodIndex <= 3u)
-        ? entry.lodState.currentLodIndex
-        : 0u;
+        ? NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex)
+        : kTrackLod32Index;
 
     std::array<uint32_t, kSegmentFamilyDedupScratchCap> seenKeys{};
     std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
@@ -6496,7 +6483,7 @@ bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
                     // ActiveAndOwned: a reusable slot may match by number but
                     // is no longer owned by this family — use fallback LOD.
                     if (!IsVdp1TextureSlotActiveAndOwned(slot)) continue;
-                    resolvedLod = li;
+                    resolvedLod = NormalizeTrackTextureLodIndex(li);
                     break;
                 }
             }
@@ -6698,6 +6685,7 @@ bool TrackSystem::TryGetBestFamilyLodSlot(FamilySlotVector& familySlots,
     outSlot = No_Texture;
     if (outResolvedLodIndex) *outResolvedLodIndex = 0xFF;
     if (preferredLodIndex > 3u) return false;
+    preferredLodIndex = NormalizeTrackTextureLodIndex(preferredLodIndex);
 
     Seg1FamilySlotEntry* slotEntry = FindFamilySlot(familySlots, familyId);
     if (!slotEntry) return false;
@@ -6713,18 +6701,8 @@ bool TrackSystem::TryGetBestFamilyLodSlot(FamilySlotVector& familySlots,
     };
 
     if (tryExistingSlot(preferredLodIndex)) return true;
-    for (uint8_t delta = 1u; delta < 4u; ++delta)
-    {
-        if (preferredLodIndex >= delta && tryExistingSlot(static_cast<uint8_t>(preferredLodIndex - delta)))
-        {
-            return true;
-        }
-        const uint8_t higher = static_cast<uint8_t>(preferredLodIndex + delta);
-        if (higher < 4u && tryExistingSlot(higher))
-        {
-            return true;
-        }
-    }
+    if (preferredLodIndex == kTrackLod32Index && tryExistingSlot(kTrackLod64Index)) return true;
+    if (preferredLodIndex == kTrackLod64Index && tryExistingSlot(kTrackLod32Index)) return true;
 
     if (!tryLoadFallback) return false;
     if (!bypassUploadBudget &&
@@ -6744,10 +6722,8 @@ bool TrackSystem::TryGetBestFamilyLodSlot(FamilySlotVector& familySlots,
                                              nullptr);
     if (loaded && ready_) ++textureUploadsThisFrame_;
     if (tryExistingSlot(preferredLodIndex)) return true;
-    for (uint8_t lodIndex = 0u; lodIndex < 4u; ++lodIndex)
-    {
-        if (tryExistingSlot(lodIndex)) return true;
-    }
+    if (tryExistingSlot(kTrackLod32Index)) return true;
+    if (tryExistingSlot(kTrackLod64Index)) return true;
     return false;
 }
 
@@ -6759,6 +6735,7 @@ bool TrackSystem::ResolveBestEffortFaceSlots(const FamilyIdVector& faceFamilyIds
                                              bool bypassUploadBudget)
 {
     if (preferredLodIndex > 3u) return false;
+    preferredLodIndex = NormalizeTrackTextureLodIndex(preferredLodIndex);
     if (faceFamilyIds.empty()) return false;
 
     outFaceSlots.assign(faceFamilyIds.size(), -1);
@@ -6814,6 +6791,7 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
 {
     if (!entry.renderer) return false;
     if (lodIndex > 3) return false;
+    lodIndex = NormalizeTrackTextureLodIndex(lodIndex);
     if (entry.lodState.faceFamilyIds.empty()) return false;
 
     const size_t faceCount = entry.lodState.faceFamilyIds.size();
@@ -6907,12 +6885,12 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     if (!entry.renderer) return false;
     if (entry.id <= 0) return false;
 
-    uint8_t desiredLodIndex = 0u;
+    uint8_t desiredLodIndex = kTrackLod32Index;
     if (kEnableTrackLodBandsInStabilization)
     {
         if (entry.lodState.desiredLodIndex <= 3u)
         {
-            desiredLodIndex = entry.lodState.desiredLodIndex;
+            desiredLodIndex = NormalizeTrackTextureLodIndex(entry.lodState.desiredLodIndex);
         }
         else
         {
@@ -6923,13 +6901,13 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
             }
             else if (entry.lodState.currentLodIndex <= 3u)
             {
-                desiredLodIndex = entry.lodState.currentLodIndex;
+                desiredLodIndex = NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex);
             }
         }
     }
     else if (entry.lodState.currentLodIndex <= 3u)
     {
-        desiredLodIndex = entry.lodState.currentLodIndex;
+        desiredLodIndex = NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex);
     }
 
     Vector3D rebuiltCenter(0.0, 0.0, 0.0);
@@ -6969,7 +6947,9 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     uint8_t appliedLodIndex = desiredLodIndex;
     const bool requireExactLod =
         kEnableTrackRuntimeStabilization && kEnableTrackLodBandsInStabilization;
-    const int lowestLodAttempt = requireExactLod ? static_cast<int>(desiredLodIndex) : 0;
+    const int lowestLodAttempt = requireExactLod
+        ? static_cast<int>(desiredLodIndex)
+        : static_cast<int>(kTrackLod32Index);
     for (int lodIndex = static_cast<int>(desiredLodIndex); lodIndex >= lowestLodAttempt; --lodIndex)
     {
         entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
@@ -7033,17 +7013,13 @@ uint8_t TrackSystem::ResolveSegmentLodIndexByRank(size_t rank) const
     if (kEnableTrackRuntimeStabilization && !kEnableTrackLodBandsInStabilization)
     {
         (void)rank;
-        return 0; // correctness-first path: keep the active window in 8x8 only
+        return kTrackLod32Index;
     }
     const size_t lod64End = static_cast<size_t>(kLodBand64Count);
     const size_t lod32End = lod64End + static_cast<size_t>(kLodBand32Count);
-    const size_t lod16End = lod32End + static_cast<size_t>(kLodBand16Count);
-    const size_t lod8End = lod16End + static_cast<size_t>(kLodBand8Count);
-    if (rank < lod64End) return 3; // 64x64 for [0..3]
-    if (rank < lod32End) return 2; // 32x32 for [4..8]
-    if (rank < lod16End) return 1; // 16x16 for [9..13]
-    if (rank < lod8End) return 0;  // 8x8   for [14..19]
-    return 0;                      // keep 8x8 beyond rank 19
+    if (rank < lod64End) return kTrackLod64Index;
+    if (rank < lod32End) return kTrackLod32Index;
+    return kTrackLod32Index;
 }
 
 bool TrackSystem::TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) const
@@ -8223,7 +8199,7 @@ void TrackSystem::ResetSlidePrefetchState()
     }
 
     slidePrefetchRendererReady_ = false;
-    slidePrefetchLod8Ready_     = false;
+    slidePrefetchLodReady_     = false;
     LWR_PROBE_END(g_lwrStageAccum.resetPrefetch);
 }
 
@@ -9075,7 +9051,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
             EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
             EnsureVectorCapacityFloor(slidePrefetchFaceSlots_, slotFaceCapacityFloor_);
             slidePrefetchRendererReady_ = false;
-            slidePrefetchLod8Ready_ = false;
+            slidePrefetchLodReady_ = false;
         }
 
         // Fase 2: pré-construir renderer no scratch para eliminar build síncrono no frame do slide
@@ -9096,7 +9072,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
                                                    slideScratchEntry_.lodState.faceFamilyIds.end());
                     EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
                     slidePrefetchRendererReady_ = true;
-                    slidePrefetchLod8Ready_ = false;
+                    slidePrefetchLodReady_ = false;
                 }
             }
         }
@@ -9160,7 +9136,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
         slidePrefetchFaceSlots_.assign(slidePrefetchFamilyIds_.size(), -1);
         EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
         EnsureVectorCapacityFloor(slidePrefetchFaceSlots_, slotFaceCapacityFloor_);
-        slidePrefetchLod8Ready_ = false;
+        slidePrefetchLodReady_ = false;
     }
 
     if (!slidePrefetchRenderer_ || slidePrefetchFamilyIds_.empty()) return false;
@@ -9202,7 +9178,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
     // Same rule for the non-stabilized prefetch path: keep it budgeted and
     // let the slide boundary use the emergency synchronous warmup if needed.
     const bool rebuilt = RebuildSegmentFaceSlotsForLod(prefetched,
-                                                       0,
+                                                       kTrackLod32Index,
                                                        seg1FamilySlots_,
                                                        /*bypassUploadBudget*/false);
     if (rebuilt)
@@ -9216,7 +9192,7 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
     slidePrefetchFaceSlots_.swap(prefetched.lodState.currentFaceSlots);
     EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(slidePrefetchFaceSlots_, slotFaceCapacityFloor_);
-    slidePrefetchLod8Ready_ =
+    slidePrefetchLodReady_ =
         rebuilt &&
         !HasMissingRequiredFaceTextureSlots(slidePrefetchFaceSlots_, &slidePrefetchFamilyIds_);
     familyWorkingSetDirty_ = true;
@@ -9491,7 +9467,7 @@ void TrackSystem::TryPrefetchUpcomingSegment()
     if (slidePrefetchSegmentId_ == nextId && !slidePrefetchFamilyIds_.empty())
     {
         if (prefetchRendererResident &&
-            slidePrefetchLod8Ready_ &&
+            slidePrefetchLodReady_ &&
             slidePrefetchFaceSlots_.size() == slidePrefetchFamilyIds_.size() &&
             !HasMissingRequiredFaceTextureSlots(slidePrefetchFaceSlots_, &slidePrefetchFamilyIds_))
         {
@@ -9518,7 +9494,7 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         }
         (void)BuildSegmentIntoPrefetch(nextId, false);
         const bool readyNow =
-            slidePrefetchLod8Ready_ &&
+            slidePrefetchLodReady_ &&
             slidePrefetchFaceSlots_.size() == slidePrefetchFamilyIds_.size() &&
             !HasMissingRequiredFaceTextureSlots(slidePrefetchFaceSlots_, &slidePrefetchFamilyIds_);
         prefetchRetryCooldown_ = readyNow ? 0u : 1u;
@@ -9553,7 +9529,7 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         slidePrefetchFamilyIds_ = std::move(familyIds);
         slidePrefetchFaceSlots_.clear();
         slidePrefetchRenderer_.reset();
-        slidePrefetchLod8Ready_ = false;
+        slidePrefetchLodReady_ = false;
     }
 }
 
@@ -10615,7 +10591,7 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             }
             // HighWorkRam pressure should not evict 32/64 track slots. Those live in
             // VDP1/CRAM and dropping them here only ratchets the visible window down to
-            // 8x8 without materially recovering HWR. Texture-heap cleanup is handled by
+            // 32x32 without materially recovering HWR. Texture-heap cleanup is handled by
             // the dedicated VDP1 compaction path.
         }
         const bool shouldTrimForWindowReuse =
@@ -11177,7 +11153,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             }
             else if (!slidePrefetchRenderer_) return false;
             if (slidePrefetchFamilyIds_.empty()) return false;
-            if (!slidePrefetchLod8Ready_) return false;
+            if (!slidePrefetchLodReady_) return false;
             if (slidePrefetchFaceSlots_.size() != slidePrefetchFamilyIds_.size()) return false;
             return !HasMissingRequiredFaceTextureSlots(slidePrefetchFaceSlots_, &slidePrefetchFamilyIds_);
         };
@@ -11294,13 +11270,13 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
 
         bool usePrefetchedRenderer = prefetchReady();
         bool usedFallbackSlots = false;
-        bool incomingLod8Ready = false;
+        bool incomingLodReady = false;
         if (!usePrefetchedRenderer)
         {
             ++runtimePrefetchMissesThisFrame_;
             TryPrefetchUpcomingSegment();
             (void)BuildSegmentIntoPrefetch(nextId, false);
-            PrewarmNextSegmentLod8();
+            PrewarmNextSegmentLod32();
             usePrefetchedRenderer = prefetchReady();
             if (!usePrefetchedRenderer)
             {
@@ -11334,9 +11310,9 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         center = slidePrefetchCenter_;
         slideIncomingFamilyIdsScratch_.swap(slidePrefetchFamilyIds_);
         slideIncomingFaceSlotsScratch_.swap(slidePrefetchFaceSlots_);
-        incomingLod8Ready = !usedFallbackSlots &&
-                            !HasMissingRequiredFaceTextureSlots(slideIncomingFaceSlotsScratch_,
-                                                                &slideIncomingFamilyIdsScratch_);
+        incomingLodReady = !usedFallbackSlots &&
+                           !HasMissingRequiredFaceTextureSlots(slideIncomingFaceSlotsScratch_,
+                                                               &slideIncomingFamilyIdsScratch_);
         SegmentRenderEntry& slot = segmentRenderers_[dropIdx];
         TrackSegmentEntry& meta = segmentEntries_[dropIdx];
 
@@ -11366,7 +11342,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         if (slideIncomingFaceSlotsScratch_.size() != incomingFaceCount)
         {
             slideIncomingFaceSlotsScratch_.assign(incomingFaceCount, -1);
-            incomingLod8Ready = false;
+            incomingLodReady = false;
         }
         EnsureVectorCapacityFloor(slideIncomingFamilyIdsScratch_, slotFaceCapacityFloor_);
         EnsureVectorCapacityFloor(slideIncomingFaceRankOffsetsScratch_, slotFaceCapacityFloor_);
@@ -11379,7 +11355,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         EnsureVectorCapacityFloor(slot.lodState.faceFamilyIds, slotFaceCapacityFloor_);
         EnsureVectorCapacityFloor(slot.lodState.faceRankOffsets, slotFaceCapacityFloor_);
         EnsureVectorCapacityFloor(slot.lodState.currentFaceSlots, slotFaceCapacityFloor_);
-        slot.lodState.currentLodIndex = incomingLod8Ready ? 0u : 0xFF;
+        slot.lodState.currentLodIndex = incomingLodReady ? kTrackLod32Index : 0xFF;
         slot.lodState.workingSetCacheDirty = true;  // slot reutilizado: invalidar cache stale do segmento anterior
         meta.id = nextId;
 
@@ -11412,7 +11388,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         }
         if (prewarmCooldown_ == 0)
         {
-            PrewarmNextSegmentLod8();
+            PrewarmNextSegmentLod32();
             prewarmCooldown_ = 2;
         }
         else
@@ -11436,7 +11412,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
     return finalizeSlideWindow(true);
 }
 
-void TrackSystem::PrewarmNextSegmentLod8()
+void TrackSystem::PrewarmNextSegmentLod32()
 {
     if (kEnableTrackRuntimeStabilization) return;
     if (totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
@@ -11454,7 +11430,7 @@ void TrackSystem::PrewarmNextSegmentLod8()
     if (preloadId <= 0) return;
 
     if (slidePrefetchSegmentId_ == preloadId &&
-        slidePrefetchLod8Ready_ &&
+        slidePrefetchLodReady_ &&
         slidePrefetchFaceSlots_.size() == slidePrefetchFamilyIds_.size() &&
         !HasMissingRequiredFaceTextureSlots(slidePrefetchFaceSlots_, &slidePrefetchFamilyIds_))
     {
@@ -11501,9 +11477,10 @@ void TrackSystem::PrewarmNextSegmentLod8()
         if (!slotEntry) continue;
         // Use ActiveAndOwned: a slot in the reusable pool is still "live" but no
         // longer owned by this family — skipping the upload would leave a stale slot.
-        if (slotEntry->lodSlots[0] != No_Texture && IsVdp1TextureSlotActiveAndOwned(slotEntry->lodSlots[0])) continue;
+        if (slotEntry->lodSlots[kTrackLod32Index] != No_Texture &&
+            IsVdp1TextureSlotActiveAndOwned(slotEntry->lodSlots[kTrackLod32Index])) continue;
 
-        if (EnsureFamilyLodSlotLoaded(seg1FamilySlots_, fam, 0))
+        if (EnsureFamilyLodSlotLoaded(seg1FamilySlots_, fam, kTrackLod32Index))
         {
             ++warmed;
             if (warmed >= prewarmCap) break;
@@ -11557,7 +11534,7 @@ void TrackSystem::PrewarmUpcomingBoundaryLods()
     static constexpr std::array<BoundaryTarget, 3> kForwardBoundaryTargets{{
         {4u, 3u},
         {9u, 2u},
-        {14u, 1u},
+        {14u, kTrackLod32Index},
     }};
     static constexpr size_t kBoundaryCapPerTarget = 1u;
     size_t uploadsRemaining = remainingUploadBudget;
@@ -11679,13 +11656,15 @@ void TrackSystem::MergeCurrentWindowFamilies()
                 {
                     if (target->lodSlots[li] != liveSlot) continue;
                     if (!IsVdp1TextureSlotLive(liveSlot)) continue;
-                    resolvedLodIndex = li;
+                    resolvedLodIndex = NormalizeTrackTextureLodIndex(li);
                     break;
                 }
 
                 if (resolvedLodIndex > 3u)
                 {
-                    resolvedLodIndex = (fallbackLodIndex <= 3u) ? fallbackLodIndex : 0u;
+                    resolvedLodIndex = (fallbackLodIndex <= 3u)
+                        ? NormalizeTrackTextureLodIndex(fallbackLodIndex)
+                        : kTrackLod32Index;
                 }
                 target->lodSlots[resolvedLodIndex] = liveSlot;
                 target->unusedFrames[resolvedLodIndex] = 0u;
@@ -11702,8 +11681,10 @@ void TrackSystem::MergeCurrentWindowFamilies()
                             : -1;
                     const uint8_t lodIndex =
                         (fi < entry.lodState.workingSetLodIndices.size())
-                            ? entry.lodState.workingSetLodIndices[fi]
-                            : ((entry.lodState.currentLodIndex <= 3u) ? entry.lodState.currentLodIndex : 0u);
+                            ? NormalizeTrackTextureLodIndex(entry.lodState.workingSetLodIndices[fi])
+                            : ((entry.lodState.currentLodIndex <= 3u)
+                                ? NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex)
+                                : kTrackLod32Index);
                     adoptSlot(fam, slotHint, lodIndex);
                 }
             }
@@ -11716,7 +11697,9 @@ void TrackSystem::MergeCurrentWindowFamilies()
                         ? entry.lodState.currentFaceSlots[fi]
                         : -1;
                 const uint8_t lodIndex =
-                    (entry.lodState.currentLodIndex <= 3u) ? entry.lodState.currentLodIndex : 0u;
+                    (entry.lodState.currentLodIndex <= 3u)
+                        ? NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex)
+                        : kTrackLod32Index;
                 adoptSlot(fam, slotHint, lodIndex);
             }
         }
@@ -11827,7 +11810,12 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
                 break;
             }
         }
-        if (resolvedLod > 3) resolvedLod = (fallbackLodIndex <= 3) ? fallbackLodIndex : 0u;
+        if (resolvedLod > 3)
+        {
+            resolvedLod = (fallbackLodIndex <= 3)
+                ? NormalizeTrackTextureLodIndex(fallbackLodIndex)
+                : kTrackLod32Index;
+        }
 
         if (family->workingRefs[resolvedLod] < std::numeric_limits<uint16_t>::max())
         {
@@ -11849,7 +11837,9 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
             if (!TryGetWindowLogicalRank(entry.id, logicalRank)) continue;
             (void)logicalRank;
             const uint8_t fallbackLodIndex =
-                (entry.lodState.currentLodIndex <= 3u) ? entry.lodState.currentLodIndex : 0u;
+                (entry.lodState.currentLodIndex <= 3u)
+                    ? NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex)
+                    : kTrackLod32Index;
             for (size_t fi = 0; fi < entry.lodState.faceFamilyIds.size(); ++fi)
             {
                 const uint16_t fam = entry.lodState.faceFamilyIds[fi];
@@ -11874,7 +11864,9 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
             const int32_t slotHint =
                 (fi < entry.lodState.workingSetSlots.size()) ? entry.lodState.workingSetSlots[fi] : -1;
             const uint8_t lodIndex =
-                (fi < entry.lodState.workingSetLodIndices.size()) ? entry.lodState.workingSetLodIndices[fi] : 0u;
+                (fi < entry.lodState.workingSetLodIndices.size())
+                    ? NormalizeTrackTextureLodIndex(entry.lodState.workingSetLodIndices[fi])
+                    : kTrackLod32Index;
             addRef(fam, slotHint, lodIndex);
         }
     }
@@ -11901,14 +11893,14 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
         {
             uint16_t& slot = family.lodSlots[li];
             uint8_t& unusedFrames = family.unusedFrames[li];
-            // Stabilized mode still needs strict recycling. LOD0/8x8 used to be
+            // Stabilized mode still needs strict recycling. The far LOD used to be
             // pinned forever here, which let far-band slots accumulate lap after
             // lap even after their source segments left the 20-segment window.
             const uint8_t lodGraceFrames = strictWindowRecycling
                 ? (kEnableTrackLeakIsolationFixed64Pipeline ? 0u : 1u)
                 : (kEnableTrackRuntimeStabilization &&
                    kEnableTrackLodBandsInStabilization &&
-                   li == 0u)
+                   li == kTrackLod32Index)
                       ? static_cast<uint8_t>(graceFrames + 1u)
                       : graceFrames;
             if (slot == No_Texture)
@@ -11969,7 +11961,7 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
     sInvariantCadence = cadenceFrames;
 
     constexpr size_t kExpectedWindowSegments =
-        static_cast<size_t>(kLodBand64Count + kLodBand32Count + kLodBand16Count + kLodBand8Count);
+        static_cast<size_t>(kLodBand64Count + kLodBand32Count);
 
     std::array<uint16_t, 4> bandCounts{{0, 0, 0, 0}};
     size_t activeReadySegments = 0u;
@@ -12017,7 +12009,7 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
     }
     const bool prefetchHasLiveState =
         slidePrefetchRendererReady_ ||
-        slidePrefetchLod8Ready_ ||
+        slidePrefetchLodReady_ ||
         prefetchHasResolvedSlots;
     const bool prefetchMetadataMismatch =
         (prefetchHasMetadata != prefetchHasFamilies) ||
@@ -12028,9 +12020,7 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
     const bool badWindowCount = activeReadySegments != kExpectedWindowSegments;
     const bool badBands =
         bandCounts[3] != kLodBand64Count ||
-        bandCounts[2] != kLodBand32Count ||
-        bandCounts[1] != kLodBand16Count ||
-        bandCounts[0] != kLodBand8Count;
+        bandCounts[2] != kLodBand32Count;
     const bool badPrefetch = prefetchMetadataMismatch;
     const bool badFamilies = extraFamilies != 0u;
 
@@ -12051,9 +12041,7 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
                       static_cast<unsigned>(activeReadySegments),
                       static_cast<unsigned>(prefetchHasMetadata ? 1u : 0u),
                       static_cast<unsigned>(extraFamilies));
-    SRL::Debug::Print(1, 19, "TRK band 8:%u 16:%u 32:%u 64:%u",
-                      static_cast<unsigned>(bandCounts[0]),
-                      static_cast<unsigned>(bandCounts[1]),
+    SRL::Debug::Print(1, 19, "TRK band 32:%u 64:%u",
                       static_cast<unsigned>(bandCounts[2]),
                       static_cast<unsigned>(bandCounts[3]));
     SRL::Debug::Print(1, 20, "TRK pf md:%u live:%u sz:%u",
@@ -12097,20 +12085,14 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
         if (familyActive) ++activeFamilies;
     }
 
-    SRL::Debug::Print(1, 18, "TRK ws fam:%u s:%u l8:%u/%u l16:%u/%u l32:%u/%u l64:%u/%u",
+    SRL::Debug::Print(1, 18, "TRK ws fam:%u s:%u l32:%u/%u l64:%u/%u",
                       static_cast<unsigned>(activeFamilies),
                       static_cast<unsigned>(liveSlots),
-                      static_cast<unsigned>(lodFamilies[0]),
-                      static_cast<unsigned>(lodRefs[0]),
-                      static_cast<unsigned>(lodFamilies[1]),
-                      static_cast<unsigned>(lodRefs[1]),
                       static_cast<unsigned>(lodFamilies[2]),
                       static_cast<unsigned>(lodRefs[2]),
                       static_cast<unsigned>(lodFamilies[3]),
                       static_cast<unsigned>(lodRefs[3]));
-    SRL::Debug::Print(1, 16, "TRK band 8:%u 16:%u 32:%u 64:%u",
-                      static_cast<unsigned>(segmentBands[0]),
-                      static_cast<unsigned>(segmentBands[1]),
+    SRL::Debug::Print(1, 16, "TRK band 32:%u 64:%u",
                       static_cast<unsigned>(segmentBands[2]),
                       static_cast<unsigned>(segmentBands[3]));
     SRL::Debug::Print(1, 17, "TRK pal 16:%u 64:%u 128:%u 256:%u",
@@ -12862,7 +12844,7 @@ bool TrackSystem::Initialize(const Config& config)
             bool asfaltoFromCart = false;
             for (const auto& t : seg1TgaCatalog_)
             {
-                if (!NameEqualsIgnoreCase(t.name, "asfalto_8.tga")) continue;
+                if (!NameEqualsIgnoreCase(t.name, "asfalto_32.tga")) continue;
                 if (!t.cartPtr || t.size == 0) continue;
                 DecodedTgaTexture decoded{};
                 if (DecodePalettedTgaMemory(static_cast<const uint8_t*>(t.cartPtr), t.size, decoded))
@@ -12873,8 +12855,8 @@ bool TrackSystem::Initialize(const Config& config)
                 break;
             }
             SRL::Debug::Print(1, 19, "S1 FORCE cart hit:%u cat:%u", asfaltoFromCart ? 1u : 0u, (unsigned)seg1TgaCatalog_.size());
-            if (slot < 0) slot = TryLoadTextureFromCd("asfalto_8.tga");
-            if (slot < 0) slot = TryLoadTextureFromCd("ASFALTO_8.TGA");
+            if (slot < 0) slot = TryLoadTextureFromCd("asfalto_32.tga");
+            if (slot < 0) slot = TryLoadTextureFromCd("ASFALTO_32.TGA");
             if (slot > 0)
             {
                 for (auto& seg : segmentRenderers_)
@@ -12935,9 +12917,9 @@ bool TrackSystem::Initialize(const Config& config)
                         };
 
                         // Prepare/validate compatibility by writing base then alt then base again.
-                        const bool baseOk0 = overwriteWithCandidates(chosenBase, "asfalto_8.tga", "ASFALTO_8.TGA");
-                        const bool altOk = overwriteWithCandidates(chosenBase, "area_escape_8.tga", "AREA_ESCAPE_8.TGA");
-                        const bool baseOk1 = overwriteWithCandidates(chosenBase, "asfalto_8.tga", "ASFALTO_8.TGA");
+                        const bool baseOk0 = overwriteWithCandidates(chosenBase, "asfalto_32.tga", "ASFALTO_32.TGA");
+                        const bool altOk = overwriteWithCandidates(chosenBase, "area_escape_32.tga", "AREA_ESCAPE_32.TGA");
+                        const bool baseOk1 = overwriteWithCandidates(chosenBase, "asfalto_32.tga", "ASFALTO_32.TGA");
                         if (baseOk0 && altOk && baseOk1)
                         {
                             seg1SingleFaceSwapFace_ = chosenFace;
@@ -13064,7 +13046,7 @@ bool TrackSystem::Initialize(const Config& config)
                 }
 
                 // Load texture catalogs from TEXBANK_{8,16,32,64}.BIN into cart RAM and upload to VDP1.
-                const int lodValues[4] = { 8, 16, 32, 64 };
+                const int lodValues[4] = { 32, 64, 32, 64 };
                 int familyIdsUsed[512]{};
                 size_t familyIdsUsedCount = 0;
 
@@ -13198,7 +13180,7 @@ bool TrackSystem::Initialize(const Config& config)
                             if (fi < 0) continue;
 
                             NormalizeTextureFileName(map1.familyTex64[fi], fileNorm, sizeof(fileNorm));
-                            const int lodVals[4] = { 8, 16, 32, 64 };
+                            const int lodVals[4] = { 32, 64, 32, 64 };
                             bool anyLoaded = false;
                             auto tryLoadFromCartCatalog = [&](const char* name) -> int32_t
                             {
@@ -13392,7 +13374,7 @@ bool TrackSystem::Initialize(const Config& config)
                                 mappedFaces = rendererFaces;
                             }
                         }
-                        const int lodDbg[4] = { 8, 16, 32, 64 };
+                        const int lodDbg[4] = { 32, 64, 32, 64 };
                         SRL::Debug::Print(1, 18, "S1 M%d:%u mp:%u", lodDbg[li], (unsigned)mappedFaces, map1ForSegOk ? 1u : 0u);
                     }
                     seg1RendererLodReady_ = (rendererFaces > 0);
@@ -13466,7 +13448,9 @@ bool TrackSystem::Initialize(const Config& config)
                                 texIndex = slot;
                                 baseColor = No_Palet;
                                 drawMode = static_cast<uint16_t>(CL32KRGB | CL_Gouraud);
-                                directionFlags = sprNoflip;
+                                directionFlags =
+                                    static_cast<uint32_t>(sprNoflip) |
+                                    (static_cast<uint32_t>(ECdis) << 24);
                                 shading = UseLight;
                             }
                         }
@@ -13542,7 +13526,7 @@ bool TrackSystem::Initialize(const Config& config)
 
                 if (jsonOk && !map1.faceFamily.empty())
                 {
-                    const int lodValues[4] = { 8, 16, 32, 64 };
+                    const int lodValues[4] = { 32, 64, 32, 64 };
                     int familyIdsUsed[512]{};
                     const size_t familyIdsUsedCount = BuildUniqueUsedFamilies(map1.faceFamily, familyIdsUsed, 512);
 
@@ -13797,7 +13781,7 @@ bool TrackSystem::Initialize(const Config& config)
         size_t banksOk = 0;
         if (kEnableSeg1WarmupTexbank)
         {
-            const int lodValues[4] = { 8, 16, 32, 64 };
+            const int lodValues[4] = { 32, 64, 32, 64 };
             const size_t loadCount = std::min<size_t>(kSeg1WarmupTexbankCount, 4);
             for (size_t li = 0; li < loadCount; ++li)
             {
@@ -14538,13 +14522,13 @@ void TrackSystem::RunSeg1DiagnosticsForFrame()
             bool ok = false;
             if (seg1SingleFaceSwapUseAlt_)
             {
-                ok = TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "area_escape_8.tga") ||
-                     TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "AREA_ESCAPE_8.TGA");
+                ok = TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "area_escape_32.tga") ||
+                     TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "AREA_ESCAPE_32.TGA");
             }
             else
             {
-                ok = TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "asfalto_8.tga") ||
-                     TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "ASFALTO_8.TGA");
+                ok = TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "asfalto_32.tga") ||
+                     TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "ASFALTO_32.TGA");
             }
             SRL::Debug::Print(1, 21, "S1 OVR sw:%u ok:%u",
                               seg1SingleFaceSwapUseAlt_ ? 1u : 0u,
@@ -14619,7 +14603,7 @@ void TrackSystem::RunSeg1DiagnosticsForFrame()
             }
             if (kEnableSeg1LodCycleLogs)
             {
-                const int lodDbg[4] = { 8, 16, 32, 64 };
+                const int lodDbg[4] = { 32, 64, 32, 64 };
                 const unsigned rdrFaces = seg1RendererLodReady_ ? (unsigned)seg1RendererFaceSlotsByLod_[seg1CurrentLodIndex_].size() : 0u;
                 SRL::Debug::Print(1, 22, "S1L c:%u j:%u l:%d r:%u",
                                   (unsigned)seg1TgaPreloadCount_,
@@ -15558,7 +15542,7 @@ void TrackSystem::RunPrefetchStage(bool windowSlid)
     // Mantém pipeline alimentado mesmo com slide no frame anterior.
     // Isso reduz miss síncrono exatamente na borda de criação de segmento.
     TryPrefetchUpcomingSegment();
-    if (!windowSlid) PrewarmNextSegmentLod8();
+    if (!windowSlid) PrewarmNextSegmentLod32();
     if (!windowSlid) PrewarmUpcomingBoundaryLods();
     sh2MasterPrefetchTicksThisFrame_ =
         Sh2FrtProfiler::Elapsed(prefetchTicksStart, Sh2FrtProfiler::Now());
@@ -16630,9 +16614,7 @@ void TrackSystem::EndFrame()
         }
         if (fam1)
         {
-            SRL::Debug::Print(1, 28, "F1 s8:%u s16:%u s32:%u s64:%u           ",
-                              (unsigned)fam1->lodSlots[0],
-                              (unsigned)fam1->lodSlots[1],
+            SRL::Debug::Print(1, 28, "F1 s32:%u s64:%u                         ",
                               (unsigned)fam1->lodSlots[2],
                               (unsigned)fam1->lodSlots[3]);
             auto texDim = [&](uint16_t slot, char* out, size_t outSize)
@@ -16647,12 +16629,10 @@ void TrackSystem::EndFrame()
                 auto* t = SRL::VDP1::Metadata[slot].Texture;
                 std::snprintf(out, outSize, "%ux%u", (unsigned)t->Width, (unsigned)t->Height);
             };
-            char d8[12]{}, d16[12]{}, d32[12]{}, d64[12]{};
-            texDim(fam1->lodSlots[0], d8, sizeof(d8));
-            texDim(fam1->lodSlots[1], d16, sizeof(d16));
+            char d32[12]{}, d64[12]{};
             texDim(fam1->lodSlots[2], d32, sizeof(d32));
             texDim(fam1->lodSlots[3], d64, sizeof(d64));
-            SRL::Debug::Print(1, 29, "F1 d8:%s d16:%s d32:%s d64:%s         ", d8, d16, d32, d64);
+            SRL::Debug::Print(1, 29, "F1 d32:%s d64:%s                       ", d32, d64);
         }
         else
         {

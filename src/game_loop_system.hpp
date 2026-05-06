@@ -1144,7 +1144,7 @@ private:
     {
         if (!context_.enableBg || !context_.bgManager) return;
         AppState::Set(AppState::Stage::LoopBackground, frameCounter_);
-        context_.bgManager->Update(context_.cameraSystem->State());
+        context_.bgManager->Update(context_.cameraSystem->State(), carYawDeg_);
     }
 
     CameraFrameState ResolveCameraFrameState()

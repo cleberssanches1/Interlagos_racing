@@ -21,7 +21,7 @@ struct BackgroundManager
     void Configure()
     {
         env.useDome = false;
-        env.useHorizon = true;
+        env.usePanorama = true;
         env.Configure();
     }
 
@@ -54,7 +54,7 @@ struct BackgroundManager
         return loaded;
     }
 
-    void Update(const Camera::State& camera)
+    void Update(const Camera::State& camera, int32_t carYawDeg)
     {
         // Reafirma back screen em cada frame para detectar conflitos de estado VDP2.
         SRL::VDP2::SetBackColor(SRL::Types::HighColor::FromRGB555(0, 31, 31));
@@ -76,6 +76,6 @@ struct BackgroundManager
         }
 
         if (!loaded) return;
-        env.Update(camera.yawDeg, camera.viewYawDeg, camera.viewPitchDeg);
+        env.Update(carYawDeg, camera.viewYawDeg, camera.viewPitchDeg);
     }
 };
