@@ -614,6 +614,7 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     bool logTrack,
                                                     bool logCar,
                                                     bool enableRuntimeStatsLogs,
+                                                    bool slaveSimulationLockstep,
                                                     bool enableManualGouraudCopy,
                                                     uint32_t faceCount,
                                                     uint32_t vertexCount,
@@ -646,8 +647,9 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.enableRuntimeStatsLogs = enableRuntimeStatsLogs;
     // Dual-SH2: simulacao na Slave reativada com drenagem segura antes da
     // janela de render da pista (evita conflito de submissao com producer).
-    loopContext.enableSlaveForCarPrepare = false;
+    loopContext.enableSlaveForCarPrepare = true;
     loopContext.enableSlaveForSimulation = true;
+    loopContext.slaveSimulationLockstep = slaveSimulationLockstep;
     loopContext.enableManualGouraudCopy = enableManualGouraudCopy;
     loopContext.faceCount = faceCount;
     loopContext.vertexCount = vertexCount;
@@ -846,11 +848,10 @@ int GameApp::Run()
     static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    // In leak-isolation fixed-64 mode the runtime window is capped at 10 segments;
-    // mirror that here so the coordinator budget and adaptive limiter are consistent.
-    static constexpr bool kFixed64Mode = true; // mirrors kEnableTrackLeakIsolationFixed64Pipeline
-    trackConfig.initialSegments = kFixed64Mode ? 10u : 20u;
-    trackConfig.minSegments     = kFixed64Mode ? 10u : 20u;
+    // Fixed visible budget: 20 segments.
+    // Runtime LOD split is handled inside TrackSystem: 10x 64x64 (near) + 10x 32x32 (far).
+    trackConfig.initialSegments = 20u;
+    trackConfig.minSegments     = 20u;
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
@@ -1047,8 +1048,10 @@ int GameApp::Run()
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
     Game::SimpleAudioEvents audioEvents;
-    // Safety mode: keep runtime simulation disabled while stabilizing render path.
-    const bool enableRuntimeSimulation = false;
+    // Runtime simulation enabled to keep gameplay/physics on SH2 pipeline.
+    const bool enableRuntimeSimulation = true;
+    // Deterministic lockstep: Master waits for Slave simulation each frame.
+    const bool slaveSimulationLockstep = true;
 
     GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
                                                                enableBg,
@@ -1059,6 +1062,7 @@ int GameApp::Run()
                                                                logTrack,
                                                                logCar,
                                                                kEnableRuntimeStatsLogs,
+                                                               slaveSimulationLockstep,
                                                                enableSmoothLighting,
                                                                faceCount,
                                                                vertexCount,

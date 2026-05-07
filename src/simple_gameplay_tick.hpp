@@ -10,6 +10,13 @@ class SimpleGameplayTick final : public IGameplayTick
 public:
     void Tick(GameplayFrameState& ioFrameState, const ITrackCollisionQuery* trackQuery) override
     {
+        if (!spawnInitialized_)
+        {
+            spawnPosition_ = ioFrameState.carWorldPosition;
+            spawnYawDeg_ = ioFrameState.carYawDeg;
+            spawnInitialized_ = true;
+        }
+
         int32_t segmentId = -1;
         Vector3D surfaceNormal{};
         if (trackQuery)
@@ -33,12 +40,16 @@ public:
             {
                 ++ioFrameState.checkpointsPassed;
                 lastCheckpointSegmentId_ = segmentId;
+                // Keep respawn anchor near current route progression.
+                spawnPosition_ = ioFrameState.carWorldPosition;
+                spawnYawDeg_ = ioFrameState.carYawDeg;
             }
         }
 
         // Safety respawn when car drifts too far from track center area.
-        const SRL::Math::Types::Fxp maxDrift = SRL::Math::Types::Fxp::BuildRaw(0x012C0000); // 300
-        if (ioFrameState.carWorldPosition.X.Abs() > maxDrift || ioFrameState.carWorldPosition.Z.Abs() > maxDrift)
+        const SRL::Math::Types::Fxp maxDrift = SRL::Math::Types::Fxp::BuildRaw(0x4E200000); // 20000
+        const Vector3D driftDelta = ioFrameState.carWorldPosition - spawnPosition_;
+        if (driftDelta.X.Abs() > maxDrift || driftDelta.Z.Abs() > maxDrift)
         {
             ioFrameState.resetRequested = true;
             ioFrameState.respawnPosition = spawnPosition_;
@@ -49,13 +60,13 @@ public:
             return;
         }
 
-        // Keep Y stable for now until full suspension and collision are available.
-        ioFrameState.carWorldPosition.Y = spawnPosition_.Y;
+        // Vertical follow is handled by car physics.
     }
 
 private:
     Vector3D spawnPosition_{0.0, 0.0, 0.0};
     int32_t spawnYawDeg_ = 0;
     int32_t lastCheckpointSegmentId_ = -1;
+    bool spawnInitialized_ = false;
 };
 } // namespace Game

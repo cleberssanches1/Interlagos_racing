@@ -149,6 +149,8 @@ public:
     uint16_t PrefetchTicksThisFrame() const { return sh2MasterPrefetchTicksThisFrame_; }
     uint16_t LodTicksThisFrame() const { return sh2MasterLodTicksThisFrame_; }
     uint16_t WorkingSetTicksThisFrame() const { return sh2MasterWorkingSetTicksThisFrame_; }
+    uint16_t SlaveSortTicksThisFrame() const { return sh2SlaveSortTicksThisFrame_; }
+    uint16_t SlavePlanTicksThisFrame() const { return sh2SlavePlanTicksThisFrame_; }
     uint8_t PrefetchBuildAttemptsThisFrame() const { return prefetchBuildAttemptsThisFrame_; }
     uint8_t PrefetchBuildBudgetThisFrame() const { return prefetchBuildBudgetThisFrame_; }
     uint8_t PrefetchBuildBudgetDropsThisFrame() const { return prefetchBuildBudgetDropsThisFrame_; }

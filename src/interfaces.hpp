@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include <srl.hpp>
 
 namespace Game
@@ -67,6 +69,61 @@ struct ITrackCollisionQuery
 {
     virtual ~ITrackCollisionQuery() = default;
     virtual bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) const = 0;
+    virtual bool SampleSurfaceYByFamilyId(const Vector3D& worldPosition,
+                                          uint16_t familyId,
+                                          SRL::Math::Types::Fxp& outSurfaceY,
+                                          int32_t* outSegmentId = nullptr) const
+    {
+        (void)worldPosition;
+        (void)familyId;
+        if (outSegmentId) *outSegmentId = -1;
+        outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
+        return false;
+    }
+    virtual bool SampleSurfaceYByFamilySet(const Vector3D& worldPosition,
+                                           const uint16_t* familyIds,
+                                           size_t familyCount,
+                                           SRL::Math::Types::Fxp& outSurfaceY,
+                                           int32_t* outSegmentId = nullptr) const
+    {
+        if (!familyIds || familyCount == 0u)
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
+            return false;
+        }
+
+        bool found = false;
+        SRL::Math::Types::Fxp bestDelta = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+        SRL::Math::Types::Fxp bestY = worldPosition.Y;
+        int32_t bestSegmentId = -1;
+
+        for (size_t i = 0; i < familyCount; ++i)
+        {
+            SRL::Math::Types::Fxp candidateY{};
+            int32_t candidateSegmentId = -1;
+            if (!SampleSurfaceYByFamilyId(worldPosition,
+                                          familyIds[i],
+                                          candidateY,
+                                          &candidateSegmentId))
+            {
+                continue;
+            }
+
+            const SRL::Math::Types::Fxp delta = (candidateY - worldPosition.Y).Abs();
+            if (!found || delta < bestDelta)
+            {
+                found = true;
+                bestDelta = delta;
+                bestY = candidateY;
+                bestSegmentId = candidateSegmentId;
+            }
+        }
+
+        if (outSegmentId) *outSegmentId = found ? bestSegmentId : -1;
+        if (found) outSurfaceY = bestY;
+        return found;
+    }
 };
 
 // Car physics contract executed each frame.

@@ -253,6 +253,8 @@ static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
 static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
 static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
 static constexpr size_t kLeakIsolationNearLodCount = 10u;
+static_assert(kLeakIsolationNearLodCount <= kTrackLeakIsolationWindowSegments,
+              "Near LOD count must fit leak-isolation window.");
 // Keep active window storage persistent and reuse slot renderers on rebuild.
 // This is a stepping stone before migrating to a full fixed ring N+staging pool.
 static constexpr bool kEnableTrackWindowFixedStorage = true;
@@ -265,9 +267,9 @@ static constexpr bool kEnableTrackLodBandsInStabilization = true;
 static constexpr bool kEnableDeterministicStabilizedSlide = true;
 static constexpr bool kEnableStabilizedDepthSortOnSlave = true;
 static constexpr bool kEnableStabilizedProducerOnSlave = true;
-// Non-lockstep: master never blocks for slave planner/producer in the same frame.
-// Keeps overlap high and avoids long stalls when slave job latency spikes.
-static constexpr bool kEnableTrackSlaveBarrierLockstep = false;
+// Lockstep mode: master waits for slave producer/sort completion.
+// Prioritizes deterministic sequencing and explicit workload split.
+static constexpr bool kEnableTrackSlaveBarrierLockstep = true;
 static constexpr bool kEnableSafeModeSingleRenderBackend = false;
 static constexpr bool kEnableTrackOverlayRows16To22 = false;
 static constexpr bool kEnableTrackPhaseRamTelemetry = false;
@@ -2842,7 +2844,10 @@ static bool LoadMat8ForSegment(int segmentId, SegmentComponent::Blob& outBlob, S
     return false;
 }
 
-static bool LoadSdrForSegment(int segmentId, SegmentDrawReady::Blob& outBlob, SegmentDrawReady::Loader::View& outView)
+static bool LoadSdrForSegment(int segmentId,
+                              SegmentDrawReady::Blob& outBlob,
+                              SegmentDrawReady::Loader::View& outView,
+                              bool quietMissLog = false)
 {
 static PackedAssetCache sSdrPackCache{};
     static char sSdrPinnedPath[96]{};
@@ -3139,16 +3144,19 @@ static PackedAssetCache sSdrPackCache{};
         if (tryParseLoaded()) return true;
     }
 
-    const auto cart = SRL::Memory::CartRam::GetReport();
-    SRL::Debug::Print(1, 15, "SDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
-                      segmentId,
-                      static_cast<unsigned>(sSdrPackCache.size),
-                      static_cast<unsigned>(sSdrPackCache.entries.size()),
-                      static_cast<unsigned>(sSdrTrustedEntries),
-                      static_cast<unsigned>(cart.FreeSize));
-    if (sSdrPackCache.sourcePath[0] != '\0')
+    if (!quietMissLog)
     {
-        SRL::Debug::Print(1, 16, "SDR src:%s", sSdrPackCache.sourcePath);
+        const auto cart = SRL::Memory::CartRam::GetReport();
+        SRL::Debug::Print(1, 15, "SDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+                          segmentId,
+                          static_cast<unsigned>(sSdrPackCache.size),
+                          static_cast<unsigned>(sSdrPackCache.entries.size()),
+                          static_cast<unsigned>(sSdrTrustedEntries),
+                          static_cast<unsigned>(cart.FreeSize));
+        if (sSdrPackCache.sourcePath[0] != '\0')
+        {
+            SRL::Debug::Print(1, 16, "SDR src:%s", sSdrPackCache.sourcePath);
+        }
     }
     (void)segmentId;
     outBlob.loaded = false;
@@ -3159,16 +3167,21 @@ static PackedAssetCache sSdrPackCache{};
 }
 
 // Read only SDR header counts used for memory planning.
-static bool LoadSdrHeaderForSegment(int segmentId, SegmentDrawReady::HeaderV1& outHeader)
+static bool LoadSdrHeaderForSegment(int segmentId,
+                                    SegmentDrawReady::HeaderV1& outHeader,
+                                    bool quietMissLog = false)
 {
     SegmentDrawReady::Blob blob{};
     SegmentDrawReady::Loader::View view{};
-    if (!LoadSdrForSegment(segmentId, blob, view)) return false;
+    if (!LoadSdrForSegment(segmentId, blob, view, quietMissLog)) return false;
     outHeader = view.header;
     return true;
 }
 
-static bool LoadRdrForSegment(int segmentId, SegmentRuntimeDraw::Blob& outBlob, SegmentRuntimeDraw::Loader::View& outView)
+static bool LoadRdrForSegment(int segmentId,
+                              SegmentRuntimeDraw::Blob& outBlob,
+                              SegmentRuntimeDraw::Loader::View& outView,
+                              bool quietMissLog = false)
 {
     static PackedAssetCache sRdrPackCache{};
     static char sRdrPinnedPath[96]{};
@@ -3453,16 +3466,19 @@ static bool LoadRdrForSegment(int segmentId, SegmentRuntimeDraw::Blob& outBlob, 
         if (tryParseLoaded()) return true;
     }
 
-    const auto cart = SRL::Memory::CartRam::GetReport();
-    SRL::Debug::Print(1, 15, "RDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
-                      segmentId,
-                      static_cast<unsigned>(sRdrPackCache.size),
-                      static_cast<unsigned>(sRdrPackCache.entries.size()),
-                      static_cast<unsigned>(sRdrTrustedEntries),
-                      static_cast<unsigned>(cart.FreeSize));
-    if (sRdrPackCache.sourcePath[0] != '\0')
+    if (!quietMissLog)
     {
-        SRL::Debug::Print(1, 16, "RDR src:%s", sRdrPackCache.sourcePath);
+        const auto cart = SRL::Memory::CartRam::GetReport();
+        SRL::Debug::Print(1, 15, "RDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+                          segmentId,
+                          static_cast<unsigned>(sRdrPackCache.size),
+                          static_cast<unsigned>(sRdrPackCache.entries.size()),
+                          static_cast<unsigned>(sRdrTrustedEntries),
+                          static_cast<unsigned>(cart.FreeSize));
+        if (sRdrPackCache.sourcePath[0] != '\0')
+        {
+            SRL::Debug::Print(1, 16, "RDR src:%s", sRdrPackCache.sourcePath);
+        }
     }
 
     outBlob.loaded = false;
@@ -3475,7 +3491,8 @@ static bool LoadRdrForSegment(int segmentId, SegmentRuntimeDraw::Blob& outBlob, 
 static bool LoadRdrMappedForSegment(int segmentId,
                                     SegmentRuntimeDraw::MappedBlob& outBlob,
                                     SegmentRuntimeDraw::Loader::View& outView,
-                                    SegmentRuntimeDraw::Blob* fallbackBlob = nullptr)
+                                    SegmentRuntimeDraw::Blob* fallbackBlob = nullptr,
+                                    bool quietMissLog = false)
 {
     static TrackRuntimePackCache sTrackRdrPackCache{};
     const char* packCandidates[] = {
@@ -3551,7 +3568,7 @@ static bool LoadRdrMappedForSegment(int segmentId,
         fallbackBlob->loaded = false;
         fallbackBlob->size = 0;
         fallbackBlob->bytes.clear();
-        if (LoadRdrForSegment(segmentId, *fallbackBlob, outView))
+        if (LoadRdrForSegment(segmentId, *fallbackBlob, outView, quietMissLog))
         {
             outBlob.data = fallbackBlob->bytes.data();
             outBlob.size = fallbackBlob->bytes.size();
@@ -3560,30 +3577,35 @@ static bool LoadRdrMappedForSegment(int segmentId,
         }
     }
 
-    const auto cart = SRL::Memory::CartRam::GetReport();
-    SRL::Debug::Print(1, 15, "RDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
-                      segmentId,
-                      static_cast<unsigned>(sTrackRdrPackCache.size),
-                      directPackLoaded
-                          ? static_cast<unsigned>(sTrackRdrPackCache.view.header.segmentCount)
-                          : 0u,
-                      directPackLoaded
-                          ? static_cast<unsigned>(sTrackRdrPackCache.view.header.maxSegmentId)
-                          : 0u,
-                      static_cast<unsigned>(cart.FreeSize));
-    if (sTrackRdrPackCache.sourcePath[0] != '\0')
+    if (!quietMissLog)
     {
-        SRL::Debug::Print(1, 16, "RDR src:%s", sTrackRdrPackCache.sourcePath);
+        const auto cart = SRL::Memory::CartRam::GetReport();
+        SRL::Debug::Print(1, 15, "RDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+                          segmentId,
+                          static_cast<unsigned>(sTrackRdrPackCache.size),
+                          directPackLoaded
+                              ? static_cast<unsigned>(sTrackRdrPackCache.view.header.segmentCount)
+                              : 0u,
+                          directPackLoaded
+                              ? static_cast<unsigned>(sTrackRdrPackCache.view.header.maxSegmentId)
+                              : 0u,
+                          static_cast<unsigned>(cart.FreeSize));
+        if (sTrackRdrPackCache.sourcePath[0] != '\0')
+        {
+            SRL::Debug::Print(1, 16, "RDR src:%s", sTrackRdrPackCache.sourcePath);
+        }
     }
     return false;
 }
 
-static bool LoadRdrHeaderForSegment(int segmentId, SegmentRuntimeDraw::HeaderV1& outHeader)
+static bool LoadRdrHeaderForSegment(int segmentId,
+                                    SegmentRuntimeDraw::HeaderV1& outHeader,
+                                    bool quietMissLog = false)
 {
     SegmentRuntimeDraw::MappedBlob blob{};
     SegmentRuntimeDraw::Loader::View view{};
     SegmentRuntimeDraw::Blob fallbackBlob{};
-    if (!LoadRdrMappedForSegment(segmentId, blob, view, &fallbackBlob)) return false;
+    if (!LoadRdrMappedForSegment(segmentId, blob, view, &fallbackBlob, quietMissLog)) return false;
     outHeader = view.header;
     return true;
 }
@@ -7869,7 +7891,7 @@ bool TrackSystem::BuildSegmentCenterCatalog()
         int32_t centerY = 0;
         int32_t centerZ = 0;
         SegmentRuntimeDraw::HeaderV1 rdrHeader{};
-        if (LoadRdrHeaderForSegment(id, rdrHeader))
+        if (LoadRdrHeaderForSegment(id, rdrHeader, true))
         {
             centerX = rdrHeader.centerX;
             centerY = rdrHeader.centerY;
@@ -7878,7 +7900,7 @@ bool TrackSystem::BuildSegmentCenterCatalog()
         else
         {
             SegmentDrawReady::HeaderV1 sdrHeader{};
-            if (!LoadSdrHeaderForSegment(id, sdrHeader))
+            if (!LoadSdrHeaderForSegment(id, sdrHeader, true))
             {
                 break;
             }
@@ -7903,6 +7925,7 @@ bool TrackSystem::BuildSegmentCenterCatalog()
     }
 
     activeWindowStartId_ = 1;
+    SRL::Debug::Print(1, 27, "TRK cat segs:%u", static_cast<unsigned>(totalSegmentCount_));
     return true;
 }
 
@@ -12581,16 +12604,21 @@ void TrackSystem::SetTrackSlaveMode(bool enabled)
 void TrackSystem::ConfigureCoordinatorAndBudget(const Config& config)
 {
     // Safety guard: cap draws by configured visible segments.
+    // In leak-isolation mode we keep a strict fixed 20-segment window
+    // (10x64x64 near + 10x32x32 far) regardless of external config.
     const uint32_t kSegmentCap = static_cast<uint32_t>(kTrackSegmentLimit);
-    const uint32_t kSafeTrackDrawsPerFrame =
-        std::min<uint32_t>(
+    const uint32_t fixedLeakIsolationSegments = kEnableTrackLeakIsolationFixed64Pipeline
+        ? std::min<uint32_t>(
+            static_cast<uint32_t>(kTrackLeakIsolationWindowSegments),
+            kSegmentCap)
+        : 0u;
+    const uint32_t kSafeTrackDrawsPerFrame = kEnableTrackLeakIsolationFixed64Pipeline
+        ? fixedLeakIsolationSegments
+        : std::min<uint32_t>(
             std::max<uint32_t>(1u, config.initialSegments),
             kSegmentCap);
     TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::Config coordinatorConfig{};
-    coordinatorConfig.budget.maxTrackSegments =
-        std::min<uint32_t>(
-            std::min<uint32_t>(config.initialSegments, kSegmentCap),
-            kSafeTrackDrawsPerFrame);
+    coordinatorConfig.budget.maxTrackSegments = kSafeTrackDrawsPerFrame;
     coordinatorConfig.budget.maxTrackMeshes = config.initialMeshes;
     coordinatorConfig.budget.maxTrackFaces = config.initialFaces;
     coordinatorConfig.chunkCapacity =
@@ -12617,15 +12645,37 @@ void TrackSystem::ConfigureCoordinatorAndBudget(const Config& config)
     SRL::Debug::Print(1, 31, "TRK slv d:%u s:%u",
                       trackSlaveProducerRequested_ ? 1u : 0u,
                       trackSlaveDepthSortRequested_ ? 1u : 0u);
+    if (kEnableTrackLeakIsolationFixed64Pipeline && kEnableLeakIsolationMixedLodProfile)
+    {
+        const uint32_t nearCount = std::min<uint32_t>(
+            static_cast<uint32_t>(kLeakIsolationNearLodCount),
+            kSafeTrackDrawsPerFrame);
+        const uint32_t farCount =
+            (kSafeTrackDrawsPerFrame > nearCount)
+            ? (kSafeTrackDrawsPerFrame - nearCount)
+            : 0u;
+        SRL::Debug::Print(1, 30, "TRK win:%u 64:%u 32:%u",
+                          static_cast<unsigned>(kSafeTrackDrawsPerFrame),
+                          static_cast<unsigned>(nearCount),
+                          static_cast<unsigned>(farCount));
+    }
 
     AdaptiveTrackBudgetController::Limits adaptiveBudgetLimits{};
-    const uint32_t minSegmentsRequested =
-        std::min<uint32_t>(std::max<uint32_t>(1, config.minSegments), kSafeTrackDrawsPerFrame);
-    const uint32_t maxSegmentsRequested =
-        std::min<uint32_t>(std::max<uint32_t>(minSegmentsRequested, config.initialSegments), kSafeTrackDrawsPerFrame);
-    const uint32_t maxSegmentsCap = kSegmentCap;
-    adaptiveBudgetLimits.minSegments = std::min<uint32_t>(minSegmentsRequested, maxSegmentsCap);
-    adaptiveBudgetLimits.maxSegments = std::min<uint32_t>(maxSegmentsRequested, maxSegmentsCap);
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        adaptiveBudgetLimits.minSegments = fixedLeakIsolationSegments;
+        adaptiveBudgetLimits.maxSegments = fixedLeakIsolationSegments;
+    }
+    else
+    {
+        const uint32_t minSegmentsRequested =
+            std::min<uint32_t>(std::max<uint32_t>(1u, config.minSegments), kSafeTrackDrawsPerFrame);
+        const uint32_t maxSegmentsRequested =
+            std::min<uint32_t>(std::max<uint32_t>(minSegmentsRequested, config.initialSegments), kSafeTrackDrawsPerFrame);
+        const uint32_t maxSegmentsCap = kSegmentCap;
+        adaptiveBudgetLimits.minSegments = std::min<uint32_t>(minSegmentsRequested, maxSegmentsCap);
+        adaptiveBudgetLimits.maxSegments = std::min<uint32_t>(maxSegmentsRequested, maxSegmentsCap);
+    }
     // Lock mesh/face budget to configured startup values to avoid runtime shrink.
     adaptiveBudgetLimits.minMeshes = std::max<uint32_t>(1u, config.initialMeshes);
     adaptiveBudgetLimits.maxMeshes = adaptiveBudgetLimits.minMeshes;

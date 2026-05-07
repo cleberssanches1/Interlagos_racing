@@ -1,0 +1,1281 @@
+0:00
+hello everyone in this video I'm going to thoroughly go over everything about physics and game development regardless
+0:06
+of whether you're a complete beginner who doesn't even know what a force is or a seasoned game developer who uses
+0:11
+physics all the time I can almost guarantee that you will take something away from this video This Is The
+0:16
+Ultimate Guide for physics and game development in this video I will use the unity 3D game engine but physics is
+0:22
+physics and overall themes will be the same regardless of your engine the video will be broken up into eight different
+0:28
+sections where in each section I will go over how a concept works and then do a small demo to show you how you can
+0:33
+actually use it the first section will be on kinematic physics the next three will be on forces friction and drag
+0:39
+after that we'll have two sections on collision and impulsive forces then a section on rotational kinematics and
+0:45
+Dynamics and in the last section I go over everything else about the ridgebody component in unity if you are a complete
+0:51
+beginner I would recommend watching the full video ones and save it so you can refer back to it if you forget how
+0:57
+something works later on this is the ultimate guide for physics in game development so you shouldn't need any other tutorial quickly before we start I
+1:04
+just want to say that I'm very confident with the accuracy of the content in the video but mistakes happen so if you guys
+1:10
+catch one put it in the comments and I'll mention in a pinned comment any mistakes I made and with all that said let's get into our first section
+1:16
+kinematics the first Topic in this video is kinematics so let's first talk about
+Kinematics
+1:21
+what that fancy word actually means Google defines it as the branch of mechanics concerned with the motion of
+1:27
+objects without reference to forces which cause the motion this basically means that we are calculating an
+1:32
+object's motions from a set of initial conditions and like Google says we're not going to consider any forces so you
+1:38
+might be wondering why we don't just jump straight into dealing with forces and we could but I think having a solid
+1:44
+understanding of kinematics will make the next section significantly easier when we are working with kinematics we
+1:50
+really only need to know four things and they are position velocity acceleration and time position is an easy one and it
+1:57
+describes where an object is located the SI unit or I guess main unit for position is going to be in meters
+2:04
+velocity describes how our position changes over time it's very similar to speed but there's a slight difference
+2:10
+its SI unit is meters per second acceleration is the hardest to grasp conceptually out of the three and it
+2:16
+describes how velocity changes over time because velocity's SI unit is meters per second and acceleration is a change in
+2:23
+velocity over a change in time the unit for acceleration is going to be meters per second squared and time is just the
+2:30
+amount of time elapsed in seconds all of these three variables are connected with a few equations but the only one we
+2:36
+really need to know is this one final position is equal to one-half times the acceleration times the change in time
+2:42
+squared plus the initial velocity times the change in time plus the initial position we can use this equation for a
+2:49
+bunch of different things let's use it to predict how far a ball will fall after a certain amount of seconds when dropped off the Empire State Building
+2:55
+the first thing we need to know is our initial conditions our initial position is 380 meters because that's how high
+3:01
+the building is our initial velocity is going to be zero meters per second because we're dropping it and our
+3:07
+acceleration will remain constant or the same for the whole time because gravity doesn't change acceleration due to
+3:13
+gravity on Earth is negative 9.8 meters per second squared in physics we sometimes refer to this negative 9.8
+3:20
+with a lowercase G so if you see that later on in the video that's all it is now plug these values into the formula
+3:26
+and we get our equation oh and that little triangle next to the t is the Greek letter Delta which means change in
+3:31
+so delta T is just the change in time so the equation is one half times negative
+3:37
+9.8 times Delta t squared plus 0 times delta T plus 380. we can simplify this a
+3:44
+bit by recognizing that half of negative 9.8 is negative 4.9 and that's 0 times
+3:49
+delta T is just 0 so that whole term can just be removed now we can plug in a value for delta T to see how high the
+3:55
+ball is after that amount of seconds for example after one second the ball is going to be
+4:01
+375.1 meters above the ground after seven seconds the ball is going to be 139.9 meters above the ground and after
+4:09
+8.8063 seconds the ball hits the ground we can figure out that last one by setting the final position to zero and
+4:15
+solving for a delta T like this you might think we need an know about the Ball's weight or mass in order to
+4:21
+determine this information but we don't this guy named Galileo threw his balls off the Leaning Tower of Pizza way back
+4:27
+when and saw that they both hit the ground at the same time even though they had different masses so thanks to Galileo and his balls we know we don't
+4:34
+have to focus on mass when working with kinematics just focusing on one dimension up and down in the case of the
+4:40
+previous example usually isn't all that helpful in game development a much more likely application of kinematics and
+4:45
+Game Dev is two Dimensions meaning it goes up and down and forwards and backwards now before we get into that we
+4:51
+quickly have to talk about a mathematical concept called a vector a vector is a quantity that has both
+4:57
+Direction and magnitude direction is basically just where the vector is pointing and magnitude is how big the
+5:03
+vector is when you draw vectors you basically just draw an arrow because vectors have both a direction and a
+5:09
+magnitude we can express vectors with two numbers describing its X component and its y component if we have two
+5:15
+components we can find the magnitude using the Pythagorean theorem and we can find the direction using the arc tangent
+5:21
+of Y divided by X if we have the direction and the magnitude we can also do a bit of trigonometry to find its
+5:27
+components the X component of the vector is just the magnitude times the cosine of the angle and the Y component of the
+5:33
+vector is just the magnitude times the sine of the angle so basically a vector just tells you the number of units to go
+5:39
+across and then the number of units to go up don't worry if this doesn't make sense we're going to be using them a lot during this video and they'll click when
+5:45
+we start applying them so that's pretty cool but why do you need to know that well I'm glad you asked because position
+5:51
+velocity and acceleration are all vectors because they all have Direction time is not a vector because there's no
+5:58
+Direction associated with it and it's referred to as a scalar this means all three of the vector quantities have an X
+6:04
+component completely independent from the Y component so there will be some initial conditions that we're going to
+6:09
+have to split up and take everything into consideration for the X components and the Y components separately and then
+6:15
+we have to do two separate kinematic equations on each component okay with that long-winded explanation of
+6:20
+kinematics it's time to show you a scenario where this can actually be used I'm using Unity 3D but the concepts are
+6:26
+the same no matter what game engine you're using here I have a scene with a catapult and attached to the Catapult is
+6:32
+a script that takes an angle and a power to launch a rock when I start it and left click the rock gets launched this
+6:38
+is similar to those bowmaster ads or something like Angry Birds in this demo power is literally just the magnitude of
+6:44
+the initial velocity of the rock if we look at the code behind this we can see we have a vector 2 which is just a
+6:50
+vector with two components for The Rock's initial position and initial velocity and we have a float which is a
+6:55
+number that can be a decimal for the time we also have a Bool which is a true or false variable to know if The Rock
+7:01
+has already been launched so now let's check out the launch function the first important thing it does is set The
+7:06
+Rock's initial position and velocity and we set this up by specifying the two components for the velocity that's the
+7:12
+cosine of the angle in radians for the X component and the sine of the angle and radians for the Y component then then
+7:19
+the vector is multiplied by the power which is the scalar it then sets the initial position to whatever the
+7:24
+position on the rigid body is this rigid body component is a Unity specific thing that means make this object do physics
+7:31
+and is really not necessary in this case because on the rigid body we want to mark it as kinematic meaning don't do
+7:37
+any forces on this object and let me just control it through a separate script lastly the launch function changes the is launched variable to true
+7:44
+the frame the mouse gets clicked the launch function is called so that means the is launch variable is now true and
+7:50
+this code right here runs every frame first time's increased by the amount of time since the last frame then we find
+7:55
+the new X position of the Rock and the new y position of the rock then we set the Rock's position to a vector 3 with
+8:01
+the new X and the new Y in their appropriate component the Z component we just put in the Rock's current Z position because that doesn't change
+8:08
+finding the Rocks X and Y positions is the fun part because that's when we get to use our kinematic equation the
+8:13
+kinematic equation takes four inputs acceleration velocity position and time and it return is a new position we get
+8:19
+from doing the kinematic equation the new rock X is just the kinematic equation with an acceleration of zero
+8:25
+because the rock doesn't speed up or slow down a velocity of the initial velocity's X component and a position of
+8:31
+the initial positions X component and for time we just plug in our time the new rock Y is exactly the same with the
+8:38
+exception of acceleration being negative 9.81 because of gravity and using the Y
+8:43
+components for velocity and position because this happens every frame we get a nice smooth launched Rock You might be
+8:49
+thinking wow this is pretty cool and I'm definitely going to try to take the kinematic approach when doing stuff like
+8:54
+this in the future and well this is pretty good there are a few drawbacks to using kinematics the big one is this no
+9:01
+collisions or rather there's no easy way of handling collisions also what happens
+9:06
+when you want to launch a heavier Rock You might be thinking no matter how much the rock weighs it'll still follow the same trajectory if it's launched with
+9:12
+the same initial conditions trust in Galileo's balls and you'd be right but the Catapult wouldn't be able to to
+9:18
+launch a light rock and a heavy rock with the same initial conditions in the first place later on in the video I'm
+9:24
+going to revisit the demo and fix these drawbacks with impulsive forces instead of kinematics remember the main point of
+9:30
+this first section of the video is getting us comfortable with position velocity and acceleration and also the
+9:36
+concept of a vector because all of those are here to stay next up we are going to untick the is kinematic checkbox and
+9:42
+start using some forces forces are a very important part of physics for game developers because it is pretty much
+Forces
+9:48
+behind everything physics related that you do before we start getting into forces I'm going to quickly discuss the
+9:54
+concept of mass and don't worry it has nothing to do with church mass is basically the amount of matter or stuff
+10:00
+in an object its SI unit is the kilogram and one kilogram is about 2.2 pounds for
+10:06
+all my American friends so any Mass you see double it and that's about how heavy it is in the good old us of a massive
+10:12
+weight are very similar but they have some differences weight is measured by the force of gravity acting on an object
+10:18
+and mass is constant no matter where you are in the universe so on Earth you have the same mass as you do on the moon but
+10:24
+you weigh more on Earth Mass also has no direction and it is a scalar quantity while weight is a force which is also a
+10:31
+vector okay cool with that quickly specified let's get into some forces so long ago there was this guy named Sir
+10:36
+Isaac Newton who made three laws but we really only care about his second law which is known as Fama or Force equals
+10:43
+mass times accelerate duration because of this Force has the unit kilograms meters per second squared from the mass
+10:49
+and the acceleration and because this is so commonly used there's an abbreviation for this unit which is just n for a
+10:55
+Newton of force so now that we know what a force is how do we use them when making games well in unity you're going
+11:02
+to use the add Force function on your rigid body other game engines have something similar so you're just going
+11:07
+to have to look up how your specific game engine handles forces when using the add Force function in unity you're
+11:12
+going to want to put it in the fixed update function instead of the regular update function this is because update
+11:18
+can be called a variable amount of times each second when fixed update gets called in exact intervals defined by a
+11:24
+setting in the editor it's a little confusing but all you really know is to just use fixed update when we add a
+11:29
+force we need to specify what force we are adding because mass is a scalar and acceleration is a vector the force is a
+11:35
+vector with a magnitude of the mass times the magnitude of the acceleration and the direction is just the same as
+11:41
+the direction of the acceleration we are now going to hop into our first quick demo for this section of the video on
+11:47
+gravity now in unity and other game engines I assume have gravity built in and it can be activated with a simple
+11:53
+check mark but we're going to try to use our knowledge of forces and try to understand what's going on behind the scenes when we take this checkbox in
+11:59
+this scene I have a little rock with a rigid body attached and used gravity unchecked I also have another script
+12:05
+attached appropriately named gravity when we open that one up you can see that not much is going on we have a
+12:11
+field for our rigid body then an add Force inside of the fixed update function the force that we are adding is
+12:16
+the rigid body's mask which is just rigid body dot mass times the acceleration due to gravity and if we
+12:21
+remember from the previous section of the video is negative 9.81 and that's only on the Y component of the vector 3
+12:27
+because we want it to accelerate down and not forward backwards left or right and if we head back into unity and hit
+12:33
+play you can see that our Rock Falls just like it would with gravity now you might be confused because you're
+12:38
+remembering Galileo's balls and how they fall at the same speed regardless of their Mass but we literally just showed
+12:43
+that that the higher the mass the higher the force well because an object with a higher Mass takes a greater force to
+12:49
+move and an object with lower Mass takes a lower force to move in the same way as the more massive object they'll end up
+12:55
+falling at the same speed think about it this way the force for a one kilogram Mass falling is just 9.8 Newtons so
+13:02
+using Fama we get an acceleration of 9.8 meters per second squared and if we have a 100 kilogram Mass the force gravity
+13:08
+exerts on it is 980 Newtons and again using FEMA we get an acceleration of 9.8
+13:14
+meters per second squared alright now let's move on to more applicable examples of forces that you'd be more
+13:19
+likely to use throughout your game development journey in this next demo I have some spaceships and I'm going to make them fly forward the bigger ship
+13:26
+has a mass of 50 000 kilograms and the smaller ship has a mass of 20 000 kilograms each ship has gravity ticked
+13:32
+off and a Thruster script attached with a field for the rigid body component to be referenced the Thruster script has a
+13:38
+constant amount of force the thrusters make and I set it to 300 000 Newtons in the fixed update function we adipores
+13:45
+and the positive Z Direction with a magnitude of the force from the thrusters when I hit play we can see
+13:50
+that the smaller rocket is accelerating faster than the larger rocket and this makes sense because the mass of the larger rocket is greater than the mass
+13:56
+of the smaller rocket we can calculate their accelerations pretty easy just by dividing the force by their appropriate
+14:02
+Mass so the big ship accelerates at a rate of 6 meters per second squared and the smaller ship accelerates at a rate
+14:08
+of 15 meters per second squared okay now that you understand how forces work I quickly want to mention something you
+14:13
+should avoid like the plague and that's not changing your mass when attaching a rigid body usually when we add rigid
+14:19
+bodies it's just for making things obey gravity and if you remember Galileo's balls how Mass doesn't affect a falling
+14:25
+object you might just skip designing a mass if you consistently do this and you end up needing a force to act on
+14:30
+different objects now they're all going to respond in the same way so long story short always change the mass when you're
+14:36
+making a rigid body unless there is a good reason why it should stay at one kilogram if you're unsure what the mass should be literally just look it up
+14:42
+online and you'll find a good Testament okay let's move on whenever an object exists on Earth there's a force of
+14:48
+gravity being exerted on it even if it isn't falling this force of gravity is countered by a force called the normal
+14:54
+force that pushes back up when you're on the ground these forces are equal so the net force acting on you is zero so let
+15:00
+me ask you a question if a box is on the ramp what direction would its normal force be in I'll give you some choices
+15:07
+is it a straight up B perpendicular to the ramp C parallel to the ramp or D
+15:14
+there is no normal force and remember a normal force is the force that counters gravity it's a tricky question so don't
+15:20
+feel bad if you got it wrong but the correct answer is B it points in the direction perpendicular to the slope it
+15:26
+isn't a because the object will have a force pulling it down the ramp due to gravity and this has to be accounted for
+15:32
+when determining the normal force it isn't C because that's the direction the object will move not the direction that
+15:38
+counters gravity and it isn't D because there is a contact happening so we have a normal force now just watch watch what
+15:44
+I'm gonna do next and if you aren't comfortable with geometry and trigonometry this might be a bit confusing but just watch so if I have a
+15:51
+box with mass m on a ramp that makes an angle Theta with the horizontal the force of gravity will be directly down
+15:57
+with a magnitude of mg I can take this vector and split it up into two components one that is parallel to the
+16:03
+ramp and the other that is perpendicular to the ramp these two components must form a right angle with each other I can
+16:09
+redraw my diagram to look something like this now so I can see that this angle has to be 90 minus Theta so the angle
+16:16
+here has to be Theta from here I can use some trigonometry to figure out that my perpendicular component which is just
+16:22
+the normal force is mg times the cosine of theta and my parallel force or the
+16:28
+force at which my object gets pulled down the ramp is mg times the sine of theta this takes us to our next demo a
+16:34
+car breaking down of ramp now there are two ways of approaching this problem there's the physics way and the cheeky
+16:40
+game developer way for the physics way which I'm going to start with we have apply a force with a magnitude of the
+16:45
+braking force in the direction of the back of the car until the car reaches a speed of zero then we want to set the
+16:52
+applied force equal to the force gravity is doing to the car in code I kind of just threw both methods into one script
+16:58
+so bear with my confusing code for a minute the script is attached to the card game object with a rigid body
+17:03
+component of a mass of 1 000 kilograms that is using equilibrium Force when
+17:08
+breaking Boolean is true here and that basically means we're doing the physics Method All the Other variables should be
+17:13
+pretty self-explanatory in the update function we're a setting the is breaking Boolean to whether left click is held
+17:19
+down so if left click is being held down or breaking and that if statement doesn't concern us at the moment in
+17:25
+fixed update we check if the car is stopped and if we are breaking and also if the car isn't stopped and we are not
+17:31
+breaking here is the is car stopped function if you quickly wanted to see how this works but anyways if the car is
+17:36
+not stopped and we are breaking we're going to call the break function with the brake Force magnitude passing as the
+17:42
+argument the break function just adds a force with the magnitude of the brake Force magnitude parameter in the
+17:48
+direction of the rear of the car I use transform dot right and not transform.forward because I messed up
+17:53
+when importing things from blender and had to rotate now for braking and we're already stopped the brake force will
+17:59
+literally pull the car back up the ramp so instead we need to apply a force exactly equal to the force of gravity
+18:05
+but just in the opposite direction so I pass in the equilibrium Force magnitude at an angle of the car's rotation to
+18:12
+perfectly stop the car the get equilibrium Force magnitude is just a function that uses that mg times the
+18:18
+sine of theta expression we found earlier now even though the cars shouldn't move it does move a tiny
+18:24
+amount and I think that's just the way Unity orders its physics calculations but I honestly have no idea but we can
+18:30
+do the cheeky game developer way to get around this in the update function if the car is stopped we can set its
+18:36
+gravity to false and take note of its position in the fixed update instead of using the is using equilibrium Force we
+18:43
+can just set the position equal to the stop position here we can see that the car comes to a complete stop and gets
+18:49
+moving again when it stops breaking using a forces approach to physics and game development is usually a lot better
+18:55
+than kinematics because we can take heavier objects into consideration but it does not end there the next two
+19:01
+sections are applications of what we just learned to make things act even more realistically and we're going to
+19:06
+start with friction what is friction well is the force that resists the
+Friction
+19:11
+motion of two objects in contact all that means is when you slide something it will eventually stop because friction
+19:17
+is acting on it now how do we figure out what friction Force gets applied to our objects we just use this simple formula
+19:23
+the force of friction is equal to the coefficient of friction represented with the Greek letter mu times the force
+19:30
+normal which if you remember from the last section is the force that counters gravity okay this doesn't seem too crazy
+19:36
+the only thing we really need to know about is this guy the coefficient of friction and the best part about it is
+19:42
+that we really don't have to calculate it's usually a value we just come up with ourselves nine out of 10 times this
+19:48
+is going to be a value from zero a frictionless surface to one a very rough surface it can be greater than one but
+19:54
+it's pretty uncommon in real life here's a really quick example so say we have a 10 kilogram object being pulled with a
+20:00
+force of 30 newtons on a surface with a coefficient of friction is 0.2 and we want to figure out the net force on this
+20:07
+object the net force is just the resulting force of all of the forces acting on the objects and here we only
+20:13
+have two unbalanced forces the 30 Newton pole and the force of friction to find the force of friction we just take the
+20:19
+normal force which is 9.8 times 10 which is just 98 and multiply it by our coefficient of friction of 0.2 to get
+20:26
+19.6 Newtons because the forces are in opposite directions we subtract 30 minus
+20:32
+9.6 to get our net force of 10.4 Newtons and all of a sudden if we stop pulling
+20:37
+this object we'll have a net force of a negative 9.6 Newtons slowing it down until it stops there are two types of
+20:43
+friction static friction and kinetic friction if an object is at rest we use static friction and if it's in motion we
+20:50
+use kinetic friction in the previous example it was kinetic friction static friction should always be greater than
+20:56
+or equal to kinetic friction on a surface that doesn't change and there shouldn't be a huge difference between
+21:01
+them either so all that is pretty cool but how do we actually use this in unity well the very first thing you should do
+21:08
+is change this setting in the physics section of your project called friction type to two-dimensional friction type so
+21:14
+friction works properly or at least change it off of patch friction if you're looking for accurate results the
+21:19
+next thing you do is make a physics material where you can enter a static version in a dynamic friction Dynamic
+21:25
+friction is just another name for kinetic friction by the way the friction value you set isn't necessarily going to
+21:30
+be your coefficient of friction instead what happens is the friction value of one object gets combined somehow with
+21:36
+the friction value of the other object to get a coefficient of friction used in the calculation these combination types
+21:42
+are maximum minimum average and multiply these names are pretty self-explanatory on how the coefficient of friction is
+21:48
+obtained you usually should just stick with average unless there's a scenario where you need a frictionless surface
+21:53
+then you set friction to zero and a combined type to minimum if two objects have different combined types the type
+21:59
+that ends up being used is maximum if any are maximum multiply if any or multiply minimum if there's any minimums
+22:06
+and then finally average the default physics material is 0.6 for both
+22:11
+frictions and the combined type is set for average and this is important if an object doesn't have any physics material
+22:17
+it doesn't mean that it doesn't have friction it secretly has this default physics material Behavior that's why I
+22:22
+had to have physics materials set to frictionless surfaces sometimes in the previous sections if you didn't realize
+22:28
+okay let's get on to our friction demo here we have four boxes with a rigid body attached with a mass of 5 kilograms
+22:34
+they also have a script attached that applies the same force of 25 Newtons in the same direction when I hold down left
+22:40
+click in addition to that the boxes each have the same physics material applied to them with a static friction of 0.3
+22:47
+and a dynamic fraction of 0.25 with a friction combined of average the only difference between the four boxes is the
+22:53
+surface they slide on the green surface has a static friction and a dynamic friction of zero with a combined type of
+22:59
+minimum meaning the surface is frictionless the yellow surface has a static and dynamic friction of 0.1 with
+23:05
+average for a combined type the orange surface has a static and dynamic friction of 0.5 with combined set to
+23:10
+average and finally the red surface has a static friction of 0.74 and a dynamic
+23:15
+friction of zero try to predict what's going to happen with these boxes in particular what's going to happen to the
+23:21
+green one when I stop applying the force and what will the red one do if you want to write your predictions down in the
+23:26
+comments along with the last two letters of your third favorite color and they're off when I stop applying the force the
+23:32
+green one flies off the surface at a constant velocity so if you said something like that give yourself a gold star the yellow one slows down and stops
+23:39
+and it doesn't look like much has happened with the orange or red boxes when I reapply the force we we can see
+23:44
+that The Orange Box is actually moving just really slowly and when I stop applying the force again it quickly
+23:50
+returns to rest and for the red box even though it has no Dynamic friction the static friction is just a little too
+23:57
+high because it to initially move for the dynamic friction to kick in because both friction types are average the
+24:02
+coefficient of static friction on the red surface is 0.52 so using the friction formula we can say that the Box
+24:08
+needs to have an applied force greater than 25.48 Newtons in order for it to
+24:14
+start moving and our applied force is 25 Newtons as a reminder quick side note the red surface is for demonstration
+24:20
+only and if you want a really rough surface don't have a dynamic friction of zero cool now that we have that done
+24:25
+let's see what happens with friction on ramps as we saw in the previous section the force exerted on an object on a ramp
+24:32
+at an angle Theta due to gravity is mg times the sine of theta but we also proved that in the same section that the
+24:39
+normal force is mg times the cosine of theta but we didn't do anything with it now that we have our friction equation
+24:45
+which has the normal force in it we can use this to calculate the net force the magnitude of our force of friction ends
+24:51
+up being mu mg times the cosine of theta so our net force is mg times the sine of
+24:57
+theta minus mu times mg times the cosine of theta and think about it nothing is
+25:02
+being taken away from the mg sine Theta expression from earlier because with this new one if mu is zero just like
+25:09
+everything in the last section it all simplifies down to mg times the sine of theta another cool thing we can do is
+25:15
+see what the coefficient of friction is needed in order to make a box not slide down a ramp for that to happen our force
+25:21
+of friction must be greater than or equal to the applied force so the coefficient of static friction times mg
+25:27
+cosine Theta must be greater than or equal to mg sine Theta so if we divide both sides by mg cosine Theta the MGs
+25:35
+cancel out and the sine Theta over cosine Theta simplifies down to tangent of theta so the coefficient of static
+25:41
+friction must be greater than the tangent of the a angle of the ramp in order to make the Box move and because
+25:47
+the MGs cancel out this works for any mass and it works for any different gravity amount too this is exactly what
+25:53
+our next demo shows as you can see we have a box of 5 kilograms on a ramp with an angle of 30 degrees the tangent of 30
+25:59
+is 0.577 so in order for the Box not to slide mu must be greater than 0.577 the
+26:06
+box and the ramp have the same physics material so in this case mu is just the friction value because the average of
+26:12
+two of the same numbers is just the number I made a quick script that changes the coefficient of friction to
+26:18
+the inputted value and as you can see our mu is 0.57 so take a second and
+26:23
+think of what's going to happen because 0.57 is less than 0.577 I'm guessing
+26:28
+this box is going to really slowly slide down the ramp and when we hit play we can see that I'm right if we change the
+26:34
+MU to say 0.58 and hit play we can see that the Box moves a tiny bit due to the
+26:39
+force that the half centimeter fall that it takes onto the ramp does but it quickly comes to to the rest due to the
+26:45
+kinetic friction so in conclusion just like you should always set a mask when making a rigid body you should also pick
+26:50
+values for the friction so your object will come to rest when no unbalanced forces are exerted onto it if you don't
+26:55
+know what values to use for your friction you can just look up a coefficient of friction of steel or whatever material the surface is and
+27:02
+honestly you can just put a high friction if your surface is rough and a low friction if your surface is smooth
+27:07
+your players definitely will not be able to tell the difference in the next section we're going to look at another resistive Force called drag
+Drag
+27:14
+so we just learned about friction the force that resists motion when two surfaces are in contact but what about
+27:20
+when an object is falling in free fall and there's nothing touching it is there still any sort of resistive force acting
+27:25
+on it and the answer is yes only if you're on Earth though if you're in space with no atmosphere the answer is
+27:31
+no we call the force that resists the motion of an object in free fall air resistance or drag the equation for drag
+27:37
+is the force of drag is equal to one-half times rho the density of the fluid times the velocity squared times
+27:43
+the coefficient of drag times the cross-sectional area this is uh kind of a lot and we really can make this a lot
+27:50
+simpler and have it work in the same way conceptually while not really being 100 physically accurate we can say that the
+27:57
+force is equal to negative B times an object's velocity with this new equation we get the same idea of having a higher
+28:04
+drag with a higher velocity but the B kind of dumbs everything down with the density in the cross-sectional area into
+28:10
+a big b big drag so as you can see with this equation the the force of drag is
+28:15
+directly proportional to its velocity which means that the drag force will increase as an object is in the air the
+28:21
+other four is acting on an object is gravity which is constant and because dragged is a force that resists motion
+28:27
+it can't be greater than the force of gravity so this means that the drag force will approach the force of gravity
+28:33
+because of that the object's velocity will approach a single value it will not pass unless something else happens to
+28:39
+the object this velocity is called the object's terminal velocity we can more rigorously Define terminal velocity as
+28:46
+the constant velocity that a freely falling object approaches as the resistance of the medium through which
+28:52
+it's falling approaches the acceleration caused by gravity here's how we can calculate an object's terminal velocity
+28:58
+if we have a 5 kilogram object falling through a medium with a B of 0.08 and
+29:03
+we're looking for a terminal velocity first we have to recognize that a constant velocity which is what terminal
+29:08
+velocity is occurs when no net forces are acting on the object or the sum of all of its forces is 0. this means that
+29:15
+the force of gravity plus the force of drag equals zero so mg minus BV equals
+29:21
+zero and if we plug in our values and solve for V we get a terminal velocity of 612.5 meters per second if we have
+29:30
+exactly the same conditions but with a 10 kilogram Mass we can see that our terminal velocity is going to be
+29:36
+1225 meters per second which just so happens to be twice the terminal velocity of the five kilogram Mass whoa
+29:43
+whoa whoa if these objects are exactly the same besides from their masses how did Galileo's experiment with his balls
+29:48
+show that objects accelerate at the same speed when falling well because the fall probably wasn't big enough for the
+29:54
+objects to get anywhere near their terminal velocities but that's just what I think and maybe I'm wrong he is
+30:00
+absolutely right about this if he was in a vacuum because on the Apollo 15 Mission astronaut David Scott dropped a
+30:06
+hammer and a feather at the same time on the moon and showed that they both hit the ground at the same time
+30:14
+out at the same time how about that I'll have the full video
+30:19
+linked Below in the description so all this drag stuff is great but how does it affect us game developers well it just
+30:26
+so happens that we can incorporate the ideas of air resistance into our game physics in your game engine we can do
+30:31
+this by changing the drag or air resistance or any sort of synonym of that in unity it's the drag section of
+30:37
+the rigid body component now a sane person would assume that the drag value would just be B but unfortunately it's
+30:44
+not immunity drag is B divided by the mass so in order to incorporate the
+30:50
+examples from earlier in unity we can't just set drag to be .08 because that
+30:55
+would be crazy talk instead we're gonna have to take the extra step of dividing it by the mass so the drag variable for
+31:01
+the five kilogram object would be 0.08 divided by 5 which would be 0.016 and
+31:07
+the drag variable for the 10 kilogram object would be .008 when picking a value for B you could do a bit of
+31:14
+calculations by having a Target terminal velocity in mind but honest picking values that just seem good is totally
+31:20
+fine too just like friction it can be done accurately but we can also just pick values that give a similar effect
+31:26
+now let's get into the demo for terminal velocity in this scene I have an 80 kilogram skydiver who has just jumped
+31:32
+out of a plane that is one kilometer high and is falling into the ocean the terminal velocity of humans is about 55
+31:38
+meters per second and we can use this to get a value for B and then we can just find the value for the drag just set up
+31:44
+the equation mg minus BV equals zero and plug in our values to get 9.81 times 80
+31:50
+minus 55 b equals zero and then solve for b to get b equals 14.27 then we want
+31:57
+to find out what the unity drag variable is so we just take our B and divide it by our Mass so
+32:03
+14.27 divided by 80 is 0.1784
+32:10
+our poor skydiver will hit the water and you know die so I think we should give
+32:15
+him a parachute to open when I press left click and this parachute will make the drag 10 times what it previously was
+32:20
+which will result in the skydiver slowing down until he floats calmly down to the water in this demo going in the
+32:26
+water will also increase the drag to simulate the skydiver slowly sinking realistically we would do something else
+32:32
+in the water with a buoyancy Force but this can be a little research homework assignment for you if you want because I
+32:38
+think that's a little too specific to put inside this video anyways let's get ready to jump
+33:20
+so that was drag and remember you don't have to be crazy accurate with this one just make sure it isn't noticeably a lot
+33:27
+and most of the time it's not even noticeable when there isn't any that's going to conclude our little look at regular forces and now we're going to
+33:33
+take a look at what happens when forces happen instantly like in collisions in
+Collisions
+33:38
+this section of the video we're going to talk about collisions you might be thinking will Unity handles all the
+33:44
+collisions for me so why do I need to learn about them well there are a few different types of collisions to talk about and they also teach us about an
+33:51
+important concept called momentum which we're going to need to understand before moving on to the arguably more important
+33:56
+next section so what is this momentum that I speak of all it is is mass times velocity so P the variable for momentum
+34:03
+equals MV it's pretty straightforward super quick example if I have a 10 kilogram box moving at 5 meters per
+34:10
+second what's its momentum well P equals MV so P equals 10 times 5 so P equals 50
+34:18
+kilograms meters per second cool now that we have an understanding on what momentum is I'm going to tell you why
+34:23
+it's actually useful momentum is always conserved here's a quick real life demo of what I mean and don't try this at
+34:30
+home as you can see I am standing on my chair that rolls and I'm going to jump off but with my momentum and the chair's
+34:37
+momentum right now are zero because neither of us are moving and when I jump off both of our momentum should be the
+34:43
+same just in the opposite directions foreign
+34:50
+because the chair is a lot less massive than I am the chair obtained a higher velocity the law of conservation of
+34:55
+momentum is the backbone of how collisions work when two objects Collide their momentum before the Collision equals their momentum after the
+35:02
+Collision so if two objects are each five kilograms and are traveling head-on with a speed of 10 meters per second how
+35:08
+fast are they traveling after they Collide do they completely stop do they have a tiny bit of speed left over in
+35:13
+the opposite direction they started traveling or do they travel 10 meters per second in the opposite direction this is kind of a trick question because
+35:19
+all of these are possible outcomes think about it the change in momentum from the first object always equals the change of
+35:25
+momentum from the second object so the momentum is conserved in order to determine what happens to the objects we
+35:31
+need to determine the elasticity of the Collision there are three main types of collisions elastic collisions where no
+35:37
+energy is lost inelastic collisions or some energy is lost and perfectly inelastic collisions where all energy is
+35:44
+lost I could more vigorously Define what energy is in this case but all we really need to know is that the energy I'm
+35:51
+talking about is kinetic energy which is based on velocity so associate velocity in this case with energy so let's take a
+35:57
+closer look at the Collision types first we'll talk about perfectly inelastic collisions that Collision describes the first scenario from earlier where both
+36:04
+objects come to a stop in perfectly inelastic collisions two objects often act like one bigger more massive object
+36:10
+after the Collision for example if one of the five kilogram boxes is stationary from earlier the result becomes two
+36:16
+masses sliding together at five meters per second think of a car crash as this type of collision because the two
+36:21
+objects often interlock after they Collide third scenario from earlier describes an elastic collision and in
+36:27
+this one two objects perfectly bounce off of each other if we look at the example we use for the perfectly inelastic collision where one of the
+36:33
+masses was stationary and elastic Collision will result in the mass on the left stopping in the mass on the right
+36:39
+obtaining a velocity equal to the velocity that hit it so the left object stops while the right object moves at a
+36:45
+velocity of 10 meters per second think of billiard balls colliding as an elastic Collision now the second scenario area from earlier it describes
+36:51
+an inelastic collision and there can literally be an infinite number of these if we go back to the stationary example
+36:57
+the object on the left will have a slower speed than before and the object on the right will have a speed but one
+37:02
+that is less than the original speed of the object on the left think of a bouncy ball getting lower and lower with each
+37:07
+bounce as this kind of a collision there are most likely ways of adjusting the elasticity of collisions in your game
+37:12
+engine but in unity all we have to do is go back to our physics materials if you remember from earlier this is where we
+37:18
+made our objects have friction now we're going to adjust the bounciness setting where zero is a perfectly inelastic
+37:24
+collision and one is an elastic Collision anything in between is an inelastic collision in the higher the
+37:29
+number the more elastic the Collision will be the bounciness combined works exactly like the friction combined so
+37:35
+re-watch that part of the video if you forget now for our first demo in this scene I have seven 10 kilogram balls
+37:40
+each ball has a different color with a different physics material attached to it the ground has a physics material with a bounciness of zero and the bounce
+37:47
+combined set to maximum so the Collision will always have the bounciness of whatever the bounciness of the ball is I
+37:53
+set the ball so that the dark red ball is perfectly inelastic and the dark green ball is an elastic Collision while
+37:58
+all the balls in between are elastic with The Greener balls being more elastic than inelastic and the redder
+38:04
+balls being more inelastic than elastic if I were to ask you what bounciness the dark green ball would have you probably
+38:10
+would say one because it's an elastic Collision but it doesn't and I don't know why but when there's a bounciness
+38:15
+of one a tiny amount of energy is added meaning the ball bounces slightly higher each time which is not physically
+38:22
+accurate so I set it to a value of 0.977 instead in the next demo I have two
+38:27
+columns with three rows of boxes on a frictionless Surface the boxes on the top row are perfectly inelastic the
+38:33
+boxes in the middle are elastic with a bounciness of 0.5 and the boxes on the bottom are elastic with a bounciness of
+38:39
+one I have a script called initial velocity Setter attached to an empty game object this script has three lists
+38:45
+of rigid bodies one for the perfectly inelastic boxes another for the inelastic boxes and finally for the
+38:51
+elastic boxes I set it up in the inspector where the Box on the left is referred to as box one and has an index
+38:57
+of zero in its appropriate list and the Box on the right referred to as Box 2 has an index of one in the list I also
+39:03
+have two fields that control the velocity of the boxes and two fields that control the masses of the boxes the
+39:09
+start function just sets all of the Box 1 velocities and all the Box 2 velocities then on the box one masses
+39:15
+and then finally the Box 2 masses so if I set the velocities to 1 and negative 1
+39:20
+so they're going to collide at a head-on collision at the same speed and I set their masses to one predict what's going
+39:25
+to happen to each box well that's probably not what you predicted and that's because there's a
+39:31
+secret setting that I haven't told you about and edit project settings and then physics there's a bounce threshold
+39:37
+setting set to two this means if a collision has a velocity of two or lower it will always behave like a perfectly
+39:43
+inelastic collision let's crank this down to something like 0.1 and try again
+39:50
+that's probably more along the lines of what you predicted with this little script we can set up interesting
+39:55
+situations to see how the different Collision types affect the outcome like this one box one has a velocity of 5 and
+40:01
+a mass of 10 Box 2 has a velocity of 1 and a mass of two
+40:08
+now let's see what happens when we change the massive Box 2 to 50.
+40:14
+very interesting so as you can see collisions can be very different based on the type of collision and the masses
+40:20
+and velocities of the object this is all the more reason why you should set an accurate mass as the first thing you do
+40:25
+when you make a physics object for a game and now when picking a value for your friction you should also consider the bounciness value for your object as
+40:32
+well now we're going to take our new understanding of momentum and talk about something pretty paradoxical and
+40:38
+instantaneous Force earlier we learned about forces and how they accelerate an object when it is constantly applied but
+Impulsive Forces
+40:45
+what happens if a force is applied at an instant that's what we're going to be covering in this section of the video
+40:50
+but first we quickly have to discuss what an Impulse is an Impulse denoted with the variable J is a force times a
+40:57
+Time J also equals Delta P or the change in momentum and let's take a second to understand what's going on here if I
+41:04
+have a one kilogram object and it's at rest and a one newton Force axon it for one second after the one second the
+41:11
+object will be moving at a speed of 1 meter per sec second so our impulse here would be one newton times one second so
+41:17
+one Newton Second because J equals Delta P which equals final P minus initial P
+41:23
+we can see that if we look at an Impulse in the eyes of a change in momentum we have one times one minus one times zero
+41:30
+which is just one kilogram meters per second as the impulse which equals one Newton Second if you just cancel out the
+41:37
+units let's see what happens if the impulse Remains the Same but we act it over a longer time because J equals ft
+41:43
+and J equals 1 ft equals one this is what's called an inverse proportion
+41:48
+where when one variable decreases the other increases so if our time is 0.5 seconds and our impulse is one the force
+41:56
+required is two Newtons if our time is 0.1 seconds and our impulse is one the
+42:01
+force required is 10 Newtons see where this is going now let's plug 0 in for t to see how much force we need at an
+42:07
+instant so we have zero times the force equals one and zero times anything is
+42:13
+zero so we have 0 equals one huh if we graph this inverse proportion and see
+42:19
+that at time equals zero we're undefined but we can also see that our Force blasts off towards Infinity as time
+42:25
+approaches zero from the right so what force do we need to make this work and you know what that's a great question do
+42:32
+you see how paradoxical this whole idea of a force at an instant is now Okay then if there's no such thing as an
+42:38
+instantaneous Force then how do guns work and how do collisions happen well the answer is simple T is just a really
+42:45
+small positive value we call these forces that act over a short time an impulsive Force we can realistically add
+42:52
+these impulsive forces by first figuring out what the change in momentum should be to get our impulse then defining some
+42:57
+small value for T and determining how much force will be needed to satisfy everything then just set a little timer
+43:03
+and count down from T until it gets to zero and constantly add the force over that interval for example if I want a 10
+43:10
+kilogram object at rest to achieve a velocity of 100 meters per second my impulse would be final momentum minus
+43:16
+initial momentum so 100 times 10 minus 0 times 10 or a thousand kilogram meters
+43:22
+per second next I want to think about how fast this should happen let's say 0.01 seconds so now I set up my J equals
+43:28
+ft equation and plug in my variables so 1000 equals .01 F divide both sides by
+43:34
+.01 to get a required force of one hundred thousand Newtons after that I will simply have to code in 100 000
+43:41
+Newtons of force constantly being added to the object for 0.01 seconds and then stop applying the force now you're
+43:48
+probably thinking well that's a lot of work to simulate something that people will only really notice the speed change
+43:53
+so should I still do this the realistic way absolutely not we're making games here we're not making NASA rocket
+44:00
+simulations so if we can change the velocity at an instant to get the same effect with a much easier method we'll
+44:05
+do it in unity this is so common it has a special way of doing this built into the add Force function this is done by
+44:12
+writing Force Mode Dot impulse as the second argument in the function now the force is passed in as the first argument
+44:18
+will be an Impulse which will change the momentum instantly by changing its velocity the formula that Unity uses
+44:24
+here is final velocity equals the initial velocity plus the impulse divided by the object's Mass okay
+44:31
+awesome remember how I set at the start of the video with the Catapult demo how there was a much better way of doing
+44:36
+things instead of kinematically well now we're going to see how that method Works in this scene we have three identical
+44:42
+catapults each carrying a different sized Rock they also all have the same script attached to them called catapult
+44:47
+launch impulsive Force this script has three Fields shown on the inspector where we put the rigid body of the rock
+44:53
+being launched and adjust the angle and Power in the update function all we need to do is check to see whether we click
+44:59
+the mouse and if we're not yet in the air and if so call the launch function the launch function first sets the
+45:05
+in-air Boolean to true so we won't accidentally add more than one force if we accidentally click twice it also sets
+45:11
+The Rock's rigid body's kinematic state to false true in the first place because of something I had to do with the visual
+45:16
+event after that I invoked the visual event which is purely visual so I won't waste time explaining it now we add the
+45:22
+force just like in the kinematic catapult demo I need to First find the launch Direction so I did the same thing
+45:27
+to get a normalized vector pointing in the right direction from there I multiply the direction vector by the
+45:33
+power which is the scalar to get my Vector for the impulse I then set Force mode to Force Mode dot impulse and
+45:38
+that's everything now back in unity my catapults are all firing with 100 Newtons of force to add a 45 degree
+45:44
+angle the small rock is 5 kilograms the medium rock is 10 kilograms and the big rock is 15 kilograms I also gave them a
+45:51
+little bit of drag and some friction if I hit play I can left click and watch my rocks fly doing it this way we can use
+45:58
+everything we already learned about like friction drag and proper collisions while having rocks from different masses
+46:04
+launched at different velocities another benefit is how much less code is required the only Advantage kinematics
+46:10
+has on us is the fact that we could trace out a trajectory and show the use we're freezing this method it makes it a
+46:16
+lot more difficult this is going to wrap up our discussion on actual motion and now we're going to get into some
+46:21
+rotations so we just went over a bunch of stuff about moving things around but now we're
+Rotational Motion
+46:27
+going to talk about rotating them and just like how we started the video with kinematics we're going to start this section with rotational kinematics and
+46:34
+the two are very similar the first thing I'm going to do is introduce us to three new variables Theta Omega and Alpha data
+46:42
+is basically just the angle or how rotated an object is Theta is measured in degrees or radians if you have never
+46:48
+used a radium before they're just a different way of expressing an angle where the angle is a fraction of Pi
+46:53
+where Pi is just 180 degrees so a 90 degree angle in radians is pi divided by
+46:58
+2 and a 45 degree angle is pi over 4 and so on Omega describes how Theta changes
+47:04
+over time and it's measured in radians per second or degrees per second Omega is also referred to as angular velocity
+47:11
+lastly Alpha describes how Omega changes over time it makes our angle speed up or
+47:16
+slow down it's measured in degrees or radians per second squared and it's referred to as angular acceleration hmm
+47:24
+these seem awfully familiar to position velocity and acceleration and that's because they're literally the exact same
+47:30
+and now with an angle and not a position because of this connection to regular kinematics we can replace the variables
+47:36
+in the main kinematic equation from earlier and get something that works for angular kinematics let's start with the
+47:42
+XF equals one-half a Delta t squared plus v delta T plus x i kinematic
+47:48
+equation and substitute our angular versions for the variables so X becomes Theta V becomes Omega and a becomes
+47:55
+Alpha so our angular kinematic equation is Theta f equals one-half Alpha Delta t
+48:01
+squared plus Omega delta T plus Theta I we aren't going to waste any longer talking about this because we literally
+48:08
+did this at the start of the video but just with regular motion so let's hop into our first demo in this scene I have
+48:13
+a car's wheel with a rigid body attached with is kinematic text I also have a script called wheel spin also attached
+48:19
+this script has four Fields visible in the inspector that lets us change our initial angle angular velocity and
+48:25
+angular acceleration there's also a Boolean variable to see if the inputted values are in radians or not I also have
+48:31
+two other variables one for the rigid body which I assign in the start function with get component and another
+48:36
+for time the angular kinematic equation function does that exact equation we talked about earlier in Returns what
+48:42
+Theta f is in the update function we get the angle for the current frame then we set the tire's rotation equal to this
+48:49
+right here so this quaternion thing means that we're dealing with rotations and the dot Euler means we're working in
+48:55
+Euler angles this means we say how rotated we are in the x-axis then the y-axis and then the z-axis the only
+49:01
+reason we have 180 degrees in the y-axis is because I messed up importing from blender the last part basically says if
+49:07
+we're in radians convert them to degrees and if we aren't in radians just leave the angle as is lastly we increase the
+49:13
+time when everything is set up in the inspector and hit play we can see that our car tire is rotating okay awesome if
+49:20
+you crank up the speed sufficiently high enough you'll see that our tire will start to Jitter and it might even look like it's going backwards I don't want
+49:26
+to spend a crazy amount of time talking about this because it's not very important but if you want to do some research on it it's pretty cool I'll
+49:32
+give you a hint it has to do with the computer's frame rate cool now let's move on to a non-kinematic topic called
+49:38
+torque now torque is a pretty easy concept to understand but it gets more confusing when you try to see how a
+49:43
+torque affects an object's rotation so we're going to start with the easier part so what is torque torque is just a
+49:49
+measure of a force that causes an object to spin around an axis torque is represented with the Greek letter Tau
+49:55
+and it is a vector quantity equal to the distance from the place it twists that to the point where the force is applied
+50:01
+represented with r times the force that is applied this may have been a little bit confusing but it's not that bad if I
+50:07
+have a seesaw 10 meters long and I have the fulcrum thingy in the center and apply 100 Newtons of force at one end of
+50:13
+the Seesaw the torque is just the distance to the point where the force is which is 5 meters times the force which
+50:19
+is 100 Newtons so the torque is 500 newton meters if our force is applied at an angle then we want to find the
+50:25
+perpendicular component of our force and multiply that instead so our equation becomes Tau equals RF sine Theta where
+50:33
+Theta is the angle between the force and R most of the time in Game Dev your Theta will just be 90 degrees so that
+50:39
+sine of 90 degrees is 1 so you don't really have to worry about it now if this fulcrum gets moved 3 meters to the
+50:45
+right our R is now 8 so our torque is 800 newton meters this also means that
+50:50
+our torque on the other side must also be 800 newton meters we know our r on the other side is 2 meters so we can now
+50:56
+say 800 equals 2f to get a force of 400 newtons coming off the other side fun
+51:02
+fact this is why levers are such an effective simple machine and unity and most likely in other game engines we can
+51:08
+add forces to specific points on our objects to create torques remember we haven't quite learned how these torques
+51:14
+rotate the objects around their axes but before that I'm going to do a quick demo of the earlier concept so in this scene
+51:20
+I have an invisible gun and there's a bad guy in front of me he has a rigid body attached with a 75 kilogram Mass
+51:26
+he's also made out of capsule colliders attached to the camera I have a script called Shoot gun it has a field for the
+51:32
+magnitude of the force and also a bull to check whether we're aiming I'll explain that one in a minute in the
+51:37
+update function I checked for when the player clicks with the mouse and when they do I first get the vector in the
+51:43
+direction of where the camera is to where the mouse was clicked and then I use that direction in Array starting at
+51:49
+the camera's position from there I raycast 10 meters in the direction of the Ray and if I hit anything I'll check
+51:55
+to see if it has a rigid body if it did end up hitting something with a rigid body I'll add a force to the rigid body
+52:00
+at a point using the add Force add position function with the first argument being the force and the second
+52:06
+argument being the position in the last argument being Force mode so this is where the is aiming variable comes in
+52:12
+the players can either shoot from where he is that is aiming variable true or the player can shoot directly in front
+52:18
+of where the hit point is the first will have an angle in it and the second will just be straight up perpendicular regular to the point so to put this in
+52:24
+code I first got the direction either the normalized direction of the ray or the vector Straight Ahead then I scaled
+52:30
+it with the gun Force the second argument was the point where the raycast hit the collider and the last argument is force mode.impulse because this is a
+52:37
+one-time instant hit not a constant force phew that was a lot and probably a bit confusing if you don't know what
+52:43
+raycasting is but let's just shoot this bad guy for a bit
+53:07
+okay cool now it's time for the more confusing part how torque affects the rotation of an object so remember for ma
+53:14
+Force equals mass times acceleration from earlier well we're gonna use something similar here where our torque
+53:19
+is going to equal the angular acceleration times inertia so what is inertia well it's the inertia tensor's
+53:26
+component value for the same axis you're rotating around so what's the inertia tensor well maybe you've seen it maybe
+53:32
+you haven't but on a rigid body component there's a section called the inertia tensor and it describes how Mass
+53:38
+gets distributed around the object and I do not know how this calculation works and frankly I don't want to I'm just
+53:45
+glad Unity does it for us so if we are rotating a 10 kilogram Cube around the x-axis its inertia will be one point six
+53:52
+seven kilograms meters squared so if a constant torque of 10 newton meters is applied to this 5 kilogram rectangular
+53:58
+prism let's find its angular acceleration so our torque equals our inertia times our angular acceleration
+54:03
+so 10 equals our angular acceleration times 10.833 and we got that 10.833
+54:10
+value from the inertia tensor so Alpha is going to equal 0.923 radians per
+54:16
+second squared so we can make objects rotate by using the add torque function in unity which will simply give an
+54:22
+angular acceleration around a specific axis by dividing the magnitude of the torque by the inertia from the inertia
+54:28
+tensor oh and a positive torque will rotate an object counterclockwise and a negative torque will rotate an object
+54:34
+clockwise we can make an instant torque by setting Force mode to impulse and it will work exactly the same as instant
+54:40
+forces from earlier except we're dividing our impulse by our inertia and adding it to our initial angular
+54:45
+velocity instead of dividing it by mass and adding regular velocity okay awesome I know this last with torque and inertia
+54:52
+can be a little bit confusing so great job sticking with it I'm now going to do one last demo for rotational Dynamics
+54:58
+about spinning objects in this demo scene I have five different boxes the two on the left both have a mass of one
+55:04
+kilogram and the only difference between them is that the one on the right is longer the middle box is five kilograms
+55:11
+and the box to its right has a mass of 10 kilograms finally the mass of the large box on the far right is 10
+55:17
+kilograms next I have an empty game object with a script attached which is responsible for giving all objects the
+55:23
+same torques here we have a list of the rigid bodies and then the spin function we looped through this list and added
+55:29
+the same torque to all of them we add an impulsive torque if the right Mouse button is clicked and a constant torque
+55:34
+when the left Mouse button is held now make your predictions about what's going to happen to our boxes and I'm going to
+55:39
+start by simply adding an impulsive torque of one to all of them as you can see the boxes are arranged in the way
+55:45
+where the fastest spinning objects aka the objects with the lowest moment of inertia are on the left and the object
+55:51
+with the most inertia are on the right hopefully seeing the effect that mass and the object's shape have on the
+55:57
+object's rotational velocities was helpful that's going to conclude all the main physics in this video in the last
+56:03
+section is pretty much going to be everything else about rigid bodies and unity if you're using a different game engine you probably will still find some
+56:10
+value in it so I wouldn't go anywhere in this last section of the video we're going to go over pretty much everything
+Rigidbody Component
+56:15
+else about the rigid body component in the unity that we have yet to already talk about first is the Collision
+56:20
+detection mode if an object is moving slowly has a mesh collider or you simply just want better performance use
+56:26
+discrete Collision detection otherwise you want to use a continuous one use continuous Dynamic for objects that are
+56:32
+going to be moving fast use plain old continuous for objects that aren't going to be moving per se but will be getting
+56:38
+collided into and use continuous speculative if you want a cheaper continuous Collision detection mode
+56:46
+next up is the rigid body constraints these ones are pretty straightforward if an object has a constraint along an axis
+56:52
+whether that be freeze position or freeze rotation the object will not be allowed to move or rotate respectively
+56:58
+along the checked axis when a force acts on the object note that the objects can still be moved and rotated kinematically
+57:04
+with these constraints ticked if you specifically want an object not to rotate at all set the rigid body's
+57:10
+freeze rotation Boolean to True next I want to mention the ontrigger and on collision functions even though they're
+57:16
+not technically something that has to do specifically with rigid bodies when giving an object a collider you can mark
+57:22
+this collider as a trigger and this makes it ignore all collisions and instead just cause the trigger functions
+57:28
+the on trigger enter function gets called when something enters the trigger the on trigger stay function gets called
+57:33
+each physics tick an object is in the trigger and the ontrigger exit function gets called when a collider exits the
+57:39
+trigger the on collision enter stay in exit
+57:47
+function work exactly the same but just with talking about if the objects are in contact now I want to talk to you about
+57:52
+the center of mass and I'm not going to get into exactly what the center of mass is so if you don't know and are curious
+57:59
+just look it up but in unity we can change where our Center of mass is if our object doesn't have a uniform
+58:04
+distribution of mass we can do this with rigid bodies Center of mass variable and assign it a new Vector 3. this Center of
+58:10
+mass will be local to the object not Global if you want to revert back to their object's original Center of mass
+58:15
+just call the reset Center of mass function on the rigid body next up is the set density function density is a
+58:22
+scalar equal to mass divided by volume and when you call the set density function on a rigid body you pass in a
+58:28
+density as the argument from there Unity will calculate the volume and divide the density by the volume and set the
+58:34
+object's Mass equal to the result this is a more Niche function but it will probably be useful for having an object
+58:40
+whose shape may vary the next rigid body function we're going to talk about is the add explosion in force function this
+58:46
+function has a single point acting as the explosion point then it figures out what point on the rigid body's collider
+58:52
+is closest to that point then it gets the direction from where that point is to the explosion point and adds a force
+58:58
+in that direction with that said there are five parameters for this function the first is the explosion Force which
+59:04
+is a float acting as the magnitude of the explosion Force this magnitude is proportional to the distance from the
+59:09
+explosion point so objects farther away get a smaller force exerted on them the next one explosion position is a vector
+59:16
+3 which is about a point in World space where the explosion is coming from the next parameter explosion radius is a
+59:23
+float responsible for the radius that affects the rigid body so if the object is in the sphere created by the radius
+59:29
+it will have a force exerted on it next is a completely visual effect called upwards modifier which gives the object
+59:36
+a small upward Force to send them flying into the air too this one is not physically accurate and is purely for
+59:42
+dramatic effect lastly is the force mode and this this one should pretty much always be set to force mode.impose
+59:47
+because explosions are pretty much always impulsive forces once you set these parameters to your liking you can
+59:53
+simulate an explosion the next rigid body function I want to talk about is the add relative force and torque
+59:58
+functions these do exactly the same as their normal counterparts we talked about earlier except they act locally
+1:00:04
+not globally what I mean by this is that an object rotated 180 degrees on the
+1:00:09
+x-axis will behave the same way if a relative force in the up Direction acts on it as it would if a regular force in
+1:00:16
+the down Direction acts on it now I want to talk to you about this interpolation thing you see right here most of the
+1:00:22
+time you want it off but in the case of the main camera following a rigid body around you might want to change this if
+1:00:28
+things start looking jittery this happens because physics updates with a fixed tick while the graphics updates as
+1:00:34
+many times as it can if you set this to interpolate the movement should look a lot smoother but it may lag behind due
+1:00:41
+to interpolation from the previous frame and the current frame this is the bigger problem switch to extrapolate which will
+1:00:47
+predict where the object will be in the future and render it there extrapolate generally has more problems though so
+1:00:52
+first try interpolate now there's kind of a big part of the main rigid body component that I've yet to discuss and
+1:00:59
+that's angular drag I understand what this does conceptually it slows a rotating object's rotation down where
+1:01:05
+higher numbers mean a bigger slowdown for lack of a better word and I honestly have no clue what the math behind this
+1:01:11
+angular drag variable is and how it affects the angular velocity so that's why I really haven't mentioned it
+1:01:17
+earlier you should have some angular drag on your rigid bodies though so they can eventually come to a stop when
+1:01:22
+spinning and a quick side note this angular drag will also yield an angular terminal velocity which is pretty cool
+1:01:27
+too the next two things are going to be very Niche and I can't really think of a scenario where you actually need them
+1:01:33
+but you can figure out the tangential velocity of a rotating object by using the get Point velocity function and
+1:01:39
+passing in a vector 3 in World space as the point for the first argument the next function is called closest just
+1:01:44
+point on bounds which also takes a vector 3 for the point you want to find the closest point on the rigid body's
+1:01:50
+collider this function returns a vector 3 for the closest point now there is one more big topic with rigid parties that I
+1:01:57
+haven't really covered yet and that's rigid body sleeping I think it's a little bit confusing and out of the
+1:02:02
+scope of this tutorial so I'm not really going to mention it right now but if you're noticing that your physics
+1:02:07
+objects sometimes just aren't interacting stuff you might want to look into this because they might just be asleep let's take a few minutes to recap
+Recap
+1:02:14
+everything we learned today first we talked about what position velocity and acceleration are and how they relate to
+1:02:20
+each other with time we also got this fancy formula for finding the position of an object at a certain time given an
+1:02:26
+initial position velocity and acceleration it's XF equals 0.5 a Delta
+1:02:31
+t squared plus v delta T plus x i if you forgot next we brought this in two dimensions and learned what a vector was
+1:02:39
+after that we learned what Mass was and then about Fama we also saw how the force of gravity affects an object and
+1:02:45
+then how it affects them on ramps as well then we learned about friction being a force that resists the motion of
+1:02:50
+an object and it's equal to the coefficient of friction times the normal force then we saw how we can add friction to the objects in our game by
+1:02:57
+making physics materials and unity after this we talked about drag and how the terminal velocity times B is equal to
+1:03:04
+its mass times the acceleration due to gravity then we mentioned how the drag variable immunity is equal to your B
+1:03:10
+divided by m after this we talked about collisions and how in perfectly inelastic collisions objects stick
+1:03:16
+together and in elastic collisions objects bounce off of each other with no energy lost they'll determine the
+1:03:21
+elasticity of a collision you pick a number for the bounciness variable in the physics material next we discussed
+1:03:27
+how forces can be made instantaneous with using an Impulse to instantly change the momentum of the object to do
+1:03:33
+this we use force mode.impulse and our last argument in the add Force function after this we went on to rotation of
+1:03:39
+kinematics and saw how Theta Omega and Alpha connect to x v and a we also learn
+1:03:44
+the angular kinematic equation then we discussed what torque was and how it's created by a force applied at a certain
+1:03:51
+distance from an object's rotational axis which was the Tau equals FR sine Theta equation then we learned about an
+1:03:57
+object's inertia and how the torque will give an object an angular acceleration of the torque divided by the inertia
+1:04:03
+finally we talked a lot about the other rigid body component stuff man we sure did learn a lot thank you so much for
+1:04:10
+watching I know this was a long one but it kind of had to be this way I strongly encourage you to save this video and
+1:04:16
+revisit it if you ever forget how things work and share with a friend who's new to game development too if this is your
+1:04:21
+first time here you should check out some of the other stuff I do too I'm making a 3D Puzzle game which you can watch the videos on right here and I
+1:04:28
+also love doing game jams which you can check out right here I also try to respond to all the comments on my channel so if you were confused on how
+1:04:34
+something worked or any other questions put it in the comments and I'll try my best to answer thanks again see you soon

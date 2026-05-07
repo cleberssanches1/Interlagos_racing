@@ -19,6 +19,7 @@
 #include "interfaces.hpp"
 #include "path_nya_loader.hpp"
 #include "render_pipeline.hpp"
+#include "sh2_frt_profiler.hpp"
 #include "track_system.hpp"
 
 extern "C" uint32_t SRL_AppGetVblankCounter();
@@ -40,6 +41,7 @@ public:
         bool enableRuntimeStatsLogs = true;
         bool enableSlaveForCarPrepare = false;
         bool enableSlaveForSimulation = false;
+        bool slaveSimulationLockstep = true;
         bool enableManualGouraudCopy = false;
         uint32_t faceCount = 0;
         uint32_t vertexCount = 0;
@@ -79,6 +81,8 @@ public:
             if (!ValidateFramePreconditions()) continue;
             hwrStageTrace_ = {};
             lwrStageTrace_ = {};
+            simMasterWaitTicksThisFrame_ = 0u;
+            simSlaveLastJobTicksThisFrame_ = 0u;
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
             hwrStageTrace_.begin = MaybeCaptureHighWorkRamSnapshot();
             lwrStageTrace_.begin = MaybeCaptureLowWorkRamSnapshot(true);
@@ -803,7 +807,8 @@ private:
         const bool xHeld = input.xHeld;
 
         int32_t yawForCamera = carYawDeg_;
-        const bool allowManualYawInput = !autoLapTestEnabled_;
+        const bool allowManualYawInput =
+            !autoLapTestEnabled_ && (context_.carPhysics == nullptr);
         context_.cameraSystem->UpdateFromPad(pad_, yawForCamera, orbitState_, allowManualYawInput);
         if (allowManualYawInput)
         {
@@ -941,12 +946,15 @@ private:
             simJobInFlight_ = false;
             simHasCompleted_ = true;
             simCompletedIdx_ = simInFlightIdx_;
+            simSlaveLastJobTicksThisFrame_ = simulationTask_.LastTicks();
             ApplySimulationOutput(simOutput_[simCompletedIdx_]);
             return true;
         }
 
         if (!mandatoryWait) return false;
 
+        Sh2FrtProfiler::EnsureInitialized();
+        const uint16_t waitStartTicks = Sh2FrtProfiler::Now();
         uint32_t spins = 0;
         while (!simulationTask_.IsDone() && spins < kSimDrainSoftSpinLimit)
         {
@@ -968,9 +976,13 @@ private:
             }
         }
 
+        simMasterWaitTicksThisFrame_ = static_cast<uint16_t>(
+            simMasterWaitTicksThisFrame_ +
+            Sh2FrtProfiler::Elapsed(waitStartTicks, Sh2FrtProfiler::Now()));
         simJobInFlight_ = false;
         simHasCompleted_ = true;
         simCompletedIdx_ = simInFlightIdx_;
+        simSlaveLastJobTicksThisFrame_ = simulationTask_.LastTicks();
         ApplySimulationOutput(simOutput_[simCompletedIdx_]);
         return true;
     }
@@ -982,6 +994,7 @@ private:
             simJobInFlight_ = false;
             simHasCompleted_ = true;
             simCompletedIdx_ = simInFlightIdx_;
+            simSlaveLastJobTicksThisFrame_ = simulationTask_.LastTicks();
         }
         if (simHasCompleted_)
         {
@@ -1005,8 +1018,8 @@ private:
         Game::CarSystem* car = ActiveCarSystem();
         if (car)
         {
-            // Keep car stopped until Y toggles movement on.
-            if (autoLapTestEnabled_)
+            // Manual mode: C/B/L/R control the car physics inputs.
+            if (!autoLapTestEnabled_)
             {
                 if (input.cHeld) car->Command()->Accelerate();
                 if (input.bHeld) car->Command()->Brake();
@@ -1016,11 +1029,12 @@ private:
             }
             else
             {
-                car->UpdateWheels(false, true);
+                // Auto-lap follows PATH and does not consume manual throttle.
+                car->UpdateWheels(false, false);
             }
 
             const auto& commands = car->Commands();
-            if (autoLapTestEnabled_)
+            if (!autoLapTestEnabled_)
             {
                 frameState.throttle = commands.throttle;
                 frameState.steering = commands.steering;
@@ -1118,6 +1132,10 @@ private:
             (void)DrainSimulationJobIfInFlight(true);
             if (TryDispatchSimulationOnSlave(frameState))
             {
+                if (context_.slaveSimulationLockstep)
+                {
+                    (void)DrainSimulationJobIfInFlight(true);
+                }
                 return;
             }
         }
@@ -1314,6 +1332,9 @@ private:
         }
         const uint32_t submittedCarFaces = CanRenderCar() ? context_.faceCount : 0;
 
+        // Hard lockstep safety: never finish frame while simulation job is still in-flight.
+        (void)DrainSimulationJobIfInFlight(true);
+
         ++frameCounter_;
         hwrStageTrace_.preFinish = MaybeCaptureHighWorkRamSnapshot();
         lwrStageTrace_.preFinish = MaybeCaptureLowWorkRamSnapshot();
@@ -1327,6 +1348,7 @@ private:
                                                       submittedTrackFaces,
                                                       submittedCarFaces);
         PrintSegmentOverlapDiagnostics(submittedTrackFaces, submittedCarFaces);
+        PrintSh2SplitTelemetry();
         if (context_.enableManualGouraudCopy)
         {
             SRL::Scene3D::LightCopyGouraudTable();
@@ -1473,6 +1495,48 @@ private:
 
         if (carSegmentId > 0) diagPrevCarSegmentId_ = static_cast<int16_t>(carSegmentId);
         if (windowStartId > 0) diagPrevWindowStartId_ = static_cast<int16_t>(windowStartId);
+    }
+
+    void PrintSh2SplitTelemetry()
+    {
+        if (!context_.trackSystemReady || !context_.trackSystem) return;
+
+        const uint16_t trackMasterTicks = context_.trackSystem->FrameTicksThisFrame();
+        const uint16_t trackSlaveProducerTicks = context_.trackSystem->Telemetry().producer.slaveLastJobTicks;
+        const uint16_t trackSlaveSortTicks = context_.trackSystem->SlaveSortTicksThisFrame();
+        const uint16_t trackSlavePlanTicks = context_.trackSystem->SlavePlanTicksThisFrame();
+        const uint16_t simSlaveTicks = simSlaveLastJobTicksThisFrame_;
+        const uint16_t simMasterWaitTicks = simMasterWaitTicksThisFrame_;
+
+        const uint32_t masterBusyTicks = static_cast<uint32_t>(trackMasterTicks);
+        const uint32_t masterWaitTicks = static_cast<uint32_t>(simMasterWaitTicks);
+        const uint32_t slaveWorkTicks =
+            static_cast<uint32_t>(trackSlaveProducerTicks) +
+            static_cast<uint32_t>(trackSlaveSortTicks) +
+            static_cast<uint32_t>(trackSlavePlanTicks) +
+            static_cast<uint32_t>(simSlaveTicks);
+        const uint32_t busyTotal = masterBusyTicks + slaveWorkTicks;
+        const uint32_t masterBusyPct = (busyTotal > 0u)
+            ? static_cast<uint32_t>((masterBusyTicks * 100u) / busyTotal)
+            : 0u;
+        const uint32_t slaveWorkPct = (busyTotal > 0u)
+            ? static_cast<uint32_t>((slaveWorkTicks * 100u) / busyTotal)
+            : 0u;
+        const uint32_t masterWaitPctOfSim = (simSlaveTicks > 0u)
+            ? static_cast<uint32_t>((masterWaitTicks * 100u) / static_cast<uint32_t>(simSlaveTicks))
+            : 0u;
+
+        SRL::Debug::Print(1, 23, "SH2 busy M:%u%% S:%u%% mb:%u sw:%u",
+                          static_cast<unsigned>(masterBusyPct),
+                          static_cast<unsigned>(slaveWorkPct),
+                          static_cast<unsigned>(masterBusyTicks),
+                          static_cast<unsigned>(slaveWorkTicks));
+        SRL::Debug::Print(1, 24, "SH2 sim slv:%u wait:%u (%u%%) ds:%u tb:%u",
+                          static_cast<unsigned>(simSlaveTicks),
+                          static_cast<unsigned>(masterWaitTicks),
+                          static_cast<unsigned>(masterWaitPctOfSim),
+                          static_cast<unsigned>(simSlaveDispatchCount_),
+                          static_cast<unsigned>(simSlaveDispatchSkipsTrackBusy_));
     }
 
     void UpdateRealtimeFpsOverlay()
@@ -2566,10 +2630,14 @@ private:
             output_ = output;
         }
 
+        uint16_t LastTicks() const { return lastTicks_; }
+
     private:
         void Do() override
         {
             if (!input_ || !output_) return;
+            Sh2FrtProfiler::EnsureInitialized();
+            const uint16_t startTicks = Sh2FrtProfiler::Now();
             auto state = input_->frameState;
             if (input_->gameplayTick)
             {
@@ -2597,10 +2665,12 @@ private:
             output_->frameState = state;
             output_->outWorldPosition = state.carWorldPosition;
             output_->outYawDeg = state.carYawDeg;
+            lastTicks_ = Sh2FrtProfiler::Elapsed(startTicks, Sh2FrtProfiler::Now());
         }
 
         const SimulationPayload* input_ = nullptr;
         SimulationPayload* output_ = nullptr;
+        volatile uint16_t lastTicks_ = 0;
     };
 
     class CarRenderPrepareTask final : public SRL::Types::ITask
@@ -2651,6 +2721,8 @@ private:
     uint32_t simSlaveDispatchSkipsBackoff_ = 0;
     uint32_t simDrainSoftTimeouts_ = 0;
     uint32_t simDrainHardWaits_ = 0;
+    uint16_t simMasterWaitTicksThisFrame_ = 0;
+    uint16_t simSlaveLastJobTicksThisFrame_ = 0;
     CarRenderPrepareTask carPrepareTask_{};
     int32_t carPrepareInputYaw_[2]{};
     int32_t carPrepareOutputYaw_[2]{};
@@ -2674,7 +2746,7 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
-    bool autoLapTestEnabled_ = false;
+    bool autoLapTestEnabled_ = true;
     int16_t autoLapTargetSegmentId_ = 1;
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)

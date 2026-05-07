@@ -61,6 +61,49 @@ public:
         return found;
     }
 
+    bool SampleSurfaceYByFamilyId(const SRL::Math::Types::Vector3D& worldPosition,
+                                  uint16_t familyId,
+                                  SRL::Math::Types::Fxp& outSurfaceY,
+                                  int32_t* outSegmentId = nullptr) const override
+    {
+        if (!trackSystem_ || !trackSystem_->Ready())
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        return trackSystem_->FindSurfaceYByFamilyId(
+            worldPosition,
+            offset,
+            familyId,
+            outSurfaceY,
+            outSegmentId);
+    }
+
+    bool SampleSurfaceYByFamilySet(const SRL::Math::Types::Vector3D& worldPosition,
+                                   const uint16_t* familyIds,
+                                   size_t familyCount,
+                                   SRL::Math::Types::Fxp& outSurfaceY,
+                                   int32_t* outSegmentId = nullptr) const override
+    {
+        if (!familyIds || familyCount == 0u)
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+
+        return Game::ITrackCollisionQuery::SampleSurfaceYByFamilySet(
+            worldPosition,
+            familyIds,
+            familyCount,
+            outSurfaceY,
+            outSegmentId);
+    }
+
 private:
     static SRL::Math::Types::Fxp ScoreToCenter(const SRL::Math::Types::Vector3D& worldPosition,
                                                const SRL::Math::Types::Vector3D& center)
