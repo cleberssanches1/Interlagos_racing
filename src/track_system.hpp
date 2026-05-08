@@ -68,6 +68,7 @@ class TrackSystem
 {
 public:
     static constexpr size_t kTrackSegmentLimit = 30;
+    static constexpr size_t kWindowSegmentIdDirectIndexCap = 512;
 
     struct Config
     {
@@ -118,6 +119,12 @@ public:
                                 uint16_t familyId,
                                 SRL::Math::Types::Fxp& outSurfaceY,
                                 int32_t* outSegmentId = nullptr) const;
+    bool FindSurfaceYByFamilySet(const SRL::Math::Types::Vector3D& worldPosition,
+                                 const SRL::Math::Types::Vector3D& trackOffset,
+                                 const uint16_t* familyIds,
+                                 size_t familyCount,
+                                 SRL::Math::Types::Fxp& outSurfaceY,
+                                 int32_t* outSegmentId = nullptr) const;
     bool FindSegmentCenterById(int32_t segmentId,
                                const SRL::Math::Types::Vector3D& trackOffset,
                                SRL::Math::Types::Vector3D& outSegmentCenter) const;
@@ -473,6 +480,7 @@ private:
                         const SRL::Math::Types::Vector3D& trackOffset);
     void RunTextureCompactionStage(bool windowSlid);
     void RunPrefetchStage(bool windowSlid);
+    void UpdatePrefetchSpeedProxy(const SRL::Math::Types::Vector3D& carWorldPosition);
     bool RunPostSlideMaintenanceStage(bool slidThisFrame);
     bool RunLegacyMaintenanceStage(bool windowSlid);
     void ResetFramePlan(TrackFramePlan& plan) const;
@@ -693,6 +701,9 @@ private:
     uint8_t prefetchBuildAttemptsThisFrame_ = 0;
     uint8_t prefetchBuildBudgetThisFrame_ = 1;
     uint8_t prefetchBuildBudgetDropsThisFrame_ = 0;
+    uint16_t prefetchSpeedProxyRaw_ = 0;
+    bool prefetchSpeedProxyValid_ = false;
+    SRL::Math::Types::Vector3D prefetchLastCarWorldPosition_{};
     uint8_t textureHeapCompactCooldown_ = 0;
     uint8_t workRamTrimCooldown_ = 0;
     uint8_t workRamWindowRebuildCooldown_ = 0;
@@ -751,6 +762,8 @@ private:
     bool pendingLodWorkExists_ = false;
     mutable std::array<int16_t, 4096> familySlotIndex_{};
     mutable bool familySlotIndexDirty_ = true;
+    mutable std::array<int16_t, kWindowSegmentIdDirectIndexCap> windowEntryIndexBySegmentId_{};
+    mutable std::array<int16_t, kWindowSegmentIdDirectIndexCap> windowLogicalRankBySegmentId_{};
     uint8_t familyMergeCooldown_ = 0;
     std::array<uint8_t, SRL_MAX_TEXTURES> usedTextureSlotsThisFrame_{};
     TrackLowWorkVector<int32_t> activeWindowLookupSegmentIds_{};

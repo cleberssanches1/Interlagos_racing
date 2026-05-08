@@ -61,7 +61,9 @@ struct Face
     int32_t normalZ = 0;
 
     uint8_t kind = 4;
+    // Carries SegmentDrawReady::SurfaceType.
     uint8_t reservedA = 0;
+    // Carries SegmentDrawReady::FaceSurfaceFlags.
     uint16_t reservedB = 0;
 };
 

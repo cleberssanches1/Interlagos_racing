@@ -286,6 +286,9 @@ static constexpr bool kEnableRuntimeTextureCompaction = false;
 // Keep leak-isolation mode conservative: texture compaction during runtime
 // introduced visible corruption/stalls in long runs.
 static constexpr bool kEnableLeakIsolationTextureCompaction = false;
+// Prefetch can run safely in leak-isolation because it does not force texture
+// compaction/recycle. Keeping it enabled reduces synchronous SDR misses on slide.
+static constexpr bool kEnableLeakIsolationPrefetch = true;
 // Reciclagem pesada por manutencao durante slide tende a introduzir oscillation
 // de slots/texturas; mantemos desligado e deixamos so liberacoes deterministicas.
 static constexpr bool kEnableRuntimeTextureRecycleOnMaintenance = false;
@@ -307,6 +310,10 @@ static constexpr bool kEnableLegacyTrackOverlayTelemetry = false;
 // SH2 overlays disabled to keep screen focused on FPS + WorkRAM tracking.
 static constexpr bool kEnableSh2UsageOverlay = false;
 static constexpr bool kEnableLegacyTrackOverlaySh2Telemetry = false;
+// Prefetch speed tiers are based on planar car displacement (world units/frame).
+// Tier 1: moderate speed, Tier 2: high speed.
+static constexpr uint16_t kPrefetchSpeedTier1UnitsPerFrame = 6u;
+static constexpr uint16_t kPrefetchSpeedTier2UnitsPerFrame = 12u;
 static constexpr uint8_t kSafeModeRenderBackendId = 1; // 0:Scene3D 1:SglDirect 2:Vdp1
 static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
 static constexpr uint8_t kTrackFramePlanFlagFallback = 1u << 0;
@@ -323,6 +330,11 @@ static inline uint8_t NormalizeTrackTextureLodIndex(uint8_t lodIndex)
 static inline int TrackTextureLodValue(uint8_t lodIndex)
 {
     return (NormalizeTrackTextureLodIndex(lodIndex) == kTrackLod64Index) ? 64 : 32;
+}
+
+static inline void ClearUsedTextureSlots(std::array<uint8_t, SRL_MAX_TEXTURES>& flags)
+{
+    ::memset(flags.data(), 0, flags.size());
 }
 
 static int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount)
@@ -6564,7 +6576,7 @@ bool TrackSystem::RebuildEntryWorkingSetCache(SegmentRenderEntry& entry)
 
 void TrackSystem::RebuildUsedTextureSlotFlagsFromWorkingRefs()
 {
-    usedTextureSlotsThisFrame_.fill(0u);
+    ClearUsedTextureSlots(usedTextureSlotsThisFrame_);
     for (size_t i = 0; i < seg1FamilySlots_.size(); ++i)
     {
         const auto& family = seg1FamilySlots_[i];
@@ -6580,7 +6592,7 @@ void TrackSystem::RebuildUsedTextureSlotFlagsFromWorkingRefs()
 
 void TrackSystem::RebuildUsedTextureSlotFlagsFromCurrentFaces()
 {
-    usedTextureSlotsThisFrame_.fill(0u);
+    ClearUsedTextureSlots(usedTextureSlotsThisFrame_);
     if (seg1FamilySlots_.empty()) return;
     for (size_t ei = 0; ei < segmentRenderers_.size(); ++ei)
     {
@@ -7049,6 +7061,15 @@ bool TrackSystem::TryGetWindowLogicalRank(int32_t segmentId, size_t& outRank) co
     outRank = 0;
     if (segmentId <= 0 || totalSegmentCount_ == 0) return false;
     const_cast<TrackSystem*>(this)->RebuildActiveWindowLookupTables();
+    if (static_cast<size_t>(segmentId) < windowLogicalRankBySegmentId_.size())
+    {
+        const int16_t rank = windowLogicalRankBySegmentId_[static_cast<size_t>(segmentId)];
+        if (rank >= 0)
+        {
+            outRank = static_cast<size_t>(rank);
+            return true;
+        }
+    }
     for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
     {
         if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
@@ -7101,6 +7122,15 @@ bool TrackSystem::TryResolveWindowEntryIndexBySegmentId(int32_t segmentId, size_
     outIndex = 0;
     if (segmentId <= 0 || segmentRenderers_.empty() || totalSegmentCount_ == 0) return false;
     RebuildActiveWindowLookupTables();
+    if (static_cast<size_t>(segmentId) < windowEntryIndexBySegmentId_.size())
+    {
+        const int16_t idx = windowEntryIndexBySegmentId_[static_cast<size_t>(segmentId)];
+        if (idx >= 0 && static_cast<size_t>(idx) < segmentRenderers_.size())
+        {
+            outIndex = static_cast<size_t>(idx);
+            return true;
+        }
+    }
     for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
     {
         if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
@@ -7185,6 +7215,8 @@ void TrackSystem::RebuildActiveWindowLookupTables()
 {
     if (!activeWindowLookupDirty_) return;
 
+    windowEntryIndexBySegmentId_.fill(-1);
+    windowLogicalRankBySegmentId_.fill(-1);
     activeWindowLookupSegmentIds_.clear();
     activeWindowEntryIndexBySegmentId_.clear();
     activeWindowLogicalRankBySegmentId_.clear();
@@ -7216,15 +7248,28 @@ void TrackSystem::RebuildActiveWindowLookupTables()
             WrapSegmentIdToRange(segmentRenderers_[physicalIdx].id, totalSegmentCount_);
         if (segmentId <= 0) continue;
 
+        const size_t segmentIdU = static_cast<size_t>(segmentId);
         bool alreadyAdded = false;
-        for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
+        if (segmentIdU < windowEntryIndexBySegmentId_.size())
         {
-            if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
-            alreadyAdded = true;
-            break;
+            alreadyAdded = (windowEntryIndexBySegmentId_[segmentIdU] >= 0);
+        }
+        else
+        {
+            for (size_t i = 0; i < activeWindowLookupSegmentIds_.size(); ++i)
+            {
+                if (activeWindowLookupSegmentIds_[i] != segmentId) continue;
+                alreadyAdded = true;
+                break;
+            }
         }
         if (alreadyAdded) continue;
 
+        if (segmentIdU < windowEntryIndexBySegmentId_.size())
+        {
+            windowEntryIndexBySegmentId_[segmentIdU] = static_cast<int16_t>(physicalIdx);
+            windowLogicalRankBySegmentId_[segmentIdU] = static_cast<int16_t>(logicalRank);
+        }
         activeWindowLookupSegmentIds_.push_back(segmentId);
         activeWindowEntryIndexBySegmentId_.push_back(static_cast<int16_t>(physicalIdx));
         activeWindowLogicalRankBySegmentId_.push_back(static_cast<int16_t>(logicalRank));
@@ -9456,6 +9501,12 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         : WrapSegmentIdToRange(activeWindowStartId_ - static_cast<int32_t>(windowCount),
                                totalSegmentCount_);
     if (nextId <= 0) return;
+    const bool speedTier1 =
+        prefetchSpeedProxyValid_ &&
+        prefetchSpeedProxyRaw_ >= kPrefetchSpeedTier1UnitsPerFrame;
+    const bool speedTier2 =
+        prefetchSpeedProxyValid_ &&
+        prefetchSpeedProxyRaw_ >= kPrefetchSpeedTier2UnitsPerFrame;
 
     if (kEnableTrackRuntimeStabilization)
     {
@@ -9463,6 +9514,10 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         {
             prefetchRetryCooldown_ = 0u;
             return;
+        }
+        if (speedTier2 && prefetchRetryCooldown_ > 1u)
+        {
+            prefetchRetryCooldown_ = 1u;
         }
         if (prefetchRetryCooldown_ > 0u)
         {
@@ -9474,12 +9529,12 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         const size_t floorBytes = 2u * 1024u;
         if (freeValid && freeBytes <= floorBytes)
         {
-            prefetchRetryCooldown_ = 1u;
+            prefetchRetryCooldown_ = speedTier2 ? 0u : 1u;
             return;
         }
         if (!BuildSegmentIntoPrefetch(nextId, false))
         {
-            prefetchRetryCooldown_ = 1u;
+            prefetchRetryCooldown_ = speedTier2 ? 0u : 1u;
             return;
         }
         prefetchRetryCooldown_ = 0u;
@@ -9508,7 +9563,7 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         {
             prefetchRetryCooldown_ = std::max<uint8_t>(
                 prefetchRetryCooldown_,
-                lowRetryHeadroom ? 4u : 2u);
+                lowRetryHeadroom ? (speedTier2 ? 2u : 4u) : (speedTier1 ? 1u : 2u));
         }
         if (prefetchRetryCooldown_ > 0u)
         {
@@ -12524,6 +12579,13 @@ void TrackSystem::ResetInitializationState()
     slideHwrTraceAfterCommit_ = 0u;
     prewarmCooldown_ = 0;
     boundaryPrewarmCooldown_ = 0;
+    prefetchRetryCooldown_ = 0;
+    prefetchBuildAttemptsThisFrame_ = 0;
+    prefetchBuildBudgetThisFrame_ = 1u;
+    prefetchBuildBudgetDropsThisFrame_ = 0;
+    prefetchSpeedProxyRaw_ = 0u;
+    prefetchSpeedProxyValid_ = false;
+    prefetchLastCarWorldPosition_ = Vector3D(0.0, 0.0, 0.0);
     textureHeapCompactCooldown_ = 0;
     workRamTrimCooldown_ = 0;
     workRamWindowRebuildCooldown_ = 0;
@@ -12542,10 +12604,12 @@ void TrackSystem::ResetInitializationState()
     lastWindowFreeValid_ = false;
     activeWindowLookupDirty_ = true;
     familyWorkingSetDirty_ = true;
+    windowEntryIndexBySegmentId_.fill(-1);
+    windowLogicalRankBySegmentId_.fill(-1);
     activeWindowLookupSegmentIds_.clear();
     activeWindowEntryIndexBySegmentId_.clear();
     activeWindowLogicalRankBySegmentId_.clear();
-    usedTextureSlotsThisFrame_.fill(0u);
+    ClearUsedTextureSlots(usedTextureSlotsThisFrame_);
     sh2SlaveSortTicksThisFrame_ = 0;
     sh2ProducerListUsedThisFrame_ = 0;
     sh2ProducerListFallbacksThisFrame_ = 0;
@@ -13857,7 +13921,7 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     frameIdThisFrame_ = frameId;
     AdvanceReusableTrackTextureSlotCooldowns();
     textureUploadsThisFrame_ = 0;
-    usedTextureSlotsThisFrame_.fill(0u);
+    ClearUsedTextureSlots(usedTextureSlotsThisFrame_);
     runtimeRdrBuildsThisFrame_ = 0;
     runtimeSdrBuildsThisFrame_ = 0;
     runtimeFaceRemapsThisFrame_ = 0;
@@ -13938,10 +14002,21 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                 freeValid && freeBytes <= (kWorkRamHardFloorBytes + (24u * 1024u));
             const bool freeVeryHealthy =
                 freeValid && freeBytes > (kWorkRamHardFloorBytes + (128u * 1024u));
+            const bool speedTier1 =
+                prefetchSpeedProxyValid_ &&
+                prefetchSpeedProxyRaw_ >= kPrefetchSpeedTier1UnitsPerFrame;
+            const bool speedTier2 =
+                prefetchSpeedProxyValid_ &&
+                prefetchSpeedProxyRaw_ >= kPrefetchSpeedTier2UnitsPerFrame;
 
             uint8_t budget = freeVeryHealthy ? 2u : 1u;
             if (backlog >= 2) budget = std::max<uint8_t>(budget, 2u);
             if (backlog >= 3 && freeVeryHealthy) budget = 3u;
+            if (!freeCritical && speedTier1) budget = std::max<uint8_t>(budget, 2u);
+            if (!freeCritical && speedTier2 && freeVeryHealthy)
+            {
+                budget = std::max<uint8_t>(budget, 3u);
+            }
             if (freeCritical) budget = 1u;
             prefetchBuildBudgetThisFrame_ = budget;
         }
@@ -15580,18 +15655,54 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
     }
 }
 
+void TrackSystem::UpdatePrefetchSpeedProxy(const Vector3D& carWorldPosition)
+{
+    if (!prefetchSpeedProxyValid_)
+    {
+        prefetchLastCarWorldPosition_ = carWorldPosition;
+        prefetchSpeedProxyRaw_ = 0u;
+        prefetchSpeedProxyValid_ = true;
+        return;
+    }
+
+    const auto absRaw = [](int32_t v) -> uint32_t
+    {
+        return (v < 0)
+            ? static_cast<uint32_t>(-static_cast<int64_t>(v))
+            : static_cast<uint32_t>(v);
+    };
+
+    const int32_t dxRaw = (carWorldPosition.X - prefetchLastCarWorldPosition_.X).RawValue();
+    const int32_t dzRaw = (carWorldPosition.Z - prefetchLastCarWorldPosition_.Z).RawValue();
+    const uint32_t dx = absRaw(dxRaw) >> 16;
+    const uint32_t dz = absRaw(dzRaw) >> 16;
+    const uint32_t major = (dx > dz) ? dx : dz;
+    const uint32_t minor = (dx > dz) ? dz : dx;
+    uint32_t planarUnitsPerFrame = major + (minor >> 1);
+    if (planarUnitsPerFrame > static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()))
+    {
+        planarUnitsPerFrame = static_cast<uint32_t>(std::numeric_limits<uint16_t>::max());
+    }
+    prefetchSpeedProxyRaw_ = static_cast<uint16_t>(planarUnitsPerFrame);
+    prefetchLastCarWorldPosition_ = carWorldPosition;
+}
+
 void TrackSystem::RunPrefetchStage(bool windowSlid)
 {
-    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    if (kEnableTrackLeakIsolationFixed64Pipeline && !kEnableLeakIsolationPrefetch)
     {
         (void)windowSlid;
         sh2MasterPrefetchTicksThisFrame_ = 0u;
         return;
     }
     const uint16_t prefetchTicksStart = Sh2FrtProfiler::Now();
-    // Mantém pipeline alimentado mesmo com slide no frame anterior.
-    // Isso reduz miss síncrono exatamente na borda de criação de segmento.
     TryPrefetchUpcomingSegment();
+    if (kEnableTrackLeakIsolationFixed64Pipeline)
+    {
+        sh2MasterPrefetchTicksThisFrame_ =
+            Sh2FrtProfiler::Elapsed(prefetchTicksStart, Sh2FrtProfiler::Now());
+        return;
+    }
     if (!windowSlid) PrewarmNextSegmentLod32();
     if (!windowSlid) PrewarmUpcomingBoundaryLods();
     sh2MasterPrefetchTicksThisFrame_ =
@@ -15943,6 +16054,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
         lowWorkProbeCursor = after;
     };
 
+    UpdatePrefetchSpeedProxy(carWorldPosition);
     UpdateCameraDrivenWindowDirection(trackOffset, cameraLocation, cameraLookTarget);
     TickRuntimeFrameCooldowns();
 
@@ -16773,10 +16885,62 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                                          SRL::Math::Types::Fxp& outSurfaceY,
                                          int32_t* outSegmentId) const
 {
+    if (familyId == 0u)
+    {
+        outSurfaceY = worldPosition.Y;
+        if (outSegmentId) *outSegmentId = -1;
+        return false;
+    }
+    return FindSurfaceYByFamilySet(worldPosition,
+                                   trackOffset,
+                                   &familyId,
+                                   1u,
+                                   outSurfaceY,
+                                   outSegmentId);
+}
+
+bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
+                                          const Vector3D& trackOffset,
+                                          const uint16_t* familyIds,
+                                          size_t familyCount,
+                                          SRL::Math::Types::Fxp& outSurfaceY,
+                                          int32_t* outSegmentId) const
+{
     outSurfaceY = worldPosition.Y;
     if (outSegmentId) *outSegmentId = -1;
-    if (familyId == 0u) return false;
+    if (!familyIds || familyCount == 0u) return false;
     if (segmentRenderers_.empty()) return false;
+
+    std::array<uint8_t, 4096> familyMask{};
+    bool useMask = true;
+    bool hasAnyFamily = false;
+    for (size_t i = 0; i < familyCount; ++i)
+    {
+        const uint16_t familyId = familyIds[i];
+        if (familyId == 0u) continue;
+        hasAnyFamily = true;
+        if (familyId < familyMask.size())
+        {
+            familyMask[familyId] = 1u;
+            continue;
+        }
+        useMask = false;
+    }
+    if (!hasAnyFamily) return false;
+
+    auto familyAllowed = [&](uint16_t familyId) -> bool
+    {
+        if (familyId == 0u) return false;
+        if (useMask)
+        {
+            return familyId < familyMask.size() && familyMask[familyId] != 0u;
+        }
+        for (size_t i = 0; i < familyCount; ++i)
+        {
+            if (familyIds[i] == familyId) return true;
+        }
+        return false;
+    };
 
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
@@ -16844,7 +17008,7 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
     int64_t bestInsideDeltaY = std::numeric_limits<int64_t>::max();
     int64_t bestInsideYRaw = pyRaw;
     int32_t bestInsideSegmentId = -1;
-
+    
     bool foundFallback = false;
     int64_t bestFallbackPlanar = std::numeric_limits<int64_t>::max();
     int64_t bestFallbackDeltaY = std::numeric_limits<int64_t>::max();
@@ -16866,7 +17030,7 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
         const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
         for (size_t fi = 0; fi < scanFaceCount; ++fi)
         {
-            if (segment.lodState.faceFamilyIds[fi] != familyId) continue;
+            if (!familyAllowed(segment.lodState.faceFamilyIds[fi])) continue;
 
             const SRL::Types::Polygon& face = faces[fi];
             const uint16_t i0 = face.Vertices[0];
@@ -17053,5 +17217,6 @@ uint32_t TrackSystem::MaxSegmentVertexCount() const
     }
     return maxVertices;
 }
+
 
 

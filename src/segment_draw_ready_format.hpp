@@ -16,6 +16,23 @@ enum class FaceKind : uint8_t
     Quad = 4
 };
 
+// Surface categories exported from content pipeline.
+enum class SurfaceType : uint8_t
+{
+    Unknown = 0,
+    Asphalt = 1,
+    EscapeArea = 2,
+    Grass = 3
+};
+
+enum FaceSurfaceFlags : uint16_t
+{
+    FaceSurfaceFlagGround = 1u << 0,
+    FaceSurfaceFlagWall = 1u << 1,
+    FaceSurfaceFlagDriveable = 1u << 2,
+    FaceSurfaceFlagWettable = 1u << 3
+};
+
 // Serialized visibility flags for later conversion into SRL attributes.
 enum class VisibilityMode : uint16_t
 {
@@ -84,7 +101,9 @@ struct Face
     int32_t normalZ = 0;
 
     uint8_t kind = static_cast<uint8_t>(FaceKind::Quad);
-    uint8_t reservedA = 0;
+    // SurfaceType value from content classification.
+    uint8_t reservedA = static_cast<uint8_t>(SurfaceType::Unknown);
+    // FaceSurfaceFlags bitmask.
     uint16_t reservedB = 0;
 };
 

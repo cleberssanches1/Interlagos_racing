@@ -19,6 +19,17 @@ $ErrorActionPreference = "Stop"
 $script:canonicalizeExcludeFamilyId = @{}
 $script:canonicalizeHighToleranceFamilyId = @{}
 $script:manualOrientationFixBySegmentFamily = @{}
+$script:surfaceTypeByFamilyId = @{}
+
+$script:SurfaceTypeUnknown = [byte]0
+$script:SurfaceTypeAsphalt = [byte]1
+$script:SurfaceTypeEscape = [byte]2
+$script:SurfaceTypeGrass = [byte]3
+
+$script:FaceSurfaceFlagGround = [uint16]0x0001
+$script:FaceSurfaceFlagWall = [uint16]0x0002
+$script:FaceSurfaceFlagDriveable = [uint16]0x0004
+$script:FaceSurfaceFlagWettable = [uint16]0x0008
 
 function Normalize-SourceStem([string]$Stem) {
     if ([string]::IsNullOrWhiteSpace($Stem)) { return "" }
@@ -111,6 +122,71 @@ function Build-FamilyIdBySourceStemMap(
             $stem = Normalize-SourceStem ([string]$family.sourceStem)
             if ([string]::IsNullOrWhiteSpace($stem)) { continue }
             $out[$stem] = [uint32]$family.id
+        }
+    }
+    catch {
+        return @{}
+    }
+
+    return $out
+}
+
+function Build-SurfaceTypeByFamilyIdMap(
+    [string]$MapPath
+) {
+    $out = @{}
+    if ([string]::IsNullOrWhiteSpace($MapPath)) { return $out }
+    if (-not (Test-Path -LiteralPath $MapPath)) { return $out }
+
+    $asphaltStems = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($stem in @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364")) {
+        [void]$asphaltStems.Add($stem)
+    }
+    $escapeStems = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($stem in @("f01864", "f00164", "f00264", "f00364", "f00464", "f00564")) {
+        [void]$escapeStems.Add($stem)
+    }
+    $grassStems = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($stem in @("f06864", "f04364", "f02564", "f02464", "f02364")) {
+        [void]$grassStems.Add($stem)
+    }
+
+    try {
+        $json = Get-Content -LiteralPath $MapPath -Raw | ConvertFrom-Json
+        foreach ($family in @($json.textureFamilies)) {
+            if ($null -eq $family) { continue }
+            if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+
+            $stem = ""
+            if ($family.PSObject.Properties.Name -contains "sourceStem") {
+                $stem = Normalize-SourceStem ([string]$family.sourceStem)
+            }
+            if ([string]::IsNullOrWhiteSpace($stem) -and
+                $family.PSObject.Properties.Name -contains "variants" -and
+                $family.variants -and
+                $family.variants.PSObject.Properties.Name -contains "64") {
+                $stem = Normalize-SourceStem ([string]$family.variants."64")
+            }
+            if ([string]::IsNullOrWhiteSpace($stem) -and
+                $family.PSObject.Properties.Name -contains "imageFiles" -and
+                $family.imageFiles -and
+                $family.imageFiles.PSObject.Properties.Name -contains "64") {
+                $stem = Normalize-SourceStem ([string]$family.imageFiles."64")
+            }
+
+            $surfaceType = $script:SurfaceTypeUnknown
+            if (-not [string]::IsNullOrWhiteSpace($stem)) {
+                if ($asphaltStems.Contains($stem)) {
+                    $surfaceType = $script:SurfaceTypeAsphalt
+                }
+                elseif ($escapeStems.Contains($stem)) {
+                    $surfaceType = $script:SurfaceTypeEscape
+                }
+                elseif ($grassStems.Contains($stem)) {
+                    $surfaceType = $script:SurfaceTypeGrass
+                }
+            }
+            $out[[uint32]$family.id] = [byte]$surfaceType
         }
     }
     catch {
@@ -499,6 +575,39 @@ function Build-FaceNormal([object[]]$Verts, [uint16[]]$Indices) {
     return @($nx, $ny, $nz)
 }
 
+function Get-SurfaceTypeForFamilyId([uint32]$FamilyId) {
+    if ($script:surfaceTypeByFamilyId.ContainsKey($FamilyId)) {
+        return [byte]$script:surfaceTypeByFamilyId[$FamilyId]
+    }
+    return [byte]$script:SurfaceTypeUnknown
+}
+
+function Build-FaceSurfaceFlags([int32]$NormalY, [byte]$SurfaceType) {
+    # Normal.Y is 16.16 fixed-point. Use wide thresholds to classify ramps as ground.
+    $absNy = [Math]::Abs([int64]$NormalY)
+    [int64]$groundMin = 32768  # ~0.50
+    [int64]$wallMax = 13107    # ~0.20
+
+    [uint16]$flags = 0
+    if ($absNy -ge $groundMin) {
+        $flags = [uint16]($flags -bor $script:FaceSurfaceFlagGround)
+    }
+    elseif ($absNy -le $wallMax) {
+        $flags = [uint16]($flags -bor $script:FaceSurfaceFlagWall)
+    }
+
+    $isDriveSurface =
+        ($SurfaceType -eq $script:SurfaceTypeAsphalt) -or
+        ($SurfaceType -eq $script:SurfaceTypeEscape) -or
+        ($SurfaceType -eq $script:SurfaceTypeGrass)
+    if ($isDriveSurface) {
+        $flags = [uint16]($flags -bor $script:FaceSurfaceFlagDriveable)
+        $flags = [uint16]($flags -bor $script:FaceSurfaceFlagWettable)
+    }
+
+    return $flags
+}
+
 function Build-BaseColor([uint32]$FamilyId) {
     $m = [uint16]($FamilyId -band 0x1F)
     if ($m -eq 0) { $m = 0x1F }
@@ -673,6 +782,8 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
             }
 
             $normal = Build-FaceNormal $Geo.verts $indices
+            $surfaceType = Get-SurfaceTypeForFamilyId $familyId
+            $surfaceFlags = Build-FaceSurfaceFlags ([int32]$normal[1]) $surfaceType
 
             Write-U16 $bw $indices[0]
             Write-U16 $bw $indices[1]
@@ -683,8 +794,8 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
             Write-I32 $bw ([int32]$normal[2])
             $kindValue = if ([int]$srcFace.kind -eq 3) { [byte]3 } else { [byte]4 }
             $bw.Write($kindValue)
-            $bw.Write([byte]0)
-            Write-U16 $bw 0
+            $bw.Write([byte]$surfaceType)
+            Write-U16 $bw $surfaceFlags
         }
 
         while ($fs.Position -lt $attrsOffset) { $bw.Write([byte]0) }
@@ -731,6 +842,7 @@ if (-not $CanonicalizeHighToleranceAllFamilies) {
         -SourceStems $CanonicalizeHighToleranceSourceStems
 }
 $script:manualOrientationFixBySegmentFamily = Build-ManualOrientationFixMap -MapPath $SegmentsMapPath
+$script:surfaceTypeByFamilyId = Build-SurfaceTypeByFamilyIdMap -MapPath $SegmentsMapPath
 
 foreach ($id in $segmentIds) {
     $geoPath = Join-Path $DataDir ("S{0:D3}.GEO" -f $id)

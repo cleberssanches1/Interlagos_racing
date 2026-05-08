@@ -50,7 +50,10 @@ public:
         forwardSpeed_ = Clamp(forwardSpeed_, SRL::Math::Types::Fxp::BuildRaw(0), kMaxForwardSpeed);
 
         // Steering model: first-order steer response + speed-sensitive yaw.
-        const SRL::Math::Types::Fxp targetSteerDeg = steerNorm * kMaxSteerDeg;
+        // World/camera handedness is inverted for steering input on this track setup.
+        // Negate steering command so Left/Right map correctly for the player.
+        const SRL::Math::Types::Fxp targetSteerDeg =
+            SRL::Math::Types::Fxp::BuildRaw(-steerNorm.RawValue()) * kMaxSteerDeg;
         steerDeg_ += (targetSteerDeg - steerDeg_) * kSteerResponse;
 
         const SRL::Math::Types::Fxp speedRatio =
@@ -213,12 +216,12 @@ private:
     bool surfaceYInitialized_ = false;
 
     static constexpr uint8_t kSurfaceProbeIntervalFrames = 2u;
-    static constexpr SRL::Math::Types::Fxp kEngineAccelPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00001C29); // ~0.110
+    static constexpr SRL::Math::Types::Fxp kEngineAccelPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00003852); // ~0.220
     static constexpr SRL::Math::Types::Fxp kBrakeDecelPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00003852);  // ~0.220
     static constexpr SRL::Math::Types::Fxp kAeroDragCoeff = SRL::Math::Types::Fxp::BuildRaw(0x00000083);       // ~0.0020
     static constexpr SRL::Math::Types::Fxp kRollingDragCoeff = SRL::Math::Types::Fxp::BuildRaw(0x000001AA);    // ~0.0065
     static constexpr SRL::Math::Types::Fxp kCoastDampingPerFrame = SRL::Math::Types::Fxp::BuildRaw(0x00000106);// ~0.0040
-    static constexpr SRL::Math::Types::Fxp kMaxForwardSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00038000);     // ~3.5
+    static constexpr SRL::Math::Types::Fxp kMaxForwardSpeed = SRL::Math::Types::Fxp::BuildRaw(0x00070000);     // ~7.0
     static constexpr SRL::Math::Types::Fxp kMaxSteerDeg = SRL::Math::Types::Fxp::BuildRaw(6 << 16);           // 6 deg
     static constexpr SRL::Math::Types::Fxp kSteerResponse = SRL::Math::Types::Fxp::BuildRaw(0x00006000);      // ~0.375
     static constexpr SRL::Math::Types::Fxp kHighSpeedSteerLoss = SRL::Math::Types::Fxp::BuildRaw(0x00008000); // 0.5
