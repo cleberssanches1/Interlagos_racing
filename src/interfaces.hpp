@@ -25,6 +25,10 @@ struct GameplayFrameState
     bool wheelsSpinning = false;
     int16_t speedProxy = 0;
     int32_t activeSegmentId = -1;
+    int16_t debugGroundYRear = 0;
+    int16_t debugGroundYFront = 0;
+    int16_t debugGroundYTarget = 0;
+    uint8_t debugGroundMask = 0;
     uint32_t checkpointsPassed = 0;
     RacePhase phase = RacePhase::Idle;
     bool resetRequested = false;
@@ -72,10 +76,12 @@ struct ITrackCollisionQuery
     virtual bool SampleSurfaceYByFamilyId(const Vector3D& worldPosition,
                                           uint16_t familyId,
                                           SRL::Math::Types::Fxp& outSurfaceY,
-                                          int32_t* outSegmentId = nullptr) const
+                                          int32_t* outSegmentId = nullptr,
+                                          int32_t seedSegmentId = -1) const
     {
         (void)worldPosition;
         (void)familyId;
+        (void)seedSegmentId;
         if (outSegmentId) *outSegmentId = -1;
         outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
         return false;
@@ -84,7 +90,8 @@ struct ITrackCollisionQuery
                                            const uint16_t* familyIds,
                                            size_t familyCount,
                                            SRL::Math::Types::Fxp& outSurfaceY,
-                                           int32_t* outSegmentId = nullptr) const
+                                           int32_t* outSegmentId = nullptr,
+                                           int32_t seedSegmentId = -1) const
     {
         if (!familyIds || familyCount == 0u)
         {
@@ -105,7 +112,8 @@ struct ITrackCollisionQuery
             if (!SampleSurfaceYByFamilyId(worldPosition,
                                           familyIds[i],
                                           candidateY,
-                                          &candidateSegmentId))
+                                          &candidateSegmentId,
+                                          seedSegmentId))
             {
                 continue;
             }

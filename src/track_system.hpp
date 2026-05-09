@@ -118,13 +118,15 @@ public:
                                 const SRL::Math::Types::Vector3D& trackOffset,
                                 uint16_t familyId,
                                 SRL::Math::Types::Fxp& outSurfaceY,
-                                int32_t* outSegmentId = nullptr) const;
+                                int32_t* outSegmentId = nullptr,
+                                int32_t seedSegmentId = -1) const;
     bool FindSurfaceYByFamilySet(const SRL::Math::Types::Vector3D& worldPosition,
                                  const SRL::Math::Types::Vector3D& trackOffset,
                                  const uint16_t* familyIds,
                                  size_t familyCount,
                                  SRL::Math::Types::Fxp& outSurfaceY,
-                                 int32_t* outSegmentId = nullptr) const;
+                                 int32_t* outSegmentId = nullptr,
+                                 int32_t seedSegmentId = -1) const;
     bool FindSegmentCenterById(int32_t segmentId,
                                const SRL::Math::Types::Vector3D& trackOffset,
                                SRL::Math::Types::Vector3D& outSegmentCenter) const;

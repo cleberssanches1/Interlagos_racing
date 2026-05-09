@@ -919,6 +919,10 @@ private:
         context_.carWorldPosition = simOut.outWorldPosition;
         carYawDeg_ = simOut.outYawDeg;
         latestActiveSegmentId_ = simOut.frameState.activeSegmentId;
+        lastGroundProbeRearY_ = simOut.frameState.debugGroundYRear;
+        lastGroundProbeFrontY_ = simOut.frameState.debugGroundYFront;
+        lastGroundProbeTargetY_ = simOut.frameState.debugGroundYTarget;
+        lastGroundProbeMask_ = simOut.frameState.debugGroundMask;
     }
 
     bool IsTrackProducerJobInFlightHint() const
@@ -1078,6 +1082,10 @@ private:
         context_.carWorldPosition = frameState.carWorldPosition;
         carYawDeg_ = frameState.carYawDeg;
         latestActiveSegmentId_ = frameState.activeSegmentId;
+        lastGroundProbeRearY_ = frameState.debugGroundYRear;
+        lastGroundProbeFrontY_ = frameState.debugGroundYFront;
+        lastGroundProbeTargetY_ = frameState.debugGroundYTarget;
+        lastGroundProbeMask_ = frameState.debugGroundMask;
     }
 
     bool TryDispatchSimulationOnSlave(const Game::GameplayFrameState& frameState)
@@ -1127,15 +1135,17 @@ private:
 
         if (useSlaveSim)
         {
-            // If previous simulation still runs at this point, drain now so we do
-            // not accumulate skipped gameplay frames.
-            (void)DrainSimulationJobIfInFlight(true);
+            // Non-lockstep mode: never block Master waiting for Slave sim.
+            // Consume completion opportunistically and keep rendering with last
+            // committed state while a new sim job is in-flight.
+            (void)DrainSimulationJobIfInFlight(false);
+            if (simJobInFlight_)
+            {
+                return;
+            }
+
             if (TryDispatchSimulationOnSlave(frameState))
             {
-                if (context_.slaveSimulationLockstep)
-                {
-                    (void)DrainSimulationJobIfInFlight(true);
-                }
                 return;
             }
         }
@@ -1262,9 +1272,6 @@ private:
 
         if (context_.trackSystemReady && context_.renderTrack)
         {
-            // Reserve Slave SH2 track window: ensure simulation job from this
-            // frame is fully drained before TrackDrawProducer can submit.
-            (void)DrainSimulationJobIfInFlight(true);
             context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
         }
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
@@ -1332,8 +1339,8 @@ private:
         }
         const uint32_t submittedCarFaces = CanRenderCar() ? context_.faceCount : 0;
 
-        // Hard lockstep safety: never finish frame while simulation job is still in-flight.
-        (void)DrainSimulationJobIfInFlight(true);
+        // Async sim mode: do not block frame completion on Slave sim.
+        (void)DrainSimulationJobIfInFlight(false);
 
         ++frameCounter_;
         hwrStageTrace_.preFinish = MaybeCaptureHighWorkRamSnapshot();
@@ -1461,16 +1468,21 @@ private:
                           static_cast<int>(seq[2]),
                           static_cast<int>(seq[3]),
                           static_cast<int>(seq[4]));
-        SRL::Debug::Print(1, 20, "OVR y car:%d seg:%d dy:%d dx:%d dz:%d",
+        SRL::Debug::Print(1, 20, "OVR y car:%d seg:%d dy:%d gr:%d gf:%d gt:%d",
                           static_cast<int>(carY),
                           static_cast<int>(segY),
                           static_cast<int>(deltaY),
-                          static_cast<int>(deltaX),
-                          static_cast<int>(deltaZ));
+                          static_cast<int>(lastGroundProbeRearY_),
+                          static_cast<int>(lastGroundProbeFrontY_),
+                          static_cast<int>(lastGroundProbeTargetY_));
         SRL::Debug::Print(1, 21, "OVR face tr:%u ca:%u tt:%u",
                           static_cast<unsigned>(submittedTrackFaces),
                           static_cast<unsigned>(submittedCarFaces),
                           static_cast<unsigned>(submittedFacesTotal));
+        SRL::Debug::Print(1, 22, "OVR gp m:%u dx:%d dz:%d",
+                          static_cast<unsigned>(lastGroundProbeMask_),
+                          static_cast<int>(deltaX),
+                          static_cast<int>(deltaZ));
 
         const bool carSegChanged =
             (carSegmentId > 0) &&
@@ -1482,7 +1494,7 @@ private:
             (windowStartId != diagPrevWindowStartId_);
         if (carSegChanged || startChanged)
         {
-            SRL::Debug::Print(1, 22, "OVR evt car:%d>%d ws:%d>%d",
+            SRL::Debug::Print(1, 23, "OVR evt car:%d>%d ws:%d>%d",
                               static_cast<int>(diagPrevCarSegmentId_),
                               static_cast<int>(carSegmentId),
                               static_cast<int>(diagPrevWindowStartId_),
@@ -1490,7 +1502,7 @@ private:
         }
         else
         {
-            SRL::Debug::Print(1, 22, "OVR evt -");
+            SRL::Debug::Print(1, 23, "OVR evt -");
         }
 
         if (carSegmentId > 0) diagPrevCarSegmentId_ = static_cast<int16_t>(carSegmentId);
@@ -1526,12 +1538,12 @@ private:
             ? static_cast<uint32_t>((masterWaitTicks * 100u) / static_cast<uint32_t>(simSlaveTicks))
             : 0u;
 
-        SRL::Debug::Print(1, 23, "SH2 busy M:%u%% S:%u%% mb:%u sw:%u",
+        SRL::Debug::Print(1, 24, "SH2 busy M:%u%% S:%u%% mb:%u sw:%u",
                           static_cast<unsigned>(masterBusyPct),
                           static_cast<unsigned>(slaveWorkPct),
                           static_cast<unsigned>(masterBusyTicks),
                           static_cast<unsigned>(slaveWorkTicks));
-        SRL::Debug::Print(1, 24, "SH2 sim slv:%u wait:%u (%u%%) ds:%u tb:%u",
+        SRL::Debug::Print(1, 25, "SH2 sim slv:%u wait:%u (%u%%) ds:%u tb:%u",
                           static_cast<unsigned>(simSlaveTicks),
                           static_cast<unsigned>(masterWaitTicks),
                           static_cast<unsigned>(masterWaitPctOfSim),
@@ -2732,6 +2744,10 @@ private:
     uint8_t carPrepareInFlightIdx_ = 0;
     uint8_t carPrepareCompletedIdx_ = 0;
     int16_t latestActiveSegmentId_ = -1;
+    int16_t lastGroundProbeRearY_ = 0;
+    int16_t lastGroundProbeFrontY_ = 0;
+    int16_t lastGroundProbeTargetY_ = 0;
+    uint8_t lastGroundProbeMask_ = 0;
     int16_t diagPrevCarSegmentId_ = -1;
     int16_t diagPrevWindowStartId_ = -1;
     SRL::Math::Types::Vector3D lastValidCarRenderPos_{

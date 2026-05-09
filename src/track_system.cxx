@@ -16883,7 +16883,8 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                                          const Vector3D& trackOffset,
                                          const uint16_t familyId,
                                          SRL::Math::Types::Fxp& outSurfaceY,
-                                         int32_t* outSegmentId) const
+                                         int32_t* outSegmentId,
+                                         int32_t seedSegmentId) const
 {
     if (familyId == 0u)
     {
@@ -16896,7 +16897,8 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                                    &familyId,
                                    1u,
                                    outSurfaceY,
-                                   outSegmentId);
+                                   outSegmentId,
+                                   seedSegmentId);
 }
 
 bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
@@ -16904,37 +16906,45 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                           const uint16_t* familyIds,
                                           size_t familyCount,
                                           SRL::Math::Types::Fxp& outSurfaceY,
-                                          int32_t* outSegmentId) const
+                                          int32_t* outSegmentId,
+                                          int32_t seedSegmentId) const
 {
     outSurfaceY = worldPosition.Y;
     if (outSegmentId) *outSegmentId = -1;
     if (!familyIds || familyCount == 0u) return false;
     if (segmentRenderers_.empty()) return false;
 
-    std::array<uint8_t, 4096> familyMask{};
-    bool useMask = true;
     bool hasAnyFamily = false;
     for (size_t i = 0; i < familyCount; ++i)
     {
         const uint16_t familyId = familyIds[i];
         if (familyId == 0u) continue;
         hasAnyFamily = true;
-        if (familyId < familyMask.size())
-        {
-            familyMask[familyId] = 1u;
-            continue;
-        }
-        useMask = false;
     }
     if (!hasAnyFamily) return false;
+
+    static constexpr size_t kFastFamilyMaskLimit = 512u;
+    std::array<uint8_t, kFastFamilyMaskLimit> familyMask{};
+    bool hasLargeFamilyId = false;
+    for (size_t i = 0; i < familyCount; ++i)
+    {
+        const uint16_t familyId = familyIds[i];
+        if (familyId == 0u) continue;
+        if (familyId < kFastFamilyMaskLimit)
+        {
+            familyMask[familyId] = 1u;
+        }
+        else
+        {
+            hasLargeFamilyId = true;
+        }
+    }
 
     auto familyAllowed = [&](uint16_t familyId) -> bool
     {
         if (familyId == 0u) return false;
-        if (useMask)
-        {
-            return familyId < familyMask.size() && familyMask[familyId] != 0u;
-        }
+        if (familyId < kFastFamilyMaskLimit) return familyMask[familyId] != 0u;
+        if (!hasLargeFamilyId) return false;
         for (size_t i = 0; i < familyCount; ++i)
         {
             if (familyIds[i] == familyId) return true;
@@ -17005,27 +17015,98 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     };
 
     bool foundInside = false;
-    int64_t bestInsideDeltaY = std::numeric_limits<int64_t>::max();
+    uint8_t bestInsideClass = 0xFFu;
+    int64_t bestInsideGapY = std::numeric_limits<int64_t>::max();
     int64_t bestInsideYRaw = pyRaw;
     int32_t bestInsideSegmentId = -1;
+    int32_t bestInsideSeedDistance = std::numeric_limits<int32_t>::max();
     
     bool foundFallback = false;
+    uint8_t bestFallbackClass = 0xFFu;
     int64_t bestFallbackPlanar = std::numeric_limits<int64_t>::max();
-    int64_t bestFallbackDeltaY = std::numeric_limits<int64_t>::max();
+    int64_t bestFallbackGapY = std::numeric_limits<int64_t>::max();
     int64_t bestFallbackYRaw = pyRaw;
     int32_t bestFallbackSegmentId = -1;
+    int32_t bestFallbackSeedDistance = std::numeric_limits<int32_t>::max();
 
-    for (const auto& segment : segmentRenderers_)
+    auto wrappedSeedDistance = [&](int32_t segmentId) -> int32_t
     {
-        if (!segment.renderer) continue;
-        if (segment.lodState.faceFamilyIds.empty()) continue;
+        if (seedSegmentId <= 0 || segmentId <= 0 || totalSegmentCount_ <= 0) return 0;
+        int32_t delta = segmentId - seedSegmentId;
+        if (delta < 0) delta = -delta;
+        const int32_t total = static_cast<int32_t>(totalSegmentCount_);
+        const int32_t wrapped = total - delta;
+        return std::min(delta, wrapped);
+    };
+
+    auto updateInsideCandidate = [&](int64_t yRaw, int32_t segmentId)
+    {
+        static constexpr int64_t kSupportToleranceRaw = (1 << 14); // ~0.25 in 16.16
+        // Current world convention uses negative Y as up, therefore larger Y
+        // means lower altitude. A supporting road candidate should be at or
+        // below the probe height (>= py - tolerance).
+        const bool preferAsSupport = (yRaw >= pyRaw - kSupportToleranceRaw);
+        const uint8_t candidateClass = preferAsSupport ? 0u : 1u;
+        const int64_t candidateGapY = preferAsSupport
+            ? abs64(pyRaw - yRaw)
+            : abs64(yRaw - pyRaw);
+        const int32_t seedDistance = wrappedSeedDistance(segmentId);
+        if (!foundInside ||
+            candidateClass < bestInsideClass ||
+            (candidateClass == bestInsideClass && candidateGapY < bestInsideGapY) ||
+            (candidateClass == bestInsideClass && candidateGapY == bestInsideGapY &&
+             seedDistance < bestInsideSeedDistance))
+        {
+            foundInside = true;
+            bestInsideClass = candidateClass;
+            bestInsideGapY = candidateGapY;
+            bestInsideSeedDistance = seedDistance;
+            bestInsideYRaw = yRaw;
+            bestInsideSegmentId = segmentId;
+        }
+    };
+
+    auto updateFallbackCandidate = [&](int64_t yRaw,
+                                       int32_t segmentId,
+                                       int64_t planarScore)
+    {
+        static constexpr int64_t kSupportToleranceRaw = (1 << 14); // ~0.25 in 16.16
+        const bool preferAsSupport = (yRaw >= pyRaw - kSupportToleranceRaw);
+        const uint8_t candidateClass = preferAsSupport ? 0u : 1u;
+        const int64_t candidateGapY = preferAsSupport
+            ? abs64(pyRaw - yRaw)
+            : abs64(yRaw - pyRaw);
+        const int32_t seedDistance = wrappedSeedDistance(segmentId);
+        if (!foundFallback ||
+            candidateClass < bestFallbackClass ||
+            (candidateClass == bestFallbackClass &&
+             (planarScore < bestFallbackPlanar ||
+              (planarScore == bestFallbackPlanar &&
+               (candidateGapY < bestFallbackGapY ||
+                (candidateGapY == bestFallbackGapY &&
+                 seedDistance < bestFallbackSeedDistance))))))
+        {
+            foundFallback = true;
+            bestFallbackClass = candidateClass;
+            bestFallbackSeedDistance = seedDistance;
+            bestFallbackPlanar = planarScore;
+            bestFallbackGapY = candidateGapY;
+            bestFallbackYRaw = yRaw;
+            bestFallbackSegmentId = segmentId;
+        }
+    };
+
+    auto scanSegment = [&](const SegmentRenderEntry& segment)
+    {
+        if (!segment.renderer) return;
+        if (segment.lodState.faceFamilyIds.empty()) return;
 
         const Vector3D* verts = nullptr;
         const SRL::Types::Polygon* faces = nullptr;
         size_t vertCount = 0u;
         size_t faceCount = 0u;
-        if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) continue;
-        if (!verts || !faces || vertCount == 0u || faceCount == 0u) continue;
+        if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) return;
+        if (!verts || !faces || vertCount == 0u || faceCount == 0u) return;
 
         const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
         for (size_t fi = 0; fi < scanFaceCount; ++fi)
@@ -17044,8 +17125,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
             const Vector3D c = verts[i2] + trackOffset;
             const Vector3D d = verts[i3] + trackOffset;
 
-            // Ignore near-vertical polygons for road-height sampling.
-            if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) < (1 << 10)) continue;
+            // Keep only floor-like polygons for road-height sampling.
+            // 0.50 (32768 in 16.16) matches the pipeline ground classification.
+            if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) < (1 << 15)) continue;
 
             const bool inTri0 = isPointInTriangleXZ(a, b, c);
             const bool inTri1 = isPointInTriangleXZ(a, c, d);
@@ -17070,16 +17152,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
             }
             if (!yValid) continue;
 
-            const int64_t deltaY = abs64(yRaw - pyRaw);
             if (inside)
             {
-                if (!foundInside || deltaY < bestInsideDeltaY)
-                {
-                    foundInside = true;
-                    bestInsideDeltaY = deltaY;
-                    bestInsideYRaw = yRaw;
-                    bestInsideSegmentId = segment.id;
-                }
+                updateInsideCandidate(yRaw, segment.id);
                 continue;
             }
 
@@ -17094,16 +17169,48 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                  static_cast<int64_t>(c.Z.RawValue()) +
                  static_cast<int64_t>(d.Z.RawValue())) / 4;
             const int64_t planarScore = abs64(cxRaw - pxRaw) + abs64(czRaw - pzRaw);
-            if (!foundFallback ||
-                planarScore < bestFallbackPlanar ||
-                (planarScore == bestFallbackPlanar && deltaY < bestFallbackDeltaY))
+            updateFallbackCandidate(yRaw, segment.id, planarScore);
+        }
+    };
+
+    if (seedSegmentId > 0 && totalSegmentCount_ > 0)
+    {
+        std::array<int32_t, 8> localIds{};
+        size_t localCount = 0u;
+        for (int32_t delta = -2; delta <= 4; ++delta)
+        {
+            const int32_t candidateId =
+                WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
+            if (candidateId <= 0) continue;
+
+            bool duplicate = false;
+            for (size_t i = 0; i < localCount; ++i)
             {
-                foundFallback = true;
-                bestFallbackPlanar = planarScore;
-                bestFallbackDeltaY = deltaY;
-                bestFallbackYRaw = yRaw;
-                bestFallbackSegmentId = segment.id;
+                if (localIds[i] == candidateId)
+                {
+                    duplicate = true;
+                    break;
+                }
             }
+            if (duplicate) continue;
+            if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+
+            const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
+            if (!localEntry) continue;
+            scanSegment(*localEntry);
+        }
+    }
+
+    const bool hasSupportCandidate =
+        (foundInside && bestInsideClass == 0u) ||
+        (foundFallback && bestFallbackClass == 0u);
+    // Run the expensive global pass only when local probing found nothing or
+    // failed to find any supporting surface below/at the probe height.
+    if ((!foundInside && !foundFallback) || !hasSupportCandidate)
+    {
+        for (const auto& segment : segmentRenderers_)
+        {
+            scanSegment(segment);
         }
     }
 

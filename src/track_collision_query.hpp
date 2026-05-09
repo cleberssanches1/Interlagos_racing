@@ -64,7 +64,8 @@ public:
     bool SampleSurfaceYByFamilyId(const SRL::Math::Types::Vector3D& worldPosition,
                                   uint16_t familyId,
                                   SRL::Math::Types::Fxp& outSurfaceY,
-                                  int32_t* outSegmentId = nullptr) const override
+                                  int32_t* outSegmentId = nullptr,
+                                  int32_t seedSegmentId = -1) const override
     {
         if (!trackSystem_ || !trackSystem_->Ready())
         {
@@ -75,19 +76,30 @@ public:
 
         const SRL::Math::Types::Vector3D offset =
             trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
-        return trackSystem_->FindSurfaceYByFamilyId(
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        int32_t sampledSegmentId = -1;
+        int32_t* sampledSegmentPtr = outSegmentId ? outSegmentId : &sampledSegmentId;
+        const bool found = trackSystem_->FindSurfaceYByFamilyId(
             worldPosition,
             offset,
             familyId,
             outSurfaceY,
-            outSegmentId);
+            sampledSegmentPtr,
+            resolvedSeedSegmentId);
+        if (found && sampledSegmentPtr && *sampledSegmentPtr > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
+        }
+        return found;
     }
 
     bool SampleSurfaceYByFamilySet(const SRL::Math::Types::Vector3D& worldPosition,
                                    const uint16_t* familyIds,
                                    size_t familyCount,
                                    SRL::Math::Types::Fxp& outSurfaceY,
-                                   int32_t* outSegmentId = nullptr) const override
+                                   int32_t* outSegmentId = nullptr,
+                                   int32_t seedSegmentId = -1) const override
     {
         if (!familyIds || familyCount == 0u)
         {
@@ -96,12 +108,32 @@ public:
             return false;
         }
 
-        return Game::ITrackCollisionQuery::SampleSurfaceYByFamilySet(
+        if (!trackSystem_ || !trackSystem_->Ready())
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        int32_t sampledSegmentId = -1;
+        int32_t* sampledSegmentPtr = outSegmentId ? outSegmentId : &sampledSegmentId;
+        const bool found = trackSystem_->FindSurfaceYByFamilySet(
             worldPosition,
+            offset,
             familyIds,
             familyCount,
             outSurfaceY,
-            outSegmentId);
+            sampledSegmentPtr,
+            resolvedSeedSegmentId);
+        if (found && sampledSegmentPtr && *sampledSegmentPtr > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
+        }
+        return found;
     }
 
 private:
