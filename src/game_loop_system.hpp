@@ -43,6 +43,8 @@ public:
         bool enableSlaveForSimulation = false;
         bool slaveSimulationLockstep = true;
         bool enableManualGouraudCopy = false;
+        bool autoLapEnabledOnStart = true;
+        bool allowAutoLapInputToggle = true;
         uint32_t faceCount = 0;
         uint32_t vertexCount = 0;
         SRL::Math::Types::Vector3D trackSegOffset{};
@@ -63,6 +65,8 @@ public:
 
     explicit GameLoopSystem(const Context& context)
         : context_(context)
+        , autoLapTestEnabled_(context.autoLapEnabledOnStart)
+        , autoLapInputToggleEnabled_(context.allowAutoLapInputToggle)
     {}
 
     static void SetWorkRamDebugTag(SRL::Memory::DebugTag tag)
@@ -889,23 +893,26 @@ private:
             }
             else
             {
-                autoLapTestEnabled_ = !autoLapTestEnabled_;
-                startupPathYawAligned_ = false;
-                if (autoLapTestEnabled_)
+                if (autoLapInputToggleEnabled_)
                 {
-                    autoLapRouteInitialized_ = false;
-                    autoLapRouteBuilt_ = false;
-                }
-                else
-                {
-                    autoLapCurrentOffDeg_ = 0;
-                    cameraPathPrevCarWorldPositionValid_ = false;
-                    if (!CameraSystem::kPathGuidedChaseEnabled)
+                    autoLapTestEnabled_ = !autoLapTestEnabled_;
+                    startupPathYawAligned_ = false;
+                    if (autoLapTestEnabled_)
                     {
-                        ReleaseAutoLapRouteStorage();
+                        autoLapRouteInitialized_ = false;
+                        autoLapRouteBuilt_ = false;
                     }
+                    else
+                    {
+                        autoLapCurrentOffDeg_ = 0;
+                        cameraPathPrevCarWorldPositionValid_ = false;
+                        if (!CameraSystem::kPathGuidedChaseEnabled)
+                        {
+                            ReleaseAutoLapRouteStorage();
+                        }
+                    }
+                    SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
                 }
-                SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
             }
         }
         yHeldPrev_ = input.yHeld;
@@ -1086,6 +1093,10 @@ private:
         lastGroundProbeFrontY_ = frameState.debugGroundYFront;
         lastGroundProbeTargetY_ = frameState.debugGroundYTarget;
         lastGroundProbeMask_ = frameState.debugGroundMask;
+        if (Game::CarSystem* car = ActiveCarSystem())
+        {
+            car->SetRuntimeFrameState(frameState);
+        }
     }
 
     bool TryDispatchSimulationOnSlave(const Game::GameplayFrameState& frameState)
@@ -1270,14 +1281,18 @@ private:
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
 
-        if (context_.trackSystemReady && context_.renderTrack)
+        const bool trackFrameEnabled =
+            context_.trackSystem &&
+            context_.trackSystemReady &&
+            context_.renderTrack;
+        if (trackFrameEnabled)
         {
             context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
         }
-        SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
-        context_.trackSystem->BeginFrame(frameCounter_);
-        if (context_.trackSystemReady && context_.renderTrack)
+        if (trackFrameEnabled)
         {
+            SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
+            context_.trackSystem->BeginFrame(frameCounter_);
             AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
             SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
             context_.trackSystem->RenderFrame(true,
@@ -2763,6 +2778,7 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
     bool autoLapTestEnabled_ = true;
+    bool autoLapInputToggleEnabled_ = true;
     int16_t autoLapTargetSegmentId_ = 1;
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)

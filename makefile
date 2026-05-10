@@ -18,13 +18,18 @@ SGL_MAX_POLYGONS = 2200         # Values above this overflow WORK_AREA and corru
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 
+# Physics POC mode:
+#   1 = desliga o fluxo principal e roda um mini-circuito sintetico de fisica.
+#   0 = mantem o fluxo principal do jogo.
+PHYSICS_POC_MODE ?= 1
+
 # Extra compile flags — two profiles:
 #   make                      → debug (default): LWR stage tracing enabled
 #   make BUILD_PROFILE=perf   → perf: tracing disabled, cleanest LWR baseline
 ifeq ($(BUILD_PROFILE),perf)
-SRL_CUSTOM_CCFLAGS =
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE)
 else
-SRL_CUSTOM_CCFLAGS = -DTRACK_LWR_STAGE_TRACE
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DTRACK_LWR_STAGE_TRACE
 endif
 
 # Disk name

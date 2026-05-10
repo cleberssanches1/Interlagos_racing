@@ -26,10 +26,6 @@
 #include <vector>
 #include <cstdio>
 
-extern "C" [[noreturn]] void __throw_bad_array_new_length() { while (1) {} }
-extern "C" [[noreturn]] void __throw_bad_alloc() { while (1) {} }
-namespace std { [[noreturn]] void __throw_bad_array_new_length() { while (1) {} } [[noreturn]] void __throw_bad_alloc() { while (1) {} } }
-
 
 #include "resource_loader.hpp"
 
@@ -43,6 +39,10 @@ constexpr bool kCarLogs = false;
 constexpr bool kVerboseFrameLogs = false;
 // Telemetria de runtime (RAM/VDP/slide): desligada por padrão.
 constexpr bool kEnableRuntimeStatsLogs = false;
+#ifndef PHYSICS_POC_MODE
+#define PHYSICS_POC_MODE 0
+#endif
+constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
 static const char* FindExistingPath(const char* const* paths, size_t count);
@@ -629,6 +629,8 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     RenderPipeline& renderPipeline,
                                                     HudSystem& hudSystem,
                                                     bool enableRuntimeSimulation,
+                                                    bool autoLapEnabledOnStart,
+                                                    bool allowAutoLapInputToggle,
                                                     Game::ITrackCollisionQuery* trackCollision,
                                                     Game::ICarPhysics* carPhysics,
                                                     Game::IGameplayTick* gameplayTick,
@@ -651,6 +653,8 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.enableSlaveForSimulation = true;
     loopContext.slaveSimulationLockstep = slaveSimulationLockstep;
     loopContext.enableManualGouraudCopy = enableManualGouraudCopy;
+    loopContext.autoLapEnabledOnStart = autoLapEnabledOnStart;
+    loopContext.allowAutoLapInputToggle = allowAutoLapInputToggle;
     loopContext.faceCount = faceCount;
     loopContext.vertexCount = vertexCount;
     loopContext.trackSegOffset = trackSegOffset;
@@ -668,6 +672,365 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.gameplayTick = enableRuntimeSimulation ? gameplayTick : nullptr;
     loopContext.audioEvents = enableRuntimeSimulation ? audioEvents : nullptr;
     return loopContext;
+}
+
+// Mini circuito analitico para POC de fisica:
+// - sem streaming de segmentos
+// - com rampas/declives para validar adesao vertical
+class PocTrackCollisionQuery final : public Game::ITrackCollisionQuery
+{
+public:
+    using Fxp = SRL::Math::Types::Fxp;
+
+    bool Sample(const Vector3D& worldPosition, Vector3D& outSurfaceNormal, int32_t& outSegmentId) const override
+    {
+        const int32_t xUnits = ToIntUnits(worldPosition.X);
+        const int32_t zUnits = ToIntUnits(worldPosition.Z);
+        if (!IsInsideRoad(xUnits))
+        {
+            outSurfaceNormal = Vector3D(0.0, -1.0, 0.0);
+            outSegmentId = -1;
+            return false;
+        }
+
+        const int32_t wrappedZ = WrapLoopZ(zUnits);
+        const int32_t yCenter = EvalSurfaceYUnits(wrappedZ);
+        const int32_t yPrev = EvalSurfaceYUnits(WrapLoopZ(zUnits - 8));
+        const int32_t yNext = EvalSurfaceYUnits(WrapLoopZ(zUnits + 8));
+        const int32_t dy = yNext - yPrev;
+
+        outSurfaceNormal = Vector3D(Fxp::BuildRaw(0),
+                                    Fxp::BuildRaw(-(1 << 16)),
+                                    Fxp::BuildRaw(dy << 12));
+        outSegmentId = SegmentIdFromZ(wrappedZ);
+        (void)yCenter;
+        return true;
+    }
+
+    bool SampleSurfaceYByFamilyId(const Vector3D& worldPosition,
+                                  uint16_t familyId,
+                                  Fxp& outSurfaceY,
+                                  int32_t* outSegmentId = nullptr,
+                                  int32_t seedSegmentId = -1) const override
+    {
+        (void)familyId;
+        (void)seedSegmentId;
+        const int32_t xUnits = ToIntUnits(worldPosition.X);
+        const int32_t zUnits = ToIntUnits(worldPosition.Z);
+        if (!IsInsideRoad(xUnits))
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = Fxp::BuildRaw(0);
+            return false;
+        }
+
+        const int32_t wrappedZ = WrapLoopZ(zUnits);
+        const int32_t yUnits = EvalSurfaceYUnits(wrappedZ);
+        outSurfaceY = ToFxp(yUnits);
+        if (outSegmentId) *outSegmentId = SegmentIdFromZ(wrappedZ);
+        return true;
+    }
+
+private:
+    static constexpr int32_t kRoadHalfWidthUnits = 280;
+    static constexpr int32_t kLoopLengthUnits = 2048;
+
+    static int32_t ToIntUnits(const Fxp& value)
+    {
+        return value.RawValue() >> 16;
+    }
+
+    static Fxp ToFxp(int32_t units)
+    {
+        return Fxp::BuildRaw(units << 16);
+    }
+
+    static bool IsInsideRoad(int32_t xUnits)
+    {
+        const int32_t absX = (xUnits < 0) ? -xUnits : xUnits;
+        return absX <= kRoadHalfWidthUnits;
+    }
+
+    static int32_t WrapLoopZ(int32_t zUnits)
+    {
+        int32_t wrapped = zUnits % kLoopLengthUnits;
+        if (wrapped < 0) wrapped += kLoopLengthUnits;
+        return wrapped;
+    }
+
+    static int32_t LerpInt(int32_t fromValue, int32_t toValue, int32_t t, int32_t span)
+    {
+        if (span <= 0) return toValue;
+        return fromValue + ((toValue - fromValue) * t) / span;
+    }
+
+    static int32_t EvalSurfaceYUnits(int32_t wrappedZ)
+    {
+        if (wrappedZ < 256) return 180; // reta
+        if (wrappedZ < 512) return LerpInt(180, 128, wrappedZ - 256, 256); // subida
+        if (wrappedZ < 768) return 128; // topo
+        if (wrappedZ < 1024) return LerpInt(128, 268, wrappedZ - 768, 256); // descida longa
+        if (wrappedZ < 1280) return 268; // vale
+        if (wrappedZ < 1536) return LerpInt(268, 192, wrappedZ - 1280, 256); // retorno
+        return 192;
+    }
+
+    static int32_t SegmentIdFromZ(int32_t wrappedZ)
+    {
+        // 32 segmentos logicos (64 unidades cada) apenas para telemetria.
+        return (wrappedZ / 64) + 1;
+    }
+};
+
+class PocGameplayTick final : public Game::IGameplayTick
+{
+public:
+    using Fxp = SRL::Math::Types::Fxp;
+
+    void Tick(Game::GameplayFrameState& ioFrameState, const Game::ITrackCollisionQuery* trackQuery) override
+    {
+        if (!spawnInitialized_)
+        {
+            spawnPosition_ = ioFrameState.carWorldPosition;
+            spawnYawDeg_ = 180;
+            ioFrameState.carYawDeg = spawnYawDeg_;
+            spawnInitialized_ = true;
+        }
+
+        ioFrameState.phase = Game::GameplayFrameState::RacePhase::Running;
+
+        // Auto-cruise: se nao houver aceleracao manual, mantem torque base.
+        if (ioFrameState.throttle <= 0 && !ioFrameState.braking)
+        {
+            ioFrameState.throttle = kAutoCruiseThrottle;
+        }
+        ioFrameState.wheelsSpinning = (ioFrameState.throttle > 0) && !ioFrameState.braking;
+
+        int32_t segmentId = -1;
+        Vector3D surfaceNormal{};
+        if (trackQuery)
+        {
+            (void)trackQuery->Sample(ioFrameState.carWorldPosition, surfaceNormal, segmentId);
+        }
+        ioFrameState.activeSegmentId = segmentId;
+
+        const Fxp lateralDrift = (ioFrameState.carWorldPosition.X - spawnPosition_.X).Abs();
+        if (lateralDrift > kMaxLateralDrift)
+        {
+            ioFrameState.resetRequested = true;
+            ioFrameState.respawnPosition = spawnPosition_;
+            ioFrameState.respawnYawDeg = spawnYawDeg_;
+            ioFrameState.checkpointsPassed = 0;
+        }
+    }
+
+private:
+    static constexpr int16_t kAutoCruiseThrottle = 36;
+    static constexpr Fxp kMaxLateralDrift = Fxp::BuildRaw(640 << 16);
+
+    Vector3D spawnPosition_{0.0, 0.0, 0.0};
+    int32_t spawnYawDeg_ = 180;
+    bool spawnInitialized_ = false;
+};
+
+static int RunPhysicsPocMode()
+{
+    const bool renderTrack = true;
+    const bool renderCar = true;
+    const bool renderAxes = false;
+    const bool enableBg = true;
+    const bool logCar = kCarLogs;
+    const bool logTrack = kEnableRuntimeStatsLogs;
+
+    MLOG(1, 3, "POC FISICA MODE");
+
+    const bool cartOk = (SRL::Memory::CartRam::GetReport().TotalSize > 0);
+    bool cartOkFlag = cartOk;
+    if (!cartOk)
+    {
+        MLOG(1, 4, "Cart DRAM ausente");
+    }
+
+    // Camera/projecao de teste
+    constexpr float kCameraFovDeg = 34.0f;
+    SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
+
+    // Sky via VDP2
+    SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 31, 31));
+    SRL::VDP2::NBG3::SetPriority(SRL::VDP2::Priority::Layer7);
+
+    BackgroundManager bgManager;
+    bool bgReady = false;
+    const char* skyPaths[] = {
+        "cd/data/ceup.tga",
+        "cd/data/CEUP.TGA",
+        "data/CEUP.TGA",
+        "CEUP.TGA",
+        "ceup.tga",
+        "CEUP.TGA;1",
+        "ceup.tga;1",
+        "/CD/DATA/CEUP.TGA"
+    };
+    const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
+    if (enableBg)
+    {
+        SRL::Cd::ChangeDir((const char*)0);
+        bgReady = bgManager.Init(skyPaths, skyPathCount);
+    }
+    (void)bgReady;
+
+    CameraSystem cameraSystem;
+    cameraSystem.SetDebugLogsEnabled(false);
+    cameraSystem.SetChaseNearFollowDistance(190);
+
+    Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
+    SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
+    SRL::Scene3D::SetDirectionalLight(lightDirection);
+    SRL::Scene3D::LightSetColor(lightColor);
+
+    static TrackSystem trackSystem;
+    trackSystem.SetRuntimeStatsLogsEnabled(false);
+    TrackSystem::Config trackConfig{};
+    trackConfig.initialSegments = 20u;
+    trackConfig.minSegments = 20u;
+    trackConfig.initialMeshes = 512u;
+    trackConfig.initialFaces =
+        static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
+    trackConfig.useSlave = false;
+    SRL::Cd::ChangeDir((const char*)0);
+    const bool trackSystemReady = trackSystem.Initialize(trackConfig);
+    MLOG(1, 5, "POC TRK rd:%u sg:%u",
+         trackSystemReady ? 1u : 0u,
+         static_cast<unsigned>(trackSystem.SegmentCount()));
+
+    const char* carPaths[] = {
+        "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
+        "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
+        "CAR1.NYA;1", "CAR1.NYA",
+        "car1.nya;1", "car1.nya"
+    };
+    const bool useCartCopyPipeline = false;
+    CarPipeline carPipe = LoadCarPipeline(carPaths,
+                                          sizeof(carPaths) / sizeof(carPaths[0]),
+                                          useCartCopyPipeline,
+                                          kCarGouraudOffset);
+    ModelObject* carPtr = carPipe.ActiveModel();
+    bool carValid = carPipe.Loaded();
+
+    bool carWasSmooth = false;
+    bool isSmoothMesh = false;
+    uint32_t faceCount = 0;
+    uint32_t vertexCount = 0;
+    uint32_t meshCount = 0;
+    SyncLoadedCarState(carPtr,
+                       carValid,
+                       logCar,
+                       carWasSmooth,
+                       isSmoothMesh,
+                       faceCount,
+                       vertexCount,
+                       meshCount);
+
+    Vector3D modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);
+    Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
+    Vector3D trackSegOffset(0.0, 0.0, 0.0);
+
+    Vector3D carWorldPosition(0.0, 0.0, 0.0);
+    TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
+    PocTrackCollisionQuery pocTrackCollision{};
+    Game::ITrackCollisionQuery* collisionQuery =
+        trackSystemReady
+            ? static_cast<Game::ITrackCollisionQuery*>(&trackCollision)
+            : static_cast<Game::ITrackCollisionQuery*>(&pocTrackCollision);
+    if (trackSystemReady)
+    {
+        Vector3D segCenter(0.0, 0.0, 0.0);
+        if (trackSystem.FindSegmentCenterById(1, trackSegOffset, segCenter))
+        {
+            carWorldPosition.X = segCenter.X;
+            carWorldPosition.Z = segCenter.Z;
+            carWorldPosition.Y = segCenter.Y;
+        }
+    }
+    SRL::Math::Types::Fxp spawnSurfaceY{};
+    int32_t spawnSegmentId = -1;
+    if (collisionQuery &&
+        collisionQuery->SampleSurfaceYByFamilyId(carWorldPosition, 1u, spawnSurfaceY, &spawnSegmentId))
+    {
+        carWorldPosition.Y = spawnSurfaceY + SRL::Math::Types::Fxp::BuildRaw(-(1 << 13));
+    }
+
+    std::array<size_t, 5> drawOrder{};
+    size_t orderCount = 0;
+    BuildCarDrawOrder(meshCount, drawOrder, orderCount);
+
+    Game::CarSystem::Config carConfig{};
+    carConfig.modelCenter = modelCenter;
+    carConfig.lightDirection = lightDirection;
+    carConfig.drawOrder = drawOrder;
+    carConfig.orderCount = orderCount;
+    carConfig.wireframeOnly = false;
+
+    std::unique_ptr<Game::CarSystem> carSystem;
+    if (carValid && carPtr)
+    {
+        carSystem = std::make_unique<Game::CarSystem>(carPtr, isSmoothMesh, carConfig);
+        carSystem->SetVisualYawOffsetDegrees(180);
+        cameraSystem.SetCarForwardYawOffsetDegrees(180);
+        carSystem->SetWorldPosition(carWorldPosition);
+    }
+
+    RenderPipeline renderPipeline;
+    SRL::Math::Types::Vector3D minV{};
+    SRL::Math::Types::Vector3D maxV{};
+    ComputeCarModelBounds(carPtr, meshCount, isSmoothMesh, minV, maxV);
+
+    HudSystem hudSystem;
+    hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
+
+    Game::SimpleCarPhysics carPhysics;
+    Game::SimpleGameplayTick gameplayTick;
+    Game::SimpleAudioEvents audioEvents;
+
+    const bool enableRuntimeSimulation = true;
+    const bool slaveSimulationLockstep = false;
+    GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
+                                                               enableBg,
+                                                               renderTrack,
+                                                               renderCar,
+                                                               renderAxes,
+                                                               trackSystemReady,
+                                                               logTrack,
+                                                               logCar,
+                                                               false,
+                                                               slaveSimulationLockstep,
+                                                               false,
+                                                               faceCount,
+                                                               vertexCount,
+                                                               trackSegOffset,
+                                                               modelOffset,
+                                                               carWorldPosition,
+                                                               lightDirection,
+                                                               bgManager,
+                                                               cameraSystem,
+                                                               trackSystem,
+                                                               carSystem,
+                                                               renderPipeline,
+                                                               hudSystem,
+                                                               enableRuntimeSimulation,
+                                                               false,
+                                                               false,
+                                                               collisionQuery,
+                                                               static_cast<Game::ICarPhysics*>(&carPhysics),
+                                                               static_cast<Game::IGameplayTick*>(&gameplayTick),
+                                                               static_cast<Game::IAudioEvents*>(&audioEvents));
+    loopContext.enableSlaveForCarPrepare = false;
+    loopContext.enableSlaveForSimulation = false;
+    loopContext.slaveSimulationLockstep = false;
+
+    GameLoopSystem gameLoop(loopContext);
+    AppState::Set(AppState::Stage::LoopStart, 0);
+    return gameLoop.RunForever();
 }
 
 class GameApp {
@@ -700,6 +1063,11 @@ int GameApp::Run()
     if constexpr (kEnableRuntimeStatsLogs)
     {
         PrintBootRam(0, "RAM boot");
+    }
+
+    if constexpr (kPhysicsPocMode)
+    {
+        return RunPhysicsPocMode();
     }
 
     const bool logCar = kCarLogs;
@@ -1077,6 +1445,8 @@ int GameApp::Run()
                                                                renderPipeline,
                                                                hudSystem,
                                                                enableRuntimeSimulation,
+                                                               true,
+                                                               true,
                                                                static_cast<Game::ITrackCollisionQuery*>(&trackCollision),
                                                                static_cast<Game::ICarPhysics*>(&carPhysics),
                                                                static_cast<Game::IGameplayTick*>(&gameplayTick),

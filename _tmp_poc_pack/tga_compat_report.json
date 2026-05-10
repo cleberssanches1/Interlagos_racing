@@ -1,0 +1,2776 @@
+﻿{
+    "version":  1,
+    "generatedAtUtc":  "2026-05-10T01:40:55Z",
+    "entries":  [
+                    {
+                        "lod":  8,
+                        "familyId":  1,
+                        "file":  "F063_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  2,
+                        "file":  "F018_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  3,
+                        "file":  "F036_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  1
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  4,
+                        "file":  "F034_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  5,
+                        "file":  "F058_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  6,
+                        "file":  "F067_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  7,
+                        "file":  "F031_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  8,
+                        "file":  "F053_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  9,
+                        "file":  "F007_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  10,
+                        "file":  "F043_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  11,
+                        "file":  "F013_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  12,
+                        "file":  "F046_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  13,
+                        "file":  "F019_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  14,
+                        "file":  "F024_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  15,
+                        "file":  "F033_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  16,
+                        "file":  "F014_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  17,
+                        "file":  "F044_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  6,
+                        "height":  4
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  18,
+                        "file":  "F011_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  19,
+                        "file":  "F068_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  20,
+                        "file":  "F051_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  21,
+                        "file":  "F066_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  22,
+                        "file":  "F032_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  23,
+                        "file":  "F042_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  24,
+                        "file":  "F016_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  25,
+                        "file":  "F021_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  26,
+                        "file":  "F002_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  9,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  27,
+                        "file":  "F010_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  28,
+                        "file":  "F061_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  29,
+                        "file":  "F064_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  30,
+                        "file":  "F048_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  31,
+                        "file":  "F023_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  32,
+                        "file":  "F054_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  33,
+                        "file":  "F00264_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  9,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  34,
+                        "file":  "F017_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  35,
+                        "file":  "F008_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  36,
+                        "file":  "F040_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  4
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  37,
+                        "file":  "F056_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  38,
+                        "file":  "F015_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  39,
+                        "file":  "F022_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  40,
+                        "file":  "F001_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  41,
+                        "file":  "F028_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  4
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  42,
+                        "file":  "F059_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  43,
+                        "file":  "F062_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  44,
+                        "file":  "F006_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  45,
+                        "file":  "F047_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  46,
+                        "file":  "F020_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  47,
+                        "file":  "F025_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  48,
+                        "file":  "F009_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  49,
+                        "file":  "F003_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  50,
+                        "file":  "F057_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  51,
+                        "file":  "F030_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  52,
+                        "file":  "F004_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  53,
+                        "file":  "F045_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  4
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  54,
+                        "file":  "F035_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  55,
+                        "file":  "F038_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  56,
+                        "file":  "F03646_8.TGA",
+                        "colorMapType":  0,
+                        "imageType":  2,
+                        "pixelDepth":  32,
+                        "width":  8,
+                        "height":  1
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  57,
+                        "file":  "F027_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  58,
+                        "file":  "F055_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  2,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  59,
+                        "file":  "F037_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  60,
+                        "file":  "F065_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  61,
+                        "file":  "F012_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  6
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  62,
+                        "file":  "F029_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  63,
+                        "file":  "F005_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  64,
+                        "file":  "F041_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  65,
+                        "file":  "F049_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  66,
+                        "file":  "F052_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  67,
+                        "file":  "F050_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  7,
+                        "height":  4
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  68,
+                        "file":  "F039_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  2
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  69,
+                        "file":  "F060_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  8,
+                        "familyId":  70,
+                        "file":  "F026_8.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  1,
+                        "file":  "F063_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  2,
+                        "file":  "F018_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  3,
+                        "file":  "F036_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  2
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  4,
+                        "file":  "F034_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  5,
+                        "file":  "F058_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  6,
+                        "file":  "F067_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  7,
+                        "file":  "F031_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  8,
+                        "file":  "F053_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  9,
+                        "file":  "F007_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  10,
+                        "file":  "F043_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  11,
+                        "file":  "F013_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  12,
+                        "file":  "F046_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  13,
+                        "file":  "F019_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  14,
+                        "file":  "F024_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  15,
+                        "file":  "F033_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  6
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  16,
+                        "file":  "F014_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  17,
+                        "file":  "F044_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  10
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  18,
+                        "file":  "F011_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  6
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  19,
+                        "file":  "F068_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  20,
+                        "file":  "F051_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  21,
+                        "file":  "F066_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  22,
+                        "file":  "F032_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  23,
+                        "file":  "F042_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  24,
+                        "file":  "F016_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  25,
+                        "file":  "F021_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  26,
+                        "file":  "F002_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  27,
+                        "file":  "F010_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  28,
+                        "file":  "F061_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  29,
+                        "file":  "F064_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  30,
+                        "file":  "F048_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  31,
+                        "file":  "F023_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  32,
+                        "file":  "F054_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  34,
+                        "file":  "F017_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  35,
+                        "file":  "F008_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  36,
+                        "file":  "F040_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  37,
+                        "file":  "F056_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  38,
+                        "file":  "F015_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  39,
+                        "file":  "F022_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  40,
+                        "file":  "F001_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  41,
+                        "file":  "F028_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  42,
+                        "file":  "F059_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  43,
+                        "file":  "F062_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  44,
+                        "file":  "F006_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  45,
+                        "file":  "F047_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  46,
+                        "file":  "F020_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  47,
+                        "file":  "F025_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  48,
+                        "file":  "F009_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  49,
+                        "file":  "F003_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  50,
+                        "file":  "F057_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  51,
+                        "file":  "F030_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  52,
+                        "file":  "F004_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  53,
+                        "file":  "F045_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  54,
+                        "file":  "F035_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  55,
+                        "file":  "F038_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  56,
+                        "file":  "F0364616.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  2
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  57,
+                        "file":  "F027_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  58,
+                        "file":  "F055_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  4,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  59,
+                        "file":  "F037_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  6
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  60,
+                        "file":  "F065_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  61,
+                        "file":  "F012_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  12
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  62,
+                        "file":  "F029_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  63,
+                        "file":  "F005_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  64,
+                        "file":  "F041_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  65,
+                        "file":  "F049_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  66,
+                        "file":  "F052_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  67,
+                        "file":  "F050_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  14,
+                        "height":  8
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  68,
+                        "file":  "F039_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  4
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  69,
+                        "file":  "F060_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  16,
+                        "familyId":  70,
+                        "file":  "F026_16.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  16
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  1,
+                        "file":  "F063_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  2,
+                        "file":  "F018_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  3,
+                        "file":  "F036_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  4
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  4,
+                        "file":  "F034_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  5,
+                        "file":  "F058_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  6,
+                        "file":  "F067_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  7,
+                        "file":  "F031_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  8,
+                        "file":  "F053_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  9,
+                        "file":  "F007_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  10,
+                        "file":  "F043_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  11,
+                        "file":  "F013_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  12,
+                        "file":  "F046_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  13,
+                        "file":  "F019_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  14,
+                        "file":  "F024_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  15,
+                        "file":  "F033_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  12
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  16,
+                        "file":  "F014_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  17,
+                        "file":  "F044_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  22
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  18,
+                        "file":  "F011_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  12
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  19,
+                        "file":  "F068_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  20,
+                        "file":  "F051_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  21,
+                        "file":  "F066_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  22,
+                        "file":  "F032_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  23,
+                        "file":  "F042_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  24,
+                        "file":  "F016_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  25,
+                        "file":  "F021_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  26,
+                        "file":  "F002_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  27,
+                        "file":  "F010_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  28,
+                        "file":  "F061_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  29,
+                        "file":  "F064_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  30,
+                        "file":  "F048_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  31,
+                        "file":  "F023_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  32,
+                        "file":  "F054_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  34,
+                        "file":  "F017_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  10
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  35,
+                        "file":  "F008_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  36,
+                        "file":  "F040_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  14
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  37,
+                        "file":  "F056_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  38,
+                        "file":  "F015_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  39,
+                        "file":  "F022_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  40,
+                        "file":  "F001_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  41,
+                        "file":  "F028_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  14
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  42,
+                        "file":  "F059_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  43,
+                        "file":  "F062_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  44,
+                        "file":  "F006_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  45,
+                        "file":  "F047_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  46,
+                        "file":  "F020_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  47,
+                        "file":  "F025_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  48,
+                        "file":  "F009_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  49,
+                        "file":  "F003_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  50,
+                        "file":  "F057_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  51,
+                        "file":  "F030_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  52,
+                        "file":  "F004_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  53,
+                        "file":  "F045_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  18
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  54,
+                        "file":  "F035_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  6
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  55,
+                        "file":  "F038_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  56,
+                        "file":  "F0364632.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  4
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  57,
+                        "file":  "F027_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  58,
+                        "file":  "F055_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  59,
+                        "file":  "F037_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  10
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  60,
+                        "file":  "F065_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  61,
+                        "file":  "F012_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  22
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  62,
+                        "file":  "F029_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  63,
+                        "file":  "F005_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  64,
+                        "file":  "F041_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  65,
+                        "file":  "F049_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  66,
+                        "file":  "F052_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  67,
+                        "file":  "F050_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  18
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  68,
+                        "file":  "F039_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  8
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  69,
+                        "file":  "F060_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  32,
+                        "familyId":  70,
+                        "file":  "F026_32.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  1,
+                        "file":  "F063_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  2,
+                        "file":  "F018_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  3,
+                        "file":  "F036_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  4,
+                        "file":  "F034_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  5,
+                        "file":  "F058_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  6,
+                        "file":  "F067_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  7,
+                        "file":  "F031_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  8,
+                        "file":  "F053_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  9,
+                        "file":  "F007_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  10,
+                        "file":  "F043_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  11,
+                        "file":  "F013_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  12,
+                        "file":  "F046_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  13,
+                        "file":  "F019_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  14,
+                        "file":  "F024_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  15,
+                        "file":  "F033_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  24
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  16,
+                        "file":  "F014_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  17,
+                        "file":  "F044_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  46
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  18,
+                        "file":  "F011_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  26
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  19,
+                        "file":  "F068_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  20,
+                        "file":  "F051_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  21,
+                        "file":  "F066_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  22,
+                        "file":  "F032_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  23,
+                        "file":  "F042_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  24,
+                        "file":  "F016_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  16
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  25,
+                        "file":  "F021_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  26,
+                        "file":  "F002_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  27,
+                        "file":  "F010_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  28,
+                        "file":  "F061_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  29,
+                        "file":  "F064_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  8,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  30,
+                        "file":  "F048_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  31,
+                        "file":  "F023_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  32,
+                        "file":  "F054_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  34,
+                        "file":  "F017_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  20
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  35,
+                        "file":  "F008_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  36,
+                        "file":  "F040_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  28
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  37,
+                        "file":  "F056_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  38,
+                        "file":  "F015_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  16
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  39,
+                        "file":  "F022_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  40,
+                        "file":  "F001_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  41,
+                        "file":  "F028_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  28
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  42,
+                        "file":  "F059_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  43,
+                        "file":  "F062_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  44,
+                        "file":  "F006_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  45,
+                        "file":  "F047_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  46,
+                        "file":  "F020_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  10
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  47,
+                        "file":  "F025_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  48,
+                        "file":  "F009_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  49,
+                        "file":  "F003_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  50,
+                        "file":  "F057_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  51,
+                        "file":  "F030_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  52,
+                        "file":  "F004_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  53,
+                        "file":  "F045_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  36
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  54,
+                        "file":  "F035_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  12
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  55,
+                        "file":  "F038_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  14
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  56,
+                        "file":  "F0364664.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  8
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  57,
+                        "file":  "F027_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  58,
+                        "file":  "F055_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  59,
+                        "file":  "F037_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  20
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  60,
+                        "file":  "F065_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  16,
+                        "height":  32
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  61,
+                        "file":  "F012_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  44
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  62,
+                        "file":  "F029_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  63,
+                        "file":  "F005_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  64,
+                        "file":  "F041_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  65,
+                        "file":  "F049_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  16
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  66,
+                        "file":  "F052_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  32,
+                        "height":  32
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  67,
+                        "file":  "F050_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  36
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  68,
+                        "file":  "F039_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  14
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  69,
+                        "file":  "F060_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    },
+                    {
+                        "lod":  64,
+                        "familyId":  70,
+                        "file":  "F026_64.TGA",
+                        "colorMapType":  1,
+                        "imageType":  1,
+                        "pixelDepth":  8,
+                        "width":  64,
+                        "height":  64
+                    }
+                ]
+}

@@ -10,6 +10,16 @@
 class MeshRenderer
 {
 public:
+    struct LocalTransform
+    {
+        bool enabled{false};
+        SRL::Math::Types::Vector3D pivot{0.0, 0.0, 0.0};
+        SRL::Math::Types::Vector3D translation{0.0, 0.0, 0.0};
+        SRL::Math::Types::Angle rotateX{SRL::Math::Types::Angle::FromDegrees(0.0f)};
+        SRL::Math::Types::Angle rotateY{SRL::Math::Types::Angle::FromDegrees(0.0f)};
+        SRL::Math::Types::Angle rotateZ{SRL::Math::Types::Angle::FromDegrees(0.0f)};
+    };
+
     struct Config
     {
         SRL::Math::Types::Vector3D modelCenter{0.0, 0.0, 0.0};
@@ -28,6 +38,9 @@ public:
     void SetScale(const SRL::Math::Types::Fxp& scale);
     void SetOffset(const SRL::Math::Types::Vector3D& offset);
     void SetLightDirection(const SRL::Math::Types::Vector3D& dir);
+    void SetBodyAttitude(const SRL::Math::Types::Angle& pitch, const SRL::Math::Types::Angle& roll);
+    void ClearMeshLocalTransforms();
+    void SetMeshLocalTransform(size_t meshId, const LocalTransform& transform);
 
     void Render(const SRL::Math::Types::Vector3D& position,
                 const SRL::Math::Types::Angle& yaw,
@@ -51,4 +64,7 @@ private:
     size_t skipMeshId_{SIZE_MAX};
     size_t lastMeshId_{SIZE_MAX};
     std::vector<SRL::Math::Types::Vector3D> meshCenters_;
+    std::vector<LocalTransform> meshLocalTransforms_;
+    SRL::Math::Types::Angle bodyPitch_{SRL::Math::Types::Angle::FromDegrees(0.0f)};
+    SRL::Math::Types::Angle bodyRoll_{SRL::Math::Types::Angle::FromDegrees(0.0f)};
 };

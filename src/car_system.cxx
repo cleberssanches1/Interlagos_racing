@@ -39,6 +39,8 @@ void CarSystem::CarCommandAdapter::SteerRight()
 
 CarSystem::CarSystem(ModelObject* carObj, bool smooth, const Config& config)
     : config_(config)
+    , carObj_(carObj)
+    , isSmooth_(smooth)
 {
     std::snprintf(name_, sizeof(name_), "Car");
     if (!carObj) return;
@@ -62,6 +64,20 @@ CarSystem::CarSystem(ModelObject* carObj, bool smooth, const Config& config)
     renderer_->SetSkipMesh(kCrashSkipMesh);
     // Keep car proportions at original model scale.
     renderer_->SetScale(SRL::Math::Types::Fxp::BuildRaw(1 << 16));
+    const auto& meshCenters = renderer_->MeshCenters();
+    if (wheelRig_.Initialize(*carObj_, isSmooth_, meshCenters.data(), meshCenters.size()))
+    {
+        const auto ids = wheelRig_.WheelMeshIds();
+        SRL::Debug::Print(1, 20, "WHEEL ids:%d,%d,%d,%d",
+                          static_cast<int>(ids[0]),
+                          static_cast<int>(ids[1]),
+                          static_cast<int>(ids[2]),
+                          static_cast<int>(ids[3]));
+    }
+    else
+    {
+        SRL::Debug::Print(1, 20, "WHEEL detect fail");
+    }
 }
 
 void CarSystem::UpdateWheels(bool start, bool stop)
@@ -115,9 +131,21 @@ void CarSystem::Render(int32_t yawDeg)
     TickCommandState();
 }
 
+void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
+{
+    wheelInput_.speedKmh = frameState.speedProxy;
+    wheelInput_.steering = frameState.steering;
+    wheelInput_.groundRearY = frameState.debugGroundYRear;
+    wheelInput_.groundFrontY = frameState.debugGroundYFront;
+    wheelInput_.groundMask = frameState.debugGroundMask;
+}
+
 void CarSystem::SubmitRender(RenderPipeline& pipeline, bool logStats)
 {
     if (!renderer_) return;
+    wheelRig_.Update(wheelInput_);
+    wheelRig_.Apply(*renderer_);
+
     const int32_t renderYawDeg = CurrentRenderYawDeg();
     SRL::Math::Types::Angle yaw =
         SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::BuildRaw(renderYawDeg << 16));

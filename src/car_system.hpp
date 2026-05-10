@@ -10,6 +10,7 @@
 #include "renderable.hpp"
 #include "interfaces.hpp"
 #include "modelObject.hpp"
+#include "car_wheel_rig.hpp"
 
 using SRL::Math::Types::Angle;
 using SRL::Math::Types::Fxp;
@@ -43,6 +44,7 @@ public:
 
     void Render(int32_t yawDeg);
     void SubmitRender(class RenderPipeline& pipeline, bool logStats = false);
+    void SetRuntimeFrameState(const GameplayFrameState& frameState);
 
     void SetWorldPosition(const Vector3D& pos) { worldPosition_ = pos; }
 
@@ -122,6 +124,10 @@ private:
     std::unique_ptr<MeshRenderer> renderer_;
     Vector3D worldPosition_{Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0))};
     Config config_;
+    ModelObject* carObj_{nullptr};
+    bool isSmooth_{false};
+    CarWheelRig wheelRig_{};
+    CarWheelRig::Input wheelInput_{};
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};
     int32_t visualYawOffsetDeg_{0};

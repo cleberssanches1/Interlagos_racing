@@ -236,7 +236,7 @@ if (-not (Test-Path -LiteralPath $DataDir)) { throw "DataDir nao encontrado: $Da
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
 if ($BatchSize -le 0) { throw "BatchSize deve ser maior que zero." }
 
-$files = Get-SdrFiles -BaseDir $DataDir
+$files = @(Get-SdrFiles -BaseDir $DataDir)
 if ($files.Count -eq 0) { throw "Nenhum S???.SDR encontrado em $DataDir" }
 
 $segments = @()

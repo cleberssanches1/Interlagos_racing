@@ -1,0 +1,37 @@
+﻿{
+    "version":  1,
+    "generatedAtUtc":  "2026-05-10T01:40:55Z",
+    "sourceJson":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\segments_map.json",
+    "textureRoot":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack",
+    "banks":  [
+                  {
+                      "lod":  8,
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK8.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\TBK8.json",
+                      "count":  70,
+                      "bytes":  14026
+                  },
+                  {
+                      "lod":  16,
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK16.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\TBK16.json",
+                      "count":  69,
+                      "bytes":  22760
+                  },
+                  {
+                      "lod":  32,
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK32.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\TBK32.json",
+                      "count":  69,
+                      "bytes":  59003
+                  },
+                  {
+                      "lod":  64,
+                      "bankPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TBK64.BIN",
+                      "indexPath":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\TBK64.json",
+                      "count":  69,
+                      "bytes":  202811
+                  }
+              ],
+    "tgaCompatReport":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\tga_compat_report.json"
+}

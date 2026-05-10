@@ -1,0 +1,1784 @@
+﻿{
+    "version":  1,
+    "generated_at_utc":  "2026-05-10T01:40:56Z",
+    "source_dir":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack",
+    "out_dir":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data",
+    "packs":  [
+                  {
+                      "type":  "GEO",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\GEO.BIN",
+                      "count":  1,
+                      "bytes":  6840,
+                      "items":  [
+                                    {
+                                        "name":  "S001.GEO",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001.GEO",
+                                        "size":  6756,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "SDR",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\SDR.BIN",
+                      "count":  1,
+                      "bytes":  9038,
+                      "items":  [
+                                    {
+                                        "name":  "S001.SDR",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001.SDR",
+                                        "size":  8954,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "RDR",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\RDR.BIN",
+                      "count":  1,
+                      "bytes":  8426,
+                      "items":  [
+                                    {
+                                        "name":  "S001.RDR",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001.RDR",
+                                        "size":  8342,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "BDR",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\BDR.BIN",
+                      "count":  1,
+                      "bytes":  9209,
+                      "items":  [
+                                    {
+                                        "name":  "B001_001.BDR",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\B001_001.BDR",
+                                        "size":  9125,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "MAT8",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\MAT8.BIN",
+                      "count":  1,
+                      "bytes":  716,
+                      "items":  [
+                                    {
+                                        "name":  "S001M8.MAT",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001M8.MAT",
+                                        "size":  632,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "MAT16",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\MAT16.BIN",
+                      "count":  1,
+                      "bytes":  716,
+                      "items":  [
+                                    {
+                                        "name":  "S001M16.MAT",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001M16.MAT",
+                                        "size":  632,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "MAT32",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\MAT32.BIN",
+                      "count":  1,
+                      "bytes":  716,
+                      "items":  [
+                                    {
+                                        "name":  "S001M32.MAT",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001M32.MAT",
+                                        "size":  632,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "MAT64",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\MAT64.BIN",
+                      "count":  1,
+                      "bytes":  716,
+                      "items":  [
+                                    {
+                                        "name":  "S001M64.MAT",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\S001M64.MAT",
+                                        "size":  632,
+                                        "offset":  84
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "TGA8",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TGA8.BIN",
+                      "count":  68,
+                      "bytes":  17571,
+                      "items":  [
+                                    {
+                                        "name":  "F001_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F001_8.TGA",
+                                        "size":  132,
+                                        "offset":  4908
+                                    },
+                                    {
+                                        "name":  "F002_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F002_8.TGA",
+                                        "size":  147,
+                                        "offset":  5040
+                                    },
+                                    {
+                                        "name":  "F003_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F003_8.TGA",
+                                        "size":  135,
+                                        "offset":  5187
+                                    },
+                                    {
+                                        "name":  "F004_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F004_8.TGA",
+                                        "size":  135,
+                                        "offset":  5322
+                                    },
+                                    {
+                                        "name":  "F005_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F005_8.TGA",
+                                        "size":  135,
+                                        "offset":  5457
+                                    },
+                                    {
+                                        "name":  "F006_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F006_8.TGA",
+                                        "size":  135,
+                                        "offset":  5592
+                                    },
+                                    {
+                                        "name":  "F007_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F007_8.TGA",
+                                        "size":  135,
+                                        "offset":  5727
+                                    },
+                                    {
+                                        "name":  "F008_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F008_8.TGA",
+                                        "size":  156,
+                                        "offset":  5862
+                                    },
+                                    {
+                                        "name":  "F009_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F009_8.TGA",
+                                        "size":  156,
+                                        "offset":  6018
+                                    },
+                                    {
+                                        "name":  "F010_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F010_8.TGA",
+                                        "size":  141,
+                                        "offset":  6174
+                                    },
+                                    {
+                                        "name":  "F011_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F011_8.TGA",
+                                        "size":  108,
+                                        "offset":  6315
+                                    },
+                                    {
+                                        "name":  "F012_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F012_8.TGA",
+                                        "size":  119,
+                                        "offset":  6423
+                                    },
+                                    {
+                                        "name":  "F013_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F013_8.TGA",
+                                        "size":  153,
+                                        "offset":  6542
+                                    },
+                                    {
+                                        "name":  "F014_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F014_8.TGA",
+                                        "size":  156,
+                                        "offset":  6695
+                                    },
+                                    {
+                                        "name":  "F015_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F015_8.TGA",
+                                        "size":  93,
+                                        "offset":  6851
+                                    },
+                                    {
+                                        "name":  "F016_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F016_8.TGA",
+                                        "size":  87,
+                                        "offset":  6944
+                                    },
+                                    {
+                                        "name":  "F017_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F017_8.TGA",
+                                        "size":  108,
+                                        "offset":  7031
+                                    },
+                                    {
+                                        "name":  "F018_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F018_8.TGA",
+                                        "size":  135,
+                                        "offset":  7139
+                                    },
+                                    {
+                                        "name":  "F019_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F019_8.TGA",
+                                        "size":  144,
+                                        "offset":  7274
+                                    },
+                                    {
+                                        "name":  "F020_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F020_8.TGA",
+                                        "size":  108,
+                                        "offset":  7418
+                                    },
+                                    {
+                                        "name":  "F021_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F021_8.TGA",
+                                        "size":  156,
+                                        "offset":  7526
+                                    },
+                                    {
+                                        "name":  "F022_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F022_8.TGA",
+                                        "size":  156,
+                                        "offset":  7682
+                                    },
+                                    {
+                                        "name":  "F023_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F023_8.TGA",
+                                        "size":  135,
+                                        "offset":  7838
+                                    },
+                                    {
+                                        "name":  "F024_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F024_8.TGA",
+                                        "size":  135,
+                                        "offset":  7973
+                                    },
+                                    {
+                                        "name":  "F025_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F025_8.TGA",
+                                        "size":  156,
+                                        "offset":  8108
+                                    },
+                                    {
+                                        "name":  "F026_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F026_8.TGA",
+                                        "size":  135,
+                                        "offset":  8264
+                                    },
+                                    {
+                                        "name":  "F027_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F027_8.TGA",
+                                        "size":  135,
+                                        "offset":  8399
+                                    },
+                                    {
+                                        "name":  "F028_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F028_8.TGA",
+                                        "size":  106,
+                                        "offset":  8534
+                                    },
+                                    {
+                                        "name":  "F029_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F029_8.TGA",
+                                        "size":  135,
+                                        "offset":  8640
+                                    },
+                                    {
+                                        "name":  "F030_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F030_8.TGA",
+                                        "size":  150,
+                                        "offset":  8775
+                                    },
+                                    {
+                                        "name":  "F031_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F031_8.TGA",
+                                        "size":  156,
+                                        "offset":  8925
+                                    },
+                                    {
+                                        "name":  "F032_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F032_8.TGA",
+                                        "size":  135,
+                                        "offset":  9081
+                                    },
+                                    {
+                                        "name":  "F033_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F033_8.TGA",
+                                        "size":  105,
+                                        "offset":  9216
+                                    },
+                                    {
+                                        "name":  "F034_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F034_8.TGA",
+                                        "size":  135,
+                                        "offset":  9321
+                                    },
+                                    {
+                                        "name":  "F035_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F035_8.TGA",
+                                        "size":  90,
+                                        "offset":  9456
+                                    },
+                                    {
+                                        "name":  "F036_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F036_8.TGA",
+                                        "size":  97,
+                                        "offset":  9546
+                                    },
+                                    {
+                                        "name":  "F037_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F037_8.TGA",
+                                        "size":  108,
+                                        "offset":  9643
+                                    },
+                                    {
+                                        "name":  "F038_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F038_8.TGA",
+                                        "size":  84,
+                                        "offset":  9751
+                                    },
+                                    {
+                                        "name":  "F039_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F039_8.TGA",
+                                        "size":  87,
+                                        "offset":  9835
+                                    },
+                                    {
+                                        "name":  "F040_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F040_8.TGA",
+                                        "size":  94,
+                                        "offset":  9922
+                                    },
+                                    {
+                                        "name":  "F041_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F041_8.TGA",
+                                        "size":  156,
+                                        "offset":  10016
+                                    },
+                                    {
+                                        "name":  "F042_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F042_8.TGA",
+                                        "size":  156,
+                                        "offset":  10172
+                                    },
+                                    {
+                                        "name":  "F043_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F043_8.TGA",
+                                        "size":  156,
+                                        "offset":  10328
+                                    },
+                                    {
+                                        "name":  "F044_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F044_8.TGA",
+                                        "size":  116,
+                                        "offset":  10484
+                                    },
+                                    {
+                                        "name":  "F045_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F045_8.TGA",
+                                        "size":  103,
+                                        "offset":  10600
+                                    },
+                                    {
+                                        "name":  "F046_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F046_8.TGA",
+                                        "size":  156,
+                                        "offset":  10703
+                                    },
+                                    {
+                                        "name":  "F047_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F047_8.TGA",
+                                        "size":  150,
+                                        "offset":  10859
+                                    },
+                                    {
+                                        "name":  "F048_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F048_8.TGA",
+                                        "size":  135,
+                                        "offset":  11009
+                                    },
+                                    {
+                                        "name":  "F049_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F049_8.TGA",
+                                        "size":  108,
+                                        "offset":  11144
+                                    },
+                                    {
+                                        "name":  "F050_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F050_8.TGA",
+                                        "size":  99,
+                                        "offset":  11252
+                                    },
+                                    {
+                                        "name":  "F051_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F051_8.TGA",
+                                        "size":  135,
+                                        "offset":  11351
+                                    },
+                                    {
+                                        "name":  "F052_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F052_8.TGA",
+                                        "size":  135,
+                                        "offset":  11486
+                                    },
+                                    {
+                                        "name":  "F053_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F053_8.TGA",
+                                        "size":  135,
+                                        "offset":  11621
+                                    },
+                                    {
+                                        "name":  "F054_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F054_8.TGA",
+                                        "size":  135,
+                                        "offset":  11756
+                                    },
+                                    {
+                                        "name":  "F055_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F055_8.TGA",
+                                        "size":  108,
+                                        "offset":  11891
+                                    },
+                                    {
+                                        "name":  "F056_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F056_8.TGA",
+                                        "size":  562,
+                                        "offset":  11999
+                                    },
+                                    {
+                                        "name":  "F057_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F057_8.TGA",
+                                        "size":  562,
+                                        "offset":  12561
+                                    },
+                                    {
+                                        "name":  "F058_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F058_8.TGA",
+                                        "size":  114,
+                                        "offset":  13123
+                                    },
+                                    {
+                                        "name":  "F059_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F059_8.TGA",
+                                        "size":  156,
+                                        "offset":  13237
+                                    },
+                                    {
+                                        "name":  "F060_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F060_8.TGA",
+                                        "size":  156,
+                                        "offset":  13393
+                                    },
+                                    {
+                                        "name":  "F061_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F061_8.TGA",
+                                        "size":  156,
+                                        "offset":  13549
+                                    },
+                                    {
+                                        "name":  "F062_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F062_8.TGA",
+                                        "size":  156,
+                                        "offset":  13705
+                                    },
+                                    {
+                                        "name":  "F063_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F063_8.TGA",
+                                        "size":  156,
+                                        "offset":  13861
+                                    },
+                                    {
+                                        "name":  "F064_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F064_8.TGA",
+                                        "size":  135,
+                                        "offset":  14017
+                                    },
+                                    {
+                                        "name":  "F065_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F065_8.TGA",
+                                        "size":  604,
+                                        "offset":  14152
+                                    },
+                                    {
+                                        "name":  "F066_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F066_8.TGA",
+                                        "size":  604,
+                                        "offset":  14756
+                                    },
+                                    {
+                                        "name":  "F067_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F067_8.TGA",
+                                        "size":  1095,
+                                        "offset":  15360
+                                    },
+                                    {
+                                        "name":  "F068_8.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F068_8.TGA",
+                                        "size":  1116,
+                                        "offset":  16455
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "TGA16",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TGA16.BIN",
+                      "count":  68,
+                      "bytes":  26404,
+                      "items":  [
+                                    {
+                                        "name":  "F001_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F001_16.TGA",
+                                        "size":  324,
+                                        "offset":  4908
+                                    },
+                                    {
+                                        "name":  "F002_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F002_16.TGA",
+                                        "size":  336,
+                                        "offset":  5232
+                                    },
+                                    {
+                                        "name":  "F003_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F003_16.TGA",
+                                        "size":  327,
+                                        "offset":  5568
+                                    },
+                                    {
+                                        "name":  "F004_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F004_16.TGA",
+                                        "size":  327,
+                                        "offset":  5895
+                                    },
+                                    {
+                                        "name":  "F005_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F005_16.TGA",
+                                        "size":  327,
+                                        "offset":  6222
+                                    },
+                                    {
+                                        "name":  "F006_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F006_16.TGA",
+                                        "size":  327,
+                                        "offset":  6549
+                                    },
+                                    {
+                                        "name":  "F007_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F007_16.TGA",
+                                        "size":  327,
+                                        "offset":  6876
+                                    },
+                                    {
+                                        "name":  "F008_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F008_16.TGA",
+                                        "size":  348,
+                                        "offset":  7203
+                                    },
+                                    {
+                                        "name":  "F009_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F009_16.TGA",
+                                        "size":  348,
+                                        "offset":  7551
+                                    },
+                                    {
+                                        "name":  "F010_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F010_16.TGA",
+                                        "size":  333,
+                                        "offset":  7899
+                                    },
+                                    {
+                                        "name":  "F011_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F011_16.TGA",
+                                        "size":  188,
+                                        "offset":  8232
+                                    },
+                                    {
+                                        "name":  "F012_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F012_16.TGA",
+                                        "size":  263,
+                                        "offset":  8420
+                                    },
+                                    {
+                                        "name":  "F013_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F013_16.TGA",
+                                        "size":  345,
+                                        "offset":  8683
+                                    },
+                                    {
+                                        "name":  "F014_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F014_16.TGA",
+                                        "size":  348,
+                                        "offset":  9028
+                                    },
+                                    {
+                                        "name":  "F015_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F015_16.TGA",
+                                        "size":  141,
+                                        "offset":  9376
+                                    },
+                                    {
+                                        "name":  "F016_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F016_16.TGA",
+                                        "size":  135,
+                                        "offset":  9517
+                                    },
+                                    {
+                                        "name":  "F017_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F017_16.TGA",
+                                        "size":  156,
+                                        "offset":  9652
+                                    },
+                                    {
+                                        "name":  "F018_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F018_16.TGA",
+                                        "size":  327,
+                                        "offset":  9808
+                                    },
+                                    {
+                                        "name":  "F019_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F019_16.TGA",
+                                        "size":  336,
+                                        "offset":  10135
+                                    },
+                                    {
+                                        "name":  "F020_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F020_16.TGA",
+                                        "size":  156,
+                                        "offset":  10471
+                                    },
+                                    {
+                                        "name":  "F021_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F021_16.TGA",
+                                        "size":  348,
+                                        "offset":  10627
+                                    },
+                                    {
+                                        "name":  "F022_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F022_16.TGA",
+                                        "size":  348,
+                                        "offset":  10975
+                                    },
+                                    {
+                                        "name":  "F023_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F023_16.TGA",
+                                        "size":  327,
+                                        "offset":  11323
+                                    },
+                                    {
+                                        "name":  "F024_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F024_16.TGA",
+                                        "size":  327,
+                                        "offset":  11650
+                                    },
+                                    {
+                                        "name":  "F025_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F025_16.TGA",
+                                        "size":  156,
+                                        "offset":  11977
+                                    },
+                                    {
+                                        "name":  "F026_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F026_16.TGA",
+                                        "size":  327,
+                                        "offset":  12133
+                                    },
+                                    {
+                                        "name":  "F027_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F027_16.TGA",
+                                        "size":  327,
+                                        "offset":  12460
+                                    },
+                                    {
+                                        "name":  "F028_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F028_16.TGA",
+                                        "size":  202,
+                                        "offset":  12787
+                                    },
+                                    {
+                                        "name":  "F029_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F029_16.TGA",
+                                        "size":  327,
+                                        "offset":  12989
+                                    },
+                                    {
+                                        "name":  "F030_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F030_16.TGA",
+                                        "size":  342,
+                                        "offset":  13316
+                                    },
+                                    {
+                                        "name":  "F031_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F031_16.TGA",
+                                        "size":  348,
+                                        "offset":  13658
+                                    },
+                                    {
+                                        "name":  "F032_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F032_16.TGA",
+                                        "size":  327,
+                                        "offset":  14006
+                                    },
+                                    {
+                                        "name":  "F033_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F033_16.TGA",
+                                        "size":  185,
+                                        "offset":  14333
+                                    },
+                                    {
+                                        "name":  "F034_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F034_16.TGA",
+                                        "size":  327,
+                                        "offset":  14518
+                                    },
+                                    {
+                                        "name":  "F035_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F035_16.TGA",
+                                        "size":  138,
+                                        "offset":  14845
+                                    },
+                                    {
+                                        "name":  "F036_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F036_16.TGA",
+                                        "size":  121,
+                                        "offset":  14983
+                                    },
+                                    {
+                                        "name":  "F037_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F037_16.TGA",
+                                        "size":  188,
+                                        "offset":  15104
+                                    },
+                                    {
+                                        "name":  "F038_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F038_16.TGA",
+                                        "size":  132,
+                                        "offset":  15292
+                                    },
+                                    {
+                                        "name":  "F039_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F039_16.TGA",
+                                        "size":  135,
+                                        "offset":  15424
+                                    },
+                                    {
+                                        "name":  "F040_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F040_16.TGA",
+                                        "size":  190,
+                                        "offset":  15559
+                                    },
+                                    {
+                                        "name":  "F041_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F041_16.TGA",
+                                        "size":  348,
+                                        "offset":  15749
+                                    },
+                                    {
+                                        "name":  "F042_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F042_16.TGA",
+                                        "size":  348,
+                                        "offset":  16097
+                                    },
+                                    {
+                                        "name":  "F043_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F043_16.TGA",
+                                        "size":  348,
+                                        "offset":  16445
+                                    },
+                                    {
+                                        "name":  "F044_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F044_16.TGA",
+                                        "size":  252,
+                                        "offset":  16793
+                                    },
+                                    {
+                                        "name":  "F045_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F045_16.TGA",
+                                        "size":  199,
+                                        "offset":  17045
+                                    },
+                                    {
+                                        "name":  "F046_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F046_16.TGA",
+                                        "size":  348,
+                                        "offset":  17244
+                                    },
+                                    {
+                                        "name":  "F047_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F047_16.TGA",
+                                        "size":  342,
+                                        "offset":  17592
+                                    },
+                                    {
+                                        "name":  "F048_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F048_16.TGA",
+                                        "size":  327,
+                                        "offset":  17934
+                                    },
+                                    {
+                                        "name":  "F049_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F049_16.TGA",
+                                        "size":  156,
+                                        "offset":  18261
+                                    },
+                                    {
+                                        "name":  "F050_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F050_16.TGA",
+                                        "size":  183,
+                                        "offset":  18417
+                                    },
+                                    {
+                                        "name":  "F051_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F051_16.TGA",
+                                        "size":  135,
+                                        "offset":  18600
+                                    },
+                                    {
+                                        "name":  "F052_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F052_16.TGA",
+                                        "size":  327,
+                                        "offset":  18735
+                                    },
+                                    {
+                                        "name":  "F053_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F053_16.TGA",
+                                        "size":  327,
+                                        "offset":  19062
+                                    },
+                                    {
+                                        "name":  "F054_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F054_16.TGA",
+                                        "size":  327,
+                                        "offset":  19389
+                                    },
+                                    {
+                                        "name":  "F055_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F055_16.TGA",
+                                        "size":  156,
+                                        "offset":  19716
+                                    },
+                                    {
+                                        "name":  "F056_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F056_16.TGA",
+                                        "size":  562,
+                                        "offset":  19872
+                                    },
+                                    {
+                                        "name":  "F057_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F057_16.TGA",
+                                        "size":  562,
+                                        "offset":  20434
+                                    },
+                                    {
+                                        "name":  "F058_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F058_16.TGA",
+                                        "size":  114,
+                                        "offset":  20996
+                                    },
+                                    {
+                                        "name":  "F059_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F059_16.TGA",
+                                        "size":  348,
+                                        "offset":  21110
+                                    },
+                                    {
+                                        "name":  "F060_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F060_16.TGA",
+                                        "size":  348,
+                                        "offset":  21458
+                                    },
+                                    {
+                                        "name":  "F061_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F061_16.TGA",
+                                        "size":  348,
+                                        "offset":  21806
+                                    },
+                                    {
+                                        "name":  "F062_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F062_16.TGA",
+                                        "size":  348,
+                                        "offset":  22154
+                                    },
+                                    {
+                                        "name":  "F063_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F063_16.TGA",
+                                        "size":  348,
+                                        "offset":  22502
+                                    },
+                                    {
+                                        "name":  "F064_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F064_16.TGA",
+                                        "size":  135,
+                                        "offset":  22850
+                                    },
+                                    {
+                                        "name":  "F065_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F065_16.TGA",
+                                        "size":  604,
+                                        "offset":  22985
+                                    },
+                                    {
+                                        "name":  "F066_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F066_16.TGA",
+                                        "size":  604,
+                                        "offset":  23589
+                                    },
+                                    {
+                                        "name":  "F067_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F067_16.TGA",
+                                        "size":  1095,
+                                        "offset":  24193
+                                    },
+                                    {
+                                        "name":  "F068_16.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F068_16.TGA",
+                                        "size":  1116,
+                                        "offset":  25288
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "TGA32",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TGA32.BIN",
+                      "count":  68,
+                      "bytes":  62551,
+                      "items":  [
+                                    {
+                                        "name":  "F001_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F001_32.TGA",
+                                        "size":  1095,
+                                        "offset":  4908
+                                    },
+                                    {
+                                        "name":  "F002_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F002_32.TGA",
+                                        "size":  1104,
+                                        "offset":  6003
+                                    },
+                                    {
+                                        "name":  "F003_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F003_32.TGA",
+                                        "size":  1095,
+                                        "offset":  7107
+                                    },
+                                    {
+                                        "name":  "F004_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F004_32.TGA",
+                                        "size":  1095,
+                                        "offset":  8202
+                                    },
+                                    {
+                                        "name":  "F005_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F005_32.TGA",
+                                        "size":  1095,
+                                        "offset":  9297
+                                    },
+                                    {
+                                        "name":  "F006_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F006_32.TGA",
+                                        "size":  1095,
+                                        "offset":  10392
+                                    },
+                                    {
+                                        "name":  "F007_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F007_32.TGA",
+                                        "size":  1095,
+                                        "offset":  11487
+                                    },
+                                    {
+                                        "name":  "F008_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F008_32.TGA",
+                                        "size":  1116,
+                                        "offset":  12582
+                                    },
+                                    {
+                                        "name":  "F009_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F009_32.TGA",
+                                        "size":  1116,
+                                        "offset":  13698
+                                    },
+                                    {
+                                        "name":  "F010_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F010_32.TGA",
+                                        "size":  1101,
+                                        "offset":  14814
+                                    },
+                                    {
+                                        "name":  "F011_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F011_32.TGA",
+                                        "size":  476,
+                                        "offset":  15915
+                                    },
+                                    {
+                                        "name":  "F012_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F012_32.TGA",
+                                        "size":  775,
+                                        "offset":  16391
+                                    },
+                                    {
+                                        "name":  "F013_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F013_32.TGA",
+                                        "size":  1113,
+                                        "offset":  17166
+                                    },
+                                    {
+                                        "name":  "F014_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F014_32.TGA",
+                                        "size":  1116,
+                                        "offset":  18279
+                                    },
+                                    {
+                                        "name":  "F015_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F015_32.TGA",
+                                        "size":  333,
+                                        "offset":  19395
+                                    },
+                                    {
+                                        "name":  "F016_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F016_32.TGA",
+                                        "size":  327,
+                                        "offset":  19728
+                                    },
+                                    {
+                                        "name":  "F017_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F017_32.TGA",
+                                        "size":  412,
+                                        "offset":  20055
+                                    },
+                                    {
+                                        "name":  "F018_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F018_32.TGA",
+                                        "size":  1095,
+                                        "offset":  20467
+                                    },
+                                    {
+                                        "name":  "F019_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F019_32.TGA",
+                                        "size":  1104,
+                                        "offset":  21562
+                                    },
+                                    {
+                                        "name":  "F020_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F020_32.TGA",
+                                        "size":  348,
+                                        "offset":  22666
+                                    },
+                                    {
+                                        "name":  "F021_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F021_32.TGA",
+                                        "size":  1116,
+                                        "offset":  23014
+                                    },
+                                    {
+                                        "name":  "F022_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F022_32.TGA",
+                                        "size":  1116,
+                                        "offset":  24130
+                                    },
+                                    {
+                                        "name":  "F023_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F023_32.TGA",
+                                        "size":  1095,
+                                        "offset":  25246
+                                    },
+                                    {
+                                        "name":  "F024_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F024_32.TGA",
+                                        "size":  1095,
+                                        "offset":  26341
+                                    },
+                                    {
+                                        "name":  "F025_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F025_32.TGA",
+                                        "size":  1116,
+                                        "offset":  27436
+                                    },
+                                    {
+                                        "name":  "F026_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F026_32.TGA",
+                                        "size":  1095,
+                                        "offset":  28552
+                                    },
+                                    {
+                                        "name":  "F027_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F027_32.TGA",
+                                        "size":  1095,
+                                        "offset":  29647
+                                    },
+                                    {
+                                        "name":  "F028_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F028_32.TGA",
+                                        "size":  522,
+                                        "offset":  30742
+                                    },
+                                    {
+                                        "name":  "F029_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F029_32.TGA",
+                                        "size":  1095,
+                                        "offset":  31264
+                                    },
+                                    {
+                                        "name":  "F030_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F030_32.TGA",
+                                        "size":  1110,
+                                        "offset":  32359
+                                    },
+                                    {
+                                        "name":  "F031_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F031_32.TGA",
+                                        "size":  1116,
+                                        "offset":  33469
+                                    },
+                                    {
+                                        "name":  "F032_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F032_32.TGA",
+                                        "size":  1095,
+                                        "offset":  34585
+                                    },
+                                    {
+                                        "name":  "F033_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F033_32.TGA",
+                                        "size":  473,
+                                        "offset":  35680
+                                    },
+                                    {
+                                        "name":  "F034_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F034_32.TGA",
+                                        "size":  1095,
+                                        "offset":  36153
+                                    },
+                                    {
+                                        "name":  "F035_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F035_32.TGA",
+                                        "size":  266,
+                                        "offset":  37248
+                                    },
+                                    {
+                                        "name":  "F036_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F036_32.TGA",
+                                        "size":  217,
+                                        "offset":  37514
+                                    },
+                                    {
+                                        "name":  "F037_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F037_32.TGA",
+                                        "size":  412,
+                                        "offset":  37731
+                                    },
+                                    {
+                                        "name":  "F038_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F038_32.TGA",
+                                        "size":  324,
+                                        "offset":  38143
+                                    },
+                                    {
+                                        "name":  "F039_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F039_32.TGA",
+                                        "size":  327,
+                                        "offset":  38467
+                                    },
+                                    {
+                                        "name":  "F040_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F040_32.TGA",
+                                        "size":  510,
+                                        "offset":  38794
+                                    },
+                                    {
+                                        "name":  "F041_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F041_32.TGA",
+                                        "size":  1116,
+                                        "offset":  39304
+                                    },
+                                    {
+                                        "name":  "F042_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F042_32.TGA",
+                                        "size":  1116,
+                                        "offset":  40420
+                                    },
+                                    {
+                                        "name":  "F043_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F043_32.TGA",
+                                        "size":  1116,
+                                        "offset":  41536
+                                    },
+                                    {
+                                        "name":  "F044_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F044_32.TGA",
+                                        "size":  796,
+                                        "offset":  42652
+                                    },
+                                    {
+                                        "name":  "F045_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F045_32.TGA",
+                                        "size":  647,
+                                        "offset":  43448
+                                    },
+                                    {
+                                        "name":  "F046_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F046_32.TGA",
+                                        "size":  1116,
+                                        "offset":  44095
+                                    },
+                                    {
+                                        "name":  "F047_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F047_32.TGA",
+                                        "size":  1110,
+                                        "offset":  45211
+                                    },
+                                    {
+                                        "name":  "F048_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F048_32.TGA",
+                                        "size":  1095,
+                                        "offset":  46321
+                                    },
+                                    {
+                                        "name":  "F049_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F049_32.TGA",
+                                        "size":  348,
+                                        "offset":  47416
+                                    },
+                                    {
+                                        "name":  "F050_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F050_32.TGA",
+                                        "size":  647,
+                                        "offset":  47764
+                                    },
+                                    {
+                                        "name":  "F051_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F051_32.TGA",
+                                        "size":  135,
+                                        "offset":  48411
+                                    },
+                                    {
+                                        "name":  "F052_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F052_32.TGA",
+                                        "size":  1095,
+                                        "offset":  48546
+                                    },
+                                    {
+                                        "name":  "F053_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F053_32.TGA",
+                                        "size":  1095,
+                                        "offset":  49641
+                                    },
+                                    {
+                                        "name":  "F054_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F054_32.TGA",
+                                        "size":  1095,
+                                        "offset":  50736
+                                    },
+                                    {
+                                        "name":  "F055_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F055_32.TGA",
+                                        "size":  348,
+                                        "offset":  51831
+                                    },
+                                    {
+                                        "name":  "F056_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F056_32.TGA",
+                                        "size":  562,
+                                        "offset":  52179
+                                    },
+                                    {
+                                        "name":  "F057_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F057_32.TGA",
+                                        "size":  562,
+                                        "offset":  52741
+                                    },
+                                    {
+                                        "name":  "F058_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F058_32.TGA",
+                                        "size":  114,
+                                        "offset":  53303
+                                    },
+                                    {
+                                        "name":  "F059_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F059_32.TGA",
+                                        "size":  1116,
+                                        "offset":  53417
+                                    },
+                                    {
+                                        "name":  "F060_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F060_32.TGA",
+                                        "size":  1116,
+                                        "offset":  54533
+                                    },
+                                    {
+                                        "name":  "F061_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F061_32.TGA",
+                                        "size":  1116,
+                                        "offset":  55649
+                                    },
+                                    {
+                                        "name":  "F062_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F062_32.TGA",
+                                        "size":  1116,
+                                        "offset":  56765
+                                    },
+                                    {
+                                        "name":  "F063_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F063_32.TGA",
+                                        "size":  1116,
+                                        "offset":  57881
+                                    },
+                                    {
+                                        "name":  "F064_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F064_32.TGA",
+                                        "size":  135,
+                                        "offset":  58997
+                                    },
+                                    {
+                                        "name":  "F065_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F065_32.TGA",
+                                        "size":  604,
+                                        "offset":  59132
+                                    },
+                                    {
+                                        "name":  "F066_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F066_32.TGA",
+                                        "size":  604,
+                                        "offset":  59736
+                                    },
+                                    {
+                                        "name":  "F067_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F067_32.TGA",
+                                        "size":  1095,
+                                        "offset":  60340
+                                    },
+                                    {
+                                        "name":  "F068_32.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F068_32.TGA",
+                                        "size":  1116,
+                                        "offset":  61435
+                                    }
+                                ]
+                  },
+                  {
+                      "type":  "TGA64",
+                      "out":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\cd\\data\\TGA64.BIN",
+                      "count":  68,
+                      "bytes":  205975,
+                      "items":  [
+                                    {
+                                        "name":  "F001_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F001_64.TGA",
+                                        "size":  4167,
+                                        "offset":  4908
+                                    },
+                                    {
+                                        "name":  "F002_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F002_64.TGA",
+                                        "size":  4176,
+                                        "offset":  9075
+                                    },
+                                    {
+                                        "name":  "F003_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F003_64.TGA",
+                                        "size":  4167,
+                                        "offset":  13251
+                                    },
+                                    {
+                                        "name":  "F004_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F004_64.TGA",
+                                        "size":  4167,
+                                        "offset":  17418
+                                    },
+                                    {
+                                        "name":  "F005_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F005_64.TGA",
+                                        "size":  4167,
+                                        "offset":  21585
+                                    },
+                                    {
+                                        "name":  "F006_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F006_64.TGA",
+                                        "size":  4167,
+                                        "offset":  25752
+                                    },
+                                    {
+                                        "name":  "F007_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F007_64.TGA",
+                                        "size":  4167,
+                                        "offset":  29919
+                                    },
+                                    {
+                                        "name":  "F008_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F008_64.TGA",
+                                        "size":  4188,
+                                        "offset":  34086
+                                    },
+                                    {
+                                        "name":  "F009_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F009_64.TGA",
+                                        "size":  4188,
+                                        "offset":  38274
+                                    },
+                                    {
+                                        "name":  "F010_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F010_64.TGA",
+                                        "size":  4173,
+                                        "offset":  42462
+                                    },
+                                    {
+                                        "name":  "F011_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F011_64.TGA",
+                                        "size":  1756,
+                                        "offset":  46635
+                                    },
+                                    {
+                                        "name":  "F012_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F012_64.TGA",
+                                        "size":  2887,
+                                        "offset":  48391
+                                    },
+                                    {
+                                        "name":  "F013_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F013_64.TGA",
+                                        "size":  4185,
+                                        "offset":  51278
+                                    },
+                                    {
+                                        "name":  "F014_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F014_64.TGA",
+                                        "size":  4188,
+                                        "offset":  55463
+                                    },
+                                    {
+                                        "name":  "F015_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F015_64.TGA",
+                                        "size":  1101,
+                                        "offset":  59651
+                                    },
+                                    {
+                                        "name":  "F016_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F016_64.TGA",
+                                        "size":  1095,
+                                        "offset":  60752
+                                    },
+                                    {
+                                        "name":  "F017_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F017_64.TGA",
+                                        "size":  1372,
+                                        "offset":  61847
+                                    },
+                                    {
+                                        "name":  "F018_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F018_64.TGA",
+                                        "size":  4167,
+                                        "offset":  63219
+                                    },
+                                    {
+                                        "name":  "F019_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F019_64.TGA",
+                                        "size":  4176,
+                                        "offset":  67386
+                                    },
+                                    {
+                                        "name":  "F020_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F020_64.TGA",
+                                        "size":  732,
+                                        "offset":  71562
+                                    },
+                                    {
+                                        "name":  "F021_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F021_64.TGA",
+                                        "size":  4188,
+                                        "offset":  72294
+                                    },
+                                    {
+                                        "name":  "F022_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F022_64.TGA",
+                                        "size":  4188,
+                                        "offset":  76482
+                                    },
+                                    {
+                                        "name":  "F023_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F023_64.TGA",
+                                        "size":  4167,
+                                        "offset":  80670
+                                    },
+                                    {
+                                        "name":  "F024_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F024_64.TGA",
+                                        "size":  4167,
+                                        "offset":  84837
+                                    },
+                                    {
+                                        "name":  "F025_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F025_64.TGA",
+                                        "size":  4188,
+                                        "offset":  89004
+                                    },
+                                    {
+                                        "name":  "F026_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F026_64.TGA",
+                                        "size":  4167,
+                                        "offset":  93192
+                                    },
+                                    {
+                                        "name":  "F027_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F027_64.TGA",
+                                        "size":  4167,
+                                        "offset":  97359
+                                    },
+                                    {
+                                        "name":  "F028_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F028_64.TGA",
+                                        "size":  1866,
+                                        "offset":  101526
+                                    },
+                                    {
+                                        "name":  "F029_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F029_64.TGA",
+                                        "size":  4167,
+                                        "offset":  103392
+                                    },
+                                    {
+                                        "name":  "F030_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F030_64.TGA",
+                                        "size":  4182,
+                                        "offset":  107559
+                                    },
+                                    {
+                                        "name":  "F031_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F031_64.TGA",
+                                        "size":  4188,
+                                        "offset":  111741
+                                    },
+                                    {
+                                        "name":  "F032_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F032_64.TGA",
+                                        "size":  4167,
+                                        "offset":  115929
+                                    },
+                                    {
+                                        "name":  "F033_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F033_64.TGA",
+                                        "size":  1625,
+                                        "offset":  120096
+                                    },
+                                    {
+                                        "name":  "F034_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F034_64.TGA",
+                                        "size":  4167,
+                                        "offset":  121721
+                                    },
+                                    {
+                                        "name":  "F035_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F035_64.TGA",
+                                        "size":  842,
+                                        "offset":  125888
+                                    },
+                                    {
+                                        "name":  "F036_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F036_64.TGA",
+                                        "size":  601,
+                                        "offset":  126730
+                                    },
+                                    {
+                                        "name":  "F037_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F037_64.TGA",
+                                        "size":  1372,
+                                        "offset":  127331
+                                    },
+                                    {
+                                        "name":  "F038_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F038_64.TGA",
+                                        "size":  964,
+                                        "offset":  128703
+                                    },
+                                    {
+                                        "name":  "F039_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F039_64.TGA",
+                                        "size":  967,
+                                        "offset":  129667
+                                    },
+                                    {
+                                        "name":  "F040_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F040_64.TGA",
+                                        "size":  1854,
+                                        "offset":  130634
+                                    },
+                                    {
+                                        "name":  "F041_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F041_64.TGA",
+                                        "size":  4188,
+                                        "offset":  132488
+                                    },
+                                    {
+                                        "name":  "F042_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F042_64.TGA",
+                                        "size":  4188,
+                                        "offset":  136676
+                                    },
+                                    {
+                                        "name":  "F043_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F043_64.TGA",
+                                        "size":  4188,
+                                        "offset":  140864
+                                    },
+                                    {
+                                        "name":  "F044_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F044_64.TGA",
+                                        "size":  3036,
+                                        "offset":  145052
+                                    },
+                                    {
+                                        "name":  "F045_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F045_64.TGA",
+                                        "size":  2375,
+                                        "offset":  148088
+                                    },
+                                    {
+                                        "name":  "F046_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F046_64.TGA",
+                                        "size":  4188,
+                                        "offset":  150463
+                                    },
+                                    {
+                                        "name":  "F047_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F047_64.TGA",
+                                        "size":  4182,
+                                        "offset":  154651
+                                    },
+                                    {
+                                        "name":  "F048_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F048_64.TGA",
+                                        "size":  4167,
+                                        "offset":  158833
+                                    },
+                                    {
+                                        "name":  "F049_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F049_64.TGA",
+                                        "size":  1116,
+                                        "offset":  163000
+                                    },
+                                    {
+                                        "name":  "F050_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F050_64.TGA",
+                                        "size":  2375,
+                                        "offset":  164116
+                                    },
+                                    {
+                                        "name":  "F051_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F051_64.TGA",
+                                        "size":  135,
+                                        "offset":  166491
+                                    },
+                                    {
+                                        "name":  "F052_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F052_64.TGA",
+                                        "size":  1095,
+                                        "offset":  166626
+                                    },
+                                    {
+                                        "name":  "F053_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F053_64.TGA",
+                                        "size":  4167,
+                                        "offset":  167721
+                                    },
+                                    {
+                                        "name":  "F054_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F054_64.TGA",
+                                        "size":  4167,
+                                        "offset":  171888
+                                    },
+                                    {
+                                        "name":  "F055_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F055_64.TGA",
+                                        "size":  1116,
+                                        "offset":  176055
+                                    },
+                                    {
+                                        "name":  "F056_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F056_64.TGA",
+                                        "size":  562,
+                                        "offset":  177171
+                                    },
+                                    {
+                                        "name":  "F057_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F057_64.TGA",
+                                        "size":  562,
+                                        "offset":  177733
+                                    },
+                                    {
+                                        "name":  "F058_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F058_64.TGA",
+                                        "size":  114,
+                                        "offset":  178295
+                                    },
+                                    {
+                                        "name":  "F059_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F059_64.TGA",
+                                        "size":  4188,
+                                        "offset":  178409
+                                    },
+                                    {
+                                        "name":  "F060_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F060_64.TGA",
+                                        "size":  4188,
+                                        "offset":  182597
+                                    },
+                                    {
+                                        "name":  "F061_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F061_64.TGA",
+                                        "size":  4188,
+                                        "offset":  186785
+                                    },
+                                    {
+                                        "name":  "F062_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F062_64.TGA",
+                                        "size":  4188,
+                                        "offset":  190973
+                                    },
+                                    {
+                                        "name":  "F063_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F063_64.TGA",
+                                        "size":  4188,
+                                        "offset":  195161
+                                    },
+                                    {
+                                        "name":  "F064_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F064_64.TGA",
+                                        "size":  135,
+                                        "offset":  199349
+                                    },
+                                    {
+                                        "name":  "F065_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F065_64.TGA",
+                                        "size":  604,
+                                        "offset":  199484
+                                    },
+                                    {
+                                        "name":  "F066_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F066_64.TGA",
+                                        "size":  604,
+                                        "offset":  200088
+                                    },
+                                    {
+                                        "name":  "F067_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F067_64.TGA",
+                                        "size":  4167,
+                                        "offset":  200692
+                                    },
+                                    {
+                                        "name":  "F068_64.TGA",
+                                        "path":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\_tmp_poc_pack\\F068_64.TGA",
+                                        "size":  1116,
+                                        "offset":  204859
+                                    }
+                                ]
+                  }
+              ]
+}
