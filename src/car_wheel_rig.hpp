@@ -59,6 +59,8 @@ private:
                                      std::array<size_t, 4>& outIds,
                                      size_t& outCount) const;
     void ClassifyWheels(const std::array<size_t, 4>& meshIds,
+                        ModelObject& model,
+                        bool isSmoothMesh,
                         const SRL::Math::Types::Vector3D* meshCenters,
                         bool preferMeshtexOrderFrontAxle);
     void ResetState();

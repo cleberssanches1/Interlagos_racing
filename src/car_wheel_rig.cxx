@@ -77,6 +77,69 @@ bool TryReadMeshStats(ModelObject& model,
     outVertexCount = static_cast<uint16_t>(mesh->VertexCount);
     return (mesh->FaceCount > 0u) && (mesh->VertexCount > 0u);
 }
+
+bool TryComputeWheelSizeScore(ModelObject& model,
+                              bool isSmoothMesh,
+                              size_t meshId,
+                              int64_t& outSizeScore)
+{
+    outSizeScore = 0;
+    int32_t minX = 0;
+    int32_t minY = 0;
+    int32_t minZ = 0;
+    int32_t maxX = 0;
+    int32_t maxY = 0;
+    int32_t maxZ = 0;
+    bool first = true;
+
+    auto accumulateVerts = [&](const SRL::Math::Types::Vector3D* verts, size_t count) -> bool
+    {
+        if (!verts || count == 0u) return false;
+        for (size_t i = 0; i < count; ++i)
+        {
+            const int32_t x = verts[i].X.RawValue();
+            const int32_t y = verts[i].Y.RawValue();
+            const int32_t z = verts[i].Z.RawValue();
+            if (first)
+            {
+                minX = maxX = x;
+                minY = maxY = y;
+                minZ = maxZ = z;
+                first = false;
+                continue;
+            }
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            if (z < minZ) minZ = z;
+            if (z > maxZ) maxZ = z;
+        }
+        return true;
+    };
+
+    if (isSmoothMesh)
+    {
+        auto* mesh = model.GetMesh<SRL::Types::SmoothMesh>(meshId);
+        if (!mesh || mesh->VertexCount == 0u || !mesh->Vertices) return false;
+        if (!accumulateVerts(mesh->Vertices, mesh->VertexCount)) return false;
+    }
+    else
+    {
+        auto* mesh = model.GetMesh<SRL::Types::Mesh>(meshId);
+        if (!mesh || mesh->VertexCount == 0u || !mesh->Vertices) return false;
+        if (!accumulateVerts(mesh->Vertices, mesh->VertexCount)) return false;
+    }
+
+    if (first) return false;
+
+    const int64_t dx = static_cast<int64_t>(maxX) - static_cast<int64_t>(minX);
+    const int64_t dy = static_cast<int64_t>(maxY) - static_cast<int64_t>(minY);
+    const int64_t dz = static_cast<int64_t>(maxZ) - static_cast<int64_t>(minZ);
+    // Diagonal^2 proxy: larger wheel mesh -> larger score.
+    outSizeScore = (dx * dx) + (dy * dy) + (dz * dz);
+    return true;
+}
 } // namespace
 
 bool CarWheelRig::Initialize(ModelObject& model,
@@ -109,7 +172,7 @@ bool CarWheelRig::Initialize(ModelObject& model,
         return false;
     }
 
-    ClassifyWheels(wheelIds, meshCenters, wheelIdsFromMeshtex);
+    ClassifyWheels(wheelIds, model, isSmoothMesh, meshCenters, wheelIdsFromMeshtex);
     wheelCount_ = 4u;
     return true;
 }
@@ -399,6 +462,8 @@ bool CarWheelRig::DetectWheelIdsFromMeshStats(ModelObject& model,
 }
 
 void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
+                                 ModelObject& model,
+                                 bool isSmoothMesh,
                                  const SRL::Math::Types::Vector3D* meshCenters,
                                  bool preferMeshtexOrderFrontAxle)
 {
@@ -406,6 +471,58 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
     std::array<size_t, 4> localIds{
         meshIds[0], meshIds[1], meshIds[2], meshIds[3]
     };
+
+    std::array<int64_t, 4> sizeScore{0, 0, 0, 0};
+    std::array<size_t, 4> sizeOrder{0u, 1u, 2u, 3u};
+    bool hasSizeScores = true;
+    for (size_t i = 0; i < 4u; ++i)
+    {
+        if (!TryComputeWheelSizeScore(model, isSmoothMesh, localIds[i], sizeScore[i]))
+        {
+            hasSizeScores = false;
+            break;
+        }
+    }
+    if (hasSizeScores)
+    {
+        std::sort(sizeOrder.begin(), sizeOrder.end(), [&](size_t a, size_t b)
+        {
+            if (sizeScore[a] != sizeScore[b]) return sizeScore[a] < sizeScore[b];
+            return localIds[a] < localIds[b];
+        });
+
+        const size_t f0 = sizeOrder[0];
+        const size_t f1 = sizeOrder[1];
+        const size_t r0 = sizeOrder[2];
+        const size_t r1 = sizeOrder[3];
+        const bool f0Left =
+            meshCenters[localIds[f0]].X.RawValue() <= meshCenters[localIds[f1]].X.RawValue();
+        const bool r0Left =
+            meshCenters[localIds[r0]].X.RawValue() <= meshCenters[localIds[r1]].X.RawValue();
+
+        const size_t fl = f0Left ? f0 : f1;
+        const size_t fr = f0Left ? f1 : f0;
+        const size_t rl = r0Left ? r0 : r1;
+        const size_t rr = r0Left ? r1 : r0;
+        const std::array<size_t, 4> mapped{fl, fr, rl, rr};
+
+        SRL::Debug::Print(1, 24, "WHL size f:%u/%u r:%u/%u",
+                          static_cast<unsigned>(localIds[fl]),
+                          static_cast<unsigned>(localIds[fr]),
+                          static_cast<unsigned>(localIds[rl]),
+                          static_cast<unsigned>(localIds[rr]));
+
+        for (size_t i = 0; i < 4u; ++i)
+        {
+            const size_t srcIdx = mapped[i];
+            const size_t meshId = localIds[srcIdx];
+            wheelMeshIds_[i] = meshId;
+            wheelSlots_[i].meshId = meshId;
+            wheelSlots_[i].center = meshCenters[meshId];
+            wheelSlots_[i].front = (i < 2u);
+        }
+        return;
+    }
 
     // Meshtex exports preserve wheel object order for this car:
     // roda1/roda2 = axle dianteiro, roda3/roda4 = traseiro.
@@ -421,7 +538,41 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
         const size_t fr = frontLeftFirst ? 1u : 0u;
         const size_t rl = rearLeftFirst ? 2u : 3u;
         const size_t rr = rearLeftFirst ? 3u : 2u;
-        const std::array<size_t, 4> mapped{fl, fr, rl, rr};
+
+        const int64_t carCenterXRaw =
+            (static_cast<int64_t>(meshCenters[localIds[fl]].X.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[fr]].X.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[rl]].X.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[rr]].X.RawValue())) / 4;
+        const int64_t carCenterZRaw =
+            (static_cast<int64_t>(meshCenters[localIds[fl]].Z.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[fr]].Z.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[rl]].Z.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[rr]].Z.RawValue())) / 4;
+        const auto axleScore = [&](size_t a, size_t b) -> int64_t
+        {
+            const int64_t midX =
+                (static_cast<int64_t>(meshCenters[localIds[a]].X.RawValue()) +
+                 static_cast<int64_t>(meshCenters[localIds[b]].X.RawValue())) / 2;
+            const int64_t midZ =
+                (static_cast<int64_t>(meshCenters[localIds[a]].Z.RawValue()) +
+                 static_cast<int64_t>(meshCenters[localIds[b]].Z.RawValue())) / 2;
+            const int64_t dx = midX - carCenterXRaw;
+            const int64_t dz = midZ - carCenterZRaw;
+            return (dx * dx) + (dz * dz);
+        };
+        const int64_t scorePairA = axleScore(fl, fr);
+        const int64_t scorePairB = axleScore(rl, rr);
+        const bool pairAIsFront = scorePairA <= scorePairB;
+        const std::array<size_t, 4> mapped =
+            pairAIsFront
+                ? std::array<size_t, 4>{fl, fr, rl, rr}
+                : std::array<size_t, 4>{rl, rr, fl, fr};
+        SRL::Debug::Print(1, 24, "WHL near pair:%c A:%ld B:%ld",
+                          pairAIsFront ? 'A' : 'B',
+                          static_cast<long>(scorePairA >> 16),
+                          static_cast<long>(scorePairB >> 16));
+
         for (size_t i = 0; i < 4u; ++i)
         {
             const size_t srcIdx = mapped[i];
@@ -454,7 +605,40 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
     const size_t rl = r0Left ? r0 : r1;
     const size_t rr = r0Left ? r1 : r0;
 
-    const std::array<size_t, 4> mapped{fl, fr, rl, rr};
+    const int64_t carCenterXRaw =
+        (static_cast<int64_t>(meshCenters[localIds[fl]].X.RawValue()) +
+         static_cast<int64_t>(meshCenters[localIds[fr]].X.RawValue()) +
+         static_cast<int64_t>(meshCenters[localIds[rl]].X.RawValue()) +
+         static_cast<int64_t>(meshCenters[localIds[rr]].X.RawValue())) / 4;
+    const int64_t carCenterZRaw =
+        (static_cast<int64_t>(meshCenters[localIds[fl]].Z.RawValue()) +
+         static_cast<int64_t>(meshCenters[localIds[fr]].Z.RawValue()) +
+         static_cast<int64_t>(meshCenters[localIds[rl]].Z.RawValue()) +
+         static_cast<int64_t>(meshCenters[localIds[rr]].Z.RawValue())) / 4;
+    const auto axleScore = [&](size_t a, size_t b) -> int64_t
+    {
+        const int64_t midX =
+            (static_cast<int64_t>(meshCenters[localIds[a]].X.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[b]].X.RawValue())) / 2;
+        const int64_t midZ =
+            (static_cast<int64_t>(meshCenters[localIds[a]].Z.RawValue()) +
+             static_cast<int64_t>(meshCenters[localIds[b]].Z.RawValue())) / 2;
+        const int64_t dx = midX - carCenterXRaw;
+        const int64_t dz = midZ - carCenterZRaw;
+        return (dx * dx) + (dz * dz);
+    };
+    const int64_t scorePairA = axleScore(fl, fr);
+    const int64_t scorePairB = axleScore(rl, rr);
+    const bool pairAIsFront = scorePairA <= scorePairB;
+    const std::array<size_t, 4> mapped =
+        pairAIsFront
+            ? std::array<size_t, 4>{fl, fr, rl, rr}
+            : std::array<size_t, 4>{rl, rr, fl, fr};
+    SRL::Debug::Print(1, 24, "WHL near pair:%c A:%ld B:%ld",
+                      pairAIsFront ? 'A' : 'B',
+                      static_cast<long>(scorePairA >> 16),
+                      static_cast<long>(scorePairB >> 16));
+
     for (size_t i = 0; i < 4u; ++i)
     {
         const size_t srcIdx = mapped[i];
