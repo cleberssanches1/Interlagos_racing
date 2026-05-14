@@ -1,0 +1,1368 @@
+﻿{
+    "root":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1",
+    "totalHits":  11212,
+    "topFiles":  [
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\olethros\\driver.cpp",
+                         "hits":  359
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv3\\car.cpp",
+                         "hits":  296
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv3\\collide.cpp",
+                         "hits":  277
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\human.cpp",
+                         "hits":  272
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\graphic\\ssggraph\\grcam.cpp",
+                         "hits":  263
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv3\\simu.cpp",
+                         "hits":  247
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\graphic\\ssggraph\\grcar.cpp",
+                         "hits":  243
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv2\\simu.cpp",
+                         "hits":  241
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv2\\collide.cpp",
+                         "hits":  231
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv2\\wheel.cpp",
+                         "hits":  231
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\damned\\driver.cpp",
+                         "hits":  216
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\bt\\driver.cpp",
+                         "hits":  216
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv2\\car.cpp",
+                         "hits":  214
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\interfaces\\car.h",
+                         "hits":  211
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\libs\\raceengineclient\\raceengine.cpp",
+                         "hits":  185
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\libs\\robottools\\rttrack.cpp",
+                         "hits":  175
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\driver.cpp",
+                         "hits":  159
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\tita.cpp",
+                         "hits":  150
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\inferno.cpp",
+                         "hits":  150
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\lliaw\\lliaw.cpp",
+                         "hits":  150
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv3\\wheel.cpp",
+                         "hits":  147
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\pathfinder.cpp",
+                         "hits":  143
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\lliaw\\pathfinder.cpp",
+                         "hits":  143
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                         "hits":  143
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\graphic\\ssggraph\\grboard.cpp",
+                         "hits":  135
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\berniw3\\berniw3.cpp",
+                         "hits":  130
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\berniw\\berniw.cpp",
+                         "hits":  130
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\berniw2\\berniw2.cpp",
+                         "hits":  130
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\graphic\\ssggraph\\grskidmarks.cpp",
+                         "hits":  126
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\simu\\simuv3\\aero.cpp",
+                         "hits":  125
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\berniw2\\pathfinder.cpp",
+                         "hits":  123
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\berniw\\pathfinder.cpp",
+                         "hits":  123
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\berniw3\\pathfinder.cpp",
+                         "hits":  123
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\libs\\raceengineclient\\raceinit.cpp",
+                         "hits":  121
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\libs\\raceengineclient\\raceresults.cpp",
+                         "hits":  113
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno2\\common.cpp",
+                         "hits":  112
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\modules\\graphic\\ssggraph\\CarSoundData.cpp",
+                         "hits":  112
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\mycar.cpp",
+                         "hits":  102
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\lliaw\\mycar.cpp",
+                         "hits":  102
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\mycar.cpp",
+                         "hits":  102
+                     }
+                 ],
+    "sampleMatches":  [
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  23,
+                              "text":  "(eg. friction)."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  37,
+                              "text":  "#include \u003ccar.h\u003e"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  65,
+                              "text":  "inline tdble getKfriction() const { return pTrackSeg-\u003esurface-\u003ekFriction; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  66,
+                              "text":  "inline tdble getKrollres() const { return pTrackSeg-\u003esurface-\u003ekRollRes; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  67,
+                              "text":  "inline tdble getKroughness() const { return pTrackSeg-\u003esurface-\u003ekRoughness; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  68,
+                              "text":  "inline tdble getKroughwavelen() const { return pTrackSeg-\u003esurface-\u003ekRoughWaveLen; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  117,
+                              "text":  "inline tdble getKfriction() const { return pTrackSeg-\u003esurface-\u003ekFriction; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  118,
+                              "text":  "inline tdble getKrollres() const { return pTrackSeg-\u003esurface-\u003ekRollRes; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  119,
+                              "text":  "inline tdble getKroughness() const { return pTrackSeg-\u003esurface-\u003ekRoughness; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  120,
+                              "text":  "inline tdble getKroughwavelen() const { return pTrackSeg-\u003esurface-\u003ekRoughWaveLen; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  164,
+                              "text":  "int getCurrentSegment(tCarElt* car, int lastId, int range);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  165,
+                              "text":  "int getCurrentSegment(tCarElt* car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  221,
+                              "text":  "// get the segment on which the car is, searching from the position of the last call within range."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  222,
+                              "text":  "inline int TrackDesc::getCurrentSegment(tCarElt* car, int lastId, int range)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.h",
+                              "line":  233,
+                              "text":  "d = ts-\u003edistToMiddleSqr3D(car-\u003e_pos_X, car-\u003e_pos_Y, car-\u003e_pos_Z);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.h",
+                              "line":  65,
+                              "text":  "#define CMD_THROTTLE\t12"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.h",
+                              "line":  66,
+                              "text":  "#define CMD_BRAKE\t13"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.h",
+                              "line":  67,
+                              "text":  "#define CMD_LEFTSTEER\t14"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.h",
+                              "line":  68,
+                              "text":  "#define CMD_RIGHTSTEER\t15"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\main.cpp",
+                              "line":  79,
+                              "text":  "\"drivers/human/car.xml\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  30,
+                              "text":  "#include \u003ccar.h\u003e"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  52,
+                              "text":  "static void initTrack(int index, tTrack* track, void *carHandle, void **carParmHandle, tSituation *s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  53,
+                              "text":  "static void newRace(int index, tCarElt* car, tSituation *s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  54,
+                              "text":  "static void drive(int index, tCarElt* car, tSituation *s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  55,
+                              "text":  "static int pitcmd(int index, tCarElt* car, tSituation *s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  58,
+                              "text":  "static void endRace(int index, tCarElt *car, tSituation *s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  99,
+                              "text":  "static void initTrack(int index, tTrack* track, void *carHandle, void **carParmHandle, tSituation *s)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  101,
+                              "text":  "driver[index]-\u003einitTrack(track, carHandle, carParmHandle, s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  106,
+                              "text":  "static void newRace(int index, tCarElt* car, tSituation *s)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  108,
+                              "text":  "driver[index]-\u003enewRace(car, s);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  113,
+                              "text":  "static void drive(int index, tCarElt* car, tSituation *s)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  120,
+                              "text":  "static int pitcmd(int index, tCarElt* car, tSituation *s)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\sparkle.cpp",
+                              "line":  127,
+                              "text":  "static void endRace(int index, tCarElt *car, tSituation *s)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.cpp",
+                              "line":  45,
+                              "text":  "//else if ((s-\u003elside-\u003estyle == TR_PLAN) \u0026\u0026 (strcmp(s-\u003elside-\u003esurface-\u003ematerial, TRK_VAL_CONCRETE) == 0)) l = l - 3.0*tr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.cpp",
+                              "line":  49,
+                              "text":  "//else if ((s-\u003erside-\u003estyle == TR_PLAN) \u0026\u0026 (strcmp(s-\u003erside-\u003esurface-\u003ematerial, TRK_VAL_CONCRETE) == 0)) r = r + 3.0*tr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.cpp",
+                              "line":  278,
+                              "text":  "/* get the segment on which the car is, searching ALL the segments */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.cpp",
+                              "line":  279,
+                              "text":  "int TrackDesc::getCurrentSegment(tCarElt* car)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\trackdesc.cpp",
+                              "line":  288,
+                              "text":  "d = ts-\u003edistToMiddle3D(car-\u003e_pos_X, car-\u003e_pos_Y, car-\u003e_pos_Z);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.h",
+                              "line":  55,
+                              "text":  "float getSpeedLimitBrake(float speedsqr);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.h",
+                              "line":  63,
+                              "text":  "tCarElt *car;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.cpp",
+                              "line":  34,
+                              "text":  "#include \u003ccar.h\u003e"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.cpp",
+                              "line":  60,
+                              "text":  "{HM_ATT_THROTTLE,   GFCTRL_TYPE_JOY_AXIS, 1, HM_ATT_THROTTLE_MIN,   0.0, 0.0, HM_ATT_THROTTLE_MAX,   1.0, HM_ATT_THROTTLE_SENS, 1.0, HM_ATT_THROTTLE_POW, 2.0, NULL, 0.0, NULL, 0.0},"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.cpp",
+                              "line":  61,
+                              "text":  "{HM_ATT_BRAKE,      GFCTRL_TYPE_JOY_AXIS, 1, HM_ATT_BRAKE_MIN,      0.0, 0.0, HM_ATT_BRAKE_MAX,      1.0, HM_ATT_BRAKE_SENS,    1.0, HM_ATT_BRAKE_POW,    2.0, NULL, 0.0, NULL, 0.0},"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.cpp",
+                              "line":  62,
+                              "text":  "{HM_ATT_LEFTSTEER,  GFCTRL_TYPE_JOY_AXIS, 0, HM_ATT_LEFTSTEER_MIN,  0.0, 0.0, HM_ATT_LEFTSTEER_MAX,  1.0, HM_ATT_STEER_SENS,    2.0, HM_ATT_LEFTSTEER_POW,    1.0, HM_ATT_STEER_SPD, 0.0, HM_ATT_STEER_DEAD, 0.0},"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\pref.cpp",
+                              "line":  63,
+                              "text":  "{HM_ATT_RIGHTSTEER, GFCTRL_TYPE_JOY_AXIS, 0, HM_ATT_RIGHTSTEER_MIN, 0.0, 0.0, HM_ATT_RIGHTSTEER_MAX, 1.0, HM_ATT_STEER_SENS,    2.0, HM_ATT_RIGHTSTEER_POW,    1.0, HM_ATT_STEER_SPD, 0.0, HM_ATT_STEER_DEAD, 0.0},"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  30,
+                              "text":  "car = driver-\u003egetCarPtr();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  31,
+                              "text":  "mypit = driver-\u003egetCarPtr()-\u003e_pit;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  37,
+                              "text":  "lastfuel = car-\u003epriv.fuel;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  50,
+                              "text":  "p[5].x = p[3].x + (pitinfo-\u003enMaxPits - car-\u003eindex)*pitinfo-\u003elen;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  113,
+                              "text":  "float fromstart = car-\u003e_distFromStartLine;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  148,
+                              "text":  "if (isBetween(car-\u003e_distFromStartLine)) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  157,
+                              "text":  "if (car-\u003e_dammage \u003e PIT_DAMMAGE) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  162,
+                              "text":  "int id = car-\u003e_trkPos.seg-\u003eid;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  164,
+                              "text":  "if (car-\u003erace.laps \u003e 0) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  165,
+                              "text":  "fuelperlap = MAX(fuelperlap, (lastfuel+lastpitfuel-car-\u003epriv.fuel));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  167,
+                              "text":  "lastfuel = car-\u003epriv.fuel;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  174,
+                              "text":  "int laps = car-\u003e_remainingLaps-car-\u003e_lapsBehindLeader;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  176,
+                              "text":  "if (car-\u003e_fuel \u003c 1.5*fuelperlap \u0026\u0026"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  177,
+                              "text":  "car-\u003e_fuel \u003c laps*fuelperlap) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  182,
+                              "text":  "if (getPitstop()) car-\u003e_raceCmd = RM_CMD_PIT_ASKED;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  187,
+                              "text":  "float Pit::getSpeedLimitBrake(float speedsqr)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  196,
+                              "text":  "fuel = MAX(MIN((car-\u003e_remainingLaps+1.0)*fuelperlap - car-\u003e_fuel,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  197,
+                              "text":  "car-\u003e_tank - car-\u003e_fuel),"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\pit.cpp",
+                              "line":  207,
+                              "text":  "return car-\u003e_dammage;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  33,
+                              "text":  "#include \u003ccar.h\u003e"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  41,
+                              "text":  "#include \"mycar.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  45,
+                              "text":  "// how far we look forward for overtaking, collisions, etc."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  54,
+                              "text":  "class MyCar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  55,
+                              "text":  "class OtherCar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  58,
+                              "text":  "// holds data of opponents relative to my car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  62,
+                              "text":  "double time;\t\t\t// estimate of time to catch up the car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  67,
+                              "text":  "double dist;\t\t\t// #segments from me to the other car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  68,
+                              "text":  "OtherCar* collcar;\t\t// pointer to the car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  71,
+                              "text":  "double brakedist;\t\t// distance needed for braking to the speed of this car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  72,
+                              "text":  "double mincorner;\t\t// corner nearest to my car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  73,
+                              "text":  "double minorthdist;\t\t// minimal distance relative to my car."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  74,
+                              "text":  "double width;\t\t\t// Width of the car in track direction."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  75,
+                              "text":  "} tOCar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  135,
+                              "text":  "vec2d* l;\t\t\t// Trajectory for pit lane (per car, constant)."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  225,
+                              "text":  "Pathfinder(TrackDesc* itrack, tCarElt* car, tSituation *situation);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  227,
+                              "text":  "void plan(int trackSegId, tCarElt* car, tSituation* situation, MyCar* myc, OtherCar* ocar);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  228,
+                              "text":  "void plan(MyCar* myc, int currentsegid);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  230,
+                              "text":  "void initPit(tCarElt* car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  244,
+                              "text":  "int getCurrentSegment(tCarElt* car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  245,
+                              "text":  "int getCurrentSegment(tCarElt* car, int range);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  252,
+                              "text":  "static const double COLLDIST;\t// up to this distance do we consider other cars as dangerous."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  277,
+                              "text":  "int collcars;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  278,
+                              "text":  "tOCar* o;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  281,
+                              "text":  "tCarElt* teammate;\t\t\t\t// Teammate, TODO: support multiple teammates."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  285,
+                              "text":  "int collision(int trackSegId, tCarElt* mycar, tSituation *s, MyCar* myc, OtherCar* ocar);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  286,
+                              "text":  "int overtake(int trackSegId, tSituation *s, MyCar* myc, OtherCar* ocar);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  288,
+                              "text":  "void adjustRadius(int s, int p, int e, double c, double carwidth);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  293,
+                              "text":  "int correctPath(int id, tCarElt* car, MyCar* myc);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  295,
+                              "text":  "int updateOCar(int trackSegId, tSituation *s, MyCar* myc, OtherCar* ocar, tOCar* o);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  296,
+                              "text":  "void updateOverlapTimer(int trackSegId, tSituation *s, MyCar* myc, OtherCar* ocar, tOCar* o, tOverlapTimer* ov);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  297,
+                              "text":  "int letoverlap(int trackSegId, tSituation *s, MyCar* myc, OtherCar* ocar, tOverlapTimer* ov);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  375,
+                              "text":  "// get the segment on which the car is, searching ALL the segments."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  376,
+                              "text":  "inline int Pathfinder::getCurrentSegment(tCarElt* car)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  378,
+                              "text":  "lastId = track-\u003egetCurrentSegment(car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  383,
+                              "text":  "// get the segment on which the car is, searching from the position of the last call within range."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  384,
+                              "text":  "inline int Pathfinder::getCurrentSegment(tCarElt* car, int range)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.h",
+                              "line":  386,
+                              "text":  "lastId = track-\u003egetCurrentSegment(car, lastId, range);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  23,
+                              "text":  "(eg. friction)."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  37,
+                              "text":  "#include \u003ccar.h\u003e"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  65,
+                              "text":  "inline tdble getKfriction() const { return pTrackSeg-\u003esurface-\u003ekFriction; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  66,
+                              "text":  "inline tdble getKrollres() const { return pTrackSeg-\u003esurface-\u003ekRollRes; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  67,
+                              "text":  "inline tdble getKroughness() const { return pTrackSeg-\u003esurface-\u003ekRoughness; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  68,
+                              "text":  "inline tdble getKroughwavelen() const { return pTrackSeg-\u003esurface-\u003ekRoughWaveLen; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  117,
+                              "text":  "inline tdble getKfriction() const { return pTrackSeg-\u003esurface-\u003ekFriction; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  118,
+                              "text":  "inline tdble getKrollres() const { return pTrackSeg-\u003esurface-\u003ekRollRes; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  119,
+                              "text":  "inline tdble getKroughness() const { return pTrackSeg-\u003esurface-\u003ekRoughness; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  120,
+                              "text":  "inline tdble getKroughwavelen() const { return pTrackSeg-\u003esurface-\u003ekRoughWaveLen; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  164,
+                              "text":  "int getCurrentSegment(tCarElt* car, int lastId, int range);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  165,
+                              "text":  "int getCurrentSegment(tCarElt* car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  221,
+                              "text":  "// get the segment on which the car is, searching from the position of the last call within range."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  222,
+                              "text":  "inline int TrackDesc::getCurrentSegment(tCarElt* car, int lastId, int range)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.h",
+                              "line":  233,
+                              "text":  "d = ts-\u003edistToMiddleSqr3D(car-\u003e_pos_X, car-\u003e_pos_Y, car-\u003e_pos_Z);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  355,
+                              "text":  "This function discards any unprocessed input and does not flush any pending"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  360,
+                              "text":  "prematurely (some input or output was discarded).  In the error case, msg"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  502,
+                              "text":  "This function discards any unprocessed input and does not flush any pending"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  597,
+                              "text":  "discarded, for example if the dictionary is larger than the window size"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  624,
+                              "text":  "data with a filter.  The streams that will be discarded should then be freed"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  939,
+                              "text":  "discarded.  The header is always checked for validity, including the header"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  940,
+                              "text":  "CRC if present.  inflateReset() will reset the process to discard the header"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\windows\\include\\zlib.h",
+                              "line":  1315,
+                              "text":  "The pushed character will be discarded if the stream is repositioned with"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\human.h",
+                              "line":  39,
+                              "text":  "tdble\tAntiSlip;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\human.h",
+                              "line":  41,
+                              "text":  "tdble\tprevLeftSteer;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\human.h",
+                              "line":  42,
+                              "text":  "tdble\tprevRightSteer;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\human\\human.h",
+                              "line":  44,
+                              "text":  "tdble\tpbrake;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.cpp",
+                              "line":  45,
+                              "text":  "//else if ((s-\u003elside-\u003estyle == TR_PLAN) \u0026\u0026 (strcmp(s-\u003elside-\u003esurface-\u003ematerial, TRK_VAL_CONCRETE) == 0)) l = l - 3.0*tr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.cpp",
+                              "line":  49,
+                              "text":  "//else if ((s-\u003erside-\u003estyle == TR_PLAN) \u0026\u0026 (strcmp(s-\u003erside-\u003esurface-\u003ematerial, TRK_VAL_CONCRETE) == 0)) r = r + 3.0*tr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.cpp",
+                              "line":  278,
+                              "text":  "/* get the segment on which the car is, searching ALL the segments */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.cpp",
+                              "line":  279,
+                              "text":  "int TrackDesc::getCurrentSegment(tCarElt* car)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\tita\\trackdesc.cpp",
+                              "line":  288,
+                              "text":  "d = ts-\u003edistToMiddle3D(car-\u003e_pos_X, car-\u003e_pos_Y, car-\u003e_pos_Z);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  30,
+                              "text":  "#include \u003ccar.h\u003e"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  52,
+                              "text":  "void setCarPtr(tCarElt *car) { this-\u003ecar = car; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  55,
+                              "text":  "static float getSpeed(tCarElt *car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  56,
+                              "text":  "tCarElt *getCarPtr() { return car; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  69,
+                              "text":  "tCarElt *car;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  73,
+                              "text":  "float width;\t\t/* the cars needed width on the track */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\sparkle\\opponent.h",
+                              "line":  74,
+                              "text":  "float sidedist;\t\t/* approx distance of center of gravity of the cars */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  28,
+                              "text":  "Pathfinder::Pathfinder(TrackDesc* itrack, tCarElt* car, tSituation *s)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  33,
+                              "text":  "o = new tOCar[s-\u003e_ncars];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  37,
+                              "text":  "const char *teammatename = GfParmGetStr(car-\u003e_carHandle, BERNIW_SECT_PRIV, BERNIW_ATT_TEAMMATE, NULL);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  41,
+                              "text":  "for (i = 0; i \u003c s-\u003e_ncars; i++) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  42,
+                              "text":  "if (strcmp(s-\u003ecars[i]-\u003e_name, teammatename) == 0 \u0026\u0026 car != s-\u003ecars[i]) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  43,
+                              "text":  "teammate = s-\u003ecars[i];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  49,
+                              "text":  "overlaptimer = new tOverlapTimer[s-\u003e_ncars];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  51,
+                              "text":  "for (i = 0; i \u003c s-\u003e_ncars; i++) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  68,
+                              "text":  "// Check if there is a pit type we can use and if for this car is a pit available."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  70,
+                              "text":  "if (t-\u003epits.type == TR_PIT_ON_TRACK_SIDE \u0026\u0026 car-\u003e_pit != NULL) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  76,
+                              "text":  "initPit(car);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  79,
+                              "text":  "s1 = (int) (GfParmGetNum(car-\u003e_carHandle, BERNIW_SECT_PRIV, BERNIW_ATT_PITENTRY, (char*)NULL, s1*TRACKRES)/TRACKRES);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  81,
+                              "text":  "e3 = (int) (GfParmGetNum(car-\u003e_carHandle, BERNIW_SECT_PRIV, BERNIW_ATT_PITEXIT, (char*)NULL, e3*TRACKRES)/TRACKRES);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  106,
+                              "text":  "void Pathfinder::initPit(tCarElt* car) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  109,
+                              "text":  "if (t-\u003epits.driversPits != NULL \u0026\u0026 car != NULL) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  111,
+                              "text":  "tTrackSeg* pitSeg = car-\u003e_pit-\u003epos.seg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  130,
+                              "text":  "pitLoc = pitLoc + (double)(car-\u003e_pit-\u003epos.toStart)*v1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  286,
+                              "text":  "void Pathfinder::plan(MyCar* myc, int currentsegid)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  368,
+                              "text":  "tdble mu = track-\u003egetSegmentPtr(i)-\u003egetKfriction()*myc-\u003eCFRICTION*track-\u003egetSegmentPtr(i)-\u003egetKalpha();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  388,
+                              "text":  "void Pathfinder::plan(int trackSegId, tCarElt* car, tSituation *situation, MyCar* myc, OtherCar* ocar)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  427,
+                              "text":  "collcars = updateOCar(trackSegId, situation, myc, ocar, o);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  428,
+                              "text":  "updateOverlapTimer(trackSegId, situation, myc, ocar, o, overlaptimer);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  435,
+                              "text":  "changed += correctPath(trackSegId, car, myc);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  440,
+                              "text":  "changed += overtake(trackSegId, situation, myc, ocar);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  445,
+                              "text":  "changed = letoverlap(trackSegId, situation, myc, ocar, overlaptimer);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  482,
+                              "text":  "double mu = track-\u003egetSegmentPtr(j)-\u003egetKfriction()*myc-\u003eCFRICTION*track-\u003egetSegmentPtr(j)-\u003egetKalpha();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  486,
+                              "text":  "double speedsqrpit = ((double) segmentsToPit(j) * TRACKRES) *2.0*g*track-\u003egetSegmentPtr(j)-\u003egetKfriction()*myc-\u003eCFRICTION*myc-\u003ecgcorr_b;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  509,
+                              "text":  "/* set speed limits on the path, in case there is an obstacle (other car) */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  510,
+                              "text":  "changed += collision(trackSegId, car, situation, myc, ocar);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  529,
+                              "text":  "/* collision avoidence with braking */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  530,
+                              "text":  "int Pathfinder::collision(int trackSegId, tCarElt* mycar, tSituation* s, MyCar* myc, OtherCar* ocar)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  534,
+                              "text":  "int i, n = collcars;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  539,
+                              "text":  "if (o[i].overtakee == true || (o[i].time \u003e myc-\u003eTIMETOCATCH-0.1 \u0026\u0026 o[i].collcar-\u003egetSpeed() \u003c 10.0)) continue;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  540,
+                              "text":  "int currentsegid = o[i].collcar-\u003egetCurrentSegId();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  542,
+                              "text":  "int spsegid = (currentsegid - (int) ((myc-\u003eCARLEN + 1)/TRACKRES) + nPathSeg) % nPathSeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  545,
+                              "text":  "if (o[i].mincorner \u003c myc-\u003eCARWIDTH/2.0 + (myc-\u003eDIST*MIN(1.0, o[i].collcar-\u003egetSpeed()/28.0))) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  546,
+                              "text":  "double cmpdist = o[i].dist - myc-\u003eCARLEN - myc-\u003eDIST;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  547,
+                              "text":  "if ((o[i].brakedist \u003e= cmpdist) \u0026\u0026 (psdyn-\u003egetSpeedsqr(spsegid) \u003e o[i].speedsqr)) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  559,
+                              "text":  "double sina = o[i].collcar-\u003egetDir()-\u003efakeCrossProduct(myc-\u003egetDir());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  560,
+                              "text":  "double otherd = o[i].disttomiddle + sina*o[i].collcar-\u003egetSpeed()*o[i].time;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  562,
+                              "text":  "if (fabs(myd - otherd) \u003c myc-\u003eCARWIDTH + myc-\u003eDIST*MIN(1.0, o[i].collcar-\u003egetSpeed()/28.0)) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  563,
+                              "text":  "if ((o[i].catchdist \u003e 0.0) \u0026\u0026 (o[i].brakedist \u003e= (o[i].catchdist - (myc-\u003eCARLEN + myc-\u003eDIST)))) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  564,
+                              "text":  "int catchsegid = ((o[i].catchsegid - (int) ((myc-\u003eCARLEN + 1)/TRACKRES) + nPathSeg) % nPathSeg);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  726,
+                              "text":  "int Pathfinder::correctPath(int id, tCarElt* car, MyCar* myc)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  736,
+                              "text":  "if (fabs(d) \u003e (track-\u003egetSegmentPtr(id)-\u003egetWidth() - myc-\u003eCARWIDTH)/2.0) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  737,
+                              "text":  "d = sign(d)*((track-\u003egetSegmentPtr(id)-\u003egetWidth() - myc-\u003eCARWIDTH)/2.0 - myc-\u003eMARGIN);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  777,
+                              "text":  "if (fabs(d2) \u003e (track-\u003egetSegmentPtr(j)-\u003egetWidth() - myc-\u003eCARWIDTH)/2.0) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  778,
+                              "text":  "d = sign(d)*((track-\u003egetSegmentPtr(j)-\u003egetWidth() - myc-\u003eCARWIDTH)/2.0 - myc-\u003eMARGIN - fabs(d1));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  798,
+                              "text":  "//printf(\"d2: %f, limit: %f\\n\", d2, (track-\u003egetSegmentPtr(j)-\u003egetWidth() - myc-\u003eCARWIDTH) / 2.0 - myc-\u003eMARGIN);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  799,
+                              "text":  "if (fabs(d2) \u003e (track-\u003egetSegmentPtr(j)-\u003egetWidth() - myc-\u003eCARWIDTH) / 2.0 - myc-\u003eMARGIN) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  826,
+                              "text":  "/* compute path for overtaking the \"next colliding\" car */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  827,
+                              "text":  "int Pathfinder::overtake(int trackSegId, tSituation *s, MyCar* myc, OtherCar* ocar)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  829,
+                              "text":  "if (collcars == 0) return 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  834,
+                              "text":  "if (collcars \u003e 1) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  842,
+                              "text":  "for (i = 0; i \u003c collcars; i++) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  873,
+                              "text":  "const int start = (trackSegId - (int) ((2.0 + myc-\u003eCARLEN)/TRACKRES) + nPathSeg) % nPathSeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  874,
+                              "text":  "const int nearend = (trackSegId + (int) (2.0*myc-\u003eCARLEN/TRACKRES)) % nPathSeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  876,
+                              "text":  "OtherCar* nearestCar = NULL;\t/* car near in time, not in space ! (next reached car) */"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  881,
+                              "text":  "int collcarindex = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  884,
+                              "text":  "for (i = 0; i \u003c collcars; i++) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  890,
+                              "text":  "collcarindex = i;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  893,
+                              "text":  "if (dst \u003c minorthdist \u0026\u0026 track-\u003eisBetween(start, nearend, o[i].collcar-\u003egetCurrentSegId())) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  905,
+                              "text":  "if (minorthdist \u003c= myc-\u003eOVERTAKEMINDIST \u0026\u0026 o[collcarindex].dist \u003e= o[minorthdistindex].dist) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  906,
+                              "text":  "collcarindex = minorthdistindex;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  907,
+                              "text":  "nearestCar = o[minorthdistindex].collcar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  910,
+                              "text":  "if (teammate != NULL \u0026\u0026 nearestCar-\u003egetCarPtr() == teammate) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  911,
+                              "text":  "if (o[minorthdistindex].dist \u003e (nearestCar-\u003egetCarPtr()-\u003e_dimension_x + myc-\u003egetCarPtr()-\u003e_dimension_x)/2.0 \u0026\u0026"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  912,
+                              "text":  "(nearestCar-\u003egetCarPtr()-\u003e_dammage - myc-\u003egetCarPtr()-\u003e_dammage) \u003c myc-\u003eTEAM_DAMAGE_CHANGE_LEAD)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  920,
+                              "text":  "nearestCar = o[collcarindex].collcar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  931,
+                              "text":  "nearestCar-\u003egetCarPtr() == teammate \u0026\u0026"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  932,
+                              "text":  "(nearestCar-\u003egetCarPtr()-\u003e_dammage - myc-\u003egetCarPtr()-\u003e_dammage) \u003c myc-\u003eTEAM_DAMAGE_CHANGE_LEAD)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  940,
+                              "text":  "if (((o[collcarindex].mincorner \u003c myc-\u003eCARWIDTH/2.0 + myc-\u003eDIST) \u0026\u0026 (minTime \u003c myc-\u003eTIMETOCATCH)) || !sidechangeallowed) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  942,
+                              "text":  "double d = o[collcarindex].disttomiddle;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  951,
+                              "text":  "if (minTime \u003c myc-\u003eTIMETOCATCH \u0026\u0026 o[collcarindex].catchdist \u003e 1.0) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  952,
+                              "text":  "trackSegId1 = (trackSegId + MIN((int) (MAX((o[collcarindex].catchdist), myc-\u003egetSpeed()/4.0)/TRACKRES), overtakerange/3)) % nPathSeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  957,
+                              "text":  "double w = track-\u003egetSegmentPtr(nearestCar-\u003egetCurrentSegId())-\u003egetWidth() / 2;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  959,
+                              "text":  "double paralleldist = o[collcarindex].cosalpha*dist(myc-\u003egetCurrentPos(), nearestCar-\u003egetCurrentPos());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  962,
+                              "text":  "if (paralleldist \u003e 1.5*myc-\u003eCARLEN) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  967,
+                              "text":  "vec2d dir = *o[collcarindex].collcar-\u003egetCurrentPos()- *myc-\u003egetCurrentPos();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  968,
+                              "text":  "double pathtocarsgn = sign(myc-\u003egetDir()-\u003efakeCrossProduct(\u0026dir));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  970,
+                              "text":  "y[1] = d + myc-\u003eOVERTAKEDIST*pathtocarsgn;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  971,
+                              "text":  "if (fabs(y[1]) \u003e w - (1.0*myc-\u003eCARWIDTH)) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  972,
+                              "text":  "y[1] = d - myc-\u003eOVERTAKEDIST*pathtocarsgn;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  976,
+                              "text":  "double beta = PI/2.0 - acos((*nearestCar-\u003egetDir())*(*track-\u003egetSegmentPtr(trackSegId)-\u003egetToRight()));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  977,
+                              "text":  "//double beta = PI/2.0 - acos((*nearestCar-\u003egetDir())*(*psopt-\u003egetOptToRight(trackSegId)));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  985,
+                              "text":  "double beta = PI/2.0 - acos((*nearestCar-\u003egetDir())*(*track-\u003egetSegmentPtr(trackSegId)-\u003egetToRight()));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  986,
+                              "text":  "//double beta = PI/2.0 - acos((*nearestCar-\u003egetDir())*(*psopt-\u003egetOptToRight(trackSegId)));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  994,
+                              "text":  "double cartocarsgn = sign(delta);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  995,
+                              "text":  "y[1] = d + myc-\u003eOVERTAKEDIST*cartocarsgn;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  996,
+                              "text":  "if (fabs(y[1]) \u003e w - (1.0*myc-\u003eCARWIDTH)) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  997,
+                              "text":  "y[1] = cartocarsgn*(w - (myc-\u003eCARWIDTH/2.0 + myc-\u003eMARGIN));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1000,
+                              "text":  "if (minorthdist \u003e 1.0 /*myc-\u003eOVERTAKEMINDIST*/) o[collcarindex].overtakee = true;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1001,
+                              "text":  "//o[collcarindex].overtakee = true;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1005,
+                              "text":  "double pathtocarsgn = sign(pathtomiddle - d);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1006,
+                              "text":  "if (collcars == 1) {"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1007,
+                              "text":  "y[1] = d + -sign(d)*(1.5+o[collcarindex].width/2.0 + myc-\u003egetCarPtr()-\u003e_dimension_y);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1011,
+                              "text":  "y[1] = d + (myc-\u003eOVERTAKEDIST+o[collcarindex].width/2.0)*pathtocarsgn;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1013,
+                              "text":  "if (pathtocarsgn \u003c 0.0 \u0026\u0026 y[1] \u003e pathtomiddle) return 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\torcs-r1-3-1\\src\\drivers\\inferno\\pathfinder.cpp",
+                              "line":  1014,
+                              "text":  "if (pathtocarsgn \u003e 0.0 \u0026\u0026 y[1] \u003cpathtomiddle) return 0;"
+                          }
+                      ]
+}

@@ -1,0 +1,1368 @@
+﻿{
+    "root":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src",
+    "totalHits":  2065,
+    "topFiles":  [
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\game_loop_system.hpp",
+                         "hits":  406
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\main.cxx",
+                         "hits":  336
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.cxx",
+                         "hits":  249
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_ground_follower.hpp",
+                         "hits":  100
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\resource_loader.hpp",
+                         "hits":  98
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_system.cxx",
+                         "hits":  92
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                         "hits":  83
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_dynamics_model.hpp",
+                         "hits":  76
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_system.cxx",
+                         "hits":  69
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_system.hpp",
+                         "hits":  51
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_renderer.hpp",
+                         "hits":  47
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\interfaces.hpp",
+                         "hits":  45
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\modelObject.hpp",
+                         "hits":  44
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_physics_shared.hpp",
+                         "hits":  39
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                         "hits":  36
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                         "hits":  27
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_controller.hpp",
+                         "hits":  26
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                         "hits":  24
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_system.hpp",
+                         "hits":  23
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                         "hits":  21
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                         "hits":  15
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\sky_panorama.hpp",
+                         "hits":  13
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                         "hits":  13
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                         "hits":  13
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\sky_background_dome.hpp",
+                         "hits":  12
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\runtime_null_systems.hpp",
+                         "hits":  12
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_orbit_controller.hpp",
+                         "hits":  11
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\segment_draw_ready_format.hpp",
+                         "hits":  10
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\hud_system.hpp",
+                         "hits":  8
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\sky_background_rbg.hpp",
+                         "hits":  8
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\application_state.hpp",
+                         "hits":  8
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\sky_background.hpp",
+                         "hits":  6
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\sky_environment.hpp",
+                         "hits":  6
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_sgl_renderer.hpp",
+                         "hits":  5
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\mesh_renderer.cxx",
+                         "hits":  4
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\background_manager.hpp",
+                         "hits":  4
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\render_pipeline.hpp",
+                         "hits":  4
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\sky_background_rbg_bitmap.hpp",
+                         "hits":  3
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_renderer.hpp",
+                         "hits":  3
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_serialized.hpp",
+                         "hits":  2
+                     }
+                 ],
+    "sampleMatches":  [
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\exception_stubs.cxx",
+                              "line":  57,
+                              "text":  "if (SRL::Memory::CartRam::InRange(ptr))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\exception_stubs.cxx",
+                              "line":  59,
+                              "text":  "return SRL::Memory::CartRam::Realloc(ptr, size);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  11,
+                              "text":  "void Tick(GameplayFrameState\u0026 ioFrameState, const ITrackCollisionQuery* trackQuery) override"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  15,
+                              "text":  "spawnPosition_ = ioFrameState.carWorldPosition;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  16,
+                              "text":  "spawnYawDeg_ = ioFrameState.carYawDeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  21,
+                              "text":  "Vector3D surfaceNormal{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  24,
+                              "text":  "(void)trackQuery-\u003eSample(ioFrameState.carWorldPosition, surfaceNormal, segmentId);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  30,
+                              "text":  "if (ioFrameState.throttle \u003e 0 || ioFrameState.wheelsSpinning)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  44,
+                              "text":  "spawnPosition_ = ioFrameState.carWorldPosition;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  45,
+                              "text":  "spawnYawDeg_ = ioFrameState.carYawDeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  49,
+                              "text":  "// Safety respawn when car drifts too far from track center area."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  51,
+                              "text":  "const Vector3D driftDelta = ioFrameState.carWorldPosition - spawnPosition_;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  56,
+                              "text":  "ioFrameState.respawnYawDeg = spawnYawDeg_;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  63,
+                              "text":  "// Vertical follow is handled by car physics."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_gameplay_tick.hpp",
+                              "line":  68,
+                              "text":  "int32_t spawnYawDeg_ = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  12,
+                              "text":  "class CarWheelRig"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  18,
+                              "text":  "int16_t steering = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  19,
+                              "text":  "int16_t yawStepDeg = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  20,
+                              "text":  "int16_t groundRearY = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  21,
+                              "text":  "int16_t groundFrontY = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  22,
+                              "text":  "uint8_t groundMask = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  32,
+                              "text":  "bool Ready() const { return wheelCount_ == 4u; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  34,
+                              "text":  "const std::array\u003csize_t, 4\u003e\u0026 WheelMeshIds() const { return wheelMeshIds_; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  37,
+                              "text":  "struct WheelSlot"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  44,
+                              "text":  "static constexpr int32_t kMaxSteerDegX16 = 22 \u003c\u003c 16;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  47,
+                              "text":  "static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast\u003cint32_t\u003e(0x00007000); // ~0.44"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  48,
+                              "text":  "static constexpr int32_t kSteerFilterShift = 2;  // 1/4"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  54,
+                              "text":  "bool DetectWheelIdsFromMeshtex(size_t meshCount, std::array\u003csize_t, 4\u003e\u0026 outIds, size_t\u0026 outCount) const;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  55,
+                              "text":  "bool DetectWheelIdsFromMeshStats(ModelObject\u0026 model,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  61,
+                              "text":  "void ClassifyWheels(const std::array\u003csize_t, 4\u003e\u0026 meshIds,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  69,
+                              "text":  "std::array\u003csize_t, 4\u003e wheelMeshIds_{SIZE_MAX, SIZE_MAX, SIZE_MAX, SIZE_MAX};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  70,
+                              "text":  "std::array\u003cWheelSlot, 4\u003e wheelSlots_{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  71,
+                              "text":  "size_t wheelCount_ = 0u;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  72,
+                              "text":  "int32_t steerDegX16_ = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  75,
+                              "text":  "std::array\u003cint32_t, 4\u003e wheelSpinDegX16_{0, 0, 0, 0};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.hpp",
+                              "line":  76,
+                              "text":  "std::array\u003cint32_t, 4\u003e wheelSuspensionOffsetX16_{0, 0, 0, 0};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  106,
+                              "text":  "const SRL::Math::Types::Vector3D\u0026 carWorldPosition);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  107,
+                              "text":  "void SetObservedCarSegmentId(int32_t segmentId);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  112,
+                              "text":  "// Resolve nearest loaded segment for simple collision and gameplay queries."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  117,
+                              "text":  "bool FindSurfaceYByFamilyId(const SRL::Math::Types::Vector3D\u0026 worldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  120,
+                              "text":  "SRL::Math::Types::Fxp\u0026 outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  124,
+                              "text":  "bool FindSurfaceYByFamilySet(const SRL::Math::Types::Vector3D\u0026 worldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  128,
+                              "text":  "SRL::Math::Types::Fxp\u0026 outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  135,
+                              "text":  "SRL::Math::Types::Fxp collisionRadius,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  181,
+                              "text":  "// Re-anchor track texture heap base after loading non-track assets (e.g. car)."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  252,
+                              "text":  "struct Seg1TexbankCart"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  255,
+                              "text":  "void* cartPtr = nullptr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  259,
+                              "text":  "struct Seg1TgaCartEntry"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  262,
+                              "text":  "void* cartPtr = nullptr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  311,
+                              "text":  "SRL::Math::Types::Vector3D carWorldPosition{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  339,
+                              "text":  "bool LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  357,
+                              "text":  "const Seg1TexbankEntry* FindTexbankEntryByFamily(const Seg1TexbankCart\u0026 bank, uint16_t familyId) const;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  379,
+                              "text":  "// Rebuild one batch face slot table using the first logical rank carried by that batch."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  491,
+                              "text":  "bool RunWindowStage(const SRL::Math::Types::Vector3D\u0026 carWorldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  495,
+                              "text":  "void UpdatePrefetchSpeedProxy(const SRL::Math::Types::Vector3D\u0026 carWorldPosition);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  503,
+                              "text":  "const SRL::Math::Types::Vector3D\u0026 carWorldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  507,
+                              "text":  "const SRL::Math::Types::Vector3D\u0026 carWorldPosition);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  615,
+                              "text":  "int32_t trackedCarSegmentId_ = 1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  616,
+                              "text":  "bool trackedCarSegmentValid_ = false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  617,
+                              "text":  "int32_t observedCarSegmentId_ = -1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  718,
+                              "text":  "SRL::Math::Types::Vector3D prefetchLastCarWorldPosition_{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  799,
+                              "text":  "std::array\u003cSeg1TexbankCart, 4\u003e seg1Texbanks_{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_system.hpp",
+                              "line":  800,
+                              "text":  "TrackLowWorkVector\u003cSeg1TgaCartEntry\u003e seg1TgaCatalog_{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  6,
+                              "text":  "#include \"car_dynamics_model.hpp\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  7,
+                              "text":  "#include \"car_ground_follower.hpp\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  12,
+                              "text":  "// - planar dynamics (X/Z + yaw)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  13,
+                              "text":  "// - ground probing and vertical adhesion (Y)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  14,
+                              "text":  "class SimpleCarPhysics final : public ICarPhysics"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  18,
+                              "text":  "const ITrackCollisionQuery* trackQuery,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  19,
+                              "text":  "Vector3D\u0026 ioCarWorldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  20,
+                              "text":  "int32_t\u0026 ioCarYawDeg) override"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  22,
+                              "text":  "CarPhysics::ResetGroundDebug(ioFrameState);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  30,
+                              "text":  "const Vector3D preStepPosition = ioCarWorldPosition;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  31,
+                              "text":  "CarPhysics::FrameStepOutput stepOutput{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  32,
+                              "text":  "CarPhysics::DynamicsModel::IntegratePlanar(ioFrameState,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  33,
+                              "text":  "dynamicsState_,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  34,
+                              "text":  "ioCarWorldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  35,
+                              "text":  "ioCarYawDeg,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  39,
+                              "text":  "CarPhysics::GroundFollower::UpdateTarget(trackQuery,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  40,
+                              "text":  "ioCarWorldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  42,
+                              "text":  "groundState_,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  44,
+                              "text":  "CarPhysics::GroundFollower::ApplyVerticalAdhesion(groundState_, ioCarWorldPosition);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  49,
+                              "text":  "ioCarWorldPosition.X.RawValue() - preStepPosition.X.RawValue();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  51,
+                              "text":  "ioCarWorldPosition.Z.RawValue() - preStepPosition.Z.RawValue();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  59,
+                              "text":  "if (!groundState_.hasGroundSupport)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  61,
+                              "text":  "CarPhysics::DynamicsModel::ApplyNoSupportRecovery(dynamicsState_);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  62,
+                              "text":  "if (groundState_.lastStablePlanarInitialized)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  64,
+                              "text":  "ioCarWorldPosition.X = groundState_.lastStableX;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  65,
+                              "text":  "ioCarWorldPosition.Z = groundState_.lastStableZ;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  69,
+                              "text":  "ioCarWorldPosition.X = preStepPosition.X;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  70,
+                              "text":  "ioCarWorldPosition.Z = preStepPosition.Z;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  73,
+                              "text":  "else if (groundState_.edgeLeftLost || groundState_.edgeRightLost)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  75,
+                              "text":  "CarPhysics::DynamicsModel::ApplyEdgeDamping(dynamicsState_);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  79,
+                              "text":  "ioFrameState.speedProxy = CarPhysics::BuildSpeedProxy(dynamicsState_.forwardSpeed);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  85,
+                              "text":  "CarPhysics::DynamicsModel::Reset(dynamicsState_);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  86,
+                              "text":  "CarPhysics::GroundFollower::Reset(groundState_);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  88,
+                              "text":  "CarPhysics::ResetGroundDebug(ioFrameState);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  91,
+                              "text":  "CarPhysics::DynamicsState dynamicsState_{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_car_physics.hpp",
+                              "line":  92,
+                              "text":  "CarPhysics::GroundState groundState_{};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_loader.hpp",
+                              "line":  33,
+                              "text":  "result.serialized = SerializeTrackToCart(trackPath);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_renderer.hpp",
+                              "line":  66,
+                              "text":  "// Load track file from a list of candidate paths into cart RAM and prepare caches."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_renderer.hpp",
+                              "line":  74,
+                              "text":  "// Procura e carrega o primeiro arquivo vlido direto na DRAM do cartucho"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_renderer.hpp",
+                              "line":  98,
+                              "text":  "if (!obj-\u003eLoadFromMemory(serialized.cartPtr, serialized.size, 0, false, maxMeshes, false, true))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  1,
+                              "text":  "#include \"car_wheel_rig.hpp\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  30,
+                              "text":  "bool ContainsWheelName(const char* begin, const char* end)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  56,
+                              "text":  "return contains(\"roda\") || contains(\"wheel\");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  82,
+                              "text":  "bool CarWheelRig::Initialize(ModelObject\u0026 model,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  94,
+                              "text":  "std::array\u003csize_t, 4\u003e wheelIds{SIZE_MAX, SIZE_MAX, SIZE_MAX, SIZE_MAX};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  95,
+                              "text":  "size_t wheelIdCount = 0u;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  96,
+                              "text":  "const bool wheelIdsFromMeshtex ="
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  97,
+                              "text":  "DetectWheelIdsFromMeshtex(meshCount, wheelIds, wheelIdCount);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  98,
+                              "text":  "if (!wheelIdsFromMeshtex)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  100,
+                              "text":  "(void)DetectWheelIdsFromMeshStats(model,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  104,
+                              "text":  "wheelIds,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  105,
+                              "text":  "wheelIdCount);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  107,
+                              "text":  "if (wheelIdCount \u003c 4u)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  112,
+                              "text":  "ClassifyWheels(wheelIds, meshCenters, wheelIdsFromMeshtex);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  113,
+                              "text":  "wheelCount_ = 4u;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  117,
+                              "text":  "void CarWheelRig::Update(const Input\u0026 input)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  121,
+                              "text":  "const int32_t clampedSteer = std::clamp\u003cint32_t\u003e(input.steering, -100, 100);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  122,
+                              "text":  "const int32_t targetSteer = (clampedSteer * kMaxSteerDegX16) / 100;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  123,
+                              "text":  "steerDegX16_ = StepToward(steerDegX16_, targetSteer, kSteerFilterShift);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  130,
+                              "text":  "wheelSpinDegX16_[i] += spinStep;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  131,
+                              "text":  "if (wheelSpinDegX16_[i] \u003e= fullTurn)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  133,
+                              "text":  "wheelSpinDegX16_[i] %= fullTurn;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  140,
+                              "text":  "const bool rearValid = (input.groundMask \u0026 0x1u) != 0u;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  141,
+                              "text":  "const bool frontValid = (input.groundMask \u0026 0x4u) != 0u;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  144,
+                              "text":  "const int32_t deltaY = static_cast\u003cint32_t\u003e(input.groundFrontY) -"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  145,
+                              "text":  "static_cast\u003cint32_t\u003e(input.groundRearY);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  148,
+                              "text":  "-kMaxSuspensionOffsetX16,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  149,
+                              "text":  "kMaxSuspensionOffsetX16);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  156,
+                              "text":  "int32_t rollDriverX16 = steerDegX16_;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  157,
+                              "text":  "if (input.yawStepDeg != 0)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  159,
+                              "text":  "constexpr int32_t kRollYawStepGain = 6;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  161,
+                              "text":  "rollDriverX16 = (static_cast\u003cint32_t\u003e(input.yawStepDeg) \u003c\u003c 16) * kRollYawStepGain;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  164,
+                              "text":  "// Invert visual roll sign so lean matches steering on-screen."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  174,
+                              "text":  "const int32_t targetSusp = wheelSlots_[i].front ? targetFrontSusp : targetRearSusp;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  175,
+                              "text":  "wheelSuspensionOffsetX16_[i] ="
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  176,
+                              "text":  "StepToward(wheelSuspensionOffsetX16_[i], targetSusp, kSuspFilterShift);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  180,
+                              "text":  "void CarWheelRig::Apply(MeshRenderer\u0026 renderer) const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  190,
+                              "text":  "const SRL::Math::Types::Angle steer ="
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  191,
+                              "text":  "SRL::Math::Types::Angle::FromDegrees(Fxp::BuildRaw(steerDegX16_));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  195,
+                              "text":  "if (wheelSlots_[i].meshId == SIZE_MAX) continue;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  199,
+                              "text":  "t.pivot = wheelSlots_[i].center;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  201,
+                              "text":  "Fxp::BuildRaw(wheelSuspensionOffsetX16_[i]),"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  203,
+                              "text":  "t.rotateX = SRL::Math::Types::Angle::FromDegrees(Fxp::BuildRaw(wheelSpinDegX16_[i]));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  204,
+                              "text":  "t.rotateY = wheelSlots_[i].front ? steer : zero;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  206,
+                              "text":  "renderer.SetMeshLocalTransform(wheelSlots_[i].meshId, t);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  210,
+                              "text":  "bool CarWheelRig::DetectWheelIdsFromMeshtex(size_t meshCount,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  217,
+                              "text":  "\"/CD/DATA/CAR1.meshtex\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  218,
+                              "text":  "\"/CD/DATA/CAR1.MESHTEX\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  219,
+                              "text":  "\"/DATA/CAR1.meshtex\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  220,
+                              "text":  "\"/DATA/CAR1.MESHTEX\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  221,
+                              "text":  "\"CD/DATA/CAR1.meshtex\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  222,
+                              "text":  "\"CD/DATA/CAR1.MESHTEX\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  223,
+                              "text":  "\"DATA/CAR1.meshtex\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  224,
+                              "text":  "\"DATA/CAR1.MESHTEX\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  225,
+                              "text":  "\"cd/data/CAR1.meshtex\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  226,
+                              "text":  "\"cd/data/CAR1.MESHTEX\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  227,
+                              "text":  "\"CAR1.meshtex\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  228,
+                              "text":  "\"CAR1.MESHTEX\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  229,
+                              "text":  "\"CAR1.meshtex;1\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  230,
+                              "text":  "\"CAR1.MESHTEX;1\","
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  247,
+                              "text":  "auto appendWheelId = [\u0026](size_t id)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  272,
+                              "text":  "if (!ContainsWheelName(sep1 + 1, sep2 ? sep2 : end)) return;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  275,
+                              "text":  "appendWheelId(meshId);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  306,
+                              "text":  "bool CarWheelRig::DetectWheelIdsFromMeshStats(ModelObject\u0026 model,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  402,
+                              "text":  "void CarWheelRig::ClassifyWheels(const std::array\u003csize_t, 4\u003e\u0026 meshIds,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  411,
+                              "text":  "// Meshtex exports preserve wheel object order for this car:"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  430,
+                              "text":  "wheelMeshIds_[i] = meshId;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  431,
+                              "text":  "wheelSlots_[i].meshId = meshId;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  432,
+                              "text":  "wheelSlots_[i].center = meshCenters[meshId];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  433,
+                              "text":  "wheelSlots_[i].front = (i \u003c 2u);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  463,
+                              "text":  "wheelMeshIds_[i] = meshId;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  464,
+                              "text":  "wheelSlots_[i].meshId = meshId;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  465,
+                              "text":  "wheelSlots_[i].center = meshCenters[meshId];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  466,
+                              "text":  "wheelSlots_[i].front = (i \u003c 2u);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  470,
+                              "text":  "void CarWheelRig::ResetState()"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  472,
+                              "text":  "wheelMeshIds_ = {SIZE_MAX, SIZE_MAX, SIZE_MAX, SIZE_MAX};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  473,
+                              "text":  "wheelSlots_ = {};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  474,
+                              "text":  "wheelCount_ = 0u;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  475,
+                              "text":  "steerDegX16_ = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  478,
+                              "text":  "wheelSpinDegX16_ = {0, 0, 0, 0};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  479,
+                              "text":  "wheelSuspensionOffsetX16_ = {0, 0, 0, 0};"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  482,
+                              "text":  "int32_t CarWheelRig::ClampInt(int32_t value, int32_t minValue, int32_t maxValue)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\car_wheel_rig.cxx",
+                              "line":  487,
+                              "text":  "int32_t CarWheelRig::StepToward(int32_t current, int32_t target, int32_t shift)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_serialized.hpp",
+                              "line":  7,
+                              "text":  "void* cartPtr = nullptr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_serialized.hpp",
+                              "line":  11,
+                              "text":  "bool Valid() const { return cartPtr != nullptr \u0026\u0026 size \u003e 0; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  18,
+                              "text":  "bool brakePulse = false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  21,
+                              "text":  "uint8_t throttleBand = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  31,
+                              "text":  "frameState.phase == GameplayFrameState::RacePhase::Running \u0026\u0026 frameState.wheelsSpinning;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  32,
+                              "text":  "next.throttleBand = QuantizeThrottle(frameState.throttle);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  33,
+                              "text":  "next.rpmProxy = BuildRpmProxy(frameState.throttle, frameState.wheelsSpinning);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  35,
+                              "text":  "if (next.throttleBand \u003e previous_.throttleBand)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  42,
+                              "text":  "next.brakePulse = true;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  43,
+                              "text":  "++brakePulses_;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  65,
+                              "text":  "uint32_t BrakePulses() const { return brakePulses_; }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  70,
+                              "text":  "static uint8_t QuantizeThrottle(int16_t throttle)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  72,
+                              "text":  "const int16_t clamped = std::clamp\u003cint16_t\u003e(throttle, static_cast\u003cint16_t\u003e(0), static_cast\u003cint16_t\u003e(100));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  76,
+                              "text":  "static uint8_t BuildRpmProxy(int16_t throttle, bool wheelsSpinning)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  78,
+                              "text":  "if (!wheelsSpinning) return 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  79,
+                              "text":  "const int16_t clamped = std::clamp\u003cint16_t\u003e(throttle, static_cast\u003cint16_t\u003e(0), static_cast\u003cint16_t\u003e(100));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\simple_audio_events.hpp",
+                              "line":  89,
+                              "text":  "uint32_t brakePulses_ = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  33,
+                              "text":  "inline void HandleOrbitAroundCar(Camera::State\u0026 cam,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  34,
+                              "text":  "int32_t carYawStepDeg,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  36,
+                              "text":  "int32_t\u0026 carYawDeg,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  48,
+                              "text":  "if (leftHeld) delta -= carYawStepDeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  49,
+                              "text":  "if (rightHeld) delta += carYawStepDeg;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  53,
+                              "text":  "carYawDeg = (carYawDeg + delta + 360) % 360;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  55,
+                              "text":  "cam.yawDeg = (cam.yawDeg + camDelta + 360) % 360;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  68,
+                              "text":  "inline void SetBehind(Camera::State\u0026 cam, int32_t carYawDeg)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  70,
+                              "text":  "cam.yawDeg = (carYawDeg + 180) % 360;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  71,
+                              "text":  "cam.viewYawDeg = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  76,
+                              "text":  "inline void ApplyDelta(Camera::State\u0026 cam, int32_t deltaYaw)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  78,
+                              "text":  "cam.yawDeg = (cam.yawDeg + deltaYaw + 360) % 360;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\camera_rig.hpp",
+                              "line":  84,
+                              "text":  "cam.location = Camera::OrbitPosition(cam.yaw, cam.pitch, cam.radius) + cam.strafe;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  8,
+                              "text":  "// Collision query adapter backed by loaded track segments."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  9,
+                              "text":  "class TrackCollisionQueryFromSystem final : public Game::ITrackCollisionQuery"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  12,
+                              "text":  "TrackCollisionQueryFromSystem(const TrackSystem* trackSystem,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  19,
+                              "text":  "SRL::Math::Types::Vector3D\u0026 outSurfaceNormal,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  23,
+                              "text":  "outSurfaceNormal = SRL::Math::Types::Vector3D(0.0, -1.0, 0.0);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  64,
+                              "text":  "bool SampleSurfaceYByFamilyId(const SRL::Math::Types::Vector3D\u0026 worldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  66,
+                              "text":  "SRL::Math::Types::Fxp\u0026 outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  73,
+                              "text":  "outSurfaceY = worldPosition.Y;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  83,
+                              "text":  "const bool found = trackSystem_-\u003eFindSurfaceYByFamilyId("
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  87,
+                              "text":  "outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  97,
+                              "text":  "bool SampleSurfaceYByFamilySet(const SRL::Math::Types::Vector3D\u0026 worldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  100,
+                              "text":  "SRL::Math::Types::Fxp\u0026 outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  107,
+                              "text":  "outSurfaceY = worldPosition.Y;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  114,
+                              "text":  "outSurfaceY = worldPosition.Y;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  124,
+                              "text":  "const bool found = trackSystem_-\u003eFindSurfaceYByFamilySet("
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  129,
+                              "text":  "outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  139,
+                              "text":  "bool SampleSurfaceYByFamilySetStrict(const SRL::Math::Types::Vector3D\u0026 worldPosition,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  142,
+                              "text":  "SRL::Math::Types::Fxp\u0026 outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  149,
+                              "text":  "outSurfaceY = worldPosition.Y;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  156,
+                              "text":  "outSurfaceY = worldPosition.Y;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  166,
+                              "text":  "const bool found = trackSystem_-\u003eFindSurfaceYByFamilySet("
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  171,
+                              "text":  "outSurfaceY,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  184,
+                              "text":  "SRL::Math::Types::Fxp collisionRadius,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Interlagos_racing\\src\\track_collision_query.hpp",
+                              "line":  202,
+                              "text":  "collisionRadius,"
+                          }
+                      ]
+}

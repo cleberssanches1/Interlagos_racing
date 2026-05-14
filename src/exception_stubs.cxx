@@ -3,6 +3,7 @@
 
 namespace std
 {
+    [[noreturn]] void __throw_length_error(const char*) { while (1) {} }
     [[noreturn]] void __throw_bad_array_new_length() { while (1) {} }
     [[noreturn]] void __throw_bad_alloc() { while (1) {} }
     [[noreturn]] void __throw_out_of_range(const char*) { while (1) {} }

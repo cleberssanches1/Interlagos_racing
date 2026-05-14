@@ -1,0 +1,1368 @@
+﻿{
+    "root":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master",
+    "totalHits":  3379,
+    "topFiles":  [
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\game.cpp",
+                         "hits":  605
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cardynamics.cpp",
+                         "hits":  446
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_car_experimental.cpp",
+                         "hits":  222
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_car_standard.cpp",
+                         "hits":  186
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cardynamics.h",
+                         "hits":  132
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                         "hits":  105
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                         "hits":  93
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\performance_testing.cpp",
+                         "hits":  93
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.cpp",
+                         "hits":  85
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\carsuspension.cpp",
+                         "hits":  80
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\game.h",
+                         "hits":  72
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartire1.cpp",
+                         "hits":  59
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\dynamicsworld.cpp",
+                         "hits":  57
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\trackloader.cpp",
+                         "hits":  55
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartire2.cpp",
+                         "hits":  43
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\carsuspension.h",
+                         "hits":  43
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_car_experimental.h",
+                         "hits":  42
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\carengine.cpp",
+                         "hits":  41
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\timer.h",
+                         "hits":  39
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\replay.cpp",
+                         "hits":  34
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\carbrake.h",
+                         "hits":  34
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_car_standard.h",
+                         "hits":  32
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\timer.cpp",
+                         "hits":  30
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\carengine.h",
+                         "hits":  29
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartire3.cpp",
+                         "hits":  29
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartire2.h",
+                         "hits":  28
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                         "hits":  27
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\settings.h",
+                         "hits":  27
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartire3.h",
+                         "hits":  25
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartirebase.h",
+                         "hits":  24
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\settings.cpp",
+                         "hits":  24
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\replay.h",
+                         "hits":  22
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_car.h",
+                         "hits":  22
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\cartire1.h",
+                         "hits":  22
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                         "hits":  21
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\joeserialize.cpp",
+                         "hits":  20
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai.cpp",
+                         "hits":  19
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\pathmanager.cpp",
+                         "hits":  19
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\collision_contact.h",
+                         "hits":  18
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\physics\\dynamicsworld.h",
+                         "hits":  17
+                     }
+                 ],
+    "sampleMatches":  [
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  272,
+                              "text":  "case ABS_THROTTLE :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  273,
+                              "text":  "printf(\" (Throttle) \");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  278,
+                              "text":  "case ABS_WHEEL :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  279,
+                              "text":  "printf(\" (Wheel) \");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  284,
+                              "text":  "case ABS_BRAKE :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  285,
+                              "text":  "printf(\" (Brake) \");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  395,
+                              "text":  "case ABS_THROTTLE :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  396,
+                              "text":  "printf(\" (Throttle) \");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  401,
+                              "text":  "case ABS_WHEEL :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  402,
+                              "text":  "printf(\" (Wheel) \");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  407,
+                              "text":  "case ABS_BRAKE :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  408,
+                              "text":  "printf(\" (Brake) \");"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  488,
+                              "text":  "Specific for the Logitech G25 wheel :\\n\\"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  502,
+                              "text":  "I want to switch my G25 wheel to native mode to bee able to use all buttons and axes :\\n\\"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  505,
+                              "text":  "I want to reset my G25 wheel to its default mode with default calibration values :\\n\\"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  518,
+                              "text":  "I want to get rid of the deadzone on my wheel :\\n\\"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\tools\\G25manage\\G25manage.c",
+                              "line":  643,
+                              "text":  "printf ( \"You must specify the event device for your joystick/wheel\\n\" );"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\autoupdate.cpp",
+                              "line":  37,
+                              "text":  "// Iterate over all groups (cars, tracks)."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\bucketed_hashmap.h",
+                              "line":  312,
+                              "text":  "unsigned int GetNumCollisions() const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\bucketed_hashmap.h",
+                              "line":  348,
+                              "text":  "return (GetTotalObjects() - (float) GetNumCollisions()) / nbuckets;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  20,
+                              "text":  "#ifndef _CARGRAPHICS_H"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  21,
+                              "text":  "#define _CARGRAPHICS_H"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  37,
+                              "text":  "class CarDynamics;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  40,
+                              "text":  "class CarGraphics"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  43,
+                              "text":  "CarGraphics();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  45,
+                              "text":  "CarGraphics(const CarGraphics \u0026 other);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  47,
+                              "text":  "CarGraphics \u0026 operator= (const CarGraphics \u0026 other);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  49,
+                              "text":  "~CarGraphics();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  53,
+                              "text":  "const std::string \u0026 carpath,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  54,
+                              "text":  "const std::string \u0026 carwheel,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  55,
+                              "text":  "const std::string \u0026 carpaint,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  56,
+                              "text":  "const Vec3 \u0026 carcolor,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  62,
+                              "text":  "/// update graphics from car input vector"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  65,
+                              "text":  "/// update graphics from car dynamics state"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  66,
+                              "text":  "void Update(const CarDynamics \u0026 dynamics);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  79,
+                              "text":  "SceneNode::Handle steernode;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  80,
+                              "text":  "SceneNode::DrawableHandle brakelights;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  83,
+                              "text":  "// car cameras"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  86,
+                              "text":  "// car lights"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  94,
+                              "text":  "// models and textures used by this car instance"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  98,
+                              "text":  "// steering wheel"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  99,
+                              "text":  "Quat steer_orientation;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  100,
+                              "text":  "Quat steer_rotation;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  101,
+                              "text":  "float steer_angle_max;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  103,
+                              "text":  "// cached so we can update the brake light"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  104,
+                              "text":  "float applied_brakes;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.h",
+                              "line":  122,
+                              "text":  "#endif // _CARGRAPHICS_H"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\bezier.cpp",
+                              "line":  359,
+                              "text":  "const int COLLISION_QUAD_DIVS = 6;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\bezier.cpp",
+                              "line":  377,
+                              "text":  "for (int i = 0; i \u003c COLLISION_QUAD_DIVS; i++)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\bezier.cpp",
+                              "line":  410,
+                              "text":  "//expand quad UV to surface UV"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\autoupdate.h",
+                              "line":  28,
+                              "text":  "/// A class that maintains version information about cars and tracks."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  20,
+                              "text":  "#ifndef _CARSOUND_H"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  21,
+                              "text":  "#define _CARSOUND_H"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  23,
+                              "text":  "#include \"physics/carwheelposition.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  32,
+                              "text":  "class CarDynamics;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  35,
+                              "text":  "class CarSound"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  38,
+                              "text":  "CarSound();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  40,
+                              "text":  "CarSound(const CarSound \u0026 other);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  42,
+                              "text":  "CarSound \u0026 operator= (const CarSound \u0026 other);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  44,
+                              "text":  "~CarSound();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  47,
+                              "text":  "const std::string \u0026 carpath,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  48,
+                              "text":  "const std::string \u0026 carname,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  53,
+                              "text":  "void Update(const CarDynamics \u0026 dynamics, float dt);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  60,
+                              "text":  "unsigned tiresqueal[WHEEL_COUNT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  61,
+                              "text":  "unsigned tirebump[WHEEL_COUNT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  62,
+                              "text":  "unsigned grasssound[WHEEL_COUNT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  63,
+                              "text":  "unsigned gravelsound[WHEEL_COUNT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  66,
+                              "text":  "unsigned brakesound;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  67,
+                              "text":  "unsigned handbrakesound;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  72,
+                              "text":  "bool brakesound_check;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  73,
+                              "text":  "bool handbrakesound_check;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carsound.h",
+                              "line":  79,
+                              "text":  "#endif // _CARSOUND_H"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  20,
+                              "text":  "#include \"carcontrolmap.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  75,
+                              "text":  "static const std::vector\u003cstd::string\u003e carinput_strings"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  77,
+                              "text":  "\"gas\", // THROTTLE"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  79,
+                              "text":  "\"brake\", // BRAKE"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  80,
+                              "text":  "\"handbrake\", // HANDBRAKE"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  82,
+                              "text":  "\"steer_left\", // STEER_LEFT"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  83,
+                              "text":  "\"steer_right\", // STEER_RIGHT"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  102,
+                              "text":  "\"view_incar\", // VIEW_INCAR"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  107,
+                              "text":  "\"focus_prev_car\", // FOCUS_PREV"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  108,
+                              "text":  "\"focus_next_car\", // FOCUS_NEXT"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  129,
+                              "text":  "static const std::unordered_map\u003cstd::string, unsigned\u003e carinput_stringmap = []"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  131,
+                              "text":  "std::unordered_map\u003cstd::string, unsigned\u003e stringmap(carinput_strings.size());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  132,
+                              "text":  "for (size_t i = 0; i \u003c carinput_strings.size(); ++i)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  134,
+                              "text":  "stringmap[carinput_strings[i]] = i;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  184,
+                              "text":  "{\"CARET\", SDLK_CARET},"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  272,
+                              "text":  "CarControlMap::CarControlMap() :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  278,
+                              "text":  "bool CarControlMap::Load(const std::string \u0026 controlfile, std::ostream \u0026 info_output, std::ostream \u0026 error_output)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  283,
+                              "text":  "info_output \u003c\u003c \"Failed to load car controls file \" \u003c\u003c controlfile \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  460,
+                              "text":  "void CarControlMap::Save(const std::string \u0026 controlfile)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  467,
+                              "text":  "void CarControlMap::Save(Config \u0026 controls_config)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  472,
+                              "text":  "std::string control_name = GetStringFromInput(CarInput::Enum(n));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  573,
+                              "text":  "const std::vector \u003cfloat\u003e \u0026 CarControlMap::ProcessInput("
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  575,
+                              "text":  "float dt, bool joy_200, float carms, float speedsens,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  634,
+                              "text":  "bool havegear = inputs[CarInput::FIRST_GEAR] ||"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  635,
+                              "text":  "inputs[CarInput::SECOND_GEAR] ||"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  636,
+                              "text":  "inputs[CarInput::THIRD_GEAR] ||"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  637,
+                              "text":  "inputs[CarInput::FOURTH_GEAR] ||"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  638,
+                              "text":  "inputs[CarInput::FIFTH_GEAR] ||"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  639,
+                              "text":  "inputs[CarInput::SIXTH_GEAR] ||"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  640,
+                              "text":  "inputs[CarInput::REVERSE];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  642,
+                              "text":  "inputs[CarInput::NEUTRAL] = 1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  645,
+                              "text":  "float steerpos = lastinputs[CarInput::STEER_RIGHT] - lastinputs[CarInput::STEER_LEFT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  649,
+                              "text":  "//do steering processing"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  650,
+                              "text":  "ProcessSteering(joytype, steerpos, dt, joy_200, carms*2.23693629f, speedsens);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  655,
+                              "text":  "void CarControlMap::GetControlsInfo(std::map\u003cstd::string, std::string\u003e \u0026 info) const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  659,
+                              "text":  "CarInput::Enum input = CarInput::Enum(n);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  683,
+                              "text":  "CarControlMap::Control CarControlMap::GetControl(const std::string \u0026 inputname, size_t controlid)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  696,
+                              "text":  "void CarControlMap::SetControl(const std::string \u0026 inputname, size_t controlid, const Control \u0026 control)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  712,
+                              "text":  "void CarControlMap::DeleteControl(const std::string \u0026 inputname, size_t controlid)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  728,
+                              "text":  "const std::string \u0026 CarControlMap::GetStringFromInput(const unsigned input)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  730,
+                              "text":  "return carinput_strings[input];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  733,
+                              "text":  "unsigned CarControlMap::GetInputFromString(const std::string \u0026 str)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  735,
+                              "text":  "auto i = carinput_stringmap.find(str);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  736,
+                              "text":  "if (i != carinput_stringmap.end())"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  742,
+                              "text":  "const std::string \u0026 CarControlMap::GetStringFromKeycode(const int code)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  751,
+                              "text":  "int CarControlMap::GetKeycodeFromString(const std::string \u0026 str)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  760,
+                              "text":  "void CarControlMap::AddControl(Control newctrl, const std::string \u0026 inputname, std::ostream \u0026 error_output)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  769,
+                              "text":  "void CarControlMap::ProcessSteering(const std::string \u0026 joytype, float steerpos, float dt, bool joy_200, float carmph, float speedsens)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  771,
+                              "text":  "//std::cout \u003c\u003c \"steerpos: \" \u003c\u003c steerpos \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  773,
+                              "text":  "float val = inputs[CarInput::STEER_RIGHT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  774,
+                              "text":  "if (std::abs(inputs[CarInput::STEER_LEFT]) \u003e std::abs(inputs[CarInput::STEER_RIGHT])) //use whichever control is larger"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  775,
+                              "text":  "val = -inputs[CarInput::STEER_LEFT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  779,
+                              "text":  "std::cout \u003c\u003c \"Initial steer left: \" \u003c\u003c inputs[CarInput::STEER_LEFT] \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  780,
+                              "text":  "std::cout \u003c\u003c \"Initial steer right: \" \u003c\u003c inputs[CarInput::STEER_RIGHT] \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  794,
+                              "text":  "if (carmph \u003c transat)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  796,
+                              "text":  "else if (carmph \u003c normalat)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  798,
+                              "text":  "float coeff = (carmph - transat)/(normalat - transat);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  811,
+                              "text":  "if (carmph \u003e 1)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  815,
+                              "text":  "coeff = ratio*45*(1-std::atan(carmph*80*ssco)*0.6366198f);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  826,
+                              "text":  "//rate-limit non-wheel controls"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  827,
+                              "text":  "if (joytype != \"wheel\")"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  829,
+                              "text":  "//if (i-\u003efirst == inputs[CarInput::STEER_LEFT])"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  830,
+                              "text":  "//steerpos = -steerpos;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  831,
+                              "text":  "float steerstep = 5*dt;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  833,
+                              "text":  "if (val \u003e steerpos)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  835,
+                              "text":  "if (val - steerpos \u003c= steerstep)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  836,
+                              "text":  "steerpos = val;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  838,
+                              "text":  "steerpos += steerstep;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  842,
+                              "text":  "if (steerpos - val \u003c= steerstep)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  843,
+                              "text":  "steerpos = val;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  845,
+                              "text":  "steerpos -= steerstep;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  848,
+                              "text":  "val = Clamp(steerpos, -1.0f, 1.0f);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  851,
+                              "text":  "val = steerpos * coeff + val * (1-coeff);*/"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  856,
+                              "text":  "//std::cout \u003c\u003c \"Steer left: \" \u003c\u003c inputs[CarInput::STEER_LEFT] \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  857,
+                              "text":  "//std::cout \u003c\u003c \"Steer right: \" \u003c\u003c inputs[CarInput::STEER_RIGHT] \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  858,
+                              "text":  "//std::cout \u003c\u003c \"Current steering: \" \u003c\u003c car.GetLastSteer() \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  859,
+                              "text":  "//std::cout \u003c\u003c \"New steering: \" \u003c\u003c val \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  861,
+                              "text":  "inputs[CarInput::STEER_LEFT] = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  862,
+                              "text":  "inputs[CarInput::STEER_RIGHT] = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  864,
+                              "text":  "inputs[CarInput::STEER_LEFT] = -val;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  866,
+                              "text":  "inputs[CarInput::STEER_RIGHT] = val;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  867,
+                              "text":  "//inputs[CarInput::STEER_RIGHT] = val;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  868,
+                              "text":  "//inputs[CarInput::STEER_LEFT] = -val;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  872,
+                              "text":  "std::cout \u003c\u003c \"Steer left: \" \u003c\u003c inputs[CarInput::STEER_LEFT] \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  873,
+                              "text":  "std::cout \u003c\u003c \"Steer right: \" \u003c\u003c inputs[CarInput::STEER_RIGHT] \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  877,
+                              "text":  "std::string CarControlMap::Control::GetInfo() const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  920,
+                              "text":  "void CarControlMap::Control::DebugPrint(std::ostream \u0026 out) const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  927,
+                              "text":  "bool CarControlMap::Control::operator==(const Control \u0026 other) const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  929,
+                              "text":  "// don\u0027t care about certain flags"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  936,
+                              "text":  "bool CarControlMap::Control::operator\u003c(const Control \u0026 other) const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  938,
+                              "text":  "// don\u0027t care about certain flags"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  945,
+                              "text":  "void CarControlMap::Control::ReadFrom(std::istream \u0026 in)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\carcontrolmap.cpp",
+                              "line":  952,
+                              "text":  "CarControlMap::Control::Control() :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_factory.h",
+                              "line":  23,
+                              "text":  "class AiCar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\ai\\ai_factory.h",
+                              "line":  29,
+                              "text":  "virtual AiCar * Create(unsigned carid, float difficulty) = 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  20,
+                              "text":  "#include \"cargraphics.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  21,
+                              "text":  "#include \"physics/carinput.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  26,
+                              "text":  "#include \"physics/cardynamics.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  67,
+                              "text":  "static bool LoadWheel("
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  68,
+                              "text":  "const PTree \u0026 cfg_wheel,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  73,
+                              "text":  "SceneNode::Handle wheelnode = topnode.AddNode();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  84,
+                              "text":  "if (!cfg_wheel.get(\"mesh\", meshname, error_output)) return false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  85,
+                              "text":  "if (!cfg_wheel.get(\"texture\", texname, error_output)) return false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  86,
+                              "text":  "if (!cfg_wheel.get(\"tire\", cfg_tire, error_output)) return false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  90,
+                              "text":  "// load wheel"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  92,
+                              "text":  "cfg_wheel.get(\"genrim\", genrim);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  95,
+                              "text":  "// get wheel disk mesh"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  98,
+                              "text":  "// gen wheel mesh"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  114,
+                              "text":  "if (!loadDrawable(meshname, texname, cfg_wheel, topnode, \u0026wheelnode))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  136,
+                              "text":  "if (!loadDrawable(meshname, texname, *cfg_tire, topnode.GetNode(wheelnode)))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  142,
+                              "text":  "// load brake (optional)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  144,
+                              "text":  "const PTree * cfg_brake;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  145,
+                              "text":  "if (cfg_wheel.get(\"brake\", cfg_brake, error_output) \u0026\u0026"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  146,
+                              "text":  "cfg_brake-\u003eget(\"texture\", texname))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  149,
+                              "text":  "if (!cfg_brake-\u003eget(\"mesh\", meshname))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  153,
+                              "text":  "cfg_brake-\u003eget(\"radius\", radius);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  154,
+                              "text":  "cfg_brake-\u003eget(\"radius\", radiusstr);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  156,
+                              "text":  "// gen brake disk mesh"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  157,
+                              "text":  "meshname = \"brake\" + radiusstr;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  162,
+                              "text":  "VertexArray brakeva;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  163,
+                              "text":  "MeshGen::mg_brake_rotor(brakeva, diameter_mm, thickness_mm);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  164,
+                              "text":  "content.load(mesh, path, meshname, brakeva);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  168,
+                              "text":  "if (!loadDrawable(meshname, texname, *cfg_brake, topnode.GetNode(wheelnode)))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  177,
+                              "text":  "CarGraphics::CarGraphics() :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  178,
+                              "text":  "steer_angle_max(0),"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  179,
+                              "text":  "applied_brakes(0),"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  186,
+                              "text":  "CarGraphics::CarGraphics(const CarGraphics \u0026 other) :"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  187,
+                              "text":  "steer_angle_max(0),"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  188,
+                              "text":  "applied_brakes(0),"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  196,
+                              "text":  "CarGraphics \u0026 CarGraphics::operator= (const CarGraphics \u0026 other)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  203,
+                              "text":  "CarGraphics::~CarGraphics()"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  208,
+                              "text":  "bool CarGraphics::Load("
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  210,
+                              "text":  "const std::string \u0026 carpath,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  211,
+                              "text":  "const std::string \u0026 carwheel,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  212,
+                              "text":  "const std::string \u0026 carpaint,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  213,
+                              "text":  "const Vec3 \u0026 carcolor,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  222,
+                              "text":  "LoadDrawable loadDrawable(carpath, anisotropy, content, models, textures, error_output);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  233,
+                              "text":  "if (carpaint != \"default\") texname[0] = carpaint;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  237,
+                              "text":  "// load wheels"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  238,
+                              "text":  "const PTree * cfg_wheels;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  239,
+                              "text":  "if (!cfg.get(\"wheel\", cfg_wheels, error_output)) return false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  241,
+                              "text":  "std::shared_ptr\u003cPTree\u003e sel_wheel;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  242,
+                              "text":  "if (carwheel != \"default\" \u0026\u0026 !content.load(sel_wheel, carpath, carwheel)) return false;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  244,
+                              "text":  "for (const auto \u0026 i : *cfg_wheels)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  246,
+                              "text":  "const PTree * cfg_wheel = \u0026i.second;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  248,
+                              "text":  "// override default wheel with selected, not very efficient, fixme"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  249,
+                              "text":  "PTree opt_wheel;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  250,
+                              "text":  "if (sel_wheel.get())"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  252,
+                              "text":  "opt_wheel.set(*sel_wheel);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  253,
+                              "text":  "opt_wheel.merge(*cfg_wheel);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  254,
+                              "text":  "cfg_wheel = \u0026opt_wheel;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  257,
+                              "text":  "if (!LoadWheel(*cfg_wheel, loadDrawable, topnode, error_output))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  259,
+                              "text":  "error_output \u003c\u003c \"Failed to load wheels.\" \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  269,
+                              "text":  "i.first != \"steering\" \u0026\u0026"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  270,
+                              "text":  "i.first != \"light-brake\" \u0026\u0026"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  277,
+                              "text":  "// load steering wheel"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  278,
+                              "text":  "const PTree * cfg_steer;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  279,
+                              "text":  "if (cfg.get(\"steering\", cfg_steer))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  282,
+                              "text":  "if (!loadDrawable(*cfg_steer, bodynoderef, \u0026steernode, 0))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  284,
+                              "text":  "error_output \u003c\u003c \"Failed to load steering wheel.\" \u003c\u003c std::endl;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  287,
+                              "text":  "cfg_steer-\u003eget(\"max-angle\", steer_angle_max);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  288,
+                              "text":  "steer_angle_max = steer_angle_max * float(M_PI / 180);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  289,
+                              "text":  "SceneNode \u0026 steernoderef = bodynoderef.GetNode(steernode);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  290,
+                              "text":  "steer_orientation = steernoderef.GetTransform().GetRotation();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  291,
+                              "text":  "steer_rotation = steer_orientation;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  294,
+                              "text":  "// load brake/reverse light point light sources (optional)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  298,
+                              "text":  "while (cfg.get(\"light-brake-\"+istr, cfg_light))"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\vdrift-master\\src\\cargraphics.cpp",
+                              "line":  325,
+                              "text":  "// load car brake/reverse graphics (optional)"
+                          }
+                      ]
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <cstdio>
 #include <memory>
 
@@ -56,9 +57,14 @@ public:
     {
         int16_t throttle = 0;
         int16_t steering = 0;
+        int8_t steerDirection = 0; // -1 left, +1 right, 0 neutral
         bool braking = false;
         bool wheelsSpinning = false;
         uint32_t wheelSpinTicks = 0;
+        // Transient input latches for per-frame decay control.
+        bool throttleInputHeld = false;
+        bool brakeInputHeld = false;
+        bool steerInputHeld = false;
     };
 
     const CommandSnapshot& Commands() const { return commandState_; }
@@ -113,9 +119,10 @@ private:
 
     static constexpr int16_t kThrottleStep = 12;
     static constexpr int16_t kThrottleMax = 100;
-    static constexpr int16_t kSteeringStep = 8;
+    static constexpr int16_t kSteeringStep = 24;
     static constexpr int16_t kSteeringMax = 100;
-    static constexpr int16_t kSteeringDecay = 6;
+    static constexpr int16_t kSteeringDecay = 18;
+    static constexpr int16_t kSteeringCrossCenterStep = 40;
     static constexpr int16_t kThrottleDecay = 4;
     static constexpr int16_t kBrakeReleaseDecay = 10;
 

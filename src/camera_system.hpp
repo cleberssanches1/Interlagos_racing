@@ -39,6 +39,13 @@ public:
         ChaseFar = 2
     };
 
+    // Response profile for chase smoothing.
+    enum class ChaseResponsePreset : uint8_t
+    {
+        Loose = 0,
+        Rigid = 1
+    };
+
     enum class Mode : uint8_t
     {
         Chase = 0,
@@ -81,6 +88,8 @@ public:
     // External PATH guidance for chase camera (optional, fallback-safe).
     void SetPathFrameContext(const PathFrameContext& context) { pathFrameContext_ = context; }
     ChasePreset GetChasePreset() const { return chasePreset_; }
+    void SetChaseResponsePreset(ChaseResponsePreset preset) { chaseResponsePreset_ = preset; }
+    ChaseResponsePreset GetChaseResponsePreset() const { return chaseResponsePreset_; }
 
     const Camera::State& State() const { return state_; }
     bool IsZHeld() const { return zHeld_; }
@@ -114,6 +123,7 @@ private:
     ChasePresetConfig PresetConfig(ChasePreset preset) const;
     static Vector3D ForwardFromYawDeg(int32_t yawDeg);
     static int32_t NormalizeYawDeg(int32_t yawDeg);
+    int32_t CameraFollowBlendRaw() const;
     void UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) const;
     Vector3D ResolvePresetOffsetWorld() const;
 
@@ -121,6 +131,7 @@ private:
     Camera::Tuning tuning_;
     Vector3D manualOffset_{};
     mutable Vector3D lastResolvedCameraLocation_{};
+    mutable bool cameraLocationInitialized_ = false;
     mutable Vector3D lastResolvedLookTarget_{};
     Vector3D cinematicLocation_{};
     Vector3D cinematicTarget_{};
@@ -129,11 +140,10 @@ private:
     CameraOrbitController::Config orbitConfig_{};
     CameraSafety::Config safetyConfig_{};
     ChasePreset chasePreset_ = ChasePreset::ChaseNear;
-    int32_t cachedCarYawDeg_ = 180;
-    int16_t carForwardYawOffsetDeg_ = 180;
+    int32_t cachedCarYawDeg_ = 0;
+    int16_t carForwardYawOffsetDeg_ = 0;
     mutable Vector3D headingForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D movementForwardWorld_{0.0, 0.0, 1.0f};
-    mutable Vector3D lookForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
     mutable bool hasObservedCarWorldPosition_ = false;
     PathFrameContext pathFrameContext_{};
@@ -147,7 +157,8 @@ private:
     int16_t orbitPitchStepDeg_ = 2;
     int16_t orbitPitchLimitDeg_ = 40;
     int16_t chaseNearOffsetX_ = 0;
-    int16_t chaseNearOffsetZ_ = -190;
+    int16_t chaseNearOffsetZ_ = -240;
     uint8_t chaseNearCalibRepeatFrames_ = 0;
+    ChaseResponsePreset chaseResponsePreset_ = ChaseResponsePreset::Loose;
     bool debugLogsEnabled_ = false;
 };

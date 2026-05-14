@@ -16,6 +16,7 @@ public:
     {
         int16_t speedKmh = 0;
         int16_t steering = 0;
+        int16_t yawStepDeg = 0;
         int16_t groundRearY = 0;
         int16_t groundFrontY = 0;
         uint8_t groundMask = 0;
@@ -58,7 +59,8 @@ private:
                                      std::array<size_t, 4>& outIds,
                                      size_t& outCount) const;
     void ClassifyWheels(const std::array<size_t, 4>& meshIds,
-                        const SRL::Math::Types::Vector3D* meshCenters);
+                        const SRL::Math::Types::Vector3D* meshCenters,
+                        bool preferMeshtexOrderFrontAxle);
     void ResetState();
 
     static int32_t ClampInt(int32_t value, int32_t minValue, int32_t maxValue);

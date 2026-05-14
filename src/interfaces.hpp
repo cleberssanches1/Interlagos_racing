@@ -29,6 +29,15 @@ struct GameplayFrameState
     int16_t debugGroundYFront = 0;
     int16_t debugGroundYTarget = 0;
     uint8_t debugGroundMask = 0;
+    int16_t debugSteerDeg = 0;
+    int16_t debugYawRateDeg = 0;
+    int16_t debugYawStepDeg = 0;
+    int16_t debugPlanarDx = 0;
+    int16_t debugPlanarDz = 0;
+    int16_t debugNetDx = 0;
+    int16_t debugNetDz = 0;
+    int16_t debugCorrX = 0;
+    int16_t debugCorrZ = 0;
     uint32_t checkpointsPassed = 0;
     RacePhase phase = RacePhase::Idle;
     bool resetRequested = false;
@@ -131,6 +140,39 @@ struct ITrackCollisionQuery
         if (outSegmentId) *outSegmentId = found ? bestSegmentId : -1;
         if (found) outSurfaceY = bestY;
         return found;
+    }
+    // Strict variant: rejects outside-face fallback candidates.
+    virtual bool SampleSurfaceYByFamilySetStrict(const Vector3D& worldPosition,
+                                                 const uint16_t* familyIds,
+                                                 size_t familyCount,
+                                                 SRL::Math::Types::Fxp& outSurfaceY,
+                                                 int32_t* outSegmentId = nullptr,
+                                                 int32_t seedSegmentId = -1) const
+    {
+        return SampleSurfaceYByFamilySet(worldPosition,
+                                         familyIds,
+                                         familyCount,
+                                         outSurfaceY,
+                                         outSegmentId,
+                                         seedSegmentId);
+    }
+    // Returns a planar push vector to keep the car out of side walls.
+    virtual bool ResolvePlanarWallPush(const Vector3D& worldPosition,
+                                       const Vector3D& forwardDirection,
+                                       SRL::Math::Types::Fxp collisionRadius,
+                                       Vector3D& outPush,
+                                       int32_t* outSegmentId = nullptr,
+                                       int32_t seedSegmentId = -1) const
+    {
+        (void)worldPosition;
+        (void)forwardDirection;
+        (void)collisionRadius;
+        (void)seedSegmentId;
+        if (outSegmentId) *outSegmentId = -1;
+        outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
+                           SRL::Math::Types::Fxp::BuildRaw(0),
+                           SRL::Math::Types::Fxp::BuildRaw(0));
+        return false;
     }
 };
 

@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
 
 #include "modelObject.hpp"
 
@@ -48,10 +49,12 @@ public:
 
     const std::vector<SRL::Math::Types::Vector3D>& MeshCenters() const { return meshCenters_; }
     size_t LastMeshDrawn() const { return lastMeshId_; }
+    uint32_t LastRenderFaceCount() const { return lastRenderFaceCount_; }
+    uint32_t LastRenderMeshCount() const { return lastRenderMeshCount_; }
 
 private:
     void ComputeMeshCenters();
-    bool DrawMesh(size_t meshId);
+    uint32_t DrawMesh(size_t meshId);
     void ApplyTransform(const SRL::Math::Types::Vector3D& position,
                         const SRL::Math::Types::Angle& yaw);
 
@@ -63,6 +66,8 @@ private:
     SRL::Math::Types::Vector3D offset_{0.0, 0.0, 0.0};
     size_t skipMeshId_{SIZE_MAX};
     size_t lastMeshId_{SIZE_MAX};
+    uint32_t lastRenderFaceCount_{0};
+    uint32_t lastRenderMeshCount_{0};
     std::vector<SRL::Math::Types::Vector3D> meshCenters_;
     std::vector<LocalTransform> meshLocalTransforms_;
     SRL::Math::Types::Angle bodyPitch_{SRL::Math::Types::Angle::FromDegrees(0.0f)};

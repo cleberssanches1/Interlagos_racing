@@ -1,0 +1,1368 @@
+﻿{
+    "root":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main",
+    "totalHits":  4836,
+    "topFiles":  [
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics_simulate.cpp",
+                         "hits":  249
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                         "hits":  198
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics_load.cpp",
+                         "hits":  191
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics_update.cpp",
+                         "hits":  163
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Update_Poses.cpp",
+                         "hits":  148
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Game_SceneInit.cpp",
+                         "hits":  124
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Gui_UtilCar.cpp",
+                         "hits":  122
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\collision_world.cpp",
+                         "hits":  122
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\CarModel_Create.cpp",
+                         "hits":  116
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                         "hits":  112
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car_sound.cpp",
+                         "hits":  109
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.cpp",
+                         "hits":  107
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\CarModel_Update.cpp",
+                         "hits":  102
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\game.cpp",
+                         "hits":  93
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Hud_UpdatesAll.cpp",
+                         "hits":  87
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Gui_TweakSim.cpp",
+                         "hits":  81
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\CarPosInfo.cpp",
+                         "hits":  71
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.h",
+                         "hits":  69
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\FollowCamera.cpp",
+                         "hits":  66
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\CarModel_Config.cpp",
+                         "hits":  64
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Hud_Graphs.cpp",
+                         "hits":  58
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Gui_InitCar.cpp",
+                         "hits":  57
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\CGui.h",
+                         "hits":  54
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cartire.cpp",
+                         "hits":  53
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Hud_Update.cpp",
+                         "hits":  52
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Update_PerfTest.cpp",
+                         "hits":  51
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\CarModel.h",
+                         "hits":  48
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\carcontrolmap_local.cpp",
+                         "hits":  46
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Gui_Events.cpp",
+                         "hits":  44
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Replay.cpp",
+                         "hits":  41
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Hud_UpdDebug.cpp",
+                         "hits":  38
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\common\\data\\CAllowed.cpp",
+                         "hits":  34
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\carengine.cpp",
+                         "hits":  33
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\timer.h",
+                         "hits":  33
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\common\\App_SceneObjects.cpp",
+                         "hits":  32
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\ChampChall.cpp",
+                         "hits":  31
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\common\\CScene_Veget.cpp",
+                         "hits":  30
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Gui_Paints.cpp",
+                         "hits":  29
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\Game_Update.cpp",
+                         "hits":  29
+                     },
+                     {
+                         "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\game\\settings.cpp",
+                         "hits":  28
+                     }
+                 ],
+    "sampleMatches":  [
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  4,
+                              "text":  "#include \"car.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  5,
+                              "text":  "#include \"cardefs.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  7,
+                              "text":  "#include \"collision_world.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  8,
+                              "text":  "#include \"tracksurface.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  17,
+                              "text":  "#include \"CarModel.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  26,
+                              "text":  "CAR::CAR()"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  28,
+                              "text":  "SetNumWheels(4);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  29,
+                              "text":  "//dynamics.pCar = this;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  32,
+                              "text":  "void CAR::SetNumWheels(int n)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  34,
+                              "text":  "numWheels = n;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  36,
+                              "text":  "sounds.SetNumWheels(n);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  40,
+                              "text":  "CAR::~CAR()"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  45,
+                              "text":  "//  📄 Load .car  custom params"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  47,
+                              "text":  "bool CAR::Load(class App* pApp1,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  49,
+                              "text":  "const std::string \u0026 carname,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  51,
+                              "text":  "COLLISION_WORLD \u0026 world,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  53,
+                              "text":  "bool isRemote, int idCar,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  58,
+                              "text":  "cartype = carname;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  59,
+                              "text":  "bRemoteCar = isRemote;  id = idCar;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  60,
+                              "text":  "std::string carpath = PATHS::Cars()+\"/\"+carname+\"/\";"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  66,
+                              "text":  "//  wheels count"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  68,
+                              "text":  "cf.GetParam(\"wheels\", nw);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  69,
+                              "text":  "if (nw \u003e= 2 \u0026\u0026 nw \u003c= MAX_WHEELS)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  70,
+                              "text":  "SetNumWheels(nw);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  73,
+                              "text":  "///-  custom car collision params  (dimensions and sphere placement)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  75,
+                              "text":  "CARDYNAMICS\u0026 cd = dynamics;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  77,
+                              "text":  "cd.com_ofs_L = 0.f;  cf.GetParam(\"collision.com_ofs_L\", cd.com_ofs_L);  //|"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  78,
+                              "text":  "cd.com_ofs_H = 0.f;  cf.GetParam(\"collision.com_ofs_H\", cd.com_ofs_H);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  80,
+                              "text":  "cd.coll_R   = 0.3f;  cf.GetParam(\"collision.radius\", cd.coll_R);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  81,
+                              "text":  "cd.coll_R2m = 0.6f;  cf.GetParam(\"collision.radius2mul\", cd.coll_R2m);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  82,
+                              "text":  "cd.coll_H   = 0.45f; cf.GetParam(\"collision.height\", cd.coll_H);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  83,
+                              "text":  "cd.coll_W   = 0.5f;  cf.GetParam(\"collision.width\",  cd.coll_W);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  85,
+                              "text":  "cd.coll_Lofs = 0.f;  cf.GetParam(\"collision.offsetL\", cd.coll_Lofs);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  86,
+                              "text":  "cd.coll_Wofs = 0.f;  cf.GetParam(\"collision.offsetW\", cd.coll_Wofs);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  87,
+                              "text":  "cd.coll_Hofs = 0.f;  cf.GetParam(\"collision.offsetH\", cd.coll_Hofs);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  91,
+                              "text":  "cd.coll_posLfront = 1.9f; cf.GetParam(\"collision.posLfront\", cd.coll_posLfront);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  92,
+                              "text":  "cd.coll_posLback = -1.9f; cf.GetParam(\"collision.posLrear\",  cd.coll_posLback);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  94,
+                              "text":  "cd.coll_FrWmul  = 0.2f;   cf.GetParam(\"collision.FrWmul\",  cd.coll_FrWmul);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  95,
+                              "text":  "cd.coll_FrHmul  = 1.0f;   cf.GetParam(\"collision.FrHmul\",  cd.coll_FrHmul);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  96,
+                              "text":  "cd.coll_TopWmul = 0.8f;   cf.GetParam(\"collision.TopWmul\", cd.coll_TopWmul);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  98,
+                              "text":  "cd.coll_TopFr    = 0.4f;  cf.GetParam(\"collision.TopFr\",    cd.coll_TopFr);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  99,
+                              "text":  "cd.coll_TopMid   =-0.3f;  cf.GetParam(\"collision.TopMid\",   cd.coll_TopMid);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  100,
+                              "text":  "cd.coll_TopBack  =-1.1f;  cf.GetParam(\"collision.TopBack\",  cd.coll_TopBack);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  102,
+                              "text":  "cd.coll_TopFrHm  = 0.2f;  cf.GetParam(\"collision.TopFrHm\",  cd.coll_TopFrHm);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  103,
+                              "text":  "cd.coll_TopMidHm = 0.4f;  cf.GetParam(\"collision.TopMidHm\", cd.coll_TopMidHm);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  104,
+                              "text":  "cd.coll_TopBackHm= 0.2f;  cf.GetParam(\"collision.TopBackHm\",cd.coll_TopBackHm);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  106,
+                              "text":  "cd.coll_FrontWm  = 1.0f;  cf.GetParam(\"collision.FrontWm\",  cd.coll_FrontWm);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  108,
+                              "text":  "cd.coll_friction = 0.4f;  cf.GetParam(\"collision.friction\",  cd.coll_friction);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  109,
+                              "text":  "cd.coll_flTrig_H = 0.f;   cf.GetParam(\"collision.fluidTrigH\",cd.coll_flTrig_H);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  113,
+                              "text":  "cd.buoy_X = 1.2f;   cf.GetParam(\"collision.buoy_X\", cd.buoy_X);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  114,
+                              "text":  "cd.buoy_Y = 0.7f;   cf.GetParam(\"collision.buoy_Y\", cd.buoy_Y);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  115,
+                              "text":  "cd.buoy_Z = 0.4f;   cf.GetParam(\"collision.buoy_Z\", cd.buoy_Z);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  116,
+                              "text":  "cd.buoy_Mul = 1.f;  cf.GetParam(\"collision.buoy_Mul\", cd.buoy_Mul);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  119,
+                              "text":  "//  load cardynamics"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  127,
+                              "text":  "cf.GetParam(\"collision.start-offsetY\", stOfsY);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  137,
+                              "text":  "sphYawAtStart = cd.sphereYaw;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  144,
+                              "text":  "LoadSounds(carpath);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  154,
+                              "text":  "void CAR::Update(double dt)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  156,
+                              "text":  "dynamics.Update();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  161,
+                              "text":  "if (pApp-\u003epSet-\u003eshow_graphs \u0026\u0026 id == 0)  // for 1st car"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  168,
+                              "text":  "void CAR::HandleInputs(const std::vector \u003cfloat\u003e \u0026 inputs, float dt)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  170,
+                              "text":  "assert(inputs.size() == CARINPUT::ALL); //-"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  174,
+                              "text":  "dynamics.inputsCopy = inputs;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  176,
+                              "text":  "int cur_gear = dynamics.GetTransmission().GetGear();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  179,
+                              "text":  "//  Brakes"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  180,
+                              "text":  "if (!bRemoteCar)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  182,
+                              "text":  "float brake = !rear ? inputs[CARINPUT::BRAKE] : inputs[CARINPUT::THROTTLE];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  183,
+                              "text":  "dynamics.SetBrake(brake);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  185,
+                              "text":  "//  Hand brake"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  186,
+                              "text":  "dynamics.SetHandBrake(gPar.carPrv ? 1.f : inputs[CARINPUT::HANDBRAKE]);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  189,
+                              "text":  "if (!bRemoteCar)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  190,
+                              "text":  "dynamics.doBoost = inputs[CARINPUT::BOOST];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  191,
+                              "text":  "dynamics.doFlip = inputs[CARINPUT::FLIP];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  193,
+                              "text":  "//  Steering"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  194,
+                              "text":  "if (!bRemoteCar)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  196,
+                              "text":  "float steer_value = inputs[CARINPUT::STEER_RIGHT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  197,
+                              "text":  "if (std::abs(inputs[CARINPUT::STEER_LEFT]) \u003e std::abs(inputs[CARINPUT::STEER_RIGHT])) //use whichever control is larger"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  198,
+                              "text":  "steer_value = -inputs[CARINPUT::STEER_LEFT];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  200,
+                              "text":  "#ifdef CAR_PRV"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  201,
+                              "text":  "if (dynamics.vtype == V_Car)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  202,
+                              "text":  "steer_value = -0.5f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  204,
+                              "text":  "dynamics.SetSteering(steer_value, pGame-\u003eGetSteerRange());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  205,
+                              "text":  "last_steer = steer_value;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  209,
+                              "text":  "//if (inputs[CARINPUT::START_ENGINE])"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  210,
+                              "text":  "//\tdynamics.StartEngine();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  214,
+                              "text":  "if (inputs[CARINPUT::SHIFT_UP] == 1.0)\t\tgear_change = 1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  215,
+                              "text":  "if (inputs[CARINPUT::SHIFT_DOWN] == 1.0)\tgear_change = -1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  218,
+                              "text":  "/*if (inputs[CARINPUT::REVERSE])\tnew_gear = -1;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  219,
+                              "text":  "if (inputs[CARINPUT::FIRST_GEAR])\tnew_gear = 1;*/"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  221,
+                              "text":  "//  Throttle"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  222,
+                              "text":  "float throttle = !rear ? inputs[CARINPUT::THROTTLE] : inputs[CARINPUT::BRAKE];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  223,
+                              "text":  "float clutch = 1 - inputs[CARINPUT::CLUTCH]; //"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  225,
+                              "text":  "dynamics.ShiftGear(new_gear);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  226,
+                              "text":  "dynamics.SetThrottle(throttle);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  227,
+                              "text":  "dynamics.SetClutch(clutch);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  230,
+                              "text":  "///TODO: car setup separated for all (4) players: (auto shift, auto rear, rear inv, abs, tcs)  ..."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  231,
+                              "text":  "//if (inputs[CARINPUT::ABS_TOGGLE])\tdynamics.SetABS(!dynamics.GetABSEnabled());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  232,
+                              "text":  "//if (inputs[CARINPUT::TCS_TOGGLE])\tdynamics.SetTCS(!dynamics.GetTCSEnabled());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  236,
+                              "text":  "iCamNext = -inputs[CARINPUT::PREV_CAM] + inputs[CARINPUT::NEXT_CAM];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  239,
+                              "text":  "bLastChk = inputs[CARINPUT::LAST_CHK];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  249,
+                              "text":  "bool bRew = inputs[CARINPUT::REWIND] \u003e 0.2f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  255,
+                              "text":  "bRewind = timeRew \u003c= 0.f \u0026\u0026 bRew;  // car input"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  259,
+                              "text":  "bool lights = inputs[CARINPUT::LIGHTS];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  267,
+                              "text":  "float CAR::GetFeedback()"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  269,
+                              "text":  "return dynamics.GetFeedback() / (mz_nominalmax * 0.025);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  272,
+                              "text":  "float CAR::GetTireSquealAmount(WHEEL_POSITION i, float* slide, float* s1, float* s2) const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  274,
+                              "text":  "const TRACKSURFACE* surface = dynamics.GetWheelContact(i).GetSurfacePtr();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  275,
+                              "text":  "if (!surface)  return 0;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  276,
+                              "text":  "if (surface-\u003etype == TRACKSURFACE::NONE)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  279,
+                              "text":  "float d = dynamics.GetWheelContact(i).GetDepth() - 2*GetTireRadius(i);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  281,
+                              "text":  "if (inAir)  // not on ground"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  284,
+                              "text":  "MATHVECTOR\u003cfloat,3\u003e groundvel;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  285,
+                              "text":  "groundvel = dynamics.GetWheelVelocity(i);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  286,
+                              "text":  "QUATERNION\u003cfloat\u003e wheelspace;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  287,
+                              "text":  "wheelspace = dynamics.GetUprightOrientation(i);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  288,
+                              "text":  "(-wheelspace).RotateVector(groundvel);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  289,
+                              "text":  "float carv = groundvel[0];"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  291,
+                              "text":  "float wheelspeed = dynamics.GetWheel(i).GetAngularVelocity() * dynamics.GetWheel(i).GetRadius();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  292,
+                              "text":  "groundvel[0] -= wheelspeed;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  293,
+                              "text":  "groundvel[1] *= 2.f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  294,
+                              "text":  "groundvel[2] = 0.f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  296,
+                              "text":  "float squeal = (groundvel.Magnitude() - 3.f) * 0.2f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  299,
+                              "text":  "Dbl slideratio = dynamics.GetWheel(i).slips.slideratio;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  300,
+                              "text":  "Dbl slipratio = dynamics.GetWheel(i).slips.slipratio;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  302,
+                              "text":  "if (s2)  *s2 = slipratio;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  304,
+                              "text":  "//if (i==0)  LogO(iToStr(i)+\"  s \"+fToStr(carv,2,3)+\"  x \"+fToStr(wheelspeed,2,3));//+\"  y \"+fToStr(groundvel[1],2,3));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  305,
+                              "text":  "//LogO(fToStr(slipratio,2,3)+\" \"+fToStr(slideratio,2,3));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  307,
+                              "text":  "double maxratio = std::max(std::abs(slideratio), std::abs(slipratio));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  312,
+                              "text":  "float brk = (1.f * std::abs(carv - wheelspeed)) * (1.f - 0.1f * std::abs(wheelspeed));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  322,
+                              "text":  "//  Network CAR data send/receive"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  326,
+                              "text":  "protocol::CarStatePackage CAR::GetCarStatePackage() const"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  328,
+                              "text":  "protocol::CarStatePackage csp;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  329,
+                              "text":  "csp.pos = ToMathVector\u003cfloat\u003e(dynamics.chassis-\u003egetCenterOfMassPosition());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  330,
+                              "text":  "csp.rot = ToMathQuaternion\u003cfloat\u003e(dynamics.chassis-\u003egetCenterOfMassTransform().getRotation());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  334,
+                              "text":  "//  steer"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  335,
+                              "text":  "csp.steer = dynamics.GetSteering();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  336,
+                              "text":  "csp.boost = dynamics.doBoost * 255.f;  // pack to uint8"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  337,
+                              "text":  "csp.brake = dynamics.IsBraking() * 255.f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  338,
+                              "text":  "//csp.trackPercent = trackPercentCopy;  // needed from CarModel"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  342,
+                              "text":  "void CAR::UpdateCarState(const protocol::CarStatePackage\u0026 state)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  344,
+                              "text":  "// Velocity based estimation from physics engine works rather well"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  346,
+                              "text":  "MATHVECTOR\u003cfloat,3\u003e curpos = ToMathVector\u003cfloat\u003e(dynamics.chassis-\u003egetCenterOfMassPosition());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  349,
+                              "text":  "QUATERNION\u003cfloat\u003e currot = ToMathQuaternion\u003cfloat\u003e(dynamics.chassis-\u003egetCenterOfMassTransform().getRotation());"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  360,
+                              "text":  "dynamics.chassis-\u003esetLinearVelocity(ToBulletVector(state.linearVel));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  361,
+                              "text":  "dynamics.chassis-\u003esetAngularVelocity(ToBulletVector(state.angularVel));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  363,
+                              "text":  "dynamics.SynchronizeBody();  // set body from chassis"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  364,
+                              "text":  "dynamics.UpdateWheelContacts();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  366,
+                              "text":  "//  steer"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  367,
+                              "text":  "dynamics.SetSteering(state.steer, pGame-\u003eGetSteerRange());  //peers can have other game settins.."
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  368,
+                              "text":  "last_steer = state.steer;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  369,
+                              "text":  "dynamics.doBoost = state.boost / 255.f;  // unpack from uint8"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  370,
+                              "text":  "dynamics.SetBrake(state.brake / 255.f);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  377,
+                              "text":  "void CAR::SetPosition1(const MATHVECTOR\u003cfloat,3\u003e \u0026 pos)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  380,
+                              "text":  "dynamics.SetPosition(dpos);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  381,
+                              "text":  "dynamics.AlignWithGround();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  384,
+                              "text":  "void CAR::SetPosition(const MATHVECTOR\u003cfloat,3\u003e \u0026 pos, const QUATERNION\u003cfloat\u003e \u0026 rot)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  387,
+                              "text":  "dynamics.SetPosition(dpos);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  388,
+                              "text":  "dynamics.AlignWithGround();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  393,
+                              "text":  "dynamics.chassis-\u003esetWorldTransform(tr);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  394,
+                              "text":  "if (dynamics.vtype == V_Sphere)  dynamics.sphereYaw = rot[0]; //o"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  396,
+                              "text":  "void CAR::SetPosition(const MATHVECTOR\u003cDbl,3\u003e \u0026 pos, const QUATERNION\u003cDbl\u003e \u0026 rot)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  398,
+                              "text":  "dynamics.SetPosition(pos);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  399,
+                              "text":  "dynamics.AlignWithGround();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  404,
+                              "text":  "dynamics.chassis-\u003esetWorldTransform(tr);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  405,
+                              "text":  "if (dynamics.vtype == V_Sphere)  dynamics.sphereYaw = rot[0]; //o"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  408,
+                              "text":  "///  reset car, pos and state"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  410,
+                              "text":  "void CAR::ResetPos(bool fromStart)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  416,
+                              "text":  "dynamics.chassis-\u003esetLinearVelocity(btVector3(0,0,0));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  417,
+                              "text":  "dynamics.chassis-\u003esetAngularVelocity(btVector3(0,0,0));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  419,
+                              "text":  "dynamics.SynchronizeBody();  // set body from chassis"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  422,
+                              "text":  "if (dynamics.vtype == V_Sphere)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  423,
+                              "text":  "dynamics.sphereYaw = sphYawAtStart;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  425,
+                              "text":  "dynamics.boostFuel = dynamics.boostFuelStart;  // restore boost fuel"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  426,
+                              "text":  "dynamics.fDamage = 0.f;  // clear damage"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  428,
+                              "text":  "int id = pCarM-\u003eiIndex;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  432,
+                              "text":  "dynamics.fDamage = dmgLastCheck;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  434,
+                              "text":  "//  engine, wheels"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  435,
+                              "text":  "dynamics.engine.SetInitialConditions();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  436,
+                              "text":  "for (int w=0; w \u003c numWheels; ++w)"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  439,
+                              "text":  "dynamics.wheel[w].SetAngularVelocity(0);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  440,
+                              "text":  "//dynamics.wheel_velocity[w] = zero;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  442,
+                              "text":  "//crashdetection.Update(0.f, 0.1f);  //prevent car hit sound"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  443,
+                              "text":  "dynamics.fHitDmgA = 0.f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  445,
+                              "text":  "//dynamics.SynchronizeChassis();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  446,
+                              "text":  "dynamics.UpdateWheelContacts();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  449,
+                              "text":  "///  save car pos and rot"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  450,
+                              "text":  "void CAR::SavePosAtCheck()"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  452,
+                              "text":  "posLastCheck = dynamics.body.GetPosition();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  453,
+                              "text":  "rotLastCheck = dynamics.body.GetOrientation();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  454,
+                              "text":  "dmgLastCheck = dynamics.fDamage;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  458,
+                              "text":  "void CAR::SetPosRewind(const MATHVECTOR\u003cfloat,3\u003e\u0026 pos, const QUATERNION\u003cfloat\u003e\u0026 rot,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  464,
+                              "text":  "dynamics.chassis-\u003esetLinearVelocity(ToBulletVector(vel));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  465,
+                              "text":  "dynamics.chassis-\u003esetAngularVelocity(ToBulletVector(angvel));"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  467,
+                              "text":  "dynamics.SynchronizeBody();  // set body from chassis"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  468,
+                              "text":  "dynamics.UpdateWheelContacts();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  469,
+                              "text":  "dynamics.fHitDmgA = 0.f;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  471,
+                              "text":  "//  steer"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\car.cpp",
+                              "line":  472,
+                              "text":  "//dynamics.SetSteering(steer);  last_steer = steer;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\BuoyMath.h",
+                              "line":  2,
+                              "text":  "Copyright (c) 2005-2007 Erin Catto http://www.gphysics.com"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  8,
+                              "text":  "#include \"carengine.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  9,
+                              "text":  "#include \"carclutch.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  10,
+                              "text":  "#include \"cartransmission.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  11,
+                              "text":  "#include \"carfueltank.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  12,
+                              "text":  "#include \"cardifferential.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  13,
+                              "text":  "#include \"caraero.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  15,
+                              "text":  "#include \"carsuspension.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  16,
+                              "text":  "#include \"carwheel.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  17,
+                              "text":  "#include \"cartire.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  18,
+                              "text":  "#include \"carbrake.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  20,
+                              "text":  "#include \"cardefs.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  21,
+                              "text":  "#include \"collision_contact.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  22,
+                              "text":  "#include \"btBulletCollisionCommon.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  23,
+                              "text":  "#include \"btBulletDynamicsCommon.h\""
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  26,
+                              "text":  "class MODEL;  class CONFIGFILE;  class COLLISION_WORLD;  class FluidBox;  class GAME;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  30,
+                              "text":  "class CARDYNAMICS : public btActionInterface"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  40,
+                              "text":  "int numWheels;  // copy from CAR"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  41,
+                              "text":  "void SetNumWheels(int n);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  43,
+                              "text":  "CARDYNAMICS();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  44,
+                              "text":  "~CARDYNAMICS();"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  51,
+                              "text":  "COLLISION_WORLD \u0026 world,"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  57,
+                              "text":  "virtual void updateAction(btCollisionWorld* collisionWorld, btScalar dt);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  68,
+                              "text":  "MATHVECTOR\u003cDbl,3\u003e GetWheelPosition(WHEEL_POSITION wp) const;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  69,
+                              "text":  "MATHVECTOR\u003cDbl,3\u003e GetWheelPosition(WHEEL_POSITION wp, Dbl displacement_percent) const; // for debugging"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  70,
+                              "text":  "QUATERNION\u003cDbl\u003e GetWheelOrientation(WHEEL_POSITION wp) const;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  72,
+                              "text":  "QUATERNION\u003cDbl\u003e GetUprightOrientation(WHEEL_POSITION wp) const;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  73,
+                              "text":  "MATHVECTOR\u003cDbl,3\u003e GetWheelVelocity(WHEEL_POSITION wp) const\t\t{\treturn wheel_velocity[wp];\t}\t// worldspace wheel center position"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  75,
+                              "text":  "// collision world interface"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  76,
+                              "text":  "const COLLISION_CONTACT \u0026 GetWheelContact(WHEEL_POSITION wp) const\t{\treturn wheel_contact[wp];\t}"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  77,
+                              "text":  "COLLISION_CONTACT \u0026 GetWheelContact(WHEEL_POSITION wp)\t\t\t\t{\treturn wheel_contact[wp];\t}"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  89,
+                              "text":  "/// custom collision params"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  93,
+                              "text":  "float coll_posLfront, coll_posLback, coll_friction;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  101,
+                              "text":  "// changed in CAR::UpdateSounds from bullet hit info"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  106,
+                              "text":  "void StartEngine();\t\t\t\t\tvoid ShiftGear(int value);\t\tfloat GetThrottle() const;"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  107,
+                              "text":  "void SetThrottle(float value);\t\tvoid SetClutch(float value);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  108,
+                              "text":  "void SetBrake(float value);\t\t\tvoid SetHandBrake(float value);"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  115,
+                              "text":  "const CARENGINE \u0026 GetEngine() const {  return engine;  }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  116,
+                              "text":  "const CARCLUTCH \u0026 GetClutch() const {  return clutch;  }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  117,
+                              "text":  "const CARTRANSMISSION \u0026 GetTransmission() const {  return transmission;  }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  118,
+                              "text":  "const CARBRAKE \u0026 GetBrake(WHEEL_POSITION pos) const {  return brake[pos];  }"
+                          },
+                          {
+                              "file":  "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\stuntrally3-main\\src\\vdrift\\cardynamics.h",
+                              "line":  119,
+                              "text":  "const CARWHEEL \u0026 GetWheel(WHEEL_POSITION pos) const {  return wheel[pos];  }"
+                          }
+                      ]
+}

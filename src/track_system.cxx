@@ -2173,20 +2173,32 @@ static void ReleaseTrackedPaletteBankForSlot(uint16_t slot)
     switch (meta.ColorMode)
     {
     case SRL::CRAM::TextureColorMode::Paletted16:
-        if (bank < g_trackPaletteBanks.pal16.size()) g_trackPaletteBanks.pal16[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted16, false);
+        if (bank < g_trackPaletteBanks.pal16.size())
+        {
+            g_trackPaletteBanks.pal16[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted16, false);
+        }
         break;
     case SRL::CRAM::TextureColorMode::Paletted64:
-        if (bank < g_trackPaletteBanks.pal64.size()) g_trackPaletteBanks.pal64[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted64, false);
+        if (bank < g_trackPaletteBanks.pal64.size())
+        {
+            g_trackPaletteBanks.pal64[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted64, false);
+        }
         break;
     case SRL::CRAM::TextureColorMode::Paletted128:
-        if (bank < g_trackPaletteBanks.pal128.size()) g_trackPaletteBanks.pal128[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted128, false);
+        if (bank < g_trackPaletteBanks.pal128.size())
+        {
+            g_trackPaletteBanks.pal128[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted128, false);
+        }
         break;
     case SRL::CRAM::TextureColorMode::Paletted256:
-        if (bank < g_trackPaletteBanks.pal256.size()) g_trackPaletteBanks.pal256[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted256, false);
+        if (bank < g_trackPaletteBanks.pal256.size())
+        {
+            g_trackPaletteBanks.pal256[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted256, false);
+        }
         break;
     default:
         break;
@@ -2198,20 +2210,32 @@ static void ReleaseTrackedPaletteBankById(SRL::CRAM::TextureColorMode mode, uint
     switch (mode)
     {
     case SRL::CRAM::TextureColorMode::Paletted16:
-        if (bank < g_trackPaletteBanks.pal16.size()) g_trackPaletteBanks.pal16[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted16, false);
+        if (bank < g_trackPaletteBanks.pal16.size())
+        {
+            g_trackPaletteBanks.pal16[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted16, false);
+        }
         break;
     case SRL::CRAM::TextureColorMode::Paletted64:
-        if (bank < g_trackPaletteBanks.pal64.size()) g_trackPaletteBanks.pal64[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted64, false);
+        if (bank < g_trackPaletteBanks.pal64.size())
+        {
+            g_trackPaletteBanks.pal64[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted64, false);
+        }
         break;
     case SRL::CRAM::TextureColorMode::Paletted128:
-        if (bank < g_trackPaletteBanks.pal128.size()) g_trackPaletteBanks.pal128[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted128, false);
+        if (bank < g_trackPaletteBanks.pal128.size())
+        {
+            g_trackPaletteBanks.pal128[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted128, false);
+        }
         break;
     case SRL::CRAM::TextureColorMode::Paletted256:
-        if (bank < g_trackPaletteBanks.pal256.size()) g_trackPaletteBanks.pal256[bank] = 0;
-        SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted256, false);
+        if (bank < g_trackPaletteBanks.pal256.size())
+        {
+            g_trackPaletteBanks.pal256[bank] = 0;
+            SRL::CRAM::SetBankUsedState(bank, SRL::CRAM::TextureColorMode::Paletted256, false);
+        }
         break;
     default:
         break;
@@ -16884,7 +16908,8 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                                          const uint16_t familyId,
                                          SRL::Math::Types::Fxp& outSurfaceY,
                                          int32_t* outSegmentId,
-                                         int32_t seedSegmentId) const
+                                         int32_t seedSegmentId,
+                                         bool allowFallback) const
 {
     if (familyId == 0u)
     {
@@ -16898,7 +16923,8 @@ bool TrackSystem::FindSurfaceYByFamilyId(const Vector3D& worldPosition,
                                    1u,
                                    outSurfaceY,
                                    outSegmentId,
-                                   seedSegmentId);
+                                   seedSegmentId,
+                                   allowFallback);
 }
 
 bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
@@ -16907,7 +16933,8 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                           size_t familyCount,
                                           SRL::Math::Types::Fxp& outSurfaceY,
                                           int32_t* outSegmentId,
-                                          int32_t seedSegmentId) const
+                                          int32_t seedSegmentId,
+                                          bool allowFallback) const
 {
     outSurfaceY = worldPosition.Y;
     if (outSegmentId) *outSegmentId = -1;
@@ -17175,9 +17202,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
 
     if (seedSegmentId > 0 && totalSegmentCount_ > 0)
     {
-        std::array<int32_t, 8> localIds{};
+        std::array<int32_t, 6> localIds{};
         size_t localCount = 0u;
-        for (int32_t delta = -2; delta <= 4; ++delta)
+        for (int32_t delta = -1; delta <= 3; ++delta)
         {
             const int32_t candidateId =
                 WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
@@ -17201,12 +17228,10 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         }
     }
 
-    const bool hasSupportCandidate =
-        (foundInside && bestInsideClass == 0u) ||
-        (foundFallback && bestFallbackClass == 0u);
-    // Run the expensive global pass only when local probing found nothing or
-    // failed to find any supporting surface below/at the probe height.
-    if ((!foundInside && !foundFallback) || !hasSupportCandidate)
+    // Run the expensive global pass only when local probing found absolutely
+    // nothing. This keeps per-frame probing deterministic and avoids spikes in
+    // descents where local support exists but classifies as fallback.
+    if (!foundInside && !foundFallback)
     {
         for (const auto& segment : segmentRenderers_)
         {
@@ -17221,7 +17246,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         return true;
     }
 
-    if (foundFallback)
+    if (allowFallback && foundFallback)
     {
         outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestFallbackYRaw));
         if (outSegmentId) *outSegmentId = bestFallbackSegmentId;
@@ -17255,6 +17280,206 @@ bool TrackSystem::FindSegmentCenterById(const int32_t segmentId,
 
     outSegmentCenter = Vector3D(0.0, 0.0, 0.0);
     return false;
+}
+
+bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
+                                     const Vector3D& trackOffset,
+                                     const Vector3D& forwardDirection,
+                                     SRL::Math::Types::Fxp collisionRadius,
+                                     Vector3D& outPush,
+                                     int32_t* outSegmentId,
+                                     int32_t seedSegmentId,
+                                     bool allowGlobalFallback) const
+{
+    (void)forwardDirection;
+    outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
+                       SRL::Math::Types::Fxp::BuildRaw(0),
+                       SRL::Math::Types::Fxp::BuildRaw(0));
+    if (outSegmentId) *outSegmentId = -1;
+    if (segmentRenderers_.empty()) return false;
+
+    const int64_t radiusRaw = static_cast<int64_t>(collisionRadius.RawValue());
+    if (radiusRaw <= 0) return false;
+    const int64_t radiusSq = radiusRaw * radiusRaw;
+    const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
+    const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
+    const int64_t pzRaw = static_cast<int64_t>(worldPosition.Z.RawValue());
+    const int64_t yMarginRaw = static_cast<int64_t>(2 << 16);
+    const int64_t verticalNormalMaxAbsY = static_cast<int64_t>(1 << 14);
+
+    auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
+    auto clamp64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t
+    {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    };
+
+    int64_t bestPenRaw = 0;
+    int64_t bestPushXRaw = 0;
+    int64_t bestPushZRaw = 0;
+    int32_t bestSegmentId = -1;
+
+    auto tryEdge = [&](const Vector3D& a,
+                       const Vector3D& b,
+                       int32_t segmentId,
+                       int64_t fallbackNxRaw,
+                       int64_t fallbackNzRaw)
+    {
+        const int64_t ax = static_cast<int64_t>(a.X.RawValue());
+        const int64_t az = static_cast<int64_t>(a.Z.RawValue());
+        const int64_t bx = static_cast<int64_t>(b.X.RawValue());
+        const int64_t bz = static_cast<int64_t>(b.Z.RawValue());
+        const int64_t vx = bx - ax;
+        const int64_t vz = bz - az;
+        const int64_t lenSq = (vx * vx) + (vz * vz);
+        if (lenSq <= 0) return;
+
+        const int64_t wx = pxRaw - ax;
+        const int64_t wz = pzRaw - az;
+        const int64_t tNum = (wx * vx) + (wz * vz);
+        const int64_t tClamped = clamp64(tNum, 0, lenSq);
+        const int64_t cx = ax + ((vx * tClamped) / lenSq);
+        const int64_t cz = az + ((vz * tClamped) / lenSq);
+
+        const int64_t dx = pxRaw - cx;
+        const int64_t dz = pzRaw - cz;
+        const int64_t distSq = (dx * dx) + (dz * dz);
+        if (distSq > radiusSq) return;
+
+        const int64_t adx = abs64(dx);
+        const int64_t adz = abs64(dz);
+        const int64_t distAxis = (adx > adz) ? adx : adz;
+        if (distAxis > radiusRaw) return;
+
+        const int64_t penetrationRaw = radiusRaw - distAxis;
+        if (penetrationRaw <= 0) return;
+
+        int64_t nxRaw = 0;
+        int64_t nzRaw = 0;
+        if (distAxis > 0)
+        {
+            nxRaw = (dx << 16) / distAxis;
+            nzRaw = (dz << 16) / distAxis;
+        }
+        else
+        {
+            const int64_t anx = abs64(fallbackNxRaw);
+            const int64_t anz = abs64(fallbackNzRaw);
+            const int64_t maxAxis = (anx > anz) ? anx : anz;
+            if (maxAxis <= 0) return;
+            nxRaw = (fallbackNxRaw << 16) / maxAxis;
+            nzRaw = (fallbackNzRaw << 16) / maxAxis;
+        }
+
+        const int64_t pushXRaw = (nxRaw * penetrationRaw) >> 16;
+        const int64_t pushZRaw = (nzRaw * penetrationRaw) >> 16;
+
+        if (penetrationRaw > bestPenRaw)
+        {
+            bestPenRaw = penetrationRaw;
+            bestPushXRaw = pushXRaw;
+            bestPushZRaw = pushZRaw;
+            bestSegmentId = segmentId;
+        }
+    };
+
+    auto scanSegment = [&](const SegmentRenderEntry& segment)
+    {
+        if (!segment.renderer) return;
+
+        const Vector3D* verts = nullptr;
+        const SRL::Types::Polygon* faces = nullptr;
+        size_t vertCount = 0u;
+        size_t faceCount = 0u;
+        if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) return;
+        if (!verts || !faces || vertCount == 0u || faceCount == 0u) return;
+
+        for (size_t fi = 0; fi < faceCount; ++fi)
+        {
+            const SRL::Types::Polygon& face = faces[fi];
+            if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) > verticalNormalMaxAbsY) continue;
+
+            const uint16_t i0 = face.Vertices[0];
+            const uint16_t i1 = face.Vertices[1];
+            const uint16_t i2 = face.Vertices[2];
+            const uint16_t i3 = face.Vertices[3];
+            if (i0 >= vertCount || i1 >= vertCount || i2 >= vertCount || i3 >= vertCount) continue;
+
+            const Vector3D a = verts[i0] + trackOffset;
+            const Vector3D b = verts[i1] + trackOffset;
+            const Vector3D c = verts[i2] + trackOffset;
+            const Vector3D d = verts[i3] + trackOffset;
+
+            const int64_t ay = static_cast<int64_t>(a.Y.RawValue());
+            const int64_t by = static_cast<int64_t>(b.Y.RawValue());
+            const int64_t cy = static_cast<int64_t>(c.Y.RawValue());
+            const int64_t dy = static_cast<int64_t>(d.Y.RawValue());
+            int64_t minY = ay;
+            int64_t maxY = ay;
+            if (by < minY) minY = by;
+            if (cy < minY) minY = cy;
+            if (dy < minY) minY = dy;
+            if (by > maxY) maxY = by;
+            if (cy > maxY) maxY = cy;
+            if (dy > maxY) maxY = dy;
+            if (pyRaw < (minY - yMarginRaw) || pyRaw > (maxY + yMarginRaw)) continue;
+
+            const int64_t fallbackNxRaw = static_cast<int64_t>(face.Normal.X.RawValue());
+            const int64_t fallbackNzRaw = static_cast<int64_t>(face.Normal.Z.RawValue());
+            tryEdge(a, b, segment.id, fallbackNxRaw, fallbackNzRaw);
+            tryEdge(b, c, segment.id, fallbackNxRaw, fallbackNzRaw);
+            tryEdge(c, d, segment.id, fallbackNxRaw, fallbackNzRaw);
+            tryEdge(d, a, segment.id, fallbackNxRaw, fallbackNzRaw);
+        }
+    };
+
+    bool scannedLocal = false;
+    if (seedSegmentId > 0 && totalSegmentCount_ > 0)
+    {
+        std::array<int32_t, 6> localIds{};
+        size_t localCount = 0u;
+        for (int32_t delta = -1; delta <= 3; ++delta)
+        {
+            const int32_t candidateId =
+                WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
+            if (candidateId <= 0) continue;
+            bool duplicate = false;
+            for (size_t i = 0; i < localCount; ++i)
+            {
+                if (localIds[i] == candidateId)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate) continue;
+            if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+            const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
+            if (!localEntry) continue;
+            scanSegment(*localEntry);
+            scannedLocal = true;
+        }
+    }
+
+    if (allowGlobalFallback && (!scannedLocal || bestPenRaw <= 0))
+    {
+        for (const auto& segment : segmentRenderers_)
+        {
+            scanSegment(segment);
+        }
+    }
+
+    if (bestPenRaw <= 0) return false;
+
+    const int64_t maxPushRaw = radiusRaw;
+    const int64_t clampedPushX = clamp64(bestPushXRaw, -maxPushRaw, maxPushRaw);
+    const int64_t clampedPushZ = clamp64(bestPushZRaw, -maxPushRaw, maxPushRaw);
+    outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(clampedPushX)),
+                       SRL::Math::Types::Fxp::BuildRaw(0),
+                       SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(clampedPushZ)));
+    if (outSegmentId) *outSegmentId = bestSegmentId;
+    return true;
 }
 
 bool TrackSystem::GetRenderWindowDebugSnapshot(int32_t& outStartSegmentId,

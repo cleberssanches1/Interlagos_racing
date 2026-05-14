@@ -383,19 +383,38 @@ static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, b
     CarPipeline pipe{};
     const char* chosenPath = FindExistingPath(paths, pathCount);
 
-    // 1) Carga principal no cart (forceCart = true garante DRAM 4MB).
-    pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true, gouraudOffset);
-
-    // 2) C??????pia independente em WRAM para evitar compartilhar ponteiros do cart.
-    if (makeWramCopy && chosenPath)
+    // 1) Prefer WRAM-first when requested.
+    // This avoids a second full load (including textures) and prevents runtime
+    // dependence on CART allocations for the live car mesh.
+    if (makeWramCopy)
     {
-        pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, gouraudOffset, false, 0, false, false, false);
-        if (!pipe.wramCopy || pipe.wramCopy->GetMeshCount() == 0 || pipe.wramCopy->GetFaceCount() == 0)
+        CarLoadResult wram = LoadCarToCart(paths, pathCount, /*forceCart*/false, gouraudOffset);
+        if (wram.loaded && wram.car &&
+            wram.car->GetMeshCount() > 0 && wram.car->GetFaceCount() > 0)
         {
-            // Se a copia por caminho falhar, preserva o modelo carregado no cart.
-            pipe.wramCopy.reset();
+            pipe.wramCopy = std::move(wram.car);
+            pipe.cart.loaded = false;
+            return pipe;
+        }
+        if (chosenPath)
+        {
+            // Fallback legado por caminho direto (caso o loader robusto falhe).
+            pipe.wramCopy = std::make_unique<ModelObject>(chosenPath, gouraudOffset, false, 0, false, false, false);
+            if (!pipe.wramCopy || pipe.wramCopy->GetMeshCount() == 0 || pipe.wramCopy->GetFaceCount() == 0)
+            {
+                // Se a copia por caminho falhar, cair para fluxo CART abaixo.
+                pipe.wramCopy.reset();
+            }
+            else
+            {
+                pipe.cart.loaded = false;
+                return pipe;
+            }
         }
     }
+
+    // 2) Fallback: carga principal no cart (forceCart = true garante DRAM 4MB).
+    pipe.cart = LoadCarToCart(paths, pathCount, /*forceCart*/true, gouraudOffset);
     return pipe;
 }
 
@@ -595,14 +614,10 @@ static void ValidateCarTextureSlots(ModelObject* carPtr, uint32_t meshCount, boo
 
 static void BuildCarDrawOrder(uint32_t meshCount, std::array<size_t, 5>& outOrder, size_t& outOrderCount)
 {
-    outOrder = {1, 2, 3, 4, 0};
-    if (meshCount == 1)
-    {
-        outOrder = {0, 1, 2, 3, 4};
-        outOrderCount = 1;
-        return;
-    }
-    outOrderCount = (meshCount < 5) ? meshCount : 5;
+    outOrder = {0, 1, 2, 3, 4};
+    outOrderCount = (meshCount < outOrder.size())
+        ? static_cast<size_t>(meshCount)
+        : outOrder.size();
 }
 
 static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
@@ -647,10 +662,10 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
     loopContext.enableRuntimeStatsLogs = enableRuntimeStatsLogs;
-    // Dual-SH2: simulacao na Slave reativada com drenagem segura antes da
-    // janela de render da pista (evita conflito de submissao com producer).
-    loopContext.enableSlaveForCarPrepare = true;
-    loopContext.enableSlaveForSimulation = true;
+    // Simulation ownership is explicit from caller intent.
+    // Keep car-prepare disabled to avoid render-yaw divergence.
+    loopContext.enableSlaveForCarPrepare = false;
+    loopContext.enableSlaveForSimulation = enableRuntimeSimulation && slaveSimulationLockstep;
     loopContext.slaveSimulationLockstep = slaveSimulationLockstep;
     loopContext.enableManualGouraudCopy = enableManualGouraudCopy;
     loopContext.autoLapEnabledOnStart = autoLapEnabledOnStart;
@@ -798,13 +813,9 @@ public:
         }
 
         ioFrameState.phase = Game::GameplayFrameState::RacePhase::Running;
-
-        // Auto-cruise: se nao houver aceleracao manual, mantem torque base.
-        if (ioFrameState.throttle <= 0 && !ioFrameState.braking)
-        {
-            ioFrameState.throttle = kAutoCruiseThrottle;
-        }
-        ioFrameState.wheelsSpinning = (ioFrameState.throttle > 0) && !ioFrameState.braking;
+        // Manual-only throttle: movement happens only by input (C/B).
+        ioFrameState.wheelsSpinning =
+            (ioFrameState.throttle > 0) || ioFrameState.braking;
 
         int32_t segmentId = -1;
         Vector3D surfaceNormal{};
@@ -825,7 +836,6 @@ public:
     }
 
 private:
-    static constexpr int16_t kAutoCruiseThrottle = 36;
     static constexpr Fxp kMaxLateralDrift = Fxp::BuildRaw(640 << 16);
 
     Vector3D spawnPosition_{0.0, 0.0, 0.0};
@@ -881,7 +891,24 @@ static int RunPhysicsPocMode()
 
     CameraSystem cameraSystem;
     cameraSystem.SetDebugLogsEnabled(false);
-    cameraSystem.SetChaseNearFollowDistance(190);
+    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
+    cameraSystem.SetChaseNearFollowDistance(240);
+
+    const char* carPaths[] = {
+        "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
+        "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
+        "CAR1.NYA;1", "CAR1.NYA",
+        "car1.nya;1", "car1.nya"
+    };
+    // POC: try WRAM-first before track runtime startup.
+    const bool useCartCopyPipeline = true;
+    AppState::Set(AppState::Stage::CarLoad, 0);
+    CarPipeline carPipe = LoadCarPipeline(carPaths,
+                                          sizeof(carPaths) / sizeof(carPaths[0]),
+                                          useCartCopyPipeline,
+                                          kCarGouraudOffset);
+    ModelObject* carPtr = carPipe.ActiveModel();
+    bool carValid = carPipe.Loaded();
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
     SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
@@ -903,19 +930,16 @@ static int RunPhysicsPocMode()
          trackSystemReady ? 1u : 0u,
          static_cast<unsigned>(trackSystem.SegmentCount()));
 
-    const char* carPaths[] = {
-        "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
-        "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
-        "CAR1.NYA;1", "CAR1.NYA",
-        "car1.nya;1", "car1.nya"
-    };
-    const bool useCartCopyPipeline = false;
-    CarPipeline carPipe = LoadCarPipeline(carPaths,
-                                          sizeof(carPaths) / sizeof(carPaths[0]),
-                                          useCartCopyPipeline,
-                                          kCarGouraudOffset);
-    ModelObject* carPtr = carPipe.ActiveModel();
-    bool carValid = carPipe.Loaded();
+    if (!carValid)
+    {
+        // Fallback: if early WRAM-first load failed, retry after track init.
+        carPipe = LoadCarPipeline(carPaths,
+                                  sizeof(carPaths) / sizeof(carPaths[0]),
+                                  useCartCopyPipeline,
+                                  kCarGouraudOffset);
+        carPtr = carPipe.ActiveModel();
+        carValid = carPipe.Loaded();
+    }
 
     bool carWasSmooth = false;
     bool isSmoothMesh = false;
@@ -930,6 +954,24 @@ static int RunPhysicsPocMode()
                        faceCount,
                        vertexCount,
                        meshCount);
+    if (trackSystemReady)
+    {
+        // Keep non-track textures (car) outside track heap reset window,
+        // matching the protection used by the main runtime flow.
+        trackSystem.RebaseTrackTextureHeapBase();
+    }
+    if constexpr (kLog)
+    {
+        const bool activeFromWram = (carPipe.wramCopy.get() != nullptr) &&
+                                    (carPipe.ActiveModel() == carPipe.wramCopy.get());
+        MLOG(1, 6, "POC CAR2 ok:%u src:%s m:%u f:%u v:%u sm:%u",
+             carValid ? 1u : 0u,
+             activeFromWram ? "WRAM" : "CART",
+             static_cast<unsigned>(meshCount),
+             static_cast<unsigned>(faceCount),
+             static_cast<unsigned>(vertexCount),
+             isSmoothMesh ? 1u : 0u);
+    }
 
     Vector3D modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
@@ -957,7 +999,7 @@ static int RunPhysicsPocMode()
     if (collisionQuery &&
         collisionQuery->SampleSurfaceYByFamilyId(carWorldPosition, 1u, spawnSurfaceY, &spawnSegmentId))
     {
-        carWorldPosition.Y = spawnSurfaceY + SRL::Math::Types::Fxp::BuildRaw(-(1 << 13));
+        carWorldPosition.Y = spawnSurfaceY + Game::CarPhysics::GetRideHeightOffset();
     }
 
     std::array<size_t, 5> drawOrder{};
@@ -972,11 +1014,12 @@ static int RunPhysicsPocMode()
     carConfig.wireframeOnly = false;
 
     std::unique_ptr<Game::CarSystem> carSystem;
-    if (carValid && carPtr)
+    if (carValid && carPtr && meshCount > 0u && faceCount > 0u)
     {
         carSystem = std::make_unique<Game::CarSystem>(carPtr, isSmoothMesh, carConfig);
-        carSystem->SetVisualYawOffsetDegrees(180);
-        cameraSystem.SetCarForwardYawOffsetDegrees(180);
+        carSystem->SetVisualYawOffsetDegrees(0);
+        cameraSystem.SetCarForwardYawOffsetDegrees(0);
+        cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
         carSystem->SetWorldPosition(carWorldPosition);
     }
 
@@ -1025,6 +1068,8 @@ static int RunPhysicsPocMode()
                                                                static_cast<Game::IGameplayTick*>(&gameplayTick),
                                                                static_cast<Game::IAudioEvents*>(&audioEvents));
     loopContext.enableSlaveForCarPrepare = false;
+    // POC de dirigibilidade: manter simulação no Master para evitar
+    // qualquer sobrescrita/atraso por job assíncrono do Slave durante ajuste fino.
     loopContext.enableSlaveForSimulation = false;
     loopContext.slaveSimulationLockstep = false;
 
@@ -1112,7 +1157,9 @@ int GameApp::Run()
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
     };
-    const bool useCartCopyPipeline = false; // cart -> VDP1
+    // Keep an independent WRAM copy of CAR1.NYA to isolate car rendering from
+    // track Cart RAM streaming activity.
+    const bool useCartCopyPipeline = true; // cart + WRAM copy
     AppState::Set(AppState::Stage::CarLoad, 0);
     CarPipeline carPipe{};
     if (renderCar && !loadCarAfterTrack)
@@ -1132,6 +1179,18 @@ int GameApp::Run()
     uint32_t vertexCount = 0;
     uint32_t meshCount = 0;
     SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
+    if constexpr (kLog)
+    {
+        const bool activeFromWram = (carPipe.wramCopy.get() != nullptr) &&
+                                    (carPipe.ActiveModel() == carPipe.wramCopy.get());
+        MLOG(1, 11, "CAR ok:%u src:%s m:%u f:%u v:%u sm:%u",
+             carValid ? 1u : 0u,
+             activeFromWram ? "WRAM" : "CART",
+             static_cast<unsigned>(meshCount),
+             static_cast<unsigned>(faceCount),
+             static_cast<unsigned>(vertexCount),
+             isSmoothMesh ? 1u : 0u);
+    }
     // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
     if constexpr (kCarLogs)
@@ -1341,10 +1400,10 @@ int GameApp::Run()
     carConfig.orderCount = orderCount;
     carConfig.wireframeOnly = false;
     std::unique_ptr<Game::CarSystem> carSystem;
-    if (carValid && carPtr)
+    if (carValid && carPtr && meshCount > 0u && faceCount > 0u)
     {
         carSystem = std::make_unique<Game::CarSystem>(carPtr, isSmoothMesh, carConfig);
-        int32_t visualYawOffsetDeg = 180;
+        int32_t visualYawOffsetDeg = 0;
         constexpr size_t kFrontMarkerMeshIndex = 5u; // 6o objeto: marcador da frente
         int32_t markerYawDeg = 0;
         uint32_t markerVerts = 0;
@@ -1387,7 +1446,8 @@ int GameApp::Run()
         // Rotate only the rendered car model so spawn orientation is correct
         // without changing gameplay/camera yaw reference.
         carSystem->SetVisualYawOffsetDegrees(visualYawOffsetDeg);
-        cameraSystem.SetCarForwardYawOffsetDegrees(visualYawOffsetDeg);
+        cameraSystem.SetCarForwardYawOffsetDegrees(0);
+        cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
         carSystem->SetWorldPosition(carWorldPosition);
         if constexpr (kCarLogs)
         {
@@ -1404,7 +1464,8 @@ int GameApp::Run()
     {
         // Camera 2 calibration baseline requested:
         // CAM2 off x:0 y:-20 z:-144
-        constexpr int16_t kCam2BehindUnits = 190;
+        constexpr int16_t kCam2BehindUnits = 240;
+        cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
         cameraSystem.SetChaseNearFollowDistance(kCam2BehindUnits);
     }
 

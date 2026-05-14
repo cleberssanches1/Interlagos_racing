@@ -2,6 +2,7 @@
 #include "exception_stubs.hpp"
 
 #include "sgl_poly_renderer.hpp"
+#include <algorithm>
 
 MeshRenderer::MeshRenderer(ModelObject& model, bool isSmooth, const Config& cfg)
     : model_(model)
@@ -71,6 +72,8 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
                           const SRL::Math::Types::Angle& yaw,
                           bool logStats)
 {
+    lastRenderFaceCount_ = 0;
+    lastRenderMeshCount_ = 0;
     SRL::Scene3D::PushMatrix();
     SRL::Scene3D::Translate(position + offset_);
     if (config_.rotateModelX180)
@@ -88,11 +91,10 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
     SRL::Scene3D::Translate(-config_.modelCenter);
     size_t drawnMesh = SIZE_MAX;
 
-    for (size_t idx = 0; idx < config_.drawOrderCount; ++idx)
+    auto drawMeshWithTransform = [&](size_t meshId)
     {
-        const size_t meshId = config_.drawOrder[idx];
-        if (meshId >= model_.GetMeshCount()) continue;
-        if (meshId == skipMeshId_) continue;
+        if (meshId >= model_.GetMeshCount()) return;
+        if (meshId == skipMeshId_) return;
 
         SRL::Scene3D::PushMatrix();
         if (meshId < meshLocalTransforms_.size())
@@ -108,13 +110,34 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
             }
         }
 
-        if (DrawMesh(meshId))
+        const uint32_t facesDrawn = DrawMesh(meshId);
+        if (facesDrawn > 0u)
         {
             drawnMesh = meshId;
             lastMeshId_ = meshId;
+            ++lastRenderMeshCount_;
+            lastRenderFaceCount_ += facesDrawn;
         }
 
         SRL::Scene3D::PopMatrix();
+    };
+
+    const size_t configuredOrderCount = std::min(config_.drawOrderCount, config_.drawOrder.size());
+    if (configuredOrderCount > 0u)
+    {
+        for (size_t idx = 0; idx < configuredOrderCount; ++idx)
+        {
+            drawMeshWithTransform(config_.drawOrder[idx]);
+        }
+    }
+
+    if (lastRenderMeshCount_ == 0u)
+    {
+        const size_t meshCount = model_.GetMeshCount();
+        for (size_t meshId = 0; meshId < meshCount; ++meshId)
+        {
+            drawMeshWithTransform(meshId);
+        }
     }
 
     if (logStats && drawnMesh != SIZE_MAX)
@@ -125,16 +148,25 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
     SRL::Scene3D::PopMatrix();
 }
 
-bool MeshRenderer::DrawMesh(size_t meshId)
+uint32_t MeshRenderer::DrawMesh(size_t meshId)
 {
-    bool hasFaces = false;
+    // Robust draw path:
+    // Some assets/runtime states may report a mismatched mesh kind flag.
+    // Try preferred path first, then fallback to the opposite kind.
     if (isSmooth_)
     {
         auto* mesh = model_.GetMesh<SRL::Types::SmoothMesh>(meshId);
         if (mesh && mesh->FaceCount > 0 && mesh->VertexCount > 0)
         {
-            hasFaces = true;
             model_.Draw(meshId, config_.lightDirection);
+            return static_cast<uint32_t>(mesh->FaceCount);
+        }
+
+        auto* flatMesh = model_.GetMesh<SRL::Types::Mesh>(meshId);
+        if (flatMesh && flatMesh->FaceCount > 0 && flatMesh->VertexCount > 0)
+        {
+            model_.Draw(meshId);
+            return static_cast<uint32_t>(flatMesh->FaceCount);
         }
     }
     else
@@ -142,11 +174,18 @@ bool MeshRenderer::DrawMesh(size_t meshId)
         auto* mesh = model_.GetMesh<SRL::Types::Mesh>(meshId);
         if (mesh && mesh->FaceCount > 0 && mesh->VertexCount > 0)
         {
-            hasFaces = true;
             model_.Draw(meshId);
+            return static_cast<uint32_t>(mesh->FaceCount);
+        }
+
+        auto* smoothMesh = model_.GetMesh<SRL::Types::SmoothMesh>(meshId);
+        if (smoothMesh && smoothMesh->FaceCount > 0 && smoothMesh->VertexCount > 0)
+        {
+            model_.Draw(meshId, config_.lightDirection);
+            return static_cast<uint32_t>(smoothMesh->FaceCount);
         }
     }
-    return hasFaces;
+    return 0u;
 }
 
 void MeshRenderer::ApplyTransform(const SRL::Math::Types::Vector3D& position,

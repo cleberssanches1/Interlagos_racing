@@ -16,14 +16,24 @@ struct DynamicsState
     Fxp lateralSpeed = Fxp::BuildRaw(0);
     Fxp yawRateDegPerFrame = Fxp::BuildRaw(0);
     Fxp steerDeg = Fxp::BuildRaw(0);
+    Fxp surfaceGripScale = Fxp::BuildRaw(1 << 16);
+    int32_t yawAccumulatorDegRaw = 0; // 16.16 integrated yaw delta
 };
 
 struct GroundState
 {
     Fxp surfaceYTarget = Fxp::BuildRaw(0);
+    Fxp correctionX = Fxp::BuildRaw(0);
+    Fxp correctionZ = Fxp::BuildRaw(0);
+    Fxp lastStableX = Fxp::BuildRaw(0);
+    Fxp lastStableZ = Fxp::BuildRaw(0);
     int16_t lastSurfaceSegmentId = -1;
     uint8_t surfaceProbeCooldown = 0u;
     uint8_t auxProbeCooldown = 0u;
+    bool hasGroundSupport = false;
+    bool edgeLeftLost = false;
+    bool edgeRightLost = false;
+    bool lastStablePlanarInitialized = false;
     bool surfaceYInitialized = false;
 };
 
@@ -32,6 +42,9 @@ struct FrameStepOutput
     Fxp speedAbs = Fxp::BuildRaw(0);
     Fxp sinYaw = Fxp::BuildRaw(0);
     Fxp cosYaw = Fxp::BuildRaw(0);
+    Fxp planarDx = Fxp::BuildRaw(0);
+    Fxp planarDz = Fxp::BuildRaw(0);
+    int16_t yawStepDeg = 0;
 };
 
 struct Tunables
@@ -57,31 +70,66 @@ struct Tunables
     };
 
     static constexpr uint8_t kSurfaceProbeIntervalFrames = 2u;
-    static constexpr Fxp kEngineAccelPerFrame = Fxp::BuildRaw(0x00003852); // ~0.220
-    static constexpr Fxp kBrakeDecelPerFrame = Fxp::BuildRaw(0x00003852);  // ~0.220
-    static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000083);       // ~0.0020
-    static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x000001AA);    // ~0.0065
-    static constexpr Fxp kCoastDampingPerFrame = Fxp::BuildRaw(0x00000106);// ~0.0040
+    static constexpr uint16_t kAsphaltFamilyId = 1u; // base asphalt family
+    static constexpr Fxp kGripScaleAsphalt = Fxp::BuildRaw(1 << 16);
+    static constexpr Fxp kGripScaleOffroad = Fxp::BuildRaw(0x0000B333); // ~0.70
+    static constexpr Fxp kGripScaleFallback = Fxp::BuildRaw(0x0000999A); // ~0.60
+    static constexpr Fxp kEngineAccelPerFrame = Fxp::BuildRaw(0x000047AE); // ~0.280
+    static constexpr Fxp kReverseAccelPerFrame = Fxp::BuildRaw(0x00002000); // 0.125
+    static constexpr Fxp kBrakeDecelPerFrame = Fxp::BuildRaw(0x0000570A);  // ~0.340
+    static constexpr Fxp kBrakeStopSpeedThreshold = Fxp::BuildRaw(0x0000A000); // ~0.625
+    static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000068);       // ~0.0016
+    static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x00000106);    // ~0.0040
+    static constexpr Fxp kCoastDampingPerFrame = Fxp::BuildRaw(0x000000A4);// ~0.0025
     static constexpr Fxp kMaxForwardSpeed = Fxp::BuildRaw(0x00070000);     // ~7.0
-    static constexpr Fxp kMaxSteerDeg = Fxp::BuildRaw(6 << 16);            // 6 deg
-    static constexpr Fxp kSteerResponse = Fxp::BuildRaw(0x00006000);       // ~0.375
-    static constexpr Fxp kHighSpeedSteerLoss = Fxp::BuildRaw(0x00008000);  // 0.5
-    static constexpr Fxp kYawFromSpeedCoeff = Fxp::BuildRaw(0x00003000);   // ~0.1875
-    static constexpr Fxp kYawDamping = Fxp::BuildRaw(0x00002000);          // 0.125
-    static constexpr Fxp kLateralCouplingCoeff = Fxp::BuildRaw(0x00000800);// 0.03125
-    static constexpr Fxp kLateralDampingCoeff = Fxp::BuildRaw(0x00004000); // 0.25
-    static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 13));    // -0.125
+    static constexpr Fxp kMaxReverseSpeed = Fxp::BuildRaw(0x00028000);     // ~2.5
+    static constexpr Fxp kMaxSteerDeg = Fxp::BuildRaw(12 << 16);           // 12 deg
+    static constexpr Fxp kSteerResponse = Fxp::BuildRaw(0x00003333);       // 0.20
+    static constexpr Fxp kHighSpeedSteerLoss = Fxp::BuildRaw(0x0000B333);  // ~0.70
+    static constexpr Fxp kSteerAuthorityMin = Fxp::BuildRaw(0x00003333);   // 0.20
+    static constexpr Fxp kYawWheelbaseUnits = Fxp::BuildRaw(18 << 16);     // kept for compatibility
+    static constexpr Fxp kWheelbaseFront = Fxp::BuildRaw(0x0000F333);      // ~0.95
+    static constexpr Fxp kWheelbaseRear = Fxp::BuildRaw(0x0000F333);       // ~0.95
+    static constexpr Fxp kSlipDenomMin = Fxp::BuildRaw(0x0000599A);        // ~0.35
+    static constexpr Fxp kLateralStiffnessFront = Fxp::BuildRaw(0x00026666); // ~2.40
+    static constexpr Fxp kLateralStiffnessRear = Fxp::BuildRaw(0x0002CCCC);  // ~2.80
+    static constexpr Fxp kLateralForceCapBase = Fxp::BuildRaw(0x00028000); // 2.50
+    static constexpr Fxp kYawMomentGain = Fxp::BuildRaw(0x00007000);       // ~0.4375
+    static constexpr Fxp kYawCoupling = Fxp::BuildRaw(0x000028F6);         // ~0.16
+    static constexpr Fxp kYawRateResponse = Fxp::BuildRaw(0x00008000);     // 0.50
+    static constexpr Fxp kMaxYawRateDegPerFrame = Fxp::BuildRaw(0x00024000); // 2.25 deg/frame
+    static constexpr Fxp kDegToRad = Fxp::BuildRaw(0x00000478);            // 0.01745
+    static constexpr Fxp kRadToDeg = Fxp::BuildRaw(0x00394BC7);            // 57.2958
+    static constexpr Fxp kYawFromSpeedCoeff = Fxp::BuildRaw(0x00000600);   // ~0.0234
+    static constexpr Fxp kYawDamping = Fxp::BuildRaw(0x00003000);          // 0.1875
+    static constexpr Fxp kLateralCouplingCoeff = Fxp::BuildRaw(0x00000040);// ~0.0010
+    static constexpr Fxp kLateralDampingCoeff = Fxp::BuildRaw(0x00008000); // 0.50
+    static constexpr Fxp kBrakeLateralDampingCoeff = Fxp::BuildRaw(0x0000D000); // ~0.8125
+    static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
+    static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25
+    static constexpr Fxp kBrakeResidualYawCutoff = Fxp::BuildRaw(0x00004000);     // 0.25 deg/frame
+    static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 14));    // -0.25
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00050000); // 5.0
-    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00004000);      // 0.25
-    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00010000);    // 1.0
-    static constexpr Fxp kSnapDownThreshold = Fxp::BuildRaw(0x0000C000);       // 0.75
+    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00010000);      // 1.0
+    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00014000);    // 1.25
+    static constexpr Fxp kSnapDownThreshold = Fxp::BuildRaw(0x00008000);       // 0.5
+    static constexpr Fxp kSnapUpThreshold = Fxp::BuildRaw(0x00008000);         // 0.5
     static constexpr Fxp kSurfaceSampleDownBias = Fxp::BuildRaw(0x00020000);   // 2.0
-    static constexpr Fxp kProbeFrontBase = Fxp::BuildRaw(0x00008000);          // 0.5
-    static constexpr Fxp kProbeFrontSpeedScale = Fxp::BuildRaw(0x00004000);    // 0.25
-    static constexpr Fxp kProbeFrontMin = Fxp::BuildRaw(0x00008000);           // 0.5
-    static constexpr Fxp kProbeFrontMax = Fxp::BuildRaw(0x00028000);           // 2.5
+    static constexpr Fxp kProbeFrontBase = Fxp::BuildRaw(0x00014000);          // 1.25
+    static constexpr Fxp kProbeFrontSpeedScale = Fxp::BuildRaw(0x00003000);    // 0.1875
+    static constexpr Fxp kProbeFrontMin = Fxp::BuildRaw(0x00010000);           // 1.0
+    static constexpr Fxp kProbeFrontMax = Fxp::BuildRaw(0x00030000);           // 3.0
     static constexpr Fxp kProbeSlopeAssistSpeed = Fxp::BuildRaw(0x00010000);   // 1.0
-    static constexpr uint8_t kAuxProbeCadenceFrames = 3u;
+    static constexpr uint8_t kAuxProbeCadenceFrames = 2u;
+    static constexpr Fxp kProbeHalfWheelBase = Fxp::BuildRaw(0x0000D999);      // ~0.85
+    static constexpr Fxp kProbeHalfTrack = Fxp::BuildRaw(0x00008CCC);          // ~0.55
+    static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x00012666);     // ~1.15
+    static constexpr bool kEnableWallPlanarPush = false;                        // temp: remove opposing lateral pull
+    static constexpr Fxp kEdgeRecoverPush = Fxp::BuildRaw(0);                  // disabled (bias fix)
+    static constexpr Fxp kMaxPlanarCorrectionPerFrame = Fxp::BuildRaw(0x00008000); // 0.50
+    static constexpr Fxp kNoSupportSpeedDamping = Fxp::BuildRaw(0x00010000);   // 1.0
+    static constexpr Fxp kEdgeForwardDamping = Fxp::BuildRaw(0x0000A000);      // 0.625
+    static constexpr Fxp kEdgeLateralDamping = Fxp::BuildRaw(0x0000E000);      // 0.875
 };
 
 inline Fxp Clamp(const Fxp& value, const Fxp& minValue, const Fxp& maxValue)
@@ -104,8 +152,9 @@ inline int32_t NormalizeYaw(int32_t yawDeg)
 
 inline int16_t BuildSpeedProxy(const Fxp& forwardSpeed)
 {
+    const Fxp speedAbs = forwardSpeed.Abs();
     const Fxp normalized =
-        Clamp(forwardSpeed / Tunables::kMaxForwardSpeed,
+        Clamp(speedAbs / Tunables::kMaxForwardSpeed,
               Fxp::BuildRaw(0),
               Fxp::BuildRaw(1 << 16));
     const Fxp topKmh = Fxp::BuildRaw(Tunables::kTargetTopSpeedKmh << 16);
@@ -133,6 +182,30 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugGroundYRear = 0;
     ioFrameState.debugGroundYFront = 0;
     ioFrameState.debugGroundYTarget = 0;
+    ioFrameState.debugSteerDeg = 0;
+    ioFrameState.debugYawRateDeg = 0;
+    ioFrameState.debugYawStepDeg = 0;
+    ioFrameState.debugPlanarDx = 0;
+    ioFrameState.debugPlanarDz = 0;
+    ioFrameState.debugNetDx = 0;
+    ioFrameState.debugNetDz = 0;
+    ioFrameState.debugCorrX = 0;
+    ioFrameState.debugCorrZ = 0;
+}
+
+inline Fxp& RuntimeRideHeightOffset()
+{
+    static Fxp value = Tunables::kRideHeightOffset;
+    return value;
+}
+
+inline Fxp GetRideHeightOffset()
+{
+    return RuntimeRideHeightOffset();
+}
+
+inline void SetRideHeightOffset(const Fxp& value)
+{
+    RuntimeRideHeightOffset() = value;
 }
 } // namespace Game::CarPhysics
-

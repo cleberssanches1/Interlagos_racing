@@ -136,6 +136,75 @@ public:
         return found;
     }
 
+    bool SampleSurfaceYByFamilySetStrict(const SRL::Math::Types::Vector3D& worldPosition,
+                                         const uint16_t* familyIds,
+                                         size_t familyCount,
+                                         SRL::Math::Types::Fxp& outSurfaceY,
+                                         int32_t* outSegmentId = nullptr,
+                                         int32_t seedSegmentId = -1) const override
+    {
+        if (!familyIds || familyCount == 0u)
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+
+        if (!trackSystem_ || !trackSystem_->Ready())
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        int32_t sampledSegmentId = -1;
+        int32_t* sampledSegmentPtr = outSegmentId ? outSegmentId : &sampledSegmentId;
+        const bool found = trackSystem_->FindSurfaceYByFamilySet(
+            worldPosition,
+            offset,
+            familyIds,
+            familyCount,
+            outSurfaceY,
+            sampledSegmentPtr,
+            resolvedSeedSegmentId,
+            false);
+        if (found && sampledSegmentPtr && *sampledSegmentPtr > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
+        }
+        return found;
+    }
+
+    bool ResolvePlanarWallPush(const SRL::Math::Types::Vector3D& worldPosition,
+                               const SRL::Math::Types::Vector3D& forwardDirection,
+                               SRL::Math::Types::Fxp collisionRadius,
+                               SRL::Math::Types::Vector3D& outPush,
+                               int32_t* outSegmentId = nullptr,
+                               int32_t seedSegmentId = -1) const override
+    {
+        outPush = SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        if (!trackSystem_ || !trackSystem_->Ready())
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            return false;
+        }
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        return trackSystem_->FindPlanarWallPush(worldPosition,
+                                                offset,
+                                                forwardDirection,
+                                                collisionRadius,
+                                                outPush,
+                                                outSegmentId,
+                                                resolvedSeedSegmentId);
+    }
+
 private:
     static SRL::Math::Types::Fxp ScoreToCenter(const SRL::Math::Types::Vector3D& worldPosition,
                                                const SRL::Math::Types::Vector3D& center)

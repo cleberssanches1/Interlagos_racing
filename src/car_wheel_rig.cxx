@@ -93,7 +93,9 @@ bool CarWheelRig::Initialize(ModelObject& model,
 
     std::array<size_t, 4> wheelIds{SIZE_MAX, SIZE_MAX, SIZE_MAX, SIZE_MAX};
     size_t wheelIdCount = 0u;
-    if (!DetectWheelIdsFromMeshtex(meshCount, wheelIds, wheelIdCount))
+    const bool wheelIdsFromMeshtex =
+        DetectWheelIdsFromMeshtex(meshCount, wheelIds, wheelIdCount);
+    if (!wheelIdsFromMeshtex)
     {
         (void)DetectWheelIdsFromMeshStats(model,
                                           isSmoothMesh,
@@ -107,7 +109,7 @@ bool CarWheelRig::Initialize(ModelObject& model,
         return false;
     }
 
-    ClassifyWheels(wheelIds, meshCenters);
+    ClassifyWheels(wheelIds, meshCenters, wheelIdsFromMeshtex);
     wheelCount_ = 4u;
     return true;
 }
@@ -151,8 +153,19 @@ void CarWheelRig::Update(const Input& input)
     bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, kPitchFilterShift);
 
     const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
+    int32_t rollDriverX16 = steerDegX16_;
+    if (input.yawStepDeg != 0)
+    {
+        constexpr int32_t kRollYawStepGain = 6;
+        // Follow actual turn direction first to avoid visual lean inversion.
+        rollDriverX16 = (static_cast<int32_t>(input.yawStepDeg) << 16) * kRollYawStepGain;
+    }
+    // Keep chassis roll aligned with steering/yaw direction from gameplay.
+    constexpr int32_t kVisualRollSign = 1;
     const int32_t targetRoll =
-        ClampInt(-(steerDegX16_ * speedNorm256) / 512, -kMaxRollDegX16, kMaxRollDegX16);
+        ClampInt(((rollDriverX16 * kVisualRollSign) * speedNorm256) / 1536,
+                 -kMaxRollDegX16,
+                 kMaxRollDegX16);
     bodyRollDegX16_ = StepToward(bodyRollDegX16_, targetRoll, kRollFilterShift);
 
     for (size_t i = 0; i < 4u; ++i)
@@ -386,14 +399,42 @@ bool CarWheelRig::DetectWheelIdsFromMeshStats(ModelObject& model,
 }
 
 void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
-                                 const SRL::Math::Types::Vector3D* meshCenters)
+                                 const SRL::Math::Types::Vector3D* meshCenters,
+                                 bool preferMeshtexOrderFrontAxle)
 {
     if (!meshCenters) return;
     std::array<size_t, 4> localIds{
         meshIds[0], meshIds[1], meshIds[2], meshIds[3]
     };
-    std::array<size_t, 4> order{0u, 1u, 2u, 3u};
 
+    // Meshtex exports preserve wheel object order for this car:
+    // roda1/roda2 = axle dianteiro, roda3/roda4 = traseiro.
+    // When available, this avoids front/rear swaps from noisy geometric heuristics.
+    if (preferMeshtexOrderFrontAxle)
+    {
+        const bool frontLeftFirst =
+            meshCenters[localIds[0]].X.RawValue() <= meshCenters[localIds[1]].X.RawValue();
+        const bool rearLeftFirst =
+            meshCenters[localIds[2]].X.RawValue() <= meshCenters[localIds[3]].X.RawValue();
+
+        const size_t fl = frontLeftFirst ? 0u : 1u;
+        const size_t fr = frontLeftFirst ? 1u : 0u;
+        const size_t rl = rearLeftFirst ? 2u : 3u;
+        const size_t rr = rearLeftFirst ? 3u : 2u;
+        const std::array<size_t, 4> mapped{fl, fr, rl, rr};
+        for (size_t i = 0; i < 4u; ++i)
+        {
+            const size_t srcIdx = mapped[i];
+            const size_t meshId = localIds[srcIdx];
+            wheelMeshIds_[i] = meshId;
+            wheelSlots_[i].meshId = meshId;
+            wheelSlots_[i].center = meshCenters[meshId];
+            wheelSlots_[i].front = (i < 2u);
+        }
+        return;
+    }
+
+    std::array<size_t, 4> order{0u, 1u, 2u, 3u};
     std::sort(order.begin(), order.end(), [&](size_t a, size_t b)
     {
         return meshCenters[localIds[a]].Z.RawValue() < meshCenters[localIds[b]].Z.RawValue();
@@ -403,10 +444,10 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
     const size_t f1 = order[1];
     const size_t r0 = order[2];
     const size_t r1 = order[3];
-    const bool f0Left = meshCenters[localIds[f0]].X.RawValue() <
-                        meshCenters[localIds[f1]].X.RawValue();
-    const bool r0Left = meshCenters[localIds[r0]].X.RawValue() <
-                        meshCenters[localIds[r1]].X.RawValue();
+    const bool f0Left =
+        meshCenters[localIds[f0]].X.RawValue() <= meshCenters[localIds[f1]].X.RawValue();
+    const bool r0Left =
+        meshCenters[localIds[r0]].X.RawValue() <= meshCenters[localIds[r1]].X.RawValue();
 
     const size_t fl = f0Left ? f0 : f1;
     const size_t fr = f0Left ? f1 : f0;
