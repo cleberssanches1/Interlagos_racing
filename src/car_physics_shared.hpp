@@ -81,6 +81,7 @@ struct Tunables
     static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000068);       // ~0.0016
     static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x00000106);    // ~0.0040
     static constexpr Fxp kCoastDampingPerFrame = Fxp::BuildRaw(0x000000A4);// ~0.0025
+    static constexpr Fxp kCoastStopSpeedThreshold = Fxp::BuildRaw(0x00010000); // 1.0
     static constexpr Fxp kMaxForwardSpeed = Fxp::BuildRaw(0x00070000);     // ~7.0
     static constexpr Fxp kMaxReverseSpeed = Fxp::BuildRaw(0x00028000);     // ~2.5
     static constexpr Fxp kMaxSteerDeg = Fxp::BuildRaw(12 << 16);           // 12 deg
@@ -104,6 +105,12 @@ struct Tunables
     static constexpr Fxp kYawDamping = Fxp::BuildRaw(0x00003000);          // 0.1875
     static constexpr Fxp kLateralCouplingCoeff = Fxp::BuildRaw(0x00000040);// ~0.0010
     static constexpr Fxp kLateralDampingCoeff = Fxp::BuildRaw(0x00008000); // 0.50
+    static constexpr Fxp kCoastLateralDampingCoeff = Fxp::BuildRaw(0x0000B000); // 0.6875
+    static constexpr Fxp kCoastYawDampingCoeff = Fxp::BuildRaw(0x0000A000);     // 0.625
+    static constexpr Fxp kCoastResidualForwardCutoff = Fxp::BuildRaw(0x00004000); // 0.25
+    static constexpr Fxp kCoastResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25
+    static constexpr Fxp kCoastResidualYawCutoff = Fxp::BuildRaw(0x00004000);     // 0.25 deg/frame
+    static constexpr int16_t kCoastSteerCenterThreshold = 10;                      // percent
     static constexpr Fxp kBrakeLateralDampingCoeff = Fxp::BuildRaw(0x0000D000); // ~0.8125
     static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
     static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25

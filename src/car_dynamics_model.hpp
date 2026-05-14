@@ -112,6 +112,33 @@ public:
             (targetYawRateDegPerFrame - ioState.yawRateDegPerFrame) * Tunables::kYawRateResponse;
         ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kYawDamping;
 
+        if (ioFrameState.throttle == 0 && !ioFrameState.braking)
+        {
+            ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kCoastLateralDampingCoeff;
+            ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastYawDampingCoeff;
+
+            const int16_t steerAbs =
+                static_cast<int16_t>((ioFrameState.steering < 0) ? -ioFrameState.steering : ioFrameState.steering);
+            const Fxp forwardAbs = ioState.forwardSpeed.Abs();
+            if (forwardAbs < Tunables::kCoastStopSpeedThreshold &&
+                steerAbs <= Tunables::kCoastSteerCenterThreshold)
+            {
+                if (forwardAbs < Tunables::kCoastResidualForwardCutoff)
+                {
+                    ioState.forwardSpeed = Fxp::BuildRaw(0);
+                }
+                if (ioState.lateralSpeed.Abs() < Tunables::kCoastResidualLateralCutoff)
+                {
+                    ioState.lateralSpeed = Fxp::BuildRaw(0);
+                }
+                if (ioState.yawRateDegPerFrame.Abs() < Tunables::kCoastResidualYawCutoff)
+                {
+                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                    ioState.yawAccumulatorDegRaw = 0;
+                }
+            }
+        }
+
         if (ioFrameState.braking)
         {
             ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kBrakeLateralDampingCoeff;
