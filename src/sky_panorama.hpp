@@ -92,7 +92,7 @@ struct SkyPanorama
         scaleY = SRL::Math::Types::Fxp(
             static_cast<float>(kTargetSkyHeightPx) / static_cast<float>(kExpectedHeightPx));
 
-        tile = new SRL::Tilemap::Interfaces::Bmp2Tile(*tga);
+        tile = new SRL::Tilemap::Interfaces::Bmp2Tile(*tga, 1, SRL::Memory::Zone::LWRam);
         delete tga;
         if (!tile || !tile->GetCellData() || !tile->GetMapData())
         {

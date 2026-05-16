@@ -157,6 +157,27 @@ function Build-SurfaceTypeByFamilyIdMap(
             if ($null -eq $family) { continue }
             if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
 
+            $surfaceType = $script:SurfaceTypeUnknown
+            # Prefer explicit classification from segments_map when available.
+            if ($family.PSObject.Properties.Name -contains "surfaceTypeId") {
+                $explicitId = [int]$family.surfaceTypeId
+                if ($explicitId -ge 0 -and $explicitId -le 255) {
+                    $surfaceType = [byte]$explicitId
+                }
+            }
+            elseif ($family.PSObject.Properties.Name -contains "surfaceType") {
+                $explicitName = ([string]$family.surfaceType).Trim().ToLowerInvariant()
+                switch ($explicitName) {
+                    "asphalt" { $surfaceType = $script:SurfaceTypeAsphalt }
+                    "asfalto" { $surfaceType = $script:SurfaceTypeAsphalt }
+                    "escape" { $surfaceType = $script:SurfaceTypeEscape }
+                    "escapearea" { $surfaceType = $script:SurfaceTypeEscape }
+                    "escape_area" { $surfaceType = $script:SurfaceTypeEscape }
+                    "grass" { $surfaceType = $script:SurfaceTypeGrass }
+                    "grama" { $surfaceType = $script:SurfaceTypeGrass }
+                }
+            }
+
             $stem = ""
             if ($family.PSObject.Properties.Name -contains "sourceStem") {
                 $stem = Normalize-SourceStem ([string]$family.sourceStem)
@@ -174,8 +195,7 @@ function Build-SurfaceTypeByFamilyIdMap(
                 $stem = Normalize-SourceStem ([string]$family.imageFiles."64")
             }
 
-            $surfaceType = $script:SurfaceTypeUnknown
-            if (-not [string]::IsNullOrWhiteSpace($stem)) {
+            if ($surfaceType -eq $script:SurfaceTypeUnknown -and -not [string]::IsNullOrWhiteSpace($stem)) {
                 if ($asphaltStems.Contains($stem)) {
                     $surfaceType = $script:SurfaceTypeAsphalt
                 }
@@ -603,6 +623,10 @@ function Build-FaceSurfaceFlags([int32]$NormalY, [byte]$SurfaceType) {
     if ($isDriveSurface) {
         $flags = [uint16]($flags -bor $script:FaceSurfaceFlagDriveable)
         $flags = [uint16]($flags -bor $script:FaceSurfaceFlagWettable)
+    }
+    else {
+        # Regra POC: toda face com textura fora da lista de solo é parede.
+        $flags = [uint16]($flags -bor $script:FaceSurfaceFlagWall)
     }
 
     return $flags

@@ -1,0 +1,746 @@
+{
+  "root": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master",
+  "total_files_scanned": 44,
+  "extensions": {
+    ".md": 1,
+    ".s": 2,
+    ".c": 4,
+    ".txt": 33,
+    ".asm": 4
+  },
+  "total_keyword_hits": 1384,
+  "files_with_hits": 16,
+  "results": [
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\Rainbow Road Command Log.txt",
+      "ext": ".txt",
+      "score": 5270,
+      "hit_count": 1054,
+      "weighted_hit_score": 4216,
+      "high_signal_hits": 1054,
+      "hits": [
+        {
+          "line": 3807,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "   3805: 00738C 53 ??? - 17 42 11 22 0B 21 8B\n   3806: 007394 8B ??? - 91 97 55 11 43 FE 2D\n>  3807: 00739C CC Shade Triangle - E7 7A D1 62 8D 31 8F\n   3808: 0073A4 11 ??? - 49 D7 A7 19 4B 19 09\n   3809: 0073AC 21 ??? - 4D C6 5D 84 8B E4 59"
+        },
+        {
+          "line": 3925,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "   3923: 007724 20 ??? - 85 28 45 49 8B 8B 15\n   3924: 00772C FF Set CIMG - B7 EE 27 D5 E5 A3 97\n>  3925: 007734 CC Shade Triangle - DF ED 63 AB D9 9B 97\n   3926: 00773C 7A ??? - 91 D5 63 EE A5 DE 29\n   3927: 007744 ED Set Scissor - 23 DC E1 61 CD FF E3"
+        },
+        {
+          "line": 4022,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "   4020: 007A24 9B ??? - 81 EE 01 FF C1 FE 41\n   4021: 007A2C 78 ??? - 49 E0 0D F8 0F 28 C1\n>  4022: 007A34 CD Shade/zbuff Triangle - 81 93 41 AC 01 20 01\n   4023: 007A3C 58 ??? - 03 B0 09 72 81 BD 01\n   4024: 007A44 41 ??? - 41 A0 09 38 01 30 03"
+        },
+        {
+          "line": 4030,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "   4028: 007A64 29 ??? - 01 49 81 20 C1 6A 41\n   4029: 007A6C 38 ??? - 03 49 C1 41 81 48 43\n>  4030: 007A74 CD Shade/zbuff Triangle - 03 7A C3 EE C1 18 41\n   4031: 007A7C B8 End Display List - 4D DD 41 20 41 28 43\n   4032: 007A84 20 ??? - 03 C8 4D 51 81 30 C1"
+        },
+        {
+          "line": 4036,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "   4034: 007A94 C0 RDP NOP - 8F 39 01 E5 03 28 41\n   4035: 007A9C F0 Load TLUT - texcoord=2463, 31; tile=120, ?=89E051\n>  4036: 007AA4 B1 Draw 2 Triangles - tri1=98, 32, 0, tri2=65, 127, 32, ?=FF\n   4037: 007AAC C4 ??? - 01 F5 83 91 89 98 4B\n   4038: 007AB4 10 ??? - 81 19 01 19 C1 22 81"
+        },
+        {
+          "line": 4059,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "   4057: 007B4C 29 ??? - 05 20 C3 91 C1 E8 5D\n   4058: 007B54 C4 ??? - D7 F4 2B 9C 63 52 4D\n>  4059: 007B5C CD Shade/zbuff Triangle - A1 FC FF 9B D7 28 81\n   4060: 007B64 F8 Set Fog Colour - 29 68 15 A0 17 C0 25\n   4061: 007B6C CF Shade/Texture/zbuff Triangle - 13 ED 19 62 93 FF C5"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\mk64levelhacking.txt",
+      "ext": ".txt",
+      "score": 518,
+      "hit_count": 88,
+      "weighted_hit_score": 419,
+      "high_signal_hits": 99,
+      "hits": [
+        {
+          "line": 4,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ground"
+          ],
+          "snippet": "      2: -See the notes in the bottom left screen about calculating the start position\n      3: -Make Lakitu stop being a douchebag >8^(\n>     4:  -When he tries to put you on the ramps, he can't find the ground; maybe he's\n      5:   chosen a point with no ground below it. Look at paths in DK Jungle and Royal\n      6:   Raceway; are there points in the air over jumps? We might just be able to"
+        },
+        {
+          "line": 5,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ground"
+          ],
+          "snippet": "      3: -Make Lakitu stop being a douchebag >8^(\n      4:  -When he tries to put you on the ramps, he can't find the ground; maybe he's\n>     5:   chosen a point with no ground below it. Look at paths in DK Jungle and Royal\n      6:   Raceway; are there points in the air over jumps? We might just be able to\n      7:   delete those."
+        },
+        {
+          "line": 11,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "face"
+          ],
+          "snippet": "      9: -Test in various modes (ensure jumps can be made with all characters on 50 & 150cc)\n     10: -Decoration:\n>    11:  -Do something with the floating faces\n     12:  -BG images (see notebook)\n     13:  -Images under track?"
+        },
+        {
+          "line": 28,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     26: -How the Set Combine command works - it enables textures and alpha among other things\n     27:  Just go to 801E3290 and play with the commands and see how the texture changes in realtime, it's neat\n>    28: -More about how dlist pointers, paths, and surface maps relate.\n     29:  -Notice how the dlists work in Sherbet Land and Koopa Beach, drawing the ice walls/water separate from the\n     30:   track. This suggests somehow two dlists are called; maybe one for the translucent objects and one for the"
+        },
+        {
+          "line": 29,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     27:  Just go to 801E3290 and play with the commands and see how the texture changes in realtime, it's neat\n     28: -More about how dlist pointers, paths, and surface maps relate.\n>    29:  -Notice how the dlists work in Sherbet Land and Koopa Beach, drawing the ice walls/water separate from the\n     30:   track. This suggests somehow two dlists are called; maybe one for the translucent objects and one for the\n     31:   normal ones? This mechanism might be used for other missing things."
+        },
+        {
+          "line": 269,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    267: 13 /\n    268:\n>   269: 8002A10C checks if surface type ($V1 copied from $V0) is not 0xFE.\n    270: 800F6A88 surface type you're on (16-bit)\n    271: 800F6A80 and 800F6A84 are related to height/Y speed"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\surface map fix.txt",
+      "ext": ".txt",
+      "score": 456,
+      "hit_count": 87,
+      "weighted_hit_score": 367,
+      "high_signal_hits": 89,
+      "hits": [
+        {
+          "line": 1,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface",
+            "track"
+          ],
+          "snippet": ">     1: MK64: Fixing the surface map issues in the new track\n      2: See also: mk64 notes Aug 9 2008.txt\n      3:"
+        },
+        {
+          "line": 74,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     72: \t\t\t\tA3 = (S2 + S8) + 40;\n     73: \t\t\t\tu16 *Coord = &RSP[15][Idx]; //this seems to be reading coords -\n>    74: \t\t\t\t\t//RSP seg15 has processed surface maps in it\n     75: \t\t\t\tIdx += 22;\n     76: \t\t\t\tA1 = TRUNC16((S1 + S6) + 40);"
+        },
+        {
+          "line": 80,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     78:\n     79: \t\t\t\t//802AF448\n>    80: \t\t\t\t//This refers to the halfwords in the processed surface map\n     81: \t\t\t\t//data,  at offsets 0x0E, 0x08, 0x0A, 0x04. Unfortunately, I\n     82: \t\t\t\t//don't know  what any of them do."
+        },
+        {
+          "line": 96,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ray"
+          ],
+          "snippet": "     94: \t\t\t\t *  -5491, -5151\n     95: \t\t\t\t * stack4 is 0x69 which is 105, so it's rejected 105 elements of\n>    96: \t\t\t\t * this array before even\n     97: \t\t\t\t * getting here\n     98: \t\t\t\t * The patch changes this call to effectively if(1 == 1), so"
+        },
+        {
+          "line": 107,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    105: \t\t\t\t * be.\n    106: \t\t\t\t * This function only seems to be called when loading a track,\n>   107: \t\t\t\t * so it looks like the only purpose is to check which surface\n    108: \t\t\t\t * poly you start on. This is the only call to this function.\n    109: \t\t\t\t */"
+        },
+        {
+          "line": 171,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ray"
+          ],
+          "snippet": "    169: this runs multiple times with $V0 being 0x0C, 0x0D, 0x1E, 0x1F, and then 0x20\n    170: At 802ADC20: LHU $V0, 0000($T1); $T1 = 801F4C86, 801F4C88, 801F4C8A, 801F4C8C,\n>   171:  801F4C8E, sure enough it looks like an array of map indexes; written at\n    172:  802AF510 from $S0\n    173:  that's somewhere up in _802AF314(), inside the if after calling the subroutine;"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\rom addrs.txt",
+      "ext": ".txt",
+      "score": 264,
+      "hit_count": 50,
+      "weighted_hit_score": 212,
+      "high_signal_hits": 52,
+      "hits": [
+        {
+          "line": 7,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "      5:\n      6: 8002E000 0010\n>     7: 8002E058 0010 is drive through walls, so this must be related to hit detection (duh)\n      8:\n      9: 700, 0, -840"
+        },
+        {
+          "line": 19,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "collision"
+          ],
+          "snippet": "     17:\n     18: Around 8027D850 is Mario Raceway's geometry data in RAM. You can edit it here and the\n>    19: changes will be immediately visible. This data is also the collision map - remove a\n     20: polygon and you can drive right through. However this is very strange, if you MOVE a\n     21: polygon, it is no longer solid, nor is there an invisible barrier where it used to be."
+        },
+        {
+          "line": 22,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     20: polygon and you can drive right through. However this is very strange, if you MOVE a\n     21: polygon, it is no longer solid, nor is there an invisible barrier where it used to be.\n>    22: This isn't always true? If you move the very end of the wall at the first corner you can\n     23: drive through it, but if you move the next 2 points to meet it, shifting the wall\n     24: itself, the hit detection doesn't change. Also, you can go through it from the other side"
+        },
+        {
+          "line": 23,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     21: polygon, it is no longer solid, nor is there an invisible barrier where it used to be.\n     22: This isn't always true? If you move the very end of the wall at the first corner you can\n>    23: drive through it, but if you move the next 2 points to meet it, shifting the wall\n     24: itself, the hit detection doesn't change. Also, you can go through it from the other side\n     25: that would have been inside the wall and thus not rendered."
+        },
+        {
+          "line": 25,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     23: drive through it, but if you move the next 2 points to meet it, shifting the wall\n     24: itself, the hit detection doesn't change. Also, you can go through it from the other side\n>    25: that would have been inside the wall and thus not rendered.\n     26:\n     27: 001DB92C: 000002BC0000FCB8"
+        },
+        {
+          "line": 73,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "collision"
+          ],
+          "snippet": "     71: By changing the geometry data file's output size to 4 bytes, you fall for a looooong time\n     72: through glitched crap before hitting the water, and then the game can't figure out where\n>    73: to put you back. So the collision data must be linked to this.\n     74:\n     75: 8002CDF4 [0C023B70] handles boost ramps and runs only when you touch one. Disable this"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\new track - dlists.txt",
+      "ext": ".txt",
+      "score": 150,
+      "hit_count": 30,
+      "weighted_hit_score": 120,
+      "high_signal_hits": 30,
+      "hits": [
+        {
+          "line": 9,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "      7: ;Draw first several pieces\n      8: 04008200 0400C270 Load 32 vertices from 04:00C270\n>     9: B1040200 00060400 Triangle (0, 1, 2) (0, 2, 3)\n     10: B10C0A08 000E0C08 Triangle (4, 5, 6) (4, 6, 7)\n     11: B1141210 00161410 Triangle (8, 9, 10) (8, 10, 11)"
+        },
+        {
+          "line": 10,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "      8: 04008200 0400C270 Load 32 vertices from 04:00C270\n      9: B1040200 00060400 Triangle (0, 1, 2) (0, 2, 3)\n>    10: B10C0A08 000E0C08 Triangle (4, 5, 6) (4, 6, 7)\n     11: B1141210 00161410 Triangle (8, 9, 10) (8, 10, 11)\n     12: B11C1A18 001E1C18 Triangle (12, 13, 14) (12, 14, 15)"
+        },
+        {
+          "line": 11,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "      9: B1040200 00060400 Triangle (0, 1, 2) (0, 2, 3)\n     10: B10C0A08 000E0C08 Triangle (4, 5, 6) (4, 6, 7)\n>    11: B1141210 00161410 Triangle (8, 9, 10) (8, 10, 11)\n     12: B11C1A18 001E1C18 Triangle (12, 13, 14) (12, 14, 15)\n     13: B1242220 00262420 Triangle (16, 17, 18) (16, 18, 19)"
+        },
+        {
+          "line": 12,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "     10: B10C0A08 000E0C08 Triangle (4, 5, 6) (4, 6, 7)\n     11: B1141210 00161410 Triangle (8, 9, 10) (8, 10, 11)\n>    12: B11C1A18 001E1C18 Triangle (12, 13, 14) (12, 14, 15)\n     13: B1242220 00262420 Triangle (16, 17, 18) (16, 18, 19)\n     14: B12C2A28 002E2C28 Triangle (20, 21, 22) (20, 22, 23)"
+        },
+        {
+          "line": 13,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "     11: B1141210 00161410 Triangle (8, 9, 10) (8, 10, 11)\n     12: B11C1A18 001E1C18 Triangle (12, 13, 14) (12, 14, 15)\n>    13: B1242220 00262420 Triangle (16, 17, 18) (16, 18, 19)\n     14: B12C2A28 002E2C28 Triangle (20, 21, 22) (20, 22, 23)\n     15: B1343230 00363430 Triangle (24, 25, 26) (24, 26, 27)"
+        },
+        {
+          "line": 14,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "     12: B11C1A18 001E1C18 Triangle (12, 13, 14) (12, 14, 15)\n     13: B1242220 00262420 Triangle (16, 17, 18) (16, 18, 19)\n>    14: B12C2A28 002E2C28 Triangle (20, 21, 22) (20, 22, 23)\n     15: B1343230 00363430 Triangle (24, 25, 26) (24, 26, 27)\n     16: B13C3A38 003E3C38 Triangle (28, 29, 30) (28, 30, 31)"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\Aug 9 2008.txt",
+      "ext": ".txt",
+      "score": 120,
+      "hit_count": 22,
+      "weighted_hit_score": 96,
+      "high_signal_hits": 24,
+      "hits": [
+        {
+          "line": 113,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    111:\n    112:\n>   113: 801D65A0 surface map\n    114: 8027A260 pointed to by first entry - giant mushroom vertices\n    115: 8027A260|09 03 00 00|FC 17 00 00|02 3F 04 00|88 88 88 FF"
+        },
+        {
+          "line": 127,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "gravity"
+          ],
+          "snippet": "    125: 801D65C0: BED21B52 BF6973B0 C3DEF6FE\n    126:\n>   127: The first gravity float seems to be how close you can get to it or something.\n    128: 3F800000: solid\n    129: 3FC00000: can drive into it slightly at some places, right through at others."
+        },
+        {
+          "line": 133,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface",
+            "triangle"
+          ],
+          "snippet": "    131: worth noting the normal value doesn't let you get right up to it, 3F800000 does\n    132: the second and third are similar, this could be one per vertex\n>   133: moving the triangle doesn't seem to affect the surface map. there are only three\n    134: floats here, so they could only be coords for one vertex. wtf? maybe this stuff\n    135: gets cached somewhere"
+        },
+        {
+          "line": 148,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    146: it not solid\n    147:\n>   148: best guess: \"surface type\" is the effects applied, the coords are taken from the\n    149: vertices, and the 3 floats are physics values of some sort.\n    150:"
+        },
+        {
+          "line": 200,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "    198: 802A4CC4 - the RSP instructions are hardcoded in the ASM here. If we change B1 to\n    199: B8, the screen blacks out, but the game still runs and shows up again when we\n>   200: change it back. If we change the Triangles command, the sky breaks, so this is\n    201: indeed drawing the sky. If we NOP it, the sky is black, but everything else seems\n    202: fine - no failure to clear the buffer, clouds are still there, etc."
+        },
+        {
+          "line": 311,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ray",
+            "wall"
+          ],
+          "snippet": "    309: 802928B8 writes the 0xB7 at 01:01A6D0 (80117F30) just before fences are drawn\n    310: the 0x20 part is at 8029285C, it's used in another instruction too\n>   311: if we set the high bit the fence becomes a gray wall that changes colour and\n    312: disappears as you move; other changes seem to have no effect\n    313: maybe this disables textures?"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\segment 6 2.txt",
+      "ext": ".txt",
+      "score": 80,
+      "hit_count": 16,
+      "weighted_hit_score": 64,
+      "high_signal_hits": 16,
+      "hits": [
+        {
+          "line": 11,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "      9: 9570 - 9577 ?\n     10: 9578 - 964F Trees\n>    11: 9650 - 97EF Surface map\n     12: 97F7 EOF\n     13:"
+        },
+        {
+          "line": 21,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     19: 7238 - 724F Falling rocks\n     20: 7258 - 72CF Item boxes\n>    21: 72D0 - 74FF Surface map\n     22: 7507 EOF\n     23:"
+        },
+        {
+          "line": 30,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     28: 9298 - 936F Trees\n     29: 9378 - 93D7 Item boxes\n>    30: 93D8 - 94F7 Surface map\n     31: 94FF EOF\n     32:"
+        },
+        {
+          "line": 38,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     36: 4578 - 5C7F Course paths\n     37: 5C80 - B457 ?\n>    38: B458 - B5D7 Surface map\n     39: B5DF EOF\n     40:"
+        },
+        {
+          "line": 49,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     47: 180A8 - 1810F Trees\n     48: 18118 - 1823F Item boxes\n>    49: 18240 - 183E7 Surface map\n     50: 185DF EOF\n     51:"
+        },
+        {
+          "line": 60,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     58: 7720 - 780F Trees\n     59: 7818 - 788F Item boxes\n>    60: 79A0 - 7B17 Surface map\n     61: 7B1F EOF\n     62:"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\new track.txt",
+      "ext": ".txt",
+      "score": 51,
+      "hit_count": 10,
+      "weighted_hit_score": 41,
+      "high_signal_hits": 10,
+      "hits": [
+        {
+          "line": 8,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "      6: 2 [X]Add new dlists and vertices to the end of them\n      7: 3 [X]Point the dlist pointers to these new lists\n>     8: 4 [X]Point the surface maps to these new lists\n      9: 5 [ ]Design the track\n     10: 6 [ ]Add new AI path data"
+        },
+        {
+          "line": 12,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "face"
+          ],
+          "snippet": "     10: 6 [ ]Add new AI path data\n     11: 7 [ ]Add new item box data\n>    12: 8 [ ]Do something with the neon faces - maybe just blank out the graphics\n     13: 9 [ ]Do something with the chomps\n     14:"
+        },
+        {
+          "line": 123,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "    121: B9000314 005049D8 Set Other Mode L - quad kinda follows us around O_o\n    122: 0400103F 0400C270 Load 4 vertices from 04:00C270\n>   123: B1040200 00060400 Triangle (0, 1, 2) (0, 2, 3)\n    124: B8000000 00000000 End Dlist\n    125:"
+        },
+        {
+          "line": 139,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    137:\n    138: *******************************\n>   139: * STEP THREE: NEW SURFACE MAP *\n    140: *******************************\n    141:"
+        },
+        {
+          "line": 144,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    142: First we have to find the map:\n    143:\n>   144: 802B94A4 surface map jump table\n    145: Rainbow Road routine:\n    146: 80296328 LUI $A0, 0601"
+        },
+        {
+          "line": 155,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "    153: Format:\n    154: Display list offset, 4 bytes\n>   155: Surface type, 1 byte\n    156: Display list index, 1 byte\n    157: Flags, 2 bytes"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\texture commands.txt",
+      "ext": ".txt",
+      "score": 50,
+      "hit_count": 10,
+      "weighted_hit_score": 40,
+      "high_signal_hits": 10,
+      "hits": [
+        {
+          "line": 28,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     26: There are two ways of loading textures: block or tile mode. Block mode assumes that the texture map is a contiguous block of texels that represents the whole texture map. Tile mode can lift a subrectangle out of a larger image. The following tables list block and tile mode texture-loading GBI commands respectively.\n     27:\n>    28: gsDPLoadTextureTile(timg,fmt,siz,width,height,uls,ult,lrs,lrt,pal,cms,cmt,masks,maskt,shifts,shiftt)\n     29: /n64man/gdp/gDPLoadTextureTile.htm\n     30:"
+        },
+        {
+          "line": 31,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     29: /n64man/gdp/gDPLoadTextureTile.htm\n     30:\n>    31: #define\tgDPLoadTextureTile(pkt, timg, fmt, siz, width, height,\t\t\\\n     32: \t\tuls, ult, lrs, lrt, pal,\t\t\t\t\\\n     33: \t\tcms, cmt, masks, maskt, shifts, shiftt)\t\t\t\\"
+        },
+        {
+          "line": 59,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     57:\n     58:\n>    59: gDPLoadTextureBlock(Gfx *gdl, u32 timg, u32 fmt, u32 siz, u32 width, u32 height, u32 pal, u32 cms, u32 cmt, u32 masks, u32 maskt, u32 shifts, u32 shiftt)\n     60: /n64man/gdp/gDPLoadTextureBlock.htm\n     61:"
+        },
+        {
+          "line": 62,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     60: /n64man/gdp/gDPLoadTextureBlock.htm\n     61:\n>    62: #define\tgDPLoadTextureBlock(pkt, timg, fmt, siz, width, height,\t\t\\\n     63: \t\tpal, cms, cmt, masks, maskt, shifts, shiftt)\t\t\\\n     64: {\t\t\t\t\t\t\t\t\t\\"
+        },
+        {
+          "line": 70,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     68: \tgDPLoadSync(pkt);\t\t\t\t\t\t\\\n     69: \tgDPLoadBlock(pkt, G_TX_LOADTILE, 0, 0, \t\t\t\t\\\n>    70: \t\t(((width)*(height) + siz##_INCR) >> siz##_SHIFT) -1,\t\\\n     71: \t\tCALC_DXT(width, siz##_BYTES)); \t\t\t\t\\\n     72: \tgDPPipeSync(pkt);\t\t\t\t\t\t\\"
+        },
+        {
+          "line": 79,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     77: \tgDPSetTileSize(pkt, G_TX_RENDERTILE, 0, 0,\t\t\t\\\n     78: \t\t((width)-1) << G_TEXTURE_IMAGE_FRAC,\t\t\t\\\n>    79: \t\t((height)-1) << G_TEXTURE_IMAGE_FRAC)\t\t\t\\\n     80: }\n     81:"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\surface hax.txt",
+      "ext": ".txt",
+      "score": 20,
+      "hit_count": 4,
+      "weighted_hit_score": 16,
+      "high_signal_hits": 4,
+      "hits": [
+        {
+          "line": 1,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": ">     1: 8002A10C checks if surface type ($V1 copied from $V0) is not 0xFE.\n      2: 800F6A88 surface type you're on (16-bit)\n      3: 800F6A80 and 800F6A84 are related to height/Y speed"
+        },
+        {
+          "line": 2,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "      1: 8002A10C checks if surface type ($V1 copied from $V0) is not 0xFE.\n>     2: 800F6A88 surface type you're on (16-bit)\n      3: 800F6A80 and 800F6A84 are related to height/Y speed\n      4: 800798FC reads surface type, compares to 0xFD (forbidden)"
+        },
+        {
+          "line": 3,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "      1: 8002A10C checks if surface type ($V1 copied from $V0) is not 0xFE.\n      2: 800F6A88 surface type you're on (16-bit)\n>     3: 800F6A80 and 800F6A84 are related to height/Y speed\n      4: 800798FC reads surface type, compares to 0xFD (forbidden)\n      5: 8007AA6C looks like it's reading a jump table at ~800EED1C"
+        },
+        {
+          "line": 4,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "      2: 800F6A88 surface type you're on (16-bit)\n      3: 800F6A80 and 800F6A84 are related to height/Y speed\n>     4: 800798FC reads surface type, compares to 0xFD (forbidden)\n      5: 8007AA6C looks like it's reading a jump table at ~800EED1C"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\surface maps.txt",
+      "ext": ".txt",
+      "score": 20,
+      "hit_count": 4,
+      "weighted_hit_score": 16,
+      "high_signal_hits": 4,
+      "hits": [
+        {
+          "line": 1,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": ">     1: 801D7807 surface type\n      2: 802AAE88 is reading that float value from RAM\n      3:"
+        },
+        {
+          "line": 4,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "      2: 802AAE88 is reading that float value from RAM\n      3:\n>     4: Level, max point ID, # surfaces, max surface dlist\n      5: 00 17 52 17\n      6: 01 24 70 24"
+        },
+        {
+          "line": 26,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "surface"
+          ],
+          "snippet": "     24: 13 -\n     25: Dlist=255 probably just means don't call one, all\n>    26: the surfaces using it seem to be solid (type 255)\n     27: and are probably walls\n     28: DK Jungle has one type=17, dlist=255, and a few"
+        },
+        {
+          "line": 27,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     25: Dlist=255 probably just means don't call one, all\n     26: the surfaces using it seem to be solid (type 255)\n>    27: and are probably walls\n     28: DK Jungle has one type=17, dlist=255, and a few\n     29: others like this"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\vertex alpha.txt",
+      "ext": ".txt",
+      "score": 15,
+      "hit_count": 3,
+      "weighted_hit_score": 12,
+      "high_signal_hits": 3,
+      "hits": [
+        {
+          "line": 76,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     74: this scaling parameter seems to be DMA'd in and never changed.\n     75: playing with it also shows us that each course has two settings defined:\n>    76: 1) a \"fall height\" at which point the game considers you to have fallen out of bounds when you fall below this.\n     77: 2) a \"water height\" defining the level of some invisible water which you plunge into.\n     78: these don't scale, so we end up dropping into invisible water and then being towed when we hit lower points on some tracks."
+        },
+        {
+          "line": 77,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     75: playing with it also shows us that each course has two settings defined:\n     76: 1) a \"fall height\" at which point the game considers you to have fallen out of bounds when you fall below this.\n>    77: 2) a \"water height\" defining the level of some invisible water which you plunge into.\n     78: these don't scale, so we end up dropping into invisible water and then being towed when we hit lower points on some tracks.\n     79: some hills become unclimbable walls too, demonstrating that the check for what's a wall and what's not depends on its angle."
+        },
+        {
+          "line": 79,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     77: 2) a \"water height\" defining the level of some invisible water which you plunge into.\n     78: these don't scale, so we end up dropping into invisible water and then being towed when we hit lower points on some tracks.\n>    79: some hills become unclimbable walls too, demonstrating that the check for what's a wall and what's not depends on its angle.\n     80:\n     81: as for the purpose of that extra parameter defined in the low bits of the red and green values, I have no idea..."
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\adding a polygon.txt",
+      "ext": ".txt",
+      "score": 10,
+      "hit_count": 2,
+      "weighted_hit_score": 8,
+      "high_signal_hits": 2,
+      "hits": [
+        {
+          "line": 13,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "     11: begin display list\n     12: set texture size to 32x32, repeating on both axes\n>    13: select texture 0 (red-and-yellow checkered wall) - unknown value is 0070 as usual\n     14: set polygon base offset to 0x15EB, where the end-of-pipe polygons are\n     15: draw a triangle using points 0, 94, and 126 from this offset"
+        },
+        {
+          "line": 15,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "triangle"
+          ],
+          "snippet": "     13: select texture 0 (red-and-yellow checkered wall) - unknown value is 0070 as usual\n     14: set polygon base offset to 0x15EB, where the end-of-pipe polygons are\n>    15: draw a triangle using points 0, 94, and 126 from this offset\n     16: end display list\n     17: end script"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\debug text routine.txt",
+      "ext": ".txt",
+      "score": 10,
+      "hit_count": 2,
+      "weighted_hit_score": 8,
+      "high_signal_hits": 2,
+      "hits": [
+        {
+          "line": 30,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "height"
+          ],
+          "snippet": "     28:  A1: Pointer to Y pos\n     29:  A2: Pointer to text\n>    30:  The stored coords are updated - X seems to be the X pos of the string end and Y is just + 0x14 (probably height of a line)\n     31:\n     32: 2c) Display just a number: Call 80057524 with:"
+        },
+        {
+          "line": 55,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ray"
+          ],
+          "snippet": "     53: 80098DF8(A0=probably VRAM dest, A1=X, A2=Y, A3=EndX, SP[10]=EndY, SP[14]=R, SP[18]=G, SP[1C]=B, SP[20]=A)\n     54:\n>    55: 800E5628 appears to be the mapping array for ASCII -> debug font char idxs\n     56: patching the branch at 80057554 to be always true will make the number printing function unsigned\n     57: there may well be an unsigned version somewhere too though"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\ai paths.txt",
+      "ext": ".txt",
+      "score": 5,
+      "hit_count": 1,
+      "weighted_hit_score": 4,
+      "high_signal_hits": 1,
+      "hits": [
+        {
+          "line": 5,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "wall"
+          ],
+          "snippet": "      3: -The last path's point IDs increment.\n      4: -If 3 paths exist, the second follows a different route (Koopa Beach: around the left of Turtle Rock, over the hidden sandbar) and is white. Or, it defines some other path (Kalimari Desert: the train; DK Jungle: the boat) and has all point IDs = 0.\n>     5: -Battle courses have only one path, which does things like running into walls, but doesn't appear random. It increments.\n      6:  -Possibly these points don't make up a path? Maybe they define item box positions?\n      7:"
+        }
+      ]
+    },
+    {
+      "file": "C:\\saturn\\SaturnRingLib-main\\Projects\\Projetos_Exemplos\\mariokart64-master\\old notes\\items.txt",
+      "ext": ".txt",
+      "score": 5,
+      "hit_count": 1,
+      "weighted_hit_score": 4,
+      "high_signal_hits": 1,
+      "hits": [
+        {
+          "line": 79,
+          "owner": "(no function/label found)",
+          "keywords": [
+            "ray"
+          ],
+          "snippet": "     77: call at 8007AC60 [0C01C8E9]; killing it prevents you from getting items from boxes. It calls with $A1=0 though...\n     78:\n>    79: 80165EB8 is referenced, seems to be part of a struct array.\n     80:\n     81: 800723E0 [0C01C8E2] calls 80072388; killing it seems to give you better items in first place (lots of shrooms) if you let it cycle through."
+        }
+      ]
+    }
+  ]
+}

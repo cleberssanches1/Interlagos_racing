@@ -27,13 +27,7 @@ public:
             return;
         }
 
-        const int32_t gripSeedSegmentId = (groundState_.lastSurfaceSegmentId > 0)
-            ? static_cast<int32_t>(groundState_.lastSurfaceSegmentId)
-            : ioFrameState.activeSegmentId;
-        dynamicsState_.surfaceGripScale =
-            CarPhysics::GroundFollower::ResolveSurfaceGripScale(trackQuery,
-                                                                ioCarWorldPosition,
-                                                                gripSeedSegmentId);
+        UpdateSurfaceGripScale(trackQuery, ioFrameState, ioCarWorldPosition);
 
         const Vector3D preStepPosition = ioCarWorldPosition;
         CarPhysics::FrameStepOutput stepOutput{};
@@ -103,15 +97,76 @@ public:
     }
 
 private:
+    static SRL::Math::Types::Fxp ResolveGripScaleFromSurfaceType(uint8_t surfaceType)
+    {
+        switch (surfaceType)
+        {
+        case CarPhysics::Tunables::kSurfaceTypeAsphalt:
+            return CarPhysics::Tunables::kGripScaleAsphalt;
+        case CarPhysics::Tunables::kSurfaceTypeEscapeArea:
+        case CarPhysics::Tunables::kSurfaceTypeGrass:
+            return CarPhysics::Tunables::kGripScaleOffroad;
+        default:
+            break;
+        }
+        return CarPhysics::Tunables::kGripScaleFallback;
+    }
+
+    void UpdateSurfaceGripScale(const ITrackCollisionQuery* trackQuery,
+                                GameplayFrameState& frameState,
+                                const Vector3D& worldPosition)
+    {
+        const int32_t gripSeedSegmentId = (groundState_.lastSurfaceSegmentId > 0)
+            ? static_cast<int32_t>(groundState_.lastSurfaceSegmentId)
+            : frameState.activeSegmentId;
+        if (groundState_.lastSurfaceType != 0u)
+        {
+            dynamicsState_.surfaceGripScale =
+                ResolveGripScaleFromSurfaceType(groundState_.lastSurfaceType);
+            frameState.groundFaceIndex = groundState_.lastSurfaceFaceIndex;
+            frameState.groundFamilyId = groundState_.lastSurfaceFamilyId;
+            frameState.groundSurfaceType = groundState_.lastSurfaceType;
+            return;
+        }
+
+        if constexpr (!CarPhysics::Tunables::kEnableFaceCache)
+        {
+            dynamicsState_.surfaceGripScale =
+                CarPhysics::GroundFollower::ResolveSurfaceGripScale(trackQuery,
+                                                                    worldPosition,
+                                                                    gripSeedSegmentId);
+            return;
+        }
+
+        const bool segmentChanged = gripSeedSegmentId != lastGripSeedSegmentId_;
+        const bool mustResampleGrip =
+            segmentChanged || (groundState_.auxProbeCooldown == 0u);
+        if (mustResampleGrip)
+        {
+            dynamicsState_.surfaceGripScale =
+                CarPhysics::GroundFollower::ResolveSurfaceGripScale(trackQuery,
+                                                                    worldPosition,
+                                                                    gripSeedSegmentId);
+            lastGripSeedSegmentId_ = gripSeedSegmentId;
+            groundState_.auxProbeCooldown = CarPhysics::Tunables::kGripProbeIntervalFrames;
+        }
+        if (groundState_.auxProbeCooldown > 0u)
+        {
+            --groundState_.auxProbeCooldown;
+        }
+    }
+
     void ResetState(GameplayFrameState& ioFrameState)
     {
         CarPhysics::DynamicsModel::Reset(dynamicsState_);
         CarPhysics::GroundFollower::Reset(groundState_);
+        lastGripSeedSegmentId_ = -1;
         ioFrameState.speedProxy = 0;
         CarPhysics::ResetGroundDebug(ioFrameState);
     }
 
     CarPhysics::DynamicsState dynamicsState_{};
     CarPhysics::GroundState groundState_{};
+    int32_t lastGripSeedSegmentId_ = -1;
 };
 } // namespace Game

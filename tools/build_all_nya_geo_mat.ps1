@@ -12,7 +12,8 @@
     [int]$TexHeight = 8,
     [int]$TexPadWidth = 8,
     [switch]$UseLodSubfolders = $false,
-    [switch]$RebuildSegmentsMap = $false
+    [switch]$RebuildSegmentsMap = $false,
+    [bool]$ExportSurfaceFamilyMap = $true
 )
 
 Set-StrictMode -Version Latest
@@ -245,6 +246,354 @@ function Test-SegmentsMapFamilyReferences {
     Write-Host ("segments_map refs OK: segs={0} families={1}" -f @($json.segments).Count, @($json.textureFamilies).Count)
 }
 
+function New-SurfaceTypeRle {
+    param(
+        [int[]]$Values
+    )
+    $runs = New-Object System.Collections.Generic.List[object]
+    if (-not $Values -or $Values.Count -eq 0) { return @() }
+
+    $start = 0
+    $curr = [int]$Values[0]
+    $count = 1
+    for ($i = 1; $i -lt $Values.Count; $i++) {
+        $v = [int]$Values[$i]
+        if ($v -eq $curr) {
+            $count++
+            continue
+        }
+        $runs.Add([pscustomobject]@{ start = $start; count = $count; surfaceTypeId = $curr }) | Out-Null
+        $start = $i
+        $curr = $v
+        $count = 1
+    }
+    $runs.Add([pscustomobject]@{ start = $start; count = $count; surfaceTypeId = $curr }) | Out-Null
+    return @($runs.ToArray())
+}
+
+function Convert-SurfaceTypeNameToId {
+    param(
+        [string]$Name
+    )
+    if ([string]::IsNullOrWhiteSpace($Name)) { return 0 }
+    switch ($Name.Trim().ToLowerInvariant()) {
+        "asphalt" { return 1 }
+        "asfalto" { return 1 }
+        "escape" { return 2 }
+        "escapearea" { return 2 }
+        "escape_area" { return 2 }
+        "grass" { return 3 }
+        "grama" { return 3 }
+        default { return 0 }
+    }
+}
+
+function Convert-SurfaceTypeIdToName {
+    param(
+        [int]$Id
+    )
+    switch ($Id) {
+        1 { return "asphalt" }
+        2 { return "escape_area" }
+        3 { return "grass" }
+        default { return "unknown" }
+    }
+}
+
+function Normalize-SurfaceStem {
+    param(
+        [string]$Token
+    )
+    if ([string]::IsNullOrWhiteSpace($Token)) { return "" }
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($Token).Trim().ToLowerInvariant()
+    if ($base -match '^(?<name>.+)_(8|16|32|64)(\..+)?$') {
+        return $Matches['name']
+    }
+    if ($base -match '^(?<name>.+)\.\d+$') {
+        return $Matches['name']
+    }
+    return $base
+}
+
+function Resolve-SurfaceTypeIdFromFamily {
+    param(
+        $Family
+    )
+    if ($null -eq $Family) { return 0 }
+
+    if ($Family.PSObject.Properties.Name -contains "surfaceTypeId") {
+        $explicit = [int]$Family.surfaceTypeId
+        if ($explicit -ge 0 -and $explicit -le 255) { return $explicit }
+    }
+    if ($Family.PSObject.Properties.Name -contains "surfaceType") {
+        $fromName = Convert-SurfaceTypeNameToId ([string]$Family.surfaceType)
+        if ($fromName -gt 0) { return $fromName }
+    }
+
+    $stem = ""
+    if ($Family.PSObject.Properties.Name -contains "sourceStem") {
+        $stem = Normalize-SurfaceStem ([string]$Family.sourceStem)
+    }
+    if ([string]::IsNullOrWhiteSpace($stem) -and
+        $Family.PSObject.Properties.Name -contains "variants" -and
+        $Family.variants -and
+        $Family.variants.PSObject.Properties.Name -contains "64") {
+        $stem = Normalize-SurfaceStem ([string]$Family.variants."64")
+    }
+    if ([string]::IsNullOrWhiteSpace($stem) -and
+        $Family.PSObject.Properties.Name -contains "imageFiles" -and
+        $Family.imageFiles -and
+        $Family.imageFiles.PSObject.Properties.Name -contains "64") {
+        $stem = Normalize-SurfaceStem ([string]$Family.imageFiles."64")
+    }
+    if ([string]::IsNullOrWhiteSpace($stem) -and
+        $Family.PSObject.Properties.Name -contains "name") {
+        $stem = Normalize-SurfaceStem ([string]$Family.name)
+    }
+
+    $asphaltStems = @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "asfalto", "roadpit", "roadgrid")
+    $escapeStems = @("f01864", "f00164", "f00264", "f00364", "f00464", "f00564")
+    $grassStems = @("f06864", "f04364", "f02564", "f02464", "f02364")
+
+    if ($asphaltStems -contains $stem) { return 1 }
+    if ($escapeStems -contains $stem) { return 2 }
+    if ($grassStems -contains $stem) { return 3 }
+    return 0
+}
+
+function Annotate-SegmentsMapSurfaceTypes {
+    param(
+        [string]$SegmentsMapPath
+    )
+    if (-not (Test-Path -LiteralPath $SegmentsMapPath)) {
+        throw "segments_map inexistente para anotacao de solo: $SegmentsMapPath"
+    }
+
+    $json = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    if ($null -eq $json) {
+        throw "Nao foi possivel carregar JSON para anotacao de solo: $SegmentsMapPath"
+    }
+
+    $familySurfaceTypeById = @{}
+    foreach ($family in @($json.textureFamilies)) {
+        if ($null -eq $family) { continue }
+        if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+        $fid = [int]$family.id
+        if ($fid -le 0) { continue }
+        $stype = Resolve-SurfaceTypeIdFromFamily -Family $family
+        $family | Add-Member -NotePropertyName surfaceTypeId -NotePropertyValue ([int]$stype) -Force
+        $family | Add-Member -NotePropertyName surfaceType -NotePropertyValue (Convert-SurfaceTypeIdToName -Id $stype) -Force
+        $familySurfaceTypeById[$fid] = [int]$stype
+    }
+
+    $json | Add-Member -NotePropertyName surfaceTypes -NotePropertyValue @(
+        [pscustomobject]@{ id = 0; name = "unknown" },
+        [pscustomobject]@{ id = 1; name = "asphalt" },
+        [pscustomobject]@{ id = 2; name = "escape_area" },
+        [pscustomobject]@{ id = 3; name = "grass" }
+    ) -Force
+
+    foreach ($segment in @($json.segments)) {
+        if ($null -eq $segment) { continue }
+        $faceSurfaceType = New-Object System.Collections.Generic.List[int]
+
+        if ($segment.PSObject.Properties.Name -contains "faces" -and $segment.faces) {
+            foreach ($face in @($segment.faces)) {
+                if ($null -eq $face) { continue }
+                $fid = 0
+                if ($face.PSObject.Properties.Name -contains "familyId") {
+                    $fid = [int]$face.familyId
+                }
+                $stype = 0
+                if ($familySurfaceTypeById.ContainsKey($fid)) {
+                    $stype = [int]$familySurfaceTypeById[$fid]
+                }
+                $face | Add-Member -NotePropertyName surfaceTypeId -NotePropertyValue ([int]$stype) -Force
+                $face | Add-Member -NotePropertyName surfaceType -NotePropertyValue (Convert-SurfaceTypeIdToName -Id $stype) -Force
+                $faceSurfaceType.Add($stype) | Out-Null
+            }
+        }
+        elseif ($segment.PSObject.Properties.Name -contains "faceTextureFamily" -and $segment.faceTextureFamily) {
+            foreach ($familyId in @($segment.faceTextureFamily)) {
+                $fid = [int]$familyId
+                $stype = 0
+                if ($familySurfaceTypeById.ContainsKey($fid)) {
+                    $stype = [int]$familySurfaceTypeById[$fid]
+                }
+                $faceSurfaceType.Add($stype) | Out-Null
+            }
+        }
+
+        $segment | Add-Member -NotePropertyName faceSurfaceType -NotePropertyValue @($faceSurfaceType.ToArray()) -Force
+        $segment | Add-Member -NotePropertyName faceSurfaceTypeRle -NotePropertyValue @(New-SurfaceTypeRle -Values @($faceSurfaceType.ToArray())) -Force
+    }
+
+    $json | ConvertTo-Json -Depth 16 -Compress | Set-Content -LiteralPath $SegmentsMapPath -Encoding UTF8
+    Write-Host ("surface types anotados em: {0}" -f $SegmentsMapPath)
+}
+
+function Write-SurfaceFamilyMapBinary {
+    param(
+        [string]$SegmentsMapPath,
+        [string]$OutBinPath
+    )
+
+    if (-not (Test-Path -LiteralPath $SegmentsMapPath)) {
+        throw "segments_map inexistente para mapa de superficie: $SegmentsMapPath"
+    }
+
+    $json = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    if ($null -eq $json) {
+        throw "Nao foi possivel carregar JSON para mapa de superficie: $SegmentsMapPath"
+    }
+
+    $entries = New-Object System.Collections.Generic.List[object]
+    foreach ($family in @($json.textureFamilies)) {
+        if ($null -eq $family) { continue }
+        if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+        $fid = [int]$family.id
+        if ($fid -le 0 -or $fid -gt 4095) { continue }
+
+        $stype = 0
+        if ($family.PSObject.Properties.Name -contains "surfaceTypeId") {
+            $stype = [int]$family.surfaceTypeId
+        }
+        elseif ($family.PSObject.Properties.Name -contains "surfaceType") {
+            $stype = Convert-SurfaceTypeNameToId ([string]$family.surfaceType)
+        }
+
+        $mask = [byte]0
+        if ($stype -ge 1 -and $stype -le 7) {
+            $mask = [byte](1 -shl $stype)
+        }
+
+        $entries.Add([pscustomobject]@{
+            familyId = [uint16]$fid
+            surfaceTypeId = [byte]$stype
+            surfaceMask = [byte]$mask
+        }) | Out-Null
+    }
+
+    $ordered = @($entries.ToArray() | Sort-Object familyId)
+    $outDir = Split-Path -Parent $OutBinPath
+    if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path -LiteralPath $outDir)) {
+        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
+    }
+
+    $fs = [System.IO.File]::Open($OutBinPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+    try {
+        $bw = New-Object System.IO.BinaryWriter($fs)
+        try {
+            # Header SFM1 (little-endian), version 1
+            $bw.Write([uint32]0x314D4653) # "SFM1"
+            $bw.Write([uint16]1)
+            $bw.Write([uint16]0)
+            $bw.Write([uint32]$ordered.Count)
+            foreach ($entry in $ordered) {
+                $bw.Write([uint16]$entry.familyId)
+                $bw.Write([byte]$entry.surfaceTypeId)
+                $bw.Write([byte]$entry.surfaceMask)
+            }
+        }
+        finally {
+            $bw.Dispose()
+        }
+    }
+    finally {
+        $fs.Dispose()
+    }
+
+    Write-Host ("surface family map gerado: {0} entries={1}" -f $OutBinPath, $ordered.Count)
+}
+
+function Write-SegmentCollisionMapBinary {
+    param(
+        [string]$SegmentsMapPath,
+        [string]$OutBinPath
+    )
+
+    if (-not (Test-Path -LiteralPath $SegmentsMapPath)) {
+        throw "segments_map inexistente para mapa de colisao: $SegmentsMapPath"
+    }
+
+    $json = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    if ($null -eq $json) {
+        throw "Nao foi possivel carregar JSON para mapa de colisao: $SegmentsMapPath"
+    }
+
+    $segments = @($json.segments | Sort-Object { [int]$_.id })
+    $outDir = Split-Path -Parent $OutBinPath
+    if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path -LiteralPath $outDir)) {
+        New-Item -Path $outDir -ItemType Directory -Force | Out-Null
+    }
+
+    $fs = [System.IO.File]::Open($OutBinPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+    try {
+        $bw = New-Object System.IO.BinaryWriter($fs)
+        try {
+            # Header SCM1 (little-endian), version 1
+            $bw.Write([uint32]0x314D4353) # "SCM1"
+            $bw.Write([uint16]1)
+            $bw.Write([uint16]0)
+            $bw.Write([uint32]$segments.Count)
+
+            foreach ($segment in $segments) {
+                if ($null -eq $segment) { continue }
+                $segmentId = [int]$segment.id
+                $faceTypes = @()
+                if ($segment.PSObject.Properties.Name -contains "faceSurfaceType" -and $segment.faceSurfaceType) {
+                    $faceTypes = @($segment.faceSurfaceType | ForEach-Object { [int]$_ })
+                }
+                elseif ($segment.PSObject.Properties.Name -contains "faceTextureFamily" -and $segment.faceTextureFamily) {
+                    # Fallback conservador.
+                    $faceTypes = @($segment.faceTextureFamily | ForEach-Object { 0 })
+                }
+
+                $rle = @()
+                if ($segment.PSObject.Properties.Name -contains "faceSurfaceTypeRle" -and $segment.faceSurfaceTypeRle) {
+                    $rle = @($segment.faceSurfaceTypeRle)
+                }
+                else {
+                    $rle = @(New-SurfaceTypeRle -Values $faceTypes)
+                }
+
+                $bw.Write([uint16]$segmentId)
+                $bw.Write([uint16]$faceTypes.Count)
+                $bw.Write([uint32]$rle.Count)
+
+                foreach ($run in $rle) {
+                    $start = 0
+                    $count = 0
+                    $stype = 0
+                    if ($run.PSObject.Properties.Name -contains "start") { $start = [int]$run.start }
+                    if ($run.PSObject.Properties.Name -contains "count") { $count = [int]$run.count }
+                    if ($run.PSObject.Properties.Name -contains "surfaceTypeId") { $stype = [int]$run.surfaceTypeId }
+
+                    [byte]$flags = 0
+                    if ($stype -ge 1 -and $stype -le 3) { $flags = [byte]($flags -bor 0x01) } # driveable
+                    if ($stype -eq 1) { $flags = [byte]($flags -bor 0x02) } # asphalt-like
+                    if ($stype -eq 2 -or $stype -eq 3) { $flags = [byte]($flags -bor 0x04) } # offroad-like
+                    if (-not ($stype -ge 1 -and $stype -le 3)) { $flags = [byte]($flags -bor 0x08) } # has wall-like faces
+
+                    $bw.Write([uint16]$start)
+                    $bw.Write([uint16]$count)
+                    $bw.Write([byte]$stype)
+                    $bw.Write([byte]$flags)
+                    $bw.Write([uint16]0) # reservado
+                }
+            }
+        }
+        finally {
+            $bw.Dispose()
+        }
+    }
+    finally {
+        $fs.Dispose()
+    }
+
+    Write-Host ("segment collision map gerado: {0} segs={1}" -f $OutBinPath, $segments.Count)
+}
+
 Write-Host "=== Etapa 2.6/7: Renomear/copiar texturas com sufixo ==="
 & $script:copyRenScript `
     -DataDir $PackageDir `
@@ -264,6 +613,18 @@ Write-Host "=== Etapa 2.8/7: Recanonizar families apos remap de texturas ==="
 
 Write-Host "=== Etapa 2.9/7: Validar referencias de familyId no segments_map ==="
 Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
+Write-Host "=== Etapa 2.95/7: Anotar tipo de solo por face ==="
+Annotate-SegmentsMapSurfaceTypes -SegmentsMapPath $jsonPath
+if ($ExportSurfaceFamilyMap) {
+    Write-Host "=== Etapa 2.96/7: Gerar mapa compacto de superficie por family ==="
+    $surfaceMapBinPath = Join-Path $PackageDir "SFMAP.BIN"
+    Write-SurfaceFamilyMapBinary -SegmentsMapPath $jsonPath -OutBinPath $surfaceMapBinPath
+    Copy-Item -LiteralPath $surfaceMapBinPath -Destination (Join-Path $CdDataDir "SFMAP.BIN") -Force
+    Write-Host "=== Etapa 2.97/7: Gerar mapa de colisao por segmento ==="
+    $segmentCollisionMapPath = Join-Path $PackageDir "SCMAP.BIN"
+    Write-SegmentCollisionMapBinary -SegmentsMapPath $jsonPath -OutBinPath $segmentCollisionMapPath
+    Copy-Item -LiteralPath $segmentCollisionMapPath -Destination (Join-Path $CdDataDir "SCMAP.BIN") -Force
+}
 
 Write-Host "=== Etapa 3/7: Gerar GEO/MAT para cada LOD ==="
 $lodDirs = @(
@@ -520,6 +881,8 @@ $hasPacksManifest = Test-Path -LiteralPath $packsManifestPath
 $hasGeoBin = Test-Path -LiteralPath (Join-Path $CdDataDir "GEO.BIN")
 $hasRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "RDR.BIN")
 $hasTrkRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDR.BIN")
+$hasSurfaceFamilyMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SFMAP.BIN")
+$hasSegmentCollisionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SCMAP.BIN")
 $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
@@ -537,6 +900,8 @@ Write-Host ("HAS S001FAM.BIN   : {0}" -f $hasSeg1Fam)
 Write-Host ("HAS GEO.BIN       : {0}" -f $hasGeoBin)
 Write-Host ("HAS RDR.BIN       : {0}" -f $hasRdrBin)
 Write-Host ("HAS TRKRDR.BIN    : {0}" -f $hasTrkRdrBin)
+Write-Host ("HAS SFMAP.BIN     : {0}" -f $hasSurfaceFamilyMapBin)
+Write-Host ("HAS SCMAP.BIN     : {0}" -f $hasSegmentCollisionMapBin)
 Write-Host ("HAS MAT8.BIN      : {0}" -f $hasMat8Bin)
 Write-Host ("HAS MAT16.BIN     : {0}" -f $hasMat16Bin)
 Write-Host ("HAS MAT32.BIN     : {0}" -f $hasMat32Bin)
@@ -555,6 +920,8 @@ if (-not $hasSeg1Fam) { $validationErrors.Add("S001FAM.BIN ausente em cd\\data")
 if (-not $hasGeoBin) { $validationErrors.Add("GEO.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasRdrBin) { $validationErrors.Add("RDR.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasTrkRdrBin) { $validationErrors.Add("TRKRDR.BIN ausente em cd\\data") | Out-Null }
+if ($ExportSurfaceFamilyMap -and -not $hasSurfaceFamilyMapBin) { $validationErrors.Add("SFMAP.BIN ausente em cd\\data") | Out-Null }
+if ($ExportSurfaceFamilyMap -and -not $hasSegmentCollisionMapBin) { $validationErrors.Add("SCMAP.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat8Bin) { $validationErrors.Add("MAT8.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat16Bin) { $validationErrors.Add("MAT16.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
@@ -580,6 +947,18 @@ if ($RebuildSegmentsMap) {
         -TexWidth $TexWidth `
         -TexHeight $TexHeight `
         -TexPadWidth $TexPadWidth
+    Write-Host "=== Reaplicar anotacao de tipo de solo apos rebuild ==="
+    Annotate-SegmentsMapSurfaceTypes -SegmentsMapPath $jsonPath
+    if ($ExportSurfaceFamilyMap) {
+        Write-Host "=== Regerar mapa compacto de superficie apos rebuild ==="
+        $surfaceMapBinPath = Join-Path $PackageDir "SFMAP.BIN"
+        Write-SurfaceFamilyMapBinary -SegmentsMapPath $jsonPath -OutBinPath $surfaceMapBinPath
+        Copy-Item -LiteralPath $surfaceMapBinPath -Destination (Join-Path $CdDataDir "SFMAP.BIN") -Force
+        Write-Host "=== Regerar mapa de colisao por segmento apos rebuild ==="
+        $segmentCollisionMapPath = Join-Path $PackageDir "SCMAP.BIN"
+        Write-SegmentCollisionMapBinary -SegmentsMapPath $jsonPath -OutBinPath $segmentCollisionMapPath
+        Copy-Item -LiteralPath $segmentCollisionMapPath -Destination (Join-Path $CdDataDir "SCMAP.BIN") -Force
+    }
     Write-Host "=== Validando segments_map final apos rebuild ==="
     Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
     Write-Host "=== Minificando segments_map final apos rebuild ==="

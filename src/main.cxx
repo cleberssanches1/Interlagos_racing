@@ -38,7 +38,7 @@ constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 constexpr bool kVerboseFrameLogs = false;
 // Telemetria de runtime (RAM/VDP/slide): desligada por padrão.
-constexpr bool kEnableRuntimeStatsLogs = false;
+constexpr bool kEnableRuntimeStatsLogs = true;
 #ifndef PHYSICS_POC_MODE
 #define PHYSICS_POC_MODE 0
 #endif
@@ -629,7 +629,9 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     bool logTrack,
                                                     bool logCar,
                                                     bool enableRuntimeStatsLogs,
+                                                    bool enableSlaveSimulation,
                                                     bool slaveSimulationLockstep,
+                                                    bool enableSlaveForCarPrepare,
                                                     bool enableManualGouraudCopy,
                                                     uint32_t faceCount,
                                                     uint32_t vertexCount,
@@ -662,10 +664,9 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
     loopContext.enableRuntimeStatsLogs = enableRuntimeStatsLogs;
-    // Simulation ownership is explicit from caller intent.
-    // Keep car-prepare disabled to avoid render-yaw divergence.
-    loopContext.enableSlaveForCarPrepare = false;
-    loopContext.enableSlaveForSimulation = enableRuntimeSimulation && slaveSimulationLockstep;
+    // Simulation and lockstep policy are independent toggles.
+    loopContext.enableSlaveForCarPrepare = enableRuntimeSimulation && enableSlaveForCarPrepare;
+    loopContext.enableSlaveForSimulation = enableRuntimeSimulation && enableSlaveSimulation;
     loopContext.slaveSimulationLockstep = slaveSimulationLockstep;
     loopContext.enableManualGouraudCopy = enableManualGouraudCopy;
     loopContext.autoLapEnabledOnStart = autoLapEnabledOnStart;
@@ -743,6 +744,29 @@ public:
         const int32_t yUnits = EvalSurfaceYUnits(wrappedZ);
         outSurfaceY = ToFxp(yUnits);
         if (outSegmentId) *outSegmentId = SegmentIdFromZ(wrappedZ);
+        return true;
+    }
+
+    bool SampleSurfaceContact(const Vector3D& worldPosition,
+                              Game::SurfaceContact& outContact,
+                              int32_t seedSegmentId = -1) const override
+    {
+        (void)seedSegmentId;
+        outContact = Game::SurfaceContact{};
+        const int32_t xUnits = ToIntUnits(worldPosition.X);
+        const int32_t zUnits = ToIntUnits(worldPosition.Z);
+        if (!IsInsideRoad(xUnits))
+        {
+            return false;
+        }
+        const int32_t wrappedZ = WrapLoopZ(zUnits);
+        outContact.valid = true;
+        outContact.segmentId = SegmentIdFromZ(wrappedZ);
+        outContact.faceIndex = 0;
+        outContact.familyId = 1u;
+        outContact.surfaceType = 1u;
+        outContact.surfaceY = ToFxp(EvalSurfaceYUnits(wrappedZ));
+        outContact.normal = Vector3D(0.0, -1.0, 0.0);
         return true;
     }
 
@@ -845,14 +869,20 @@ private:
 
 static int RunPhysicsPocMode()
 {
+    // Test mode fixed to Track + Car to avoid accidental A/B scenario lock.
     const bool renderTrack = true;
     const bool renderCar = true;
     const bool renderAxes = false;
     const bool enableBg = true;
     const bool logCar = kCarLogs;
     const bool logTrack = kEnableRuntimeStatsLogs;
+    const char* scenarioName = "trk+car";
 
     MLOG(1, 3, "POC FISICA MODE");
+    MLOG(1, 4, "POC AB mode:%s trk:%u car:%u",
+         scenarioName,
+         static_cast<unsigned>(renderTrack ? 1u : 0u),
+         static_cast<unsigned>(renderCar ? 1u : 0u));
 
     const bool cartOk = (SRL::Memory::CartRam::GetReport().TotalSize > 0);
     bool cartOkFlag = cartOk;
@@ -882,11 +912,8 @@ static int RunPhysicsPocMode()
         "/CD/DATA/CEUP.TGA"
     };
     const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
-    if (enableBg)
-    {
-        SRL::Cd::ChangeDir((const char*)0);
-        bgReady = bgManager.Init(skyPaths, skyPathCount);
-    }
+    // Delay BG load until after track init in POC mode.
+    // This keeps HWR/VRAM pressure lower during critical track bootstrap.
     (void)bgReady;
 
     CameraSystem cameraSystem;
@@ -903,10 +930,14 @@ static int RunPhysicsPocMode()
     // POC: try WRAM-first before track runtime startup.
     const bool useCartCopyPipeline = true;
     AppState::Set(AppState::Stage::CarLoad, 0);
-    CarPipeline carPipe = LoadCarPipeline(carPaths,
-                                          sizeof(carPaths) / sizeof(carPaths[0]),
-                                          useCartCopyPipeline,
-                                          kCarGouraudOffset);
+    CarPipeline carPipe{};
+    if (renderCar)
+    {
+        carPipe = LoadCarPipeline(carPaths,
+                                  sizeof(carPaths) / sizeof(carPaths[0]),
+                                  useCartCopyPipeline,
+                                  kCarGouraudOffset);
+    }
     ModelObject* carPtr = carPipe.ActiveModel();
     bool carValid = carPipe.Loaded();
 
@@ -916,21 +947,34 @@ static int RunPhysicsPocMode()
     SRL::Scene3D::LightSetColor(lightColor);
 
     static TrackSystem trackSystem;
-    trackSystem.SetRuntimeStatsLogsEnabled(false);
+    // POC profile: ideal split for Saturn runtime tests.
+    // - Track producer/sort on Slave
+    // - Car gameplay/physics tick on Slave (async)
+    // - Master keeps render/orchestration
+    constexpr bool kPocDualSh2Profile = true;
+    const bool kPocEnableTrackSlave = kPocDualSh2Profile && renderTrack;
+    constexpr bool kPocEnableSlaveSimulation = true;
+    constexpr bool kPocSlaveSimulationLockstep = false; // async mode for FPS
+    constexpr bool kPocEnableCarPrepareSlave = false;
+    trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 20u;
-    trackConfig.minSegments = 20u;
+    trackConfig.initialSegments = 15u;
+    trackConfig.minSegments = 15u;
     trackConfig.initialMeshes = 512u;
     trackConfig.initialFaces =
         static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
-    trackConfig.useSlave = false;
-    SRL::Cd::ChangeDir((const char*)0);
-    const bool trackSystemReady = trackSystem.Initialize(trackConfig);
+    trackConfig.useSlave = kPocEnableTrackSlave;
+    bool trackSystemReady = false;
+    if (renderTrack)
+    {
+        SRL::Cd::ChangeDir((const char*)0);
+        trackSystemReady = trackSystem.Initialize(trackConfig);
+    }
     MLOG(1, 5, "POC TRK rd:%u sg:%u",
          trackSystemReady ? 1u : 0u,
          static_cast<unsigned>(trackSystem.SegmentCount()));
 
-    if (!carValid)
+    if (renderCar && !carValid)
     {
         // Fallback: if early WRAM-first load failed, retry after track init.
         carPipe = LoadCarPipeline(carPaths,
@@ -946,19 +990,32 @@ static int RunPhysicsPocMode()
     uint32_t faceCount = 0;
     uint32_t vertexCount = 0;
     uint32_t meshCount = 0;
-    SyncLoadedCarState(carPtr,
-                       carValid,
-                       logCar,
-                       carWasSmooth,
-                       isSmoothMesh,
-                       faceCount,
-                       vertexCount,
-                       meshCount);
+    if (renderCar)
+    {
+        SyncLoadedCarState(carPtr,
+                           carValid,
+                           logCar,
+                           carWasSmooth,
+                           isSmoothMesh,
+                           faceCount,
+                           vertexCount,
+                           meshCount);
+    }
+    else
+    {
+        carPtr = nullptr;
+        carValid = false;
+    }
     if (trackSystemReady)
     {
         // Keep non-track textures (car) outside track heap reset window,
         // matching the protection used by the main runtime flow.
         trackSystem.RebaseTrackTextureHeapBase();
+    }
+    if (enableBg)
+    {
+        SRL::Cd::ChangeDir((const char*)0);
+        bgReady = bgManager.Init(skyPaths, skyPathCount);
     }
     if constexpr (kLog)
     {
@@ -1036,7 +1093,6 @@ static int RunPhysicsPocMode()
     Game::SimpleAudioEvents audioEvents;
 
     const bool enableRuntimeSimulation = true;
-    const bool slaveSimulationLockstep = false;
     GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
                                                                enableBg,
                                                                renderTrack,
@@ -1046,7 +1102,9 @@ static int RunPhysicsPocMode()
                                                                logTrack,
                                                                logCar,
                                                                false,
-                                                               slaveSimulationLockstep,
+                                                               kPocEnableSlaveSimulation,
+                                                               kPocSlaveSimulationLockstep,
+                                                               kPocEnableCarPrepareSlave,
                                                                false,
                                                                faceCount,
                                                                vertexCount,
@@ -1067,11 +1125,11 @@ static int RunPhysicsPocMode()
                                                                static_cast<Game::ICarPhysics*>(&carPhysics),
                                                                static_cast<Game::IGameplayTick*>(&gameplayTick),
                                                                static_cast<Game::IAudioEvents*>(&audioEvents));
-    loopContext.enableSlaveForCarPrepare = false;
-    // POC de dirigibilidade: manter simulação no Master para evitar
-    // qualquer sobrescrita/atraso por job assíncrono do Slave durante ajuste fino.
-    loopContext.enableSlaveForSimulation = false;
-    loopContext.slaveSimulationLockstep = false;
+    MLOG(1, 7, "POC SH2 trk:%u sim:%u lock:%u cpr:%u",
+         static_cast<unsigned>(kPocEnableTrackSlave ? 1u : 0u),
+         static_cast<unsigned>(kPocEnableSlaveSimulation ? 1u : 0u),
+         static_cast<unsigned>(kPocSlaveSimulationLockstep ? 1u : 0u),
+         static_cast<unsigned>(kPocEnableCarPrepareSlave ? 1u : 0u));
 
     GameLoopSystem gameLoop(loopContext);
     AppState::Set(AppState::Stage::LoopStart, 0);
@@ -1219,7 +1277,7 @@ int GameApp::Run()
 
 
 
-    const bool enableBg = true; // desativa background para liberar HWR
+    const bool enableBg = true; // background VDP2 ativo para teste
     AppState::Set(AppState::Stage::BackgroundInit, 0);
     BackgroundManager bgManager;
     bool bgReady = false;
@@ -1275,10 +1333,10 @@ int GameApp::Run()
     static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    // Fixed visible budget: 20 segments.
-    // Runtime LOD split is handled inside TrackSystem: 10x 64x64 (near) + 10x 32x32 (far).
-    trackConfig.initialSegments = 20u;
-    trackConfig.minSegments     = 20u;
+    // Fixed visible budget: 15 segments.
+    // Runtime LOD split is handled inside TrackSystem: 8x 64x64 (near) + 7x 32x32 (far).
+    trackConfig.initialSegments = 15u;
+    trackConfig.minSegments     = 15u;
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
@@ -1479,8 +1537,10 @@ int GameApp::Run()
     Game::SimpleAudioEvents audioEvents;
     // Runtime simulation enabled to keep gameplay/physics on SH2 pipeline.
     const bool enableRuntimeSimulation = true;
+    const bool enableSlaveSimulation = true;
     // Deterministic lockstep: Master waits for Slave simulation each frame.
     const bool slaveSimulationLockstep = true;
+    const bool enableSlaveForCarPrepare = false;
 
     GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
                                                                enableBg,
@@ -1491,7 +1551,9 @@ int GameApp::Run()
                                                                logTrack,
                                                                logCar,
                                                                kEnableRuntimeStatsLogs,
+                                                               enableSlaveSimulation,
                                                                slaveSimulationLockstep,
+                                                               enableSlaveForCarPrepare,
                                                                enableSmoothLighting,
                                                                faceCount,
                                                                vertexCount,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include "interfaces.hpp"
@@ -178,6 +179,50 @@ public:
         }
         return found;
     }
+    bool SampleSurfaceYBySurfaceTypeSet(const SRL::Math::Types::Vector3D& worldPosition,
+                                        const uint8_t* surfaceTypes,
+                                        size_t surfaceTypeCount,
+                                        SRL::Math::Types::Fxp& outSurfaceY,
+                                        int32_t* outSegmentId = nullptr,
+                                        int32_t seedSegmentId = -1) const override
+    {
+        std::array<uint16_t, 24> familyIds{};
+        size_t familyCount = 0u;
+        if (!BuildFamilySetForSurfaceTypes(surfaceTypes, surfaceTypeCount, familyIds, familyCount))
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+        return SampleSurfaceYByFamilySet(worldPosition,
+                                         familyIds.data(),
+                                         familyCount,
+                                         outSurfaceY,
+                                         outSegmentId,
+                                         seedSegmentId);
+    }
+    bool SampleSurfaceYBySurfaceTypeSetStrict(const SRL::Math::Types::Vector3D& worldPosition,
+                                              const uint8_t* surfaceTypes,
+                                              size_t surfaceTypeCount,
+                                              SRL::Math::Types::Fxp& outSurfaceY,
+                                              int32_t* outSegmentId = nullptr,
+                                              int32_t seedSegmentId = -1) const override
+    {
+        std::array<uint16_t, 24> familyIds{};
+        size_t familyCount = 0u;
+        if (!BuildFamilySetForSurfaceTypes(surfaceTypes, surfaceTypeCount, familyIds, familyCount))
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            outSurfaceY = worldPosition.Y;
+            return false;
+        }
+        return SampleSurfaceYByFamilySetStrict(worldPosition,
+                                               familyIds.data(),
+                                               familyCount,
+                                               outSurfaceY,
+                                               outSegmentId,
+                                               seedSegmentId);
+    }
 
     bool ResolvePlanarWallPush(const SRL::Math::Types::Vector3D& worldPosition,
                                const SRL::Math::Types::Vector3D& forwardDirection,
@@ -202,10 +247,120 @@ public:
                                                 collisionRadius,
                                                 outPush,
                                                 outSegmentId,
-                                                resolvedSeedSegmentId);
+                                                resolvedSeedSegmentId,
+                                                false);
+    }
+
+    bool SampleSurfaceContact(const SRL::Math::Types::Vector3D& worldPosition,
+                              Game::SurfaceContact& outContact,
+                              int32_t seedSegmentId = -1) const override
+    {
+        outContact = Game::SurfaceContact{};
+        if (!trackSystem_ || !trackSystem_->Ready())
+        {
+            return false;
+        }
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        constexpr uint8_t kGlobalFallbackCadenceFrames = 8u;
+        constexpr uint8_t kMissStreakForceFallback = 3u;
+        bool allowGlobalFallback = false;
+        if (resolvedSeedSegmentId <= 0)
+        {
+            allowGlobalFallback = true;
+        }
+        else if (contactMissStreak_ >= kMissStreakForceFallback)
+        {
+            allowGlobalFallback = true;
+        }
+        else if (contactGlobalFallbackCountdown_ == 0u)
+        {
+            allowGlobalFallback = true;
+        }
+        if (contactGlobalFallbackCountdown_ > 0u)
+        {
+            --contactGlobalFallbackCountdown_;
+        }
+        const bool found = trackSystem_->FindSurfaceContact(worldPosition,
+                                                            offset,
+                                                            outContact,
+                                                            resolvedSeedSegmentId,
+                                                            allowGlobalFallback);
+        if (found && outContact.segmentId > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(outContact.segmentId);
+            contactMissStreak_ = 0u;
+            contactGlobalFallbackCountdown_ = kGlobalFallbackCadenceFrames;
+        }
+        else
+        {
+            if (contactMissStreak_ < 0xFFu) ++contactMissStreak_;
+        }
+        return found;
     }
 
 private:
+    static bool BuildFamilySetForSurfaceTypes(const uint8_t* surfaceTypes,
+                                              size_t surfaceTypeCount,
+                                              std::array<uint16_t, 24>& outFamilies,
+                                              size_t& outCount)
+    {
+        outCount = 0u;
+        if (!surfaceTypes || surfaceTypeCount == 0u) return false;
+
+        constexpr uint8_t kSurfaceTypeAsphalt = 1u;
+        constexpr uint8_t kSurfaceTypeEscapeArea = 2u;
+        constexpr uint8_t kSurfaceTypeGrass = 3u;
+        constexpr uint16_t kAsphaltFamilyId = 1u;
+        static constexpr std::array<uint16_t, 16> kDriveableFamilies = {
+            337u, 32u, 148u, 2u, 74u, 321u, 46u, 78u,
+            218u, 77u, 169u, 362u, 367u, 112u, 283u, 1u
+        };
+
+        bool wantAsphalt = false;
+        bool wantDriveable = false;
+        for (size_t i = 0; i < surfaceTypeCount; ++i)
+        {
+            const uint8_t st = surfaceTypes[i];
+            if (st == kSurfaceTypeAsphalt)
+            {
+                wantAsphalt = true;
+                wantDriveable = true;
+            }
+            else if (st == kSurfaceTypeEscapeArea || st == kSurfaceTypeGrass)
+            {
+                wantDriveable = true;
+            }
+        }
+
+        if (wantAsphalt && outCount < outFamilies.size())
+        {
+            outFamilies[outCount++] = kAsphaltFamilyId;
+        }
+        if (wantDriveable)
+        {
+            for (const uint16_t fam : kDriveableFamilies)
+            {
+                bool duplicate = false;
+                for (size_t i = 0; i < outCount; ++i)
+                {
+                    if (outFamilies[i] == fam)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate && outCount < outFamilies.size())
+                {
+                    outFamilies[outCount++] = fam;
+                }
+            }
+        }
+        return outCount > 0u;
+    }
+
     static SRL::Math::Types::Fxp ScoreToCenter(const SRL::Math::Types::Vector3D& worldPosition,
                                                const SRL::Math::Types::Vector3D& center)
     {
@@ -265,4 +420,6 @@ private:
     const TrackSystem* trackSystem_ = nullptr;
     const SRL::Math::Types::Vector3D* trackOffset_ = nullptr;
     mutable int16_t lastSegmentId_ = -1;
+    mutable uint8_t contactGlobalFallbackCountdown_ = 0u;
+    mutable uint8_t contactMissStreak_ = 0u;
 };

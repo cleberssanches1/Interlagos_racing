@@ -59,7 +59,13 @@ public:
             ioState.forwardSpeed = Fxp::BuildRaw(0);
         }
 
-        const Fxp targetSteerDeg = steerNorm * Tunables::kMaxSteerDeg;
+        const bool coastNoSlideMode =
+            (ioFrameState.throttle == 0) &&
+            !ioFrameState.braking &&
+            (ioState.forwardSpeed.Abs() < Tunables::kCoastNoSlideSpeedThreshold);
+        const Fxp steerScale =
+            coastNoSlideMode ? Tunables::kCoastNoSlideSteerScale : Fxp::BuildRaw(1 << 16);
+        const Fxp targetSteerDeg = (steerNorm * steerScale) * Tunables::kMaxSteerDeg;
         ioState.steerDeg += (targetSteerDeg - ioState.steerDeg) * Tunables::kSteerResponse;
 
         const Fxp speedRatio =
@@ -116,6 +122,20 @@ public:
         {
             ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kCoastLateralDampingCoeff;
             ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastYawDampingCoeff;
+            if (coastNoSlideMode)
+            {
+                ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kCoastNoSlideLateralDamping;
+                ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastNoSlideYawDamping;
+                if (ioState.lateralSpeed.Abs() < Tunables::kCoastNoSlideLateralCutoff)
+                {
+                    ioState.lateralSpeed = Fxp::BuildRaw(0);
+                }
+                if (ioState.yawRateDegPerFrame.Abs() < Tunables::kCoastNoSlideYawCutoff)
+                {
+                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                    ioState.yawAccumulatorDegRaw = 0;
+                }
+            }
 
             const int16_t steerAbs =
                 static_cast<int16_t>((ioFrameState.steering < 0) ? -ioFrameState.steering : ioFrameState.steering);

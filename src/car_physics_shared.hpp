@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "interfaces.hpp"
+#include "physics_feature_flags.hpp"
 
 namespace Game::CarPhysics
 {
@@ -28,6 +29,9 @@ struct GroundState
     Fxp lastStableX = Fxp::BuildRaw(0);
     Fxp lastStableZ = Fxp::BuildRaw(0);
     int16_t lastSurfaceSegmentId = -1;
+    int16_t lastSurfaceFaceIndex = -1;
+    uint16_t lastSurfaceFamilyId = 0u;
+    uint8_t lastSurfaceType = 0u;
     uint8_t surfaceProbeCooldown = 0u;
     uint8_t auxProbeCooldown = 0u;
     bool hasGroundSupport = false;
@@ -35,6 +39,12 @@ struct GroundState
     bool edgeRightLost = false;
     bool lastStablePlanarInitialized = false;
     bool surfaceYInitialized = false;
+    int32_t lastWallQueryFrameId = -1;
+    int32_t lastWallApplyFrameId = -1;
+    bool lastWallQueryHit = false;
+    int32_t lastWallQuerySegmentId = -1;
+    Fxp lastWallPushX = Fxp::BuildRaw(0);
+    Fxp lastWallPushZ = Fxp::BuildRaw(0);
 };
 
 struct FrameStepOutput
@@ -49,6 +59,13 @@ struct FrameStepOutput
 
 struct Tunables
 {
+    static constexpr bool kEnableSurfaceTypeQuery =
+        Game::PhysicsFeatureFlags::kEnableSurfaceTypeQuery;
+    static constexpr bool kEnableFaceCache =
+        Game::PhysicsFeatureFlags::kEnableFaceCache;
+    static constexpr uint8_t kSurfaceTypeAsphalt = 1u;
+    static constexpr uint8_t kSurfaceTypeEscapeArea = 2u;
+    static constexpr uint8_t kSurfaceTypeGrass = 3u;
     static constexpr int16_t kTargetTopSpeedKmh = 260;
     static constexpr std::array<uint16_t, 16> kDriveableFamilies = {
         337u, // F05564
@@ -70,7 +87,22 @@ struct Tunables
     };
 
     static constexpr uint8_t kSurfaceProbeIntervalFrames = 2u;
+    static constexpr uint8_t kLowDynamicsProbeIntervalFrames = 2u;
+    static constexpr uint8_t kMediumDynamicsProbeIntervalFrames = 2u;
+    static constexpr int16_t kLowDynamicsSpeedProxyThreshold = 30; // km/h
+    static constexpr int16_t kLowDynamicsSteeringThreshold = 8;     // percent
+    static constexpr int16_t kMediumDynamicsSpeedProxyMin = 25;     // km/h
+    static constexpr int16_t kMediumDynamicsSpeedProxyMax = 180;    // km/h
+    static constexpr int16_t kMediumDynamicsSteeringThreshold = 6;  // percent
     static constexpr uint16_t kAsphaltFamilyId = 1u; // base asphalt family
+    static constexpr std::array<uint8_t, 1> kAsphaltSurfaceTypes = {
+        kSurfaceTypeAsphalt
+    };
+    static constexpr std::array<uint8_t, 3> kDriveableSurfaceTypes = {
+        kSurfaceTypeAsphalt,
+        kSurfaceTypeEscapeArea,
+        kSurfaceTypeGrass
+    };
     static constexpr Fxp kGripScaleAsphalt = Fxp::BuildRaw(1 << 16);
     static constexpr Fxp kGripScaleOffroad = Fxp::BuildRaw(0x0000B333); // ~0.70
     static constexpr Fxp kGripScaleFallback = Fxp::BuildRaw(0x0000999A); // ~0.60
@@ -111,6 +143,12 @@ struct Tunables
     static constexpr Fxp kCoastResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25
     static constexpr Fxp kCoastResidualYawCutoff = Fxp::BuildRaw(0x00004000);     // 0.25 deg/frame
     static constexpr int16_t kCoastSteerCenterThreshold = 10;                      // percent
+    static constexpr Fxp kCoastNoSlideSpeedThreshold = Fxp::BuildRaw(0x00018000);  // 1.5
+    static constexpr Fxp kCoastNoSlideSteerScale = Fxp::BuildRaw(0x00002000);      // 0.125
+    static constexpr Fxp kCoastNoSlideLateralDamping = Fxp::BuildRaw(0x0000E000);   // 0.875
+    static constexpr Fxp kCoastNoSlideYawDamping = Fxp::BuildRaw(0x0000D000);       // 0.8125
+    static constexpr Fxp kCoastNoSlideLateralCutoff = Fxp::BuildRaw(0x00002000);    // 0.125
+    static constexpr Fxp kCoastNoSlideYawCutoff = Fxp::BuildRaw(0x00002000);        // 0.125 deg/frame
     static constexpr Fxp kBrakeLateralDampingCoeff = Fxp::BuildRaw(0x0000D000); // ~0.8125
     static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
     static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25
@@ -128,10 +166,12 @@ struct Tunables
     static constexpr Fxp kProbeFrontMax = Fxp::BuildRaw(0x00030000);           // 3.0
     static constexpr Fxp kProbeSlopeAssistSpeed = Fxp::BuildRaw(0x00010000);   // 1.0
     static constexpr uint8_t kAuxProbeCadenceFrames = 2u;
+    static constexpr uint8_t kGripProbeIntervalFrames = 2u;
     static constexpr Fxp kProbeHalfWheelBase = Fxp::BuildRaw(0x0000D999);      // ~0.85
     static constexpr Fxp kProbeHalfTrack = Fxp::BuildRaw(0x00008CCC);          // ~0.55
     static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x00012666);     // ~1.15
-    static constexpr bool kEnableWallPlanarPush = false;                        // temp: remove opposing lateral pull
+    static constexpr bool kEnableWallPlanarPush =
+        Game::PhysicsFeatureFlags::kEnableWallCollisionRuntime;
     static constexpr Fxp kEdgeRecoverPush = Fxp::BuildRaw(0);                  // disabled (bias fix)
     static constexpr Fxp kMaxPlanarCorrectionPerFrame = Fxp::BuildRaw(0x00008000); // 0.50
     static constexpr Fxp kNoSupportSpeedDamping = Fxp::BuildRaw(0x00010000);   // 1.0
@@ -198,6 +238,13 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugNetDz = 0;
     ioFrameState.debugCorrX = 0;
     ioFrameState.debugCorrZ = 0;
+    ioFrameState.debugWallHit = 0u;
+    ioFrameState.debugWallPushX = 0;
+    ioFrameState.debugWallPushZ = 0;
+    ioFrameState.debugWallSegmentId = -1;
+    ioFrameState.groundFaceIndex = -1;
+    ioFrameState.groundFamilyId = 0u;
+    ioFrameState.groundSurfaceType = 0u;
 }
 
 inline Fxp& RuntimeRideHeightOffset()

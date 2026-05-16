@@ -21,11 +21,27 @@ public:
 
         Fxp asphaltY{};
         int32_t asphaltSegmentId = -1;
-        if (trackQuery->SampleSurfaceYByFamilyId(samplePosition,
-                                                 Tunables::kAsphaltFamilyId,
-                                                 asphaltY,
-                                                 &asphaltSegmentId,
-                                                 seedSegmentId))
+        bool asphaltFound = false;
+        if constexpr (Tunables::kEnableSurfaceTypeQuery)
+        {
+            asphaltFound = trackQuery->SampleSurfaceYBySurfaceTypeSet(
+                samplePosition,
+                Tunables::kAsphaltSurfaceTypes.data(),
+                Tunables::kAsphaltSurfaceTypes.size(),
+                asphaltY,
+                &asphaltSegmentId,
+                seedSegmentId);
+        }
+        else
+        {
+            asphaltFound = trackQuery->SampleSurfaceYByFamilyId(
+                samplePosition,
+                Tunables::kAsphaltFamilyId,
+                asphaltY,
+                &asphaltSegmentId,
+                seedSegmentId);
+        }
+        if (asphaltFound)
         {
             const Fxp deltaY = (asphaltY - samplePosition.Y).Abs();
             if (deltaY < Fxp::BuildRaw(0x0000C000)) // 0.75
@@ -36,12 +52,28 @@ public:
 
         Fxp driveableY{};
         int32_t driveableSegmentId = -1;
-        if (trackQuery->SampleSurfaceYByFamilySet(samplePosition,
-                                                  Tunables::kDriveableFamilies.data(),
-                                                  Tunables::kDriveableFamilies.size(),
-                                                  driveableY,
-                                                  &driveableSegmentId,
-                                                  seedSegmentId))
+        bool driveableFound = false;
+        if constexpr (Tunables::kEnableSurfaceTypeQuery)
+        {
+            driveableFound = trackQuery->SampleSurfaceYBySurfaceTypeSet(
+                samplePosition,
+                Tunables::kDriveableSurfaceTypes.data(),
+                Tunables::kDriveableSurfaceTypes.size(),
+                driveableY,
+                &driveableSegmentId,
+                seedSegmentId);
+        }
+        else
+        {
+            driveableFound = trackQuery->SampleSurfaceYByFamilySet(
+                samplePosition,
+                Tunables::kDriveableFamilies.data(),
+                Tunables::kDriveableFamilies.size(),
+                driveableY,
+                &driveableSegmentId,
+                seedSegmentId);
+        }
+        if (driveableFound)
         {
             return Tunables::kGripScaleOffroad;
         }
@@ -66,17 +98,68 @@ public:
                 : -1;
         }
 
+        const int16_t steeringAbs = (ioFrameState.steering < 0)
+            ? static_cast<int16_t>(-ioFrameState.steering)
+            : ioFrameState.steering;
+        const bool lowDynamicsInputs =
+            (!ioFrameState.braking) &&
+            (ioFrameState.throttle == 0) &&
+            (steeringAbs <= Tunables::kLowDynamicsSteeringThreshold) &&
+            (ioFrameState.speedProxy <= Tunables::kLowDynamicsSpeedProxyThreshold);
+        const bool mediumDynamicsInputs =
+            (!ioFrameState.braking) &&
+            (steeringAbs <= Tunables::kMediumDynamicsSteeringThreshold) &&
+            (ioFrameState.speedProxy >= Tunables::kMediumDynamicsSpeedProxyMin) &&
+            (ioFrameState.speedProxy <= Tunables::kMediumDynamicsSpeedProxyMax);
+        const uint8_t probeReuseInterval = lowDynamicsInputs
+            ? Tunables::kLowDynamicsProbeIntervalFrames
+            : (mediumDynamicsInputs ? Tunables::kMediumDynamicsProbeIntervalFrames : 0u);
+        const bool canReuseLastSurface =
+            (probeReuseInterval > 0u) &&
+            ioState.surfaceYInitialized &&
+            (ioState.lastSurfaceSegmentId > 0);
+        if (canReuseLastSurface && ioState.surfaceProbeCooldown > 0u)
+        {
+            --ioState.surfaceProbeCooldown;
+            ioState.hasGroundSupport = true;
+            ioState.edgeLeftLost = false;
+            ioState.edgeRightLost = false;
+            ioState.correctionX = Fxp::BuildRaw(0);
+            ioState.correctionZ = Fxp::BuildRaw(0);
+            ioFrameState.groundFaceIndex = ioState.lastSurfaceFaceIndex;
+            ioFrameState.groundFamilyId = ioState.lastSurfaceFamilyId;
+            ioFrameState.groundSurfaceType = ioState.lastSurfaceType;
+            return static_cast<int32_t>(ioState.lastSurfaceSegmentId);
+        }
+
         int32_t sampledSegmentId = -1;
-        Vector3D sampledNormal{};
-        (void)trackQuery->Sample(worldPosition, sampledNormal, sampledSegmentId);
+        if (probeReuseInterval > 0u && ioState.lastSurfaceSegmentId > 0)
+        {
+            sampledSegmentId = static_cast<int32_t>(ioState.lastSurfaceSegmentId);
+        }
+        if (sampledSegmentId <= 0)
+        {
+            Vector3D sampledNormal{};
+            (void)trackQuery->Sample(worldPosition, sampledNormal, sampledSegmentId);
+        }
 
         ProbeSurfaceTarget(trackQuery,
                            worldPosition,
                            step.sinYaw,
                            step.cosYaw,
                            sampledSegmentId,
+                           mediumDynamicsInputs,
                            ioState,
                            ioFrameState);
+
+        if (canReuseLastSurface)
+        {
+            ioState.surfaceProbeCooldown = probeReuseInterval;
+        }
+        else
+        {
+            ioState.surfaceProbeCooldown = 0u;
+        }
 
         if (sampledSegmentId <= 0 && ioState.lastSurfaceSegmentId > 0)
         {
@@ -150,6 +233,9 @@ public:
         ioState.lastStableX = Fxp::BuildRaw(0);
         ioState.lastStableZ = Fxp::BuildRaw(0);
         ioState.lastSurfaceSegmentId = -1;
+        ioState.lastSurfaceFaceIndex = -1;
+        ioState.lastSurfaceFamilyId = 0u;
+        ioState.lastSurfaceType = 0u;
         ioState.surfaceProbeCooldown = 0u;
         ioState.auxProbeCooldown = 0u;
         ioState.hasGroundSupport = false;
@@ -157,6 +243,12 @@ public:
         ioState.edgeRightLost = false;
         ioState.lastStablePlanarInitialized = false;
         ioState.surfaceYInitialized = false;
+        ioState.lastWallQueryFrameId = -1;
+        ioState.lastWallApplyFrameId = -1;
+        ioState.lastWallQueryHit = false;
+        ioState.lastWallQuerySegmentId = -1;
+        ioState.lastWallPushX = Fxp::BuildRaw(0);
+        ioState.lastWallPushZ = Fxp::BuildRaw(0);
     }
 
 private:
@@ -178,23 +270,53 @@ private:
         samplePosition.Y -= Tunables::kSurfaceSampleDownBias;
 
         outSample.segmentId = -1;
-        outSample.valid = trackQuery->SampleSurfaceYByFamilySetStrict(samplePosition,
-                                                                       Tunables::kDriveableFamilies.data(),
-                                                                       Tunables::kDriveableFamilies.size(),
-                                                                       outSample.y,
-                                                                       &outSample.segmentId,
-                                                                       seedSegmentId);
+        if constexpr (Tunables::kEnableSurfaceTypeQuery)
+        {
+            outSample.valid = trackQuery->SampleSurfaceYBySurfaceTypeSetStrict(
+                samplePosition,
+                Tunables::kDriveableSurfaceTypes.data(),
+                Tunables::kDriveableSurfaceTypes.size(),
+                outSample.y,
+                &outSample.segmentId,
+                seedSegmentId);
+        }
+        else
+        {
+            outSample.valid = trackQuery->SampleSurfaceYByFamilySetStrict(
+                samplePosition,
+                Tunables::kDriveableFamilies.data(),
+                Tunables::kDriveableFamilies.size(),
+                outSample.y,
+                &outSample.segmentId,
+                seedSegmentId);
+        }
         if (outSample.valid) return true;
 
         // Soft fallback: accept non-strict result only when still near seed.
         SRL::Math::Types::Fxp fallbackY{};
         int32_t fallbackSegmentId = -1;
-        if (trackQuery->SampleSurfaceYByFamilySet(samplePosition,
-                                                  Tunables::kDriveableFamilies.data(),
-                                                  Tunables::kDriveableFamilies.size(),
-                                                  fallbackY,
-                                                  &fallbackSegmentId,
-                                                  seedSegmentId))
+        bool fallbackFound = false;
+        if constexpr (Tunables::kEnableSurfaceTypeQuery)
+        {
+            fallbackFound = trackQuery->SampleSurfaceYBySurfaceTypeSet(
+                samplePosition,
+                Tunables::kDriveableSurfaceTypes.data(),
+                Tunables::kDriveableSurfaceTypes.size(),
+                fallbackY,
+                &fallbackSegmentId,
+                seedSegmentId);
+        }
+        else
+        {
+            fallbackFound = trackQuery->SampleSurfaceYByFamilySet(
+                samplePosition,
+                Tunables::kDriveableFamilies.data(),
+                Tunables::kDriveableFamilies.size(),
+                fallbackY,
+                &fallbackSegmentId,
+                seedSegmentId);
+        }
+        if (fallbackFound)
         {
             const uint8_t affinity = SegmentAffinityScore(fallbackSegmentId, seedSegmentId);
             if (affinity > 0u)
@@ -258,6 +380,7 @@ private:
                                    const Fxp& sinYaw,
                                    const Fxp& cosYaw,
                                    int32_t sampledSegmentId,
+                                   bool useMediumDynamicsReducedProbe,
                                    GroundState& ioState,
                                    GameplayFrameState& ioFrameState)
     {
@@ -281,10 +404,31 @@ private:
         SurfaceProbeSample fr{};
         SurfaceProbeSample rl{};
         SurfaceProbeSample rr{};
-        (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latLeft), seedSegmentId, fl);
-        (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latRight), seedSegmentId, fr);
-        (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latLeft), seedSegmentId, rl);
-        (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latRight), seedSegmentId, rr);
+        if (useMediumDynamicsReducedProbe)
+        {
+            SurfaceProbeSample fc{};
+            SurfaceProbeSample rc{};
+            const Fxp latCenter = Fxp::BuildRaw(0);
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latCenter),
+                                   seedSegmentId,
+                                   fc);
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latCenter),
+                                   seedSegmentId,
+                                   rc);
+            fl = fc;
+            fr = fc;
+            rl = rc;
+            rr = rc;
+        }
+        else
+        {
+            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latLeft), seedSegmentId, fl);
+            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latRight), seedSegmentId, fr);
+            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latLeft), seedSegmentId, rl);
+            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latRight), seedSegmentId, rr);
+        }
 
         const bool frontValid = HasProbeSupport(fl, fr);
         const bool rearValid = HasProbeSupport(rl, rr);
@@ -358,6 +502,27 @@ private:
             ioState.lastSurfaceSegmentId = static_cast<int16_t>(targetSegmentId);
         }
 
+        if (trackQuery)
+        {
+            Game::SurfaceContact contact{};
+            if (trackQuery->SampleSurfaceContact(worldPosition, contact, targetSegmentId) &&
+                contact.valid)
+            {
+                ioState.lastSurfaceFaceIndex = contact.faceIndex;
+                ioState.lastSurfaceFamilyId = contact.familyId;
+                ioState.lastSurfaceType = contact.surfaceType;
+                ioFrameState.groundFaceIndex = contact.faceIndex;
+                ioFrameState.groundFamilyId = contact.familyId;
+                ioFrameState.groundSurfaceType = contact.surfaceType;
+            }
+            else
+            {
+                ioFrameState.groundFaceIndex = ioState.lastSurfaceFaceIndex;
+                ioFrameState.groundFamilyId = ioState.lastSurfaceFamilyId;
+                ioFrameState.groundSurfaceType = ioState.lastSurfaceType;
+            }
+        }
+
         const Fxp rightX = cosYaw;
         const Fxp rightZ = sinYaw;
         ioState.edgeLeftLost = !leftValid && rightValid;
@@ -373,28 +538,45 @@ private:
             ioState.correctionZ -= rightZ * Tunables::kEdgeRecoverPush;
         }
 
-        const bool shouldQueryWalls =
-            ioState.hasGroundSupport && Tunables::kEnableWallPlanarPush;
+        const bool shouldQueryWalls = Tunables::kEnableWallPlanarPush;
         if (shouldQueryWalls)
         {
-            Vector3D wallPush{};
-            const Vector3D forwardDirection =
-                Vector3D(sinYaw, Fxp::BuildRaw(0), Fxp::BuildRaw(-cosYaw.RawValue()));
-            if (trackQuery->ResolvePlanarWallPush(worldPosition,
-                                                  forwardDirection,
-                                                  Tunables::kWallCollisionRadius,
-                                                  wallPush,
-                                                  nullptr,
-                                                  targetSegmentId))
+            const int32_t frameId = static_cast<int32_t>(ioFrameState.frameId);
+            const int32_t wallFrameDelta =
+                (ioState.lastWallQueryFrameId < 0)
+                    ? 0
+                    : (frameId - ioState.lastWallQueryFrameId);
+            const bool shouldRefreshWallQuery =
+                (ioState.lastWallQueryFrameId < 0) ||
+                (ioState.lastWallQueryHit ? (wallFrameDelta >= 1) : (wallFrameDelta >= 2));
+            if (shouldRefreshWallQuery)
             {
-                // Slide on walls: keep only lateral repulsion component.
-                const Fxp forwardX = sinYaw;
-                const Fxp forwardZ = Fxp::BuildRaw(-cosYaw.RawValue());
-                const Fxp pushAlongForward = (wallPush.X * forwardX) + (wallPush.Z * forwardZ);
-                wallPush.X -= (forwardX * pushAlongForward);
-                wallPush.Z -= (forwardZ * pushAlongForward);
-                ioState.correctionX += wallPush.X;
-                ioState.correctionZ += wallPush.Z;
+                Vector3D wallPush{};
+                const Vector3D forwardDirection =
+                    Vector3D(sinYaw, Fxp::BuildRaw(0), Fxp::BuildRaw(-cosYaw.RawValue()));
+                ioState.lastWallQueryHit = trackQuery->ResolvePlanarWallPush(worldPosition,
+                                                                              forwardDirection,
+                                                                              Tunables::kWallCollisionRadius,
+                                                                              wallPush,
+                                                                              &ioState.lastWallQuerySegmentId,
+                                                                              targetSegmentId);
+                ioState.lastWallQueryFrameId = frameId;
+                ioState.lastWallPushX = ioState.lastWallQueryHit ? wallPush.X : Fxp::BuildRaw(0);
+                ioState.lastWallPushZ = ioState.lastWallQueryHit ? wallPush.Z : Fxp::BuildRaw(0);
+            }
+
+            if (ioState.lastWallQueryHit)
+            {
+                ioFrameState.debugWallHit = 1u;
+                ioFrameState.debugWallSegmentId = ioState.lastWallQuerySegmentId;
+                ioFrameState.debugWallPushX = FxpToDebugInt(ioState.lastWallPushX);
+                ioFrameState.debugWallPushZ = FxpToDebugInt(ioState.lastWallPushZ);
+                if (ioState.lastWallApplyFrameId != frameId)
+                {
+                    ioState.correctionX += ioState.lastWallPushX;
+                    ioState.correctionZ += ioState.lastWallPushZ;
+                    ioState.lastWallApplyFrameId = frameId;
+                }
             }
         }
 

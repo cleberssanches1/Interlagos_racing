@@ -38,11 +38,29 @@ struct GameplayFrameState
     int16_t debugNetDz = 0;
     int16_t debugCorrX = 0;
     int16_t debugCorrZ = 0;
+    uint8_t debugWallHit = 0u;
+    int16_t debugWallPushX = 0;
+    int16_t debugWallPushZ = 0;
+    int32_t debugWallSegmentId = -1;
+    int16_t groundFaceIndex = -1;
+    uint16_t groundFamilyId = 0u;
+    uint8_t groundSurfaceType = 0u;
     uint32_t checkpointsPassed = 0;
     RacePhase phase = RacePhase::Idle;
     bool resetRequested = false;
     Vector3D respawnPosition{};
     int32_t respawnYawDeg = 0;
+};
+
+struct SurfaceContact
+{
+    bool valid = false;
+    int32_t segmentId = -1;
+    int16_t faceIndex = -1;
+    uint16_t familyId = 0u;
+    uint8_t surfaceType = 0u; // 1=asphalt, 2/3=offroad variants
+    Vector3D normal = Vector3D(0.0, -1.0, 0.0);
+    SRL::Math::Types::Fxp surfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
 };
 
 struct ICarCommand
@@ -156,6 +174,35 @@ struct ITrackCollisionQuery
                                          outSegmentId,
                                          seedSegmentId);
     }
+    virtual bool SampleSurfaceYBySurfaceTypeSet(const Vector3D& worldPosition,
+                                                const uint8_t* surfaceTypes,
+                                                size_t surfaceTypeCount,
+                                                SRL::Math::Types::Fxp& outSurfaceY,
+                                                int32_t* outSegmentId = nullptr,
+                                                int32_t seedSegmentId = -1) const
+    {
+        (void)worldPosition;
+        (void)surfaceTypes;
+        (void)surfaceTypeCount;
+        (void)seedSegmentId;
+        if (outSegmentId) *outSegmentId = -1;
+        outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
+        return false;
+    }
+    virtual bool SampleSurfaceYBySurfaceTypeSetStrict(const Vector3D& worldPosition,
+                                                      const uint8_t* surfaceTypes,
+                                                      size_t surfaceTypeCount,
+                                                      SRL::Math::Types::Fxp& outSurfaceY,
+                                                      int32_t* outSegmentId = nullptr,
+                                                      int32_t seedSegmentId = -1) const
+    {
+        return SampleSurfaceYBySurfaceTypeSet(worldPosition,
+                                              surfaceTypes,
+                                              surfaceTypeCount,
+                                              outSurfaceY,
+                                              outSegmentId,
+                                              seedSegmentId);
+    }
     // Returns a planar push vector to keep the car out of side walls.
     virtual bool ResolvePlanarWallPush(const Vector3D& worldPosition,
                                        const Vector3D& forwardDirection,
@@ -173,6 +220,27 @@ struct ITrackCollisionQuery
                            SRL::Math::Types::Fxp::BuildRaw(0),
                            SRL::Math::Types::Fxp::BuildRaw(0));
         return false;
+    }
+
+    // Rich contact sample for physics/gameplay behavior by face/surface.
+    virtual bool SampleSurfaceContact(const Vector3D& worldPosition,
+                                      SurfaceContact& outContact,
+                                      int32_t seedSegmentId = -1) const
+    {
+        outContact = SurfaceContact{};
+        int32_t sampledSegmentId = -1;
+        Vector3D sampledNormal{};
+        const bool hit = Sample(worldPosition, sampledNormal, sampledSegmentId);
+        if (!hit)
+        {
+            return false;
+        }
+        outContact.valid = true;
+        outContact.segmentId = sampledSegmentId;
+        outContact.normal = sampledNormal;
+        outContact.surfaceY = worldPosition.Y;
+        (void)seedSegmentId;
+        return true;
     }
 };
 

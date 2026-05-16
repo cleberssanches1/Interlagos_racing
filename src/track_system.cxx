@@ -1,4 +1,6 @@
 #include "track_system.hpp"
+#include "physics_feature_flags.hpp"
+#include "interfaces.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,6 +12,8 @@
 #include <utility>
 #include <errno.h>
 #include <limits>
+
+extern "C" uint32_t SRL_AppGetVblankCounter();
 
 // ============================================================================
 // TRACK_LWR_STAGE_TRACE — probes de LWR por função para diagnóstico de leak
@@ -409,6 +413,11 @@ static size_t GetLowWorkRamFreeBytesSafe(bool* outValid = nullptr)
     const bool valid = (report.TotalSize > 0u) && (report.FreeSize <= report.TotalSize);
     if (outValid) *outValid = valid;
     return valid ? report.FreeSize : 0u;
+}
+
+static inline bool IsDriveableSurfaceTypeId(uint8_t surfaceTypeId)
+{
+    return (surfaceTypeId == 1u) || (surfaceTypeId == 2u) || (surfaceTypeId == 3u);
 }
 
 static void SetTrackWorkRamDebugTag(SRL::Memory::DebugTag tag)
@@ -8246,6 +8255,11 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
                           static_cast<unsigned>(segmentEntries_.size()),
                           activeWindowStartId_,
                           static_cast<unsigned>(totalSegmentCount_));
+        SRL::Debug::Print(1, 14, "TRK sh2 md:%s p:%u s:%u lk:%u",
+                          trackSlaveModeRequested_ ? "DUAL" : "SING",
+                          trackSlaveProducerRequested_ ? 1u : 0u,
+                          trackSlaveDepthSortRequested_ ? 1u : 0u,
+                          trackSlaveBarrierLockstep_ ? 1u : 0u);
         SRL::Debug::Print(1, 12, "TRK mem r:%u lwr:1 er:%u rr:%u",
                           static_cast<unsigned>(kTrackRuntimeMemRev),
                           static_cast<unsigned>(workRamEmergencyReserve_ ? workRamEmergencyReserveBytes_ : 0u),
@@ -12545,6 +12559,10 @@ void TrackSystem::ResetInitializationState()
     rendererVertexCapacityFloor_ = 0;
     rendererFaceCapacityFloor_ = 0;
     segmentCenterCatalog_.clear();
+    segmentSurfaceFlagsById_.clear();
+    surfaceTypeByFamilyId_.fill(0u);
+    surfaceFamilyMapReady_ = false;
+    segmentCollisionMapReady_ = false;
     seg1ComponentEnabled_ = false;
     seg1ComponentVerts_.clear();
     seg1ComponentFaces_.clear();
@@ -12607,6 +12625,29 @@ void TrackSystem::ResetInitializationState()
     prefetchBuildAttemptsThisFrame_ = 0;
     prefetchBuildBudgetThisFrame_ = 1u;
     prefetchBuildBudgetDropsThisFrame_ = 0;
+    surfaceQueryScmapSkipsThisFrame_ = 0u;
+    surfaceQueryScmapSkipsLastFrame_ = 0u;
+    surfaceQuerySegmentsScannedThisFrame_ = 0u;
+    surfaceQueryFacesScannedThisFrame_ = 0u;
+    surfaceQuerySegmentsScannedLastFrame_ = 0u;
+    surfaceQueryFacesScannedLastFrame_ = 0u;
+    surfaceQueryCacheHitsThisFrame_ = 0u;
+    surfaceQueryCacheMissesThisFrame_ = 0u;
+    surfaceQueryCacheHitsLastFrame_ = 0u;
+    surfaceQueryCacheMissesLastFrame_ = 0u;
+    wallQueryCallsThisFrame_ = 0u;
+    wallQueryHitsThisFrame_ = 0u;
+    wallQuerySegmentsScannedThisFrame_ = 0u;
+    wallQueryFacesScannedThisFrame_ = 0u;
+    wallQueryCallsLastFrame_ = 0u;
+    wallQueryHitsLastFrame_ = 0u;
+    wallQuerySegmentsScannedLastFrame_ = 0u;
+    wallQueryFacesScannedLastFrame_ = 0u;
+    surfaceQueryLastInsideSegmentId_ = -1;
+    surfaceQueryLastInsideFaceIndex_ = -1;
+    surfaceQueryLastInsideFamilyId_ = 0u;
+    surfaceQueryLastInsideType_ = 0u;
+    surfaceQueryLastInsideValid_ = false;
     prefetchSpeedProxyRaw_ = 0u;
     prefetchSpeedProxyValid_ = false;
     prefetchLastCarWorldPosition_ = Vector3D(0.0, 0.0, 0.0);
@@ -12772,6 +12813,112 @@ void TrackSystem::ConfigureCoordinatorAndBudget(const Config& config)
     budgetController_ = AdaptiveTrackBudgetController(adaptiveBudgetLimits);
 }
 
+void TrackSystem::LoadSurfaceCollisionMaps()
+{
+    surfaceTypeByFamilyId_.fill(0u);
+    surfaceFamilyMapReady_ = false;
+    segmentCollisionMapReady_ = false;
+    segmentSurfaceFlagsById_.clear();
+
+    if (totalSegmentCount_ == 0) return;
+    if (!Game::PhysicsFeatureFlags::kEnableScmapRuntime) return;
+
+    const char* sfMapCandidates[] = {
+        "/CD/DATA/SFMAP.BIN", "/CD/DATA/SFMAP.BIN;1",
+        "/DATA/SFMAP.BIN", "/DATA/SFMAP.BIN;1",
+        "CD/DATA/SFMAP.BIN", "CD/DATA/SFMAP.BIN;1",
+        "DATA/SFMAP.BIN", "DATA/SFMAP.BIN;1",
+        "cd/data/SFMAP.BIN", "cd/data/SFMAP.BIN;1",
+        "SFMAP.BIN", "SFMAP.BIN;1"
+    };
+    const char* scMapCandidates[] = {
+        "/CD/DATA/SCMAP.BIN", "/CD/DATA/SCMAP.BIN;1",
+        "/DATA/SCMAP.BIN", "/DATA/SCMAP.BIN;1",
+        "CD/DATA/SCMAP.BIN", "CD/DATA/SCMAP.BIN;1",
+        "DATA/SCMAP.BIN", "DATA/SCMAP.BIN;1",
+        "cd/data/SCMAP.BIN", "cd/data/SCMAP.BIN;1",
+        "SCMAP.BIN", "SCMAP.BIN;1"
+    };
+
+    std::vector<uint8_t> sfBlob{};
+    if (ReadCdFileBinary(sfMapCandidates, sizeof(sfMapCandidates) / sizeof(sfMapCandidates[0]), sfBlob) &&
+        sfBlob.size() >= 12)
+    {
+        const uint32_t magic = ReadLe32(sfBlob.data() + 0);
+        const uint16_t version = ReadLe16(sfBlob.data() + 4);
+        const uint32_t entryCount = ReadLe32(sfBlob.data() + 8);
+        const size_t needBytes = 12u + (static_cast<size_t>(entryCount) * 4u);
+        if (magic == 0x314D4653u && version == 1u && needBytes <= sfBlob.size())
+        {
+            size_t off = 12u;
+            for (uint32_t i = 0; i < entryCount; ++i, off += 4u)
+            {
+                const uint16_t familyId = ReadLe16(sfBlob.data() + off + 0u);
+                const uint8_t surfaceTypeId = sfBlob[off + 2u];
+                if (familyId < surfaceTypeByFamilyId_.size())
+                {
+                    surfaceTypeByFamilyId_[familyId] = surfaceTypeId;
+                }
+            }
+            surfaceFamilyMapReady_ = true;
+        }
+    }
+
+    std::vector<uint8_t> scBlob{};
+    if (ReadCdFileBinary(scMapCandidates, sizeof(scMapCandidates) / sizeof(scMapCandidates[0]), scBlob) &&
+        scBlob.size() >= 12)
+    {
+        const uint32_t magic = ReadLe32(scBlob.data() + 0);
+        const uint16_t version = ReadLe16(scBlob.data() + 4);
+        const uint32_t segmentCount = ReadLe32(scBlob.data() + 8);
+        if (magic == 0x314D4353u && version == 1u)
+        {
+            TrackLowWorkU8Vector flagsById;
+            flagsById.resize(static_cast<size_t>(totalSegmentCount_) + 1u, 0u);
+            size_t off = 12u;
+            bool parseOk = true;
+            for (uint32_t si = 0; si < segmentCount; ++si)
+            {
+                if (off + 8u > scBlob.size())
+                {
+                    parseOk = false;
+                    break;
+                }
+                const uint16_t segmentId = ReadLe16(scBlob.data() + off + 0u);
+                const uint32_t runCount = ReadLe32(scBlob.data() + off + 4u);
+                off += 8u;
+                if (off + (static_cast<size_t>(runCount) * 8u) > scBlob.size())
+                {
+                    parseOk = false;
+                    break;
+                }
+                uint8_t segmentFlags = 0u;
+                for (uint32_t ri = 0; ri < runCount; ++ri)
+                {
+                    const size_t ro = off + (static_cast<size_t>(ri) * 8u);
+                    const uint8_t runFlags = scBlob[ro + 5u];
+                    segmentFlags = static_cast<uint8_t>(segmentFlags | runFlags);
+                }
+                off += static_cast<size_t>(runCount) * 8u;
+                if (segmentId > 0 && static_cast<size_t>(segmentId) < flagsById.size())
+                {
+                    flagsById[segmentId] = segmentFlags;
+                }
+            }
+            if (parseOk)
+            {
+                segmentSurfaceFlagsById_.swap(flagsById);
+                segmentCollisionMapReady_ = !segmentSurfaceFlagsById_.empty();
+            }
+        }
+    }
+
+    SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u seg:%u",
+                      surfaceFamilyMapReady_ ? 1u : 0u,
+                      segmentCollisionMapReady_ ? 1u : 0u,
+                      static_cast<unsigned>(totalSegmentCount_));
+}
+
 void TrackSystem::LogInitialSegmentDiagnostics() const
 {
     if (!segmentsReady_)
@@ -12914,6 +13061,7 @@ bool TrackSystem::Initialize(const Config& config)
         SRL::Debug::Print(1, 28, "Track catalog missing");
         return false;
     }
+    LoadSurfaceCollisionMaps();
     // Boot-time init RAM snapshots disabled to keep the on-screen diagnostics
     // focused on slide/runtime behavior.
     const size_t loadLimit = ResolveInitialLoadLimit(config);
@@ -13942,6 +14090,32 @@ bool TrackSystem::Initialize(const Config& config)
 
 void TrackSystem::BeginFrame(uint32_t frameId)
 {
+    surfaceQueryCallsLastFrame_ = surfaceQueryCallsThisFrame_;
+    surfaceQueryFallbackHitsLastFrame_ = surfaceQueryFallbackHitsThisFrame_;
+    surfaceQueryGlobalPassesLastFrame_ = surfaceQueryGlobalPassesThisFrame_;
+    surfaceQueryLocalOnlyMissesLastFrame_ = surfaceQueryLocalOnlyMissesThisFrame_;
+    surfaceQueryScmapSkipsLastFrame_ = surfaceQueryScmapSkipsThisFrame_;
+    surfaceQuerySegmentsScannedLastFrame_ = surfaceQuerySegmentsScannedThisFrame_;
+    surfaceQueryFacesScannedLastFrame_ = surfaceQueryFacesScannedThisFrame_;
+    surfaceQueryCacheHitsLastFrame_ = surfaceQueryCacheHitsThisFrame_;
+    surfaceQueryCacheMissesLastFrame_ = surfaceQueryCacheMissesThisFrame_;
+    wallQueryCallsLastFrame_ = wallQueryCallsThisFrame_;
+    wallQueryHitsLastFrame_ = wallQueryHitsThisFrame_;
+    wallQuerySegmentsScannedLastFrame_ = wallQuerySegmentsScannedThisFrame_;
+    wallQueryFacesScannedLastFrame_ = wallQueryFacesScannedThisFrame_;
+    surfaceQueryCallsThisFrame_ = 0u;
+    surfaceQueryFallbackHitsThisFrame_ = 0u;
+    surfaceQueryGlobalPassesThisFrame_ = 0u;
+    surfaceQueryLocalOnlyMissesThisFrame_ = 0u;
+    surfaceQueryScmapSkipsThisFrame_ = 0u;
+    surfaceQuerySegmentsScannedThisFrame_ = 0u;
+    surfaceQueryFacesScannedThisFrame_ = 0u;
+    surfaceQueryCacheHitsThisFrame_ = 0u;
+    surfaceQueryCacheMissesThisFrame_ = 0u;
+    wallQueryCallsThisFrame_ = 0u;
+    wallQueryHitsThisFrame_ = 0u;
+    wallQuerySegmentsScannedThisFrame_ = 0u;
+    wallQueryFacesScannedThisFrame_ = 0u;
     frameIdThisFrame_ = frameId;
     AdvanceReusableTrackTextureSlotCooldowns();
     textureUploadsThisFrame_ = 0;
@@ -16686,6 +16860,11 @@ void TrackSystem::EndFrame()
     {
         constexpr uint32_t kVdp1FaceCostBytes = 64u;
         constexpr uint32_t kVdp1FrameBudgetBytes = 512u * 1024u;
+#ifdef SRL_MODE_NTSC
+        constexpr uint32_t kDisplayRefreshHz = 60u;
+#else
+        constexpr uint32_t kDisplayRefreshHz = 50u;
+#endif
         static uint64_t sCmdPctAccum = 0u;
         static uint64_t sHeapPctAccum = 0u;
         static uint64_t sTrackFacesAccum = 0u;
@@ -16694,6 +16873,16 @@ void TrackSystem::EndFrame()
         static uint32_t sPeakHeapPct = 0u;
         static uint32_t sPeakTrackFaces = 0u;
         static uint16_t sPeakTexCount = 0u;
+        static bool sFpsVblankValid = false;
+        static uint32_t sFpsLastVblank = 0u;
+        static uint32_t sFpsSampleFrames = 0u;
+        static uint32_t sFpsSampleVblanks = 0u;
+        static uint32_t sFpsFramesOver30Budget = 0u;
+        static uint32_t sFpsFramesOver60Budget = 0u;
+        static uint32_t sFpsX10 = 0u;
+        static uint32_t sFrameMsX10 = 0u;
+        static uint32_t sDrop30Pct = 0u;
+        static uint32_t sDrop60Pct = 0u;
 
         const auto& telemetry = coordinator_.Telemetry();
         const uint32_t trackFaces = telemetry.submittedTrackFaces;
@@ -16725,6 +16914,59 @@ void TrackSystem::EndFrame()
         const uint32_t avgHeapPct = (sSamples > 0u) ? static_cast<uint32_t>(sHeapPctAccum / sSamples) : 0u;
         const uint32_t avgTrackFaces = (sSamples > 0u) ? static_cast<uint32_t>(sTrackFacesAccum / sSamples) : 0u;
 
+        const uint32_t vblankNow = SRL_AppGetVblankCounter();
+        if (!sFpsVblankValid)
+        {
+            sFpsVblankValid = true;
+            sFpsLastVblank = vblankNow;
+        }
+        else
+        {
+            uint32_t vblankDelta = vblankNow - sFpsLastVblank;
+            sFpsLastVblank = vblankNow;
+            if (vblankDelta == 0u) vblankDelta = 1u;
+
+            ++sFpsSampleFrames;
+            sFpsSampleVblanks += vblankDelta;
+            const uint32_t frameTimeX100 = static_cast<uint32_t>(
+                (static_cast<uint64_t>(vblankDelta) * 100000u + (kDisplayRefreshHz / 2u)) /
+                static_cast<uint64_t>(kDisplayRefreshHz));
+            constexpr uint32_t kTarget30FrameTimeX100 = 100000u / 30u;
+            constexpr uint32_t kTarget60FrameTimeX100 = 100000u / 60u;
+            if (frameTimeX100 > kTarget30FrameTimeX100) ++sFpsFramesOver30Budget;
+            if (frameTimeX100 > kTarget60FrameTimeX100) ++sFpsFramesOver60Budget;
+
+            constexpr uint32_t kSampleWindowFrames = 60u;
+            if (sFpsSampleFrames >= kSampleWindowFrames && sFpsSampleVblanks > 0u)
+            {
+                const uint64_t fpsNum = static_cast<uint64_t>(kDisplayRefreshHz) *
+                                        static_cast<uint64_t>(10u) *
+                                        static_cast<uint64_t>(sFpsSampleFrames);
+                sFpsX10 = static_cast<uint32_t>(
+                    (fpsNum + static_cast<uint64_t>(sFpsSampleVblanks / 2u)) /
+                    static_cast<uint64_t>(sFpsSampleVblanks));
+
+                const uint64_t frameMsNum = static_cast<uint64_t>(10000u) *
+                                            static_cast<uint64_t>(sFpsSampleVblanks);
+                const uint64_t frameMsDen = static_cast<uint64_t>(kDisplayRefreshHz) *
+                                            static_cast<uint64_t>(sFpsSampleFrames);
+                sFrameMsX10 = static_cast<uint32_t>(
+                    (frameMsNum + (frameMsDen / 2u)) / std::max<uint64_t>(1u, frameMsDen));
+
+                sDrop30Pct = static_cast<uint32_t>(
+                    (static_cast<uint64_t>(sFpsFramesOver30Budget) * 100u) /
+                    static_cast<uint64_t>(sFpsSampleFrames));
+                sDrop60Pct = static_cast<uint32_t>(
+                    (static_cast<uint64_t>(sFpsFramesOver60Budget) * 100u) /
+                    static_cast<uint64_t>(sFpsSampleFrames));
+
+                sFpsSampleFrames = 0u;
+                sFpsSampleVblanks = 0u;
+                sFpsFramesOver30Budget = 0u;
+                sFpsFramesOver60Budget = 0u;
+            }
+        }
+
         // Keep rows fixed and refreshed every frame so old diagnostics do not linger.
         SRL::Debug::Print(1, 14, "VDP1 trk s:%u f:%u cmd:%u%%",
                           static_cast<unsigned>(trackSegments),
@@ -16740,11 +16982,17 @@ void TrackSystem::EndFrame()
                           static_cast<unsigned>(sPeakCmdPct),
                           static_cast<unsigned>(sPeakHeapPct),
                           static_cast<unsigned>(sPeakTexCount));
-        SRL::Debug::Print(1, 17, "VDP1 av f:%u c:%u h:%u n:%u",
+        SRL::Debug::Print(1, 17, "VDP1 av f:%u c:%u h:%u n:%u FPS:%u.%u ms:%u.%u d30:%u d60:%u",
                           static_cast<unsigned>(avgTrackFaces),
                           static_cast<unsigned>(avgCmdPct),
                           static_cast<unsigned>(avgHeapPct),
-                          static_cast<unsigned>(sSamples));
+                          static_cast<unsigned>(sSamples),
+                          static_cast<unsigned>(sFpsX10 / 10u),
+                          static_cast<unsigned>(sFpsX10 % 10u),
+                          static_cast<unsigned>(sFrameMsX10 / 10u),
+                          static_cast<unsigned>(sFrameMsX10 % 10u),
+                          static_cast<unsigned>(sDrop30Pct),
+                          static_cast<unsigned>(sDrop60Pct));
         SRL::Debug::Print(1, 18, "                                   ");
         SRL::Debug::Print(1, 19, "                                   ");
         SRL::Debug::Print(1, 20, "                                   ");
@@ -16934,15 +17182,24 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                           SRL::Math::Types::Fxp& outSurfaceY,
                                           int32_t* outSegmentId,
                                           int32_t seedSegmentId,
-                                          bool allowFallback) const
+                                          bool allowFallback,
+                                          uint16_t* outFamilyId,
+                                          uint8_t* outSurfaceType,
+                                          int16_t* outFaceIndex) const
 {
+    ++surfaceQueryCallsThisFrame_;
+    const bool useLocalNeighbor =
+        Game::PhysicsFeatureFlags::kEnableLocalFaceNeighbor;
     outSurfaceY = worldPosition.Y;
     if (outSegmentId) *outSegmentId = -1;
-    if (!familyIds || familyCount == 0u) return false;
+    if (outFamilyId) *outFamilyId = 0u;
+    if (outSurfaceType) *outSurfaceType = 0u;
+    if (outFaceIndex) *outFaceIndex = -1;
+    const bool acceptAnyFamily = (!familyIds || familyCount == 0u);
     if (segmentRenderers_.empty()) return false;
 
-    bool hasAnyFamily = false;
-    for (size_t i = 0; i < familyCount; ++i)
+    bool hasAnyFamily = acceptAnyFamily;
+    for (size_t i = 0; i < familyCount && !acceptAnyFamily; ++i)
     {
         const uint16_t familyId = familyIds[i];
         if (familyId == 0u) continue;
@@ -16953,7 +17210,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     static constexpr size_t kFastFamilyMaskLimit = 512u;
     std::array<uint8_t, kFastFamilyMaskLimit> familyMask{};
     bool hasLargeFamilyId = false;
-    for (size_t i = 0; i < familyCount; ++i)
+    for (size_t i = 0; i < familyCount && !acceptAnyFamily; ++i)
     {
         const uint16_t familyId = familyIds[i];
         if (familyId == 0u) continue;
@@ -16970,6 +17227,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     auto familyAllowed = [&](uint16_t familyId) -> bool
     {
         if (familyId == 0u) return false;
+        if (acceptAnyFamily) return true;
         if (familyId < kFastFamilyMaskLimit) return familyMask[familyId] != 0u;
         if (!hasLargeFamilyId) return false;
         for (size_t i = 0; i < familyCount; ++i)
@@ -16978,6 +17236,58 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         }
         return false;
     };
+
+    uint8_t requestedSegmentSurfaceFlags = 0u;
+    bool requestedSurfaceTypesKnown = true;
+    bool wantsAsphaltLike = false;
+    bool wantsOffroadLike = false;
+    if (!acceptAnyFamily &&
+        Game::PhysicsFeatureFlags::kEnableScmapRuntime &&
+        surfaceFamilyMapReady_ &&
+        segmentCollisionMapReady_)
+    {
+        for (size_t i = 0; i < familyCount; ++i)
+        {
+            const uint16_t familyId = familyIds[i];
+            if (familyId == 0u) continue;
+            if (familyId >= surfaceTypeByFamilyId_.size())
+            {
+                requestedSurfaceTypesKnown = false;
+                break;
+            }
+            const uint8_t surfaceTypeId = surfaceTypeByFamilyId_[familyId];
+            switch (surfaceTypeId)
+            {
+            case 1u:
+                wantsAsphaltLike = true;
+                break;
+            case 2u:
+            case 3u:
+                wantsOffroadLike = true;
+                break;
+            default:
+                requestedSurfaceTypesKnown = false;
+                break;
+            }
+            if (!requestedSurfaceTypesKnown) break;
+        }
+
+        if (requestedSurfaceTypesKnown && (wantsAsphaltLike || wantsOffroadLike))
+        {
+            if (wantsAsphaltLike && !wantsOffroadLike)
+            {
+                requestedSegmentSurfaceFlags = 0x02u; // asphalt-like
+            }
+            else if (!wantsAsphaltLike && wantsOffroadLike)
+            {
+                requestedSegmentSurfaceFlags = 0x04u; // offroad-like
+            }
+            else
+            {
+                requestedSegmentSurfaceFlags = 0x01u; // generic driveable
+            }
+        }
+    }
 
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
@@ -17047,6 +17357,8 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     int64_t bestInsideYRaw = pyRaw;
     int32_t bestInsideSegmentId = -1;
     int32_t bestInsideSeedDistance = std::numeric_limits<int32_t>::max();
+    uint16_t bestInsideFamilyId = 0u;
+    int16_t bestInsideFaceIndex = -1;
     
     bool foundFallback = false;
     uint8_t bestFallbackClass = 0xFFu;
@@ -17055,6 +17367,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     int64_t bestFallbackYRaw = pyRaw;
     int32_t bestFallbackSegmentId = -1;
     int32_t bestFallbackSeedDistance = std::numeric_limits<int32_t>::max();
+    uint16_t bestFallbackFamilyId = 0u;
+    int16_t bestFallbackFaceIndex = -1;
+    bool earlyAcceptInside = false;
 
     auto wrappedSeedDistance = [&](int32_t segmentId) -> int32_t
     {
@@ -17066,9 +17381,10 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         return std::min(delta, wrapped);
     };
 
-    auto updateInsideCandidate = [&](int64_t yRaw, int32_t segmentId)
+    auto updateInsideCandidate = [&](int64_t yRaw, int32_t segmentId, uint16_t familyId, int16_t faceIndex)
     {
         static constexpr int64_t kSupportToleranceRaw = (1 << 14); // ~0.25 in 16.16
+        static constexpr int64_t kEarlyAcceptGapRaw = (1 << 13);   // ~0.125 in 16.16
         // Current world convention uses negative Y as up, therefore larger Y
         // means lower altitude. A supporting road candidate should be at or
         // below the probe height (>= py - tolerance).
@@ -17090,12 +17406,20 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
             bestInsideSeedDistance = seedDistance;
             bestInsideYRaw = yRaw;
             bestInsideSegmentId = segmentId;
+            bestInsideFamilyId = familyId;
+            bestInsideFaceIndex = faceIndex;
+            if (bestInsideClass == 0u && bestInsideGapY <= kEarlyAcceptGapRaw)
+            {
+                earlyAcceptInside = true;
+            }
         }
     };
 
     auto updateFallbackCandidate = [&](int64_t yRaw,
                                        int32_t segmentId,
-                                       int64_t planarScore)
+                                       int64_t planarScore,
+                                       uint16_t familyId,
+                                       int16_t faceIndex)
     {
         static constexpr int64_t kSupportToleranceRaw = (1 << 14); // ~0.25 in 16.16
         const bool preferAsSupport = (yRaw >= pyRaw - kSupportToleranceRaw);
@@ -17120,11 +17444,137 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
             bestFallbackGapY = candidateGapY;
             bestFallbackYRaw = yRaw;
             bestFallbackSegmentId = segmentId;
+            bestFallbackFamilyId = familyId;
+            bestFallbackFaceIndex = faceIndex;
         }
+    };
+
+    auto updateInsideCache = [&](int32_t segmentId, int16_t faceIndex, uint16_t familyId)
+    {
+        if (segmentId <= 0 || faceIndex < 0 || familyId == 0u)
+        {
+            return;
+        }
+        surfaceQueryLastInsideSegmentId_ = segmentId;
+        surfaceQueryLastInsideFaceIndex_ = faceIndex;
+        surfaceQueryLastInsideFamilyId_ = familyId;
+        surfaceQueryLastInsideType_ =
+            (familyId < surfaceTypeByFamilyId_.size()) ? surfaceTypeByFamilyId_[familyId] : 0u;
+        surfaceQueryLastInsideValid_ = true;
+    };
+
+    auto evaluateFaceCandidate = [&](const SegmentRenderEntry& segment,
+                                     size_t fi,
+                                     const Vector3D* preVerts,
+                                     size_t preVertCount,
+                                     const SRL::Types::Polygon* preFaces,
+                                     size_t preFaceCount,
+                                     int64_t& outYRaw,
+                                     int64_t& outPlanarScore,
+                                     uint16_t& outFamilyId,
+                                     bool& outInside) -> bool
+    {
+        outInside = false;
+        outFamilyId = 0u;
+        outPlanarScore = 0;
+        outYRaw = 0;
+
+        if (!segment.renderer) return false;
+        if (segment.lodState.faceFamilyIds.empty()) return false;
+
+        const Vector3D* verts = preVerts;
+        const SRL::Types::Polygon* faces = preFaces;
+        size_t vertCount = preVertCount;
+        size_t faceCount = preFaceCount;
+        if (!verts || !faces || vertCount == 0u || faceCount == 0u)
+        {
+            if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) return false;
+        }
+        if (!verts || !faces || vertCount == 0u || faceCount == 0u) return false;
+
+        const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
+        if (fi >= scanFaceCount) return false;
+
+        const uint16_t faceFamilyId = segment.lodState.faceFamilyIds[fi];
+        if (!familyAllowed(faceFamilyId)) return false;
+
+        const SRL::Types::Polygon& face = faces[fi];
+        const uint16_t i0 = face.Vertices[0];
+        const uint16_t i1 = face.Vertices[1];
+        const uint16_t i2 = face.Vertices[2];
+        const uint16_t i3 = face.Vertices[3];
+        if (i0 >= vertCount || i1 >= vertCount || i2 >= vertCount || i3 >= vertCount) return false;
+
+        const Vector3D a = verts[i0] + trackOffset;
+        const Vector3D b = verts[i1] + trackOffset;
+        const Vector3D c = verts[i2] + trackOffset;
+        const Vector3D d = verts[i3] + trackOffset;
+
+        // Keep only floor-like polygons for road-height sampling.
+        // 0.50 (32768 in 16.16) matches the pipeline ground classification.
+        if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) < (1 << 15)) return false;
+
+        const bool inTri0 = isPointInTriangleXZ(a, b, c);
+        const bool inTri1 = isPointInTriangleXZ(a, c, d);
+        int64_t yRaw = 0;
+        bool yValid = false;
+        bool inside = false;
+        if (inTri0)
+        {
+            yValid = solvePlaneYRaw(a, b, c, yRaw);
+            inside = yValid;
+        }
+        else if (inTri1)
+        {
+            yValid = solvePlaneYRaw(a, c, d, yRaw);
+            inside = yValid;
+        }
+        else
+        {
+            // Fallback: project onto the first triangle plane so we still
+            // have a stable candidate when PATH point drifts outside face.
+            yValid = solvePlaneYRaw(a, b, c, yRaw) || solvePlaneYRaw(a, c, d, yRaw);
+        }
+        if (!yValid) return false;
+
+        int64_t planarScore = 0;
+        if (!inside)
+        {
+            const int64_t cxRaw =
+                (static_cast<int64_t>(a.X.RawValue()) +
+                 static_cast<int64_t>(b.X.RawValue()) +
+                 static_cast<int64_t>(c.X.RawValue()) +
+                 static_cast<int64_t>(d.X.RawValue())) / 4;
+            const int64_t czRaw =
+                (static_cast<int64_t>(a.Z.RawValue()) +
+                 static_cast<int64_t>(b.Z.RawValue()) +
+                 static_cast<int64_t>(c.Z.RawValue()) +
+                 static_cast<int64_t>(d.Z.RawValue())) / 4;
+            planarScore = abs64(cxRaw - pxRaw) + abs64(czRaw - pzRaw);
+        }
+
+        outInside = inside;
+        outFamilyId = faceFamilyId;
+        outPlanarScore = planarScore;
+        outYRaw = yRaw;
+        return true;
     };
 
     auto scanSegment = [&](const SegmentRenderEntry& segment)
     {
+        if (earlyAcceptInside) return;
+        if (requestedSegmentSurfaceFlags != 0u &&
+            segment.id > 0 &&
+            static_cast<size_t>(segment.id) < segmentSurfaceFlagsById_.size())
+        {
+            const uint8_t segmentFlags = segmentSurfaceFlagsById_[segment.id];
+            if ((segmentFlags & requestedSegmentSurfaceFlags) == 0u)
+            {
+                ++surfaceQueryScmapSkipsThisFrame_;
+                return;
+            }
+        }
+
         if (!segment.renderer) return;
         if (segment.lodState.faceFamilyIds.empty()) return;
 
@@ -17136,76 +17586,122 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         if (!verts || !faces || vertCount == 0u || faceCount == 0u) return;
 
         const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
+        ++surfaceQuerySegmentsScannedThisFrame_;
+        surfaceQueryFacesScannedThisFrame_ = static_cast<uint32_t>(
+            std::min<uint64_t>(
+                static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                static_cast<uint64_t>(surfaceQueryFacesScannedThisFrame_) +
+                    static_cast<uint64_t>(scanFaceCount)));
         for (size_t fi = 0; fi < scanFaceCount; ++fi)
         {
-            if (!familyAllowed(segment.lodState.faceFamilyIds[fi])) continue;
-
-            const SRL::Types::Polygon& face = faces[fi];
-            const uint16_t i0 = face.Vertices[0];
-            const uint16_t i1 = face.Vertices[1];
-            const uint16_t i2 = face.Vertices[2];
-            const uint16_t i3 = face.Vertices[3];
-            if (i0 >= vertCount || i1 >= vertCount || i2 >= vertCount || i3 >= vertCount) continue;
-
-            const Vector3D a = verts[i0] + trackOffset;
-            const Vector3D b = verts[i1] + trackOffset;
-            const Vector3D c = verts[i2] + trackOffset;
-            const Vector3D d = verts[i3] + trackOffset;
-
-            // Keep only floor-like polygons for road-height sampling.
-            // 0.50 (32768 in 16.16) matches the pipeline ground classification.
-            if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) < (1 << 15)) continue;
-
-            const bool inTri0 = isPointInTriangleXZ(a, b, c);
-            const bool inTri1 = isPointInTriangleXZ(a, c, d);
+            if (earlyAcceptInside) break;
             int64_t yRaw = 0;
-            bool yValid = false;
+            int64_t planarScore = 0;
+            uint16_t faceFamilyId = 0u;
             bool inside = false;
-            if (inTri0)
+            if (!evaluateFaceCandidate(segment,
+                                       fi,
+                                       verts,
+                                       vertCount,
+                                       faces,
+                                       faceCount,
+                                       yRaw,
+                                       planarScore,
+                                       faceFamilyId,
+                                       inside))
             {
-                yValid = solvePlaneYRaw(a, b, c, yRaw);
-                inside = yValid;
-            }
-            else if (inTri1)
-            {
-                yValid = solvePlaneYRaw(a, c, d, yRaw);
-                inside = yValid;
-            }
-            else
-            {
-                // Fallback: project onto the first triangle plane so we still
-                // have a stable candidate when PATH point drifts outside face.
-                yValid = solvePlaneYRaw(a, b, c, yRaw) || solvePlaneYRaw(a, c, d, yRaw);
-            }
-            if (!yValid) continue;
-
-            if (inside)
-            {
-                updateInsideCandidate(yRaw, segment.id);
                 continue;
             }
 
-            const int64_t cxRaw =
-                (static_cast<int64_t>(a.X.RawValue()) +
-                 static_cast<int64_t>(b.X.RawValue()) +
-                 static_cast<int64_t>(c.X.RawValue()) +
-                 static_cast<int64_t>(d.X.RawValue())) / 4;
-            const int64_t czRaw =
-                (static_cast<int64_t>(a.Z.RawValue()) +
-                 static_cast<int64_t>(b.Z.RawValue()) +
-                 static_cast<int64_t>(c.Z.RawValue()) +
-                 static_cast<int64_t>(d.Z.RawValue())) / 4;
-            const int64_t planarScore = abs64(cxRaw - pxRaw) + abs64(czRaw - pzRaw);
-            updateFallbackCandidate(yRaw, segment.id, planarScore);
+            if (inside)
+            {
+                updateInsideCandidate(yRaw, segment.id, faceFamilyId, static_cast<int16_t>(fi));
+                continue;
+            }
+            updateFallbackCandidate(yRaw,
+                                    segment.id,
+                                    planarScore,
+                                    faceFamilyId,
+                                    static_cast<int16_t>(fi));
         }
     };
 
+    if (surfaceQueryLastInsideValid_ &&
+        surfaceQueryLastInsideSegmentId_ > 0 &&
+        surfaceQueryLastInsideFaceIndex_ >= 0)
+    {
+        const SegmentRenderEntry* cacheEntry = FindWindowEntryByIdFast(surfaceQueryLastInsideSegmentId_);
+        if (cacheEntry)
+        {
+            bool canEvaluate = true;
+            if (requestedSegmentSurfaceFlags != 0u &&
+                cacheEntry->id > 0 &&
+                static_cast<size_t>(cacheEntry->id) < segmentSurfaceFlagsById_.size())
+            {
+                const uint8_t segmentFlags = segmentSurfaceFlagsById_[cacheEntry->id];
+                if ((segmentFlags & requestedSegmentSurfaceFlags) == 0u)
+                {
+                    canEvaluate = false;
+                    ++surfaceQueryScmapSkipsThisFrame_;
+                }
+            }
+            if (canEvaluate)
+            {
+                ++surfaceQuerySegmentsScannedThisFrame_;
+                surfaceQueryFacesScannedThisFrame_ = static_cast<uint32_t>(
+                    std::min<uint64_t>(
+                        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                        static_cast<uint64_t>(surfaceQueryFacesScannedThisFrame_) + 1u));
+                int64_t yRaw = 0;
+                int64_t planarScore = 0;
+                uint16_t faceFamilyId = 0u;
+                bool inside = false;
+                if (evaluateFaceCandidate(*cacheEntry,
+                                          static_cast<size_t>(surfaceQueryLastInsideFaceIndex_),
+                                          nullptr,
+                                          0u,
+                                          nullptr,
+                                          0u,
+                                          yRaw,
+                                          planarScore,
+                                          faceFamilyId,
+                                          inside) &&
+                    inside)
+                {
+                    ++surfaceQueryCacheHitsThisFrame_;
+                    outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(yRaw));
+                    if (outSegmentId) *outSegmentId = cacheEntry->id;
+                    if (outFamilyId) *outFamilyId = faceFamilyId;
+                    if (outFaceIndex) *outFaceIndex = surfaceQueryLastInsideFaceIndex_;
+                    if (outSurfaceType)
+                    {
+                        *outSurfaceType =
+                            (faceFamilyId < surfaceTypeByFamilyId_.size())
+                                ? surfaceTypeByFamilyId_[faceFamilyId]
+                                : 0u;
+                    }
+                    updateInsideCache(cacheEntry->id,
+                                      surfaceQueryLastInsideFaceIndex_,
+                                      faceFamilyId);
+                    return true;
+                }
+                ++surfaceQueryCacheMissesThisFrame_;
+            }
+        }
+    }
+
     if (seedSegmentId > 0 && totalSegmentCount_ > 0)
     {
-        std::array<int32_t, 6> localIds{};
+        std::array<int32_t, 12> localIds{};
         size_t localCount = 0u;
-        for (int32_t delta = -1; delta <= 3; ++delta)
+        // Prioritize seed and closest neighbors first to maximize early accept.
+        static constexpr std::array<int32_t, 8> kNeighborDeltaWide = { 0, 1, -1, 2, -2, 3, 4, 5 };
+        static constexpr std::array<int32_t, 5> kNeighborDeltaNarrow = { 0, 1, -1, 2, 3 };
+        const size_t deltaCount = useLocalNeighbor ? kNeighborDeltaWide.size() : kNeighborDeltaNarrow.size();
+        for (size_t di = 0; di < deltaCount; ++di)
         {
+            if (earlyAcceptInside) break;
+            const int32_t delta = useLocalNeighbor ? kNeighborDeltaWide[di] : kNeighborDeltaNarrow[di];
             const int32_t candidateId =
                 WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
             if (candidateId <= 0) continue;
@@ -17231,10 +17727,22 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     // Run the expensive global pass only when local probing found absolutely
     // nothing. This keeps per-frame probing deterministic and avoids spikes in
     // descents where local support exists but classifies as fallback.
-    if (!foundInside && !foundFallback)
+    bool shouldRunGlobalPass = (!foundInside && !foundFallback);
+    if (shouldRunGlobalPass &&
+        useLocalNeighbor &&
+        !allowFallback &&
+        seedSegmentId > 0 &&
+        totalSegmentCount_ > 0)
     {
+        ++surfaceQueryLocalOnlyMissesThisFrame_;
+        shouldRunGlobalPass = false;
+    }
+    if (shouldRunGlobalPass)
+    {
+        ++surfaceQueryGlobalPassesThisFrame_;
         for (const auto& segment : segmentRenderers_)
         {
+            if (earlyAcceptInside) break;
             scanSegment(segment);
         }
     }
@@ -17243,17 +17751,72 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     {
         outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestInsideYRaw));
         if (outSegmentId) *outSegmentId = bestInsideSegmentId;
+        if (outFamilyId) *outFamilyId = bestInsideFamilyId;
+        if (outFaceIndex) *outFaceIndex = bestInsideFaceIndex;
+        if (outSurfaceType &&
+            bestInsideFamilyId < surfaceTypeByFamilyId_.size())
+        {
+            *outSurfaceType = surfaceTypeByFamilyId_[bestInsideFamilyId];
+        }
+        updateInsideCache(bestInsideSegmentId, bestInsideFaceIndex, bestInsideFamilyId);
         return true;
     }
 
     if (allowFallback && foundFallback)
     {
+        ++surfaceQueryFallbackHitsThisFrame_;
         outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(bestFallbackYRaw));
         if (outSegmentId) *outSegmentId = bestFallbackSegmentId;
+        if (outFamilyId) *outFamilyId = bestFallbackFamilyId;
+        if (outFaceIndex) *outFaceIndex = bestFallbackFaceIndex;
+        if (outSurfaceType &&
+            bestFallbackFamilyId < surfaceTypeByFamilyId_.size())
+        {
+            *outSurfaceType = surfaceTypeByFamilyId_[bestFallbackFamilyId];
+        }
         return true;
     }
 
     return false;
+}
+
+bool TrackSystem::FindSurfaceContact(const Vector3D& worldPosition,
+                                     const Vector3D& trackOffset,
+                                     Game::SurfaceContact& outContact,
+                                     int32_t seedSegmentId,
+                                     bool allowFallback) const
+{
+    outContact = Game::SurfaceContact{};
+    SRL::Math::Types::Fxp surfaceY = worldPosition.Y;
+    int32_t segmentId = -1;
+    uint16_t familyId = 0u;
+    uint8_t surfaceType = 0u;
+    int16_t faceIndex = -1;
+
+    const bool found = FindSurfaceYByFamilySet(worldPosition,
+                                               trackOffset,
+                                               nullptr,
+                                               0u,
+                                               surfaceY,
+                                               &segmentId,
+                                               seedSegmentId,
+                                               allowFallback,
+                                               &familyId,
+                                               &surfaceType,
+                                               &faceIndex);
+    if (!found)
+    {
+        return false;
+    }
+
+    outContact.valid = true;
+    outContact.segmentId = segmentId;
+    outContact.faceIndex = faceIndex;
+    outContact.familyId = familyId;
+    outContact.surfaceType = surfaceType;
+    outContact.surfaceY = surfaceY;
+    outContact.normal = Vector3D(0.0, -1.0, 0.0);
+    return true;
 }
 
 bool TrackSystem::FindSegmentCenterById(const int32_t segmentId,
@@ -17291,7 +17854,17 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                                      int32_t seedSegmentId,
                                      bool allowGlobalFallback) const
 {
+    if (!Game::PhysicsFeatureFlags::kEnableWallCollisionRuntime)
+    {
+        outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
+                           SRL::Math::Types::Fxp::BuildRaw(0),
+                           SRL::Math::Types::Fxp::BuildRaw(0));
+        if (outSegmentId) *outSegmentId = -1;
+        return false;
+    }
+
     (void)forwardDirection;
+    ++wallQueryCallsThisFrame_;
     outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
                        SRL::Math::Types::Fxp::BuildRaw(0),
                        SRL::Math::Types::Fxp::BuildRaw(0));
@@ -17304,8 +17877,7 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
     const int64_t pzRaw = static_cast<int64_t>(worldPosition.Z.RawValue());
-    const int64_t yMarginRaw = static_cast<int64_t>(2 << 16);
-    const int64_t verticalNormalMaxAbsY = static_cast<int64_t>(1 << 14);
+    const int64_t yMarginRaw = static_cast<int64_t>(12 << 16);
 
     auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
     auto clamp64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t
@@ -17319,6 +17891,111 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     int64_t bestPushXRaw = 0;
     int64_t bestPushZRaw = 0;
     int32_t bestSegmentId = -1;
+    static constexpr uint8_t kSegmentFlagHasWallLikeFaces = 0x08u;
+
+    auto segmentHasWallCandidates = [&](int32_t segmentId) -> bool
+    {
+        if (segmentId <= 0) return true;
+        if (!Game::PhysicsFeatureFlags::kEnableScmapRuntime) return true;
+        if (!segmentCollisionMapReady_) return true;
+        if (segmentSurfaceFlagsById_.empty()) return true;
+        const size_t sid = static_cast<size_t>(segmentId);
+        if (sid >= segmentSurfaceFlagsById_.size()) return true;
+        return (segmentSurfaceFlagsById_[sid] & kSegmentFlagHasWallLikeFaces) != 0u;
+    };
+
+    auto pointInQuadProjected = [&](const Vector3D& a,
+                                    const Vector3D& b,
+                                    const Vector3D& c,
+                                    const Vector3D& d,
+                                    int64_t nxRaw,
+                                    int64_t nyRaw,
+                                    int64_t nzRaw) -> bool
+    {
+        const int64_t anx = abs64(nxRaw);
+        const int64_t any = abs64(nyRaw);
+        const int64_t anz = abs64(nzRaw);
+        int axis = 1; // project to XZ by default
+        if (anx >= any && anx >= anz) axis = 0;
+        else if (anz >= anx && anz >= any) axis = 2;
+
+        auto projectUV = [&](const Vector3D& v, int64_t& outU, int64_t& outV)
+        {
+            const int64_t x = static_cast<int64_t>(v.X.RawValue());
+            const int64_t y = static_cast<int64_t>(v.Y.RawValue());
+            const int64_t z = static_cast<int64_t>(v.Z.RawValue());
+            if (axis == 0) { outU = z; outV = y; return; } // drop X -> YZ
+            if (axis == 1) { outU = x; outV = z; return; } // drop Y -> XZ
+            outU = x; outV = y;                            // drop Z -> XY
+        };
+
+        int64_t au = 0, av = 0, bu = 0, bv = 0, cu = 0, cv = 0, du = 0, dv = 0;
+        projectUV(a, au, av);
+        projectUV(b, bu, bv);
+        projectUV(c, cu, cv);
+        projectUV(d, du, dv);
+
+        int64_t pu = 0;
+        int64_t pv = 0;
+        if (axis == 0) { pu = pzRaw; pv = pyRaw; }
+        else if (axis == 1) { pu = pxRaw; pv = pzRaw; }
+        else { pu = pxRaw; pv = pyRaw; }
+
+        auto edgeCross = [&](int64_t x0, int64_t y0, int64_t x1, int64_t y1) -> int64_t
+        {
+            return ((pu - x0) * (y1 - y0)) - ((pv - y0) * (x1 - x0));
+        };
+
+        const int64_t c1 = edgeCross(au, av, bu, bv);
+        const int64_t c2 = edgeCross(bu, bv, cu, cv);
+        const int64_t c3 = edgeCross(cu, cv, du, dv);
+        const int64_t c4 = edgeCross(du, dv, au, av);
+        const bool hasNeg = (c1 < 0) || (c2 < 0) || (c3 < 0) || (c4 < 0);
+        const bool hasPos = (c1 > 0) || (c2 > 0) || (c3 > 0) || (c4 > 0);
+        return !(hasNeg && hasPos);
+    };
+
+    auto tryFacePlane = [&](const Vector3D& a,
+                            const Vector3D& b,
+                            const Vector3D& c,
+                            const Vector3D& d,
+                            int64_t nxRaw,
+                            int64_t nyRaw,
+                            int64_t nzRaw,
+                            int32_t segmentId)
+    {
+        const int64_t maxPlanarAxis = std::max(abs64(nxRaw), abs64(nzRaw));
+        if (maxPlanarAxis <= 0) return;
+        if (!pointInQuadProjected(a, b, c, d, nxRaw, nyRaw, nzRaw)) return;
+
+        const int64_t ax = static_cast<int64_t>(a.X.RawValue());
+        const int64_t ay = static_cast<int64_t>(a.Y.RawValue());
+        const int64_t az = static_cast<int64_t>(a.Z.RawValue());
+        const int64_t dx = pxRaw - ax;
+        const int64_t dy = pyRaw - ay;
+        const int64_t dz = pzRaw - az;
+        const int64_t signedDistRaw =
+            ((dx * nxRaw) + (dy * nyRaw) + (dz * nzRaw)) >> 16;
+        const int64_t absDistRaw = abs64(signedDistRaw);
+        if (absDistRaw >= radiusRaw) return;
+
+        const int64_t penetrationRaw = radiusRaw - absDistRaw;
+        if (penetrationRaw <= 0) return;
+
+        const int64_t planarNxRaw = (nxRaw << 16) / maxPlanarAxis;
+        const int64_t planarNzRaw = (nzRaw << 16) / maxPlanarAxis;
+        const int64_t dirSign = (signedDistRaw >= 0) ? 1 : -1;
+        const int64_t pushXRaw = ((planarNxRaw * penetrationRaw) >> 16) * dirSign;
+        const int64_t pushZRaw = ((planarNzRaw * penetrationRaw) >> 16) * dirSign;
+
+        if (penetrationRaw > bestPenRaw)
+        {
+            bestPenRaw = penetrationRaw;
+            bestPushXRaw = pushXRaw;
+            bestPushZRaw = pushZRaw;
+            bestSegmentId = segmentId;
+        }
+    };
 
     auto tryEdge = [&](const Vector3D& a,
                        const Vector3D& b,
@@ -17386,7 +18063,9 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
 
     auto scanSegment = [&](const SegmentRenderEntry& segment)
     {
+        if (!segmentHasWallCandidates(segment.id)) return;
         if (!segment.renderer) return;
+        if (segment.lodState.faceFamilyIds.empty()) return;
 
         const Vector3D* verts = nullptr;
         const SRL::Types::Polygon* faces = nullptr;
@@ -17394,11 +18073,36 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         size_t faceCount = 0u;
         if (!segment.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount)) return;
         if (!verts || !faces || vertCount == 0u || faceCount == 0u) return;
+        ++wallQuerySegmentsScannedThisFrame_;
 
-        for (size_t fi = 0; fi < faceCount; ++fi)
+        const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
+        wallQueryFacesScannedThisFrame_ = static_cast<uint32_t>(
+            std::min<uint64_t>(
+                static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                static_cast<uint64_t>(wallQueryFacesScannedThisFrame_) +
+                    static_cast<uint64_t>(scanFaceCount)));
+
+        for (size_t fi = 0; fi < scanFaceCount; ++fi)
         {
+            const uint16_t faceFamilyId = segment.lodState.faceFamilyIds[fi];
+            // Regra única: apenas faces com textura/família NÃO dirigível são parede.
+            // Se family não existir no mapa ou surfaceType for 0, tratamos como não-solo (parede).
+            if (faceFamilyId > 0u &&
+                faceFamilyId < surfaceTypeByFamilyId_.size())
+            {
+                const uint8_t st = surfaceTypeByFamilyId_[faceFamilyId];
+                if (IsDriveableSurfaceTypeId(st)) continue;
+            }
+
             const SRL::Types::Polygon& face = faces[fi];
-            if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) > verticalNormalMaxAbsY) continue;
+            const int64_t fallbackNxRaw = static_cast<int64_t>(face.Normal.X.RawValue());
+            const int64_t fallbackNyRaw = static_cast<int64_t>(face.Normal.Y.RawValue());
+            const int64_t fallbackNzRaw = static_cast<int64_t>(face.Normal.Z.RawValue());
+            const int64_t planarNormalAbs =
+                std::max(abs64(fallbackNxRaw), abs64(fallbackNzRaw));
+            // Keep mostly-vertical faces as walls and reject floor-like faces.
+            if (planarNormalAbs <= 0) continue;
+            if ((planarNormalAbs * 2) < abs64(fallbackNyRaw)) continue;
 
             const uint16_t i0 = face.Vertices[0];
             const uint16_t i1 = face.Vertices[1];
@@ -17425,8 +18129,7 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             if (dy > maxY) maxY = dy;
             if (pyRaw < (minY - yMarginRaw) || pyRaw > (maxY + yMarginRaw)) continue;
 
-            const int64_t fallbackNxRaw = static_cast<int64_t>(face.Normal.X.RawValue());
-            const int64_t fallbackNzRaw = static_cast<int64_t>(face.Normal.Z.RawValue());
+            tryFacePlane(a, b, c, d, fallbackNxRaw, fallbackNyRaw, fallbackNzRaw, segment.id);
             tryEdge(a, b, segment.id, fallbackNxRaw, fallbackNzRaw);
             tryEdge(b, c, segment.id, fallbackNxRaw, fallbackNzRaw);
             tryEdge(c, d, segment.id, fallbackNxRaw, fallbackNzRaw);
@@ -17434,43 +18137,51 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         }
     };
 
-    bool scannedLocal = false;
-    if (seedSegmentId > 0 && totalSegmentCount_ > 0)
+    auto runWallScan = [&]() -> bool
     {
-        std::array<int32_t, 6> localIds{};
-        size_t localCount = 0u;
-        for (int32_t delta = -1; delta <= 3; ++delta)
+        bool scannedLocal = false;
+        if (seedSegmentId > 0 && totalSegmentCount_ > 0)
         {
-            const int32_t candidateId =
-                WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
-            if (candidateId <= 0) continue;
-            bool duplicate = false;
-            for (size_t i = 0; i < localCount; ++i)
+            std::array<int32_t, 12> localIds{};
+            size_t localCount = 0u;
+            static constexpr std::array<int32_t, 8> kNeighborDelta = { 0, 1, -1, 2, -2, 3, 4, 5 };
+            for (size_t di = 0; di < kNeighborDelta.size(); ++di)
             {
-                if (localIds[i] == candidateId)
+                const int32_t candidateId =
+                    WrapSegmentIdToRange(seedSegmentId + kNeighborDelta[di],
+                                         static_cast<int32_t>(totalSegmentCount_));
+                if (candidateId <= 0) continue;
+                bool duplicate = false;
+                for (size_t i = 0; i < localCount; ++i)
                 {
-                    duplicate = true;
-                    break;
+                    if (localIds[i] == candidateId)
+                    {
+                        duplicate = true;
+                        break;
+                    }
                 }
+                if (duplicate) continue;
+                if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+                const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
+                if (!localEntry) continue;
+                scanSegment(*localEntry);
+                scannedLocal = true;
             }
-            if (duplicate) continue;
-            if (localCount < localIds.size()) localIds[localCount++] = candidateId;
-            const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
-            if (!localEntry) continue;
-            scanSegment(*localEntry);
-            scannedLocal = true;
         }
-    }
 
-    if (allowGlobalFallback && (!scannedLocal || bestPenRaw <= 0))
-    {
-        for (const auto& segment : segmentRenderers_)
+        if (allowGlobalFallback && (!scannedLocal || bestPenRaw <= 0))
         {
-            scanSegment(segment);
+            for (const auto& segment : segmentRenderers_)
+            {
+                scanSegment(segment);
+            }
         }
-    }
+        return bestPenRaw > 0;
+    };
 
-    if (bestPenRaw <= 0) return false;
+    const bool foundWall = runWallScan();
+
+    if (!foundWall || bestPenRaw <= 0) return false;
 
     const int64_t maxPushRaw = radiusRaw;
     const int64_t clampedPushX = clamp64(bestPushXRaw, -maxPushRaw, maxPushRaw);
@@ -17479,6 +18190,7 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                        SRL::Math::Types::Fxp::BuildRaw(0),
                        SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(clampedPushZ)));
     if (outSegmentId) *outSegmentId = bestSegmentId;
+    ++wallQueryHitsThisFrame_;
     return true;
 }
 

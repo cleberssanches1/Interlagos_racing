@@ -18,6 +18,7 @@
 #include "hud_system.hpp"
 #include "interfaces.hpp"
 #include "path_nya_loader.hpp"
+#include "physics_feature_flags.hpp"
 #include "render_pipeline.hpp"
 #include "sh2_frt_profiler.hpp"
 #include "track_system.hpp"
@@ -149,6 +150,8 @@ private:
     static constexpr bool kEnableCameraRuntimeLogs = false;
     static constexpr bool kEnableAutoPathLogs = false;
     static constexpr bool kEnableSh2ToggleLogs = false;
+    static constexpr bool kEnablePhysicsSafeTelemetry =
+        Game::PhysicsFeatureFlags::kEnableSafeTelemetry;
     // Slave SH2 drain guardrails:
     // - soft: account wait and back off future dispatches
     // - hard: guarantee completion before entering track render window
@@ -1733,20 +1736,60 @@ private:
                           static_cast<int>(fwdZ),
                           static_cast<int>(camDirX),
                           static_cast<int>(camDirZ));
-        SRL::Debug::Print(1, 27, "OVR y seg:%d dy:%d gr:%d gf:%d gt:%d",
+        SRL::Debug::Print(1, 27, "OVR y seg:%d dy:%d gr:%d gf:%d gt:%d sf:%u fm:%u fc:%d",
                           static_cast<int>(segY),
                           static_cast<int>(deltaY),
                           static_cast<int>(lastGroundProbeRearY_),
                           static_cast<int>(lastGroundProbeFrontY_),
-                          static_cast<int>(lastGroundProbeTargetY_));
+                          static_cast<int>(lastGroundProbeTargetY_),
+                          static_cast<unsigned>(lastRuntimeFrameState_.groundSurfaceType),
+                          static_cast<unsigned>(lastRuntimeFrameState_.groundFamilyId),
+                          static_cast<int>(lastRuntimeFrameState_.groundFaceIndex));
         SRL::Debug::Print(1, 21, "OVR face tr:%u ca:%u tt:%u",
                           static_cast<unsigned>(submittedTrackFaces),
                           static_cast<unsigned>(submittedCarFaces),
                           static_cast<unsigned>(submittedFacesTotal));
-        SRL::Debug::Print(1, 29, "OVR gp m:%u dx:%d dz:%d",
+        SRL::Debug::Print(1, 29, "OVR gp m:%u dx:%d dz:%d wh:%u wx:%d wz:%d",
                           static_cast<unsigned>(lastGroundProbeMask_),
                           static_cast<int>(deltaX),
-                          static_cast<int>(deltaZ));
+                          static_cast<int>(deltaZ),
+                          static_cast<unsigned>(lastRuntimeFrameState_.debugWallHit),
+                          static_cast<int>(lastRuntimeFrameState_.debugWallPushX),
+                          static_cast<int>(lastRuntimeFrameState_.debugWallPushZ));
+        uint32_t qCalls = 0u;
+        uint32_t qGlobal = 0u;
+        uint32_t qCacheHits = 0u;
+        uint32_t qCacheMisses = 0u;
+        uint32_t qWallCalls = 0u;
+        uint32_t qWallHits = 0u;
+        if constexpr (kEnablePhysicsSafeTelemetry)
+        {
+            qCalls = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryCallsThisFrame()
+                : 0u;
+            qGlobal = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryGlobalPassesThisFrame()
+                : 0u;
+            qCacheHits = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryCacheHitsThisFrame()
+                : 0u;
+            qCacheMisses = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryCacheMissesThisFrame()
+                : 0u;
+            qWallCalls = context_.trackSystem
+                ? context_.trackSystem->WallQueryCallsThisFrame()
+                : 0u;
+            qWallHits = context_.trackSystem
+                ? context_.trackSystem->WallQueryHitsThisFrame()
+                : 0u;
+            SRL::Debug::Print(1, 23, "OVR q q:%u g:%u ch:%u cm:%u w:%u/%u",
+                              static_cast<unsigned>(qCalls),
+                              static_cast<unsigned>(qGlobal),
+                              static_cast<unsigned>(qCacheHits),
+                              static_cast<unsigned>(qCacheMisses),
+                              static_cast<unsigned>(qWallHits),
+                              static_cast<unsigned>(qWallCalls));
+        }
         SRL::Debug::Print(1, 30, "OVR dyn st:%d yr:%d ys:%d cx:%d cz:%d",
                           static_cast<int>(context_.carSystem && context_.carSystem->get()
                                                ? context_.carSystem->get()->Commands().steering
@@ -1776,17 +1819,20 @@ private:
             (windowStartId > 0) &&
             (diagPrevWindowStartId_ > 0) &&
             (windowStartId != diagPrevWindowStartId_);
-        if (carSegChanged || startChanged)
+        if constexpr (!kEnablePhysicsSafeTelemetry)
         {
-            SRL::Debug::Print(1, 23, "OVR evt car:%d>%d ws:%d>%d",
-                              static_cast<int>(diagPrevCarSegmentId_),
-                              static_cast<int>(carSegmentId),
-                              static_cast<int>(diagPrevWindowStartId_),
-                              static_cast<int>(windowStartId));
-        }
-        else
-        {
-            SRL::Debug::Print(1, 23, "OVR evt -");
+            if (carSegChanged || startChanged)
+            {
+                SRL::Debug::Print(1, 23, "OVR evt car:%d>%d ws:%d>%d",
+                                  static_cast<int>(diagPrevCarSegmentId_),
+                                  static_cast<int>(carSegmentId),
+                                  static_cast<int>(diagPrevWindowStartId_),
+                                  static_cast<int>(windowStartId));
+            }
+            else
+            {
+                SRL::Debug::Print(1, 23, "OVR evt -");
+            }
         }
 
         if (carSegmentId > 0) diagPrevCarSegmentId_ = static_cast<int16_t>(carSegmentId);
@@ -1827,12 +1873,36 @@ private:
                           static_cast<unsigned>(slaveWorkPct),
                           static_cast<unsigned>(masterBusyTicks),
                           static_cast<unsigned>(slaveWorkTicks));
-        SRL::Debug::Print(1, 25, "SH2 sim slv:%u wait:%u (%u%%) ds:%u tb:%u",
-                          static_cast<unsigned>(simSlaveTicks),
-                          static_cast<unsigned>(masterWaitTicks),
-                          static_cast<unsigned>(masterWaitPctOfSim),
-                          static_cast<unsigned>(simSlaveDispatchCount_),
-                          static_cast<unsigned>(simSlaveDispatchSkipsTrackBusy_));
+        uint32_t qCalls = 0u;
+        uint32_t qGlobal = 0u;
+        uint32_t qScmap = 0u;
+        if constexpr (kEnablePhysicsSafeTelemetry)
+        {
+            qCalls = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryCallsThisFrame()
+                : 0u;
+            qGlobal = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryGlobalPassesThisFrame()
+                : 0u;
+            qScmap = context_.trackSystem
+                ? context_.trackSystem->SurfaceQueryScmapSkipsThisFrame()
+                : 0u;
+            SRL::Debug::Print(1, 25, "SH2 sim s:%u w:%u q:%u g:%u m:%u",
+                              static_cast<unsigned>(simSlaveTicks),
+                              static_cast<unsigned>(masterWaitTicks),
+                              static_cast<unsigned>(qCalls),
+                              static_cast<unsigned>(qGlobal),
+                              static_cast<unsigned>(qScmap));
+        }
+        else
+        {
+            SRL::Debug::Print(1, 25, "SH2 sim slv:%u wait:%u (%u%%) ds:%u tb:%u",
+                              static_cast<unsigned>(simSlaveTicks),
+                              static_cast<unsigned>(masterWaitTicks),
+                              static_cast<unsigned>(masterWaitPctOfSim),
+                              static_cast<unsigned>(simSlaveDispatchCount_),
+                              static_cast<unsigned>(simSlaveDispatchSkipsTrackBusy_));
+        }
     }
 
     void UpdateRealtimeFpsOverlay()

@@ -32,6 +32,11 @@ using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
 using TrackLowWorkI16Vector = TrackLowWorkVector<int16_t>;
 using TrackHighWorkI16Vector = TrackHighWorkVector<int16_t>;
 
+namespace Game
+{
+struct SurfaceContact;
+}
+
 namespace TrackPipeline
 {
 class TrackMaintenanceStage;
@@ -128,7 +133,15 @@ public:
                                  SRL::Math::Types::Fxp& outSurfaceY,
                                  int32_t* outSegmentId = nullptr,
                                  int32_t seedSegmentId = -1,
-                                 bool allowFallback = true) const;
+                                 bool allowFallback = true,
+                                 uint16_t* outFamilyId = nullptr,
+                                 uint8_t* outSurfaceType = nullptr,
+                                 int16_t* outFaceIndex = nullptr) const;
+    bool FindSurfaceContact(const SRL::Math::Types::Vector3D& worldPosition,
+                            const SRL::Math::Types::Vector3D& trackOffset,
+                            Game::SurfaceContact& outContact,
+                            int32_t seedSegmentId = -1,
+                            bool allowFallback = true) const;
     bool FindPlanarWallPush(const SRL::Math::Types::Vector3D& worldPosition,
                             const SRL::Math::Types::Vector3D& trackOffset,
                             const SRL::Math::Types::Vector3D& forwardDirection,
@@ -173,6 +186,19 @@ public:
     uint8_t PrefetchBuildAttemptsThisFrame() const { return prefetchBuildAttemptsThisFrame_; }
     uint8_t PrefetchBuildBudgetThisFrame() const { return prefetchBuildBudgetThisFrame_; }
     uint8_t PrefetchBuildBudgetDropsThisFrame() const { return prefetchBuildBudgetDropsThisFrame_; }
+    uint32_t SurfaceQueryCallsThisFrame() const { return surfaceQueryCallsLastFrame_; }
+    uint32_t SurfaceQueryFallbackHitsThisFrame() const { return surfaceQueryFallbackHitsLastFrame_; }
+    uint32_t SurfaceQueryGlobalPassesThisFrame() const { return surfaceQueryGlobalPassesLastFrame_; }
+    uint32_t SurfaceQueryLocalOnlyMissesThisFrame() const { return surfaceQueryLocalOnlyMissesLastFrame_; }
+    uint32_t SurfaceQueryScmapSkipsThisFrame() const { return surfaceQueryScmapSkipsLastFrame_; }
+    uint32_t SurfaceQuerySegmentsScannedThisFrame() const { return surfaceQuerySegmentsScannedLastFrame_; }
+    uint32_t SurfaceQueryFacesScannedThisFrame() const { return surfaceQueryFacesScannedLastFrame_; }
+    uint32_t SurfaceQueryCacheHitsThisFrame() const { return surfaceQueryCacheHitsLastFrame_; }
+    uint32_t SurfaceQueryCacheMissesThisFrame() const { return surfaceQueryCacheMissesLastFrame_; }
+    uint32_t WallQueryCallsThisFrame() const { return wallQueryCallsLastFrame_; }
+    uint32_t WallQueryHitsThisFrame() const { return wallQueryHitsLastFrame_; }
+    uint32_t WallQuerySegmentsScannedThisFrame() const { return wallQuerySegmentsScannedLastFrame_; }
+    uint32_t WallQueryFacesScannedThisFrame() const { return wallQueryFacesScannedLastFrame_; }
     // Toggle track Slave usage at runtime for A/B performance measurements.
     void SetTrackSlaveMode(bool enabled);
     bool TrackSlaveModeRequested() const { return trackSlaveModeRequested_; }
@@ -565,6 +591,7 @@ private:
     size_t ResolveInitialLoadLimit(const Config& config) const;
     void PrepareInitialSegmentPackages(size_t loadLimit);
     void ConfigureCoordinatorAndBudget(const Config& config);
+    void LoadSurfaceCollisionMaps();
     void ApplyTrackSlaveMode();
     void LogInitialSegmentDiagnostics() const;
     void ApplyInitialSdrFamilySlots();
@@ -672,6 +699,41 @@ private:
     uint8_t runtimeSafeSkippedThisFrame_ = 0;
     uint8_t runtimeSafeNoDrawThisFrame_ = 0;
     uint8_t runtimeSafeReappliedThisFrame_ = 0;
+    mutable uint32_t surfaceQueryCallsThisFrame_ = 0;
+    mutable uint32_t surfaceQueryFallbackHitsThisFrame_ = 0;
+    mutable uint32_t surfaceQueryGlobalPassesThisFrame_ = 0;
+    mutable uint32_t surfaceQueryLocalOnlyMissesThisFrame_ = 0;
+    mutable uint32_t surfaceQueryScmapSkipsThisFrame_ = 0;
+    mutable uint32_t surfaceQuerySegmentsScannedThisFrame_ = 0;
+    mutable uint32_t surfaceQueryFacesScannedThisFrame_ = 0;
+    mutable uint32_t surfaceQueryCacheHitsThisFrame_ = 0;
+    mutable uint32_t surfaceQueryCacheMissesThisFrame_ = 0;
+    uint32_t surfaceQueryCallsLastFrame_ = 0;
+    uint32_t surfaceQueryFallbackHitsLastFrame_ = 0;
+    uint32_t surfaceQueryGlobalPassesLastFrame_ = 0;
+    uint32_t surfaceQueryLocalOnlyMissesLastFrame_ = 0;
+    uint32_t surfaceQueryScmapSkipsLastFrame_ = 0;
+    uint32_t surfaceQuerySegmentsScannedLastFrame_ = 0;
+    uint32_t surfaceQueryFacesScannedLastFrame_ = 0;
+    uint32_t surfaceQueryCacheHitsLastFrame_ = 0;
+    uint32_t surfaceQueryCacheMissesLastFrame_ = 0;
+    mutable uint32_t wallQueryCallsThisFrame_ = 0;
+    mutable uint32_t wallQueryHitsThisFrame_ = 0;
+    mutable uint32_t wallQuerySegmentsScannedThisFrame_ = 0;
+    mutable uint32_t wallQueryFacesScannedThisFrame_ = 0;
+    uint32_t wallQueryCallsLastFrame_ = 0;
+    uint32_t wallQueryHitsLastFrame_ = 0;
+    uint32_t wallQuerySegmentsScannedLastFrame_ = 0;
+    uint32_t wallQueryFacesScannedLastFrame_ = 0;
+    mutable int32_t surfaceQueryLastInsideSegmentId_ = -1;
+    mutable int16_t surfaceQueryLastInsideFaceIndex_ = -1;
+    mutable uint16_t surfaceQueryLastInsideFamilyId_ = 0u;
+    mutable uint8_t surfaceQueryLastInsideType_ = 0u;
+    mutable bool surfaceQueryLastInsideValid_ = false;
+    std::array<uint8_t, 4096> surfaceTypeByFamilyId_{};
+    TrackLowWorkU8Vector segmentSurfaceFlagsById_{};
+    bool surfaceFamilyMapReady_ = false;
+    bool segmentCollisionMapReady_ = false;
     uint16_t sh2MasterStreamTicksThisFrame_ = 0;
     uint16_t sh2MasterDrawTicksThisFrame_ = 0;
     uint16_t sh2MasterFrameTicksThisFrame_ = 0;
