@@ -548,7 +548,7 @@ private:
                     : (frameId - ioState.lastWallQueryFrameId);
             const bool shouldRefreshWallQuery =
                 (ioState.lastWallQueryFrameId < 0) ||
-                (ioState.lastWallQueryHit ? (wallFrameDelta >= 1) : (wallFrameDelta >= 2));
+                (ioState.lastWallQueryHit ? (wallFrameDelta >= 1) : (wallFrameDelta >= 3));
             if (shouldRefreshWallQuery)
             {
                 Vector3D wallPush{};

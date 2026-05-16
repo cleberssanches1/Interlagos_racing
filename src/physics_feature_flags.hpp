@@ -24,7 +24,7 @@
 #endif
 
 #ifndef PHYS_WALL_COLLISION_RUNTIME
-#define PHYS_WALL_COLLISION_RUNTIME 1
+#define PHYS_WALL_COLLISION_RUNTIME 0
 #endif
 
 namespace Game::PhysicsFeatureFlags

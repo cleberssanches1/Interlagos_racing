@@ -55,6 +55,7 @@ public:
             static_cast<int16_t>(std::clamp<int32_t>(netDxRaw >> 16, -32768, 32767));
         ioFrameState.debugNetDz =
             static_cast<int16_t>(std::clamp<int32_t>(netDzRaw >> 16, -32768, 32767));
+
         (void)plannedDxRaw;
         (void)plannedDzRaw;
 
@@ -168,5 +169,6 @@ private:
     CarPhysics::DynamicsState dynamicsState_{};
     CarPhysics::GroundState groundState_{};
     int32_t lastGripSeedSegmentId_ = -1;
+
 };
 } // namespace Game

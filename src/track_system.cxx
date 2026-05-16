@@ -17492,7 +17492,10 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         }
         if (!verts || !faces || vertCount == 0u || faceCount == 0u) return false;
 
-        const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
+        const size_t familyCount = segment.lodState.faceFamilyIds.size();
+        const size_t scanFaceCount = (familyCount > 0u)
+            ? std::min(faceCount, familyCount)
+            : faceCount;
         if (fi >= scanFaceCount) return false;
 
         const uint16_t faceFamilyId = segment.lodState.faceFamilyIds[fi];
@@ -17576,7 +17579,6 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         }
 
         if (!segment.renderer) return;
-        if (segment.lodState.faceFamilyIds.empty()) return;
 
         const Vector3D* verts = nullptr;
         const SRL::Types::Polygon* faces = nullptr;
@@ -17966,7 +17968,6 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     {
         const int64_t maxPlanarAxis = std::max(abs64(nxRaw), abs64(nzRaw));
         if (maxPlanarAxis <= 0) return;
-        if (!pointInQuadProjected(a, b, c, d, nxRaw, nyRaw, nzRaw)) return;
 
         const int64_t ax = static_cast<int64_t>(a.X.RawValue());
         const int64_t ay = static_cast<int64_t>(a.Y.RawValue());
@@ -18061,11 +18062,12 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         }
     };
 
-    auto scanSegment = [&](const SegmentRenderEntry& segment)
+    auto scanSegment = [&](const SegmentRenderEntry& segment,
+                           bool onlyNonDriveableBySurface,
+                           bool respectScmapHint)
     {
-        if (!segmentHasWallCandidates(segment.id)) return;
+        if (respectScmapHint && !segmentHasWallCandidates(segment.id)) return;
         if (!segment.renderer) return;
-        if (segment.lodState.faceFamilyIds.empty()) return;
 
         const Vector3D* verts = nullptr;
         const SRL::Types::Polygon* faces = nullptr;
@@ -18075,7 +18077,10 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         if (!verts || !faces || vertCount == 0u || faceCount == 0u) return;
         ++wallQuerySegmentsScannedThisFrame_;
 
-        const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
+        const size_t familyCount = segment.lodState.faceFamilyIds.size();
+        const size_t scanFaceCount = (familyCount > 0u)
+            ? std::min(faceCount, familyCount)
+            : faceCount;
         wallQueryFacesScannedThisFrame_ = static_cast<uint32_t>(
             std::min<uint64_t>(
                 static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
@@ -18084,14 +18089,19 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
 
         for (size_t fi = 0; fi < scanFaceCount; ++fi)
         {
-            const uint16_t faceFamilyId = segment.lodState.faceFamilyIds[fi];
+            const bool hasFamilyId = (fi < familyCount);
+            const uint16_t faceFamilyId = hasFamilyId ? segment.lodState.faceFamilyIds[fi] : 0u;
             // Regra única: apenas faces com textura/família NÃO dirigível são parede.
             // Se family não existir no mapa ou surfaceType for 0, tratamos como não-solo (parede).
-            if (faceFamilyId > 0u &&
-                faceFamilyId < surfaceTypeByFamilyId_.size())
+            if (onlyNonDriveableBySurface)
             {
-                const uint8_t st = surfaceTypeByFamilyId_[faceFamilyId];
-                if (IsDriveableSurfaceTypeId(st)) continue;
+                if (!hasFamilyId) continue;
+                if (faceFamilyId > 0u &&
+                    faceFamilyId < surfaceTypeByFamilyId_.size())
+                {
+                    const uint8_t st = surfaceTypeByFamilyId_[faceFamilyId];
+                    if (IsDriveableSurfaceTypeId(st)) continue;
+                }
             }
 
             const SRL::Types::Polygon& face = faces[fi];
@@ -18119,15 +18129,41 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             const int64_t by = static_cast<int64_t>(b.Y.RawValue());
             const int64_t cy = static_cast<int64_t>(c.Y.RawValue());
             const int64_t dy = static_cast<int64_t>(d.Y.RawValue());
+            const int64_t ax = static_cast<int64_t>(a.X.RawValue());
+            const int64_t bx = static_cast<int64_t>(b.X.RawValue());
+            const int64_t cx = static_cast<int64_t>(c.X.RawValue());
+            const int64_t dx = static_cast<int64_t>(d.X.RawValue());
+            const int64_t az = static_cast<int64_t>(a.Z.RawValue());
+            const int64_t bz = static_cast<int64_t>(b.Z.RawValue());
+            const int64_t cz = static_cast<int64_t>(c.Z.RawValue());
+            const int64_t dz = static_cast<int64_t>(d.Z.RawValue());
             int64_t minY = ay;
             int64_t maxY = ay;
+            int64_t minX = ax;
+            int64_t maxX = ax;
+            int64_t minZ = az;
+            int64_t maxZ = az;
             if (by < minY) minY = by;
             if (cy < minY) minY = cy;
             if (dy < minY) minY = dy;
             if (by > maxY) maxY = by;
             if (cy > maxY) maxY = cy;
             if (dy > maxY) maxY = dy;
+            if (bx < minX) minX = bx;
+            if (cx < minX) minX = cx;
+            if (dx < minX) minX = dx;
+            if (bx > maxX) maxX = bx;
+            if (cx > maxX) maxX = cx;
+            if (dx > maxX) maxX = dx;
+            if (bz < minZ) minZ = bz;
+            if (cz < minZ) minZ = cz;
+            if (dz < minZ) minZ = dz;
+            if (bz > maxZ) maxZ = bz;
+            if (cz > maxZ) maxZ = cz;
+            if (dz > maxZ) maxZ = dz;
             if (pyRaw < (minY - yMarginRaw) || pyRaw > (maxY + yMarginRaw)) continue;
+            if (pxRaw < (minX - radiusRaw) || pxRaw > (maxX + radiusRaw)) continue;
+            if (pzRaw < (minZ - radiusRaw) || pzRaw > (maxZ + radiusRaw)) continue;
 
             tryFacePlane(a, b, c, d, fallbackNxRaw, fallbackNyRaw, fallbackNzRaw, segment.id);
             tryEdge(a, b, segment.id, fallbackNxRaw, fallbackNzRaw);
@@ -18137,14 +18173,15 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         }
     };
 
-    auto runWallScan = [&]() -> bool
+    auto runWallScan = [&](bool onlyNonDriveableBySurface,
+                           bool respectScmapHint) -> bool
     {
         bool scannedLocal = false;
         if (seedSegmentId > 0 && totalSegmentCount_ > 0)
         {
             std::array<int32_t, 12> localIds{};
             size_t localCount = 0u;
-            static constexpr std::array<int32_t, 8> kNeighborDelta = { 0, 1, -1, 2, -2, 3, 4, 5 };
+            static constexpr std::array<int32_t, 5> kNeighborDelta = { 0, 1, -1, 2, -2 };
             for (size_t di = 0; di < kNeighborDelta.size(); ++di)
             {
                 const int32_t candidateId =
@@ -18164,7 +18201,7 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                 if (localCount < localIds.size()) localIds[localCount++] = candidateId;
                 const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
                 if (!localEntry) continue;
-                scanSegment(*localEntry);
+                scanSegment(*localEntry, onlyNonDriveableBySurface, respectScmapHint);
                 scannedLocal = true;
             }
         }
@@ -18173,13 +18210,17 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         {
             for (const auto& segment : segmentRenderers_)
             {
-                scanSegment(segment);
+                scanSegment(segment, onlyNonDriveableBySurface, respectScmapHint);
             }
         }
         return bestPenRaw > 0;
     };
 
-    const bool foundWall = runWallScan();
+    bool foundWall = runWallScan(true, true);
+    if (!foundWall)
+    {
+        foundWall = runWallScan(false, false);
+    }
 
     if (!foundWall || bestPenRaw <= 0) return false;
 
