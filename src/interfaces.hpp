@@ -28,6 +28,8 @@ struct GameplayFrameState
     int16_t debugGroundYRear = 0;
     int16_t debugGroundYFront = 0;
     int16_t debugGroundYTarget = 0;
+    int32_t debugGroundYRearRaw = 0;
+    int32_t debugGroundYFrontRaw = 0;
     uint8_t debugGroundMask = 0;
     int16_t debugSteerDeg = 0;
     int16_t debugYawRateDeg = 0;

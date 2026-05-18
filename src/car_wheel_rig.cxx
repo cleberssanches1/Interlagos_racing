@@ -204,10 +204,20 @@ void CarWheelRig::Update(const Input& input)
     const bool frontValid = (input.groundMask & 0x4u) != 0u;
     if (rearValid && frontValid)
     {
-        const int32_t deltaY = static_cast<int32_t>(input.groundFrontY) -
-                               static_cast<int32_t>(input.groundRearY);
-        targetPitch = ClampInt(-(deltaY * (1 << 14)), -kMaxPitchDegX16, kMaxPitchDegX16);
-        targetFrontSusp = ClampInt(deltaY * (1 << 11),
+        const int32_t rearYRaw =
+            (input.groundRearYRaw != 0)
+                ? input.groundRearYRaw
+                : (static_cast<int32_t>(input.groundRearY) << 16);
+        const int32_t frontYRaw =
+            (input.groundFrontYRaw != 0)
+                ? input.groundFrontYRaw
+                : (static_cast<int32_t>(input.groundFrontY) << 16);
+        const int32_t deltaYRaw = frontYRaw - rearYRaw;
+        targetPitch =
+            ClampInt(-static_cast<int32_t>((static_cast<int64_t>(deltaYRaw) * kPitchDegPerUnitX16) >> 16),
+                     -kMaxPitchDegX16,
+                     kMaxPitchDegX16);
+        targetFrontSusp = ClampInt((deltaYRaw >> 5),
                                    -kMaxSuspensionOffsetX16,
                                    kMaxSuspensionOffsetX16);
         targetRearSusp = -targetFrontSusp;

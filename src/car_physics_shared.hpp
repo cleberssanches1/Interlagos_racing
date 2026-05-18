@@ -229,6 +229,8 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugGroundYRear = 0;
     ioFrameState.debugGroundYFront = 0;
     ioFrameState.debugGroundYTarget = 0;
+    ioFrameState.debugGroundYRearRaw = 0;
+    ioFrameState.debugGroundYFrontRaw = 0;
     ioFrameState.debugSteerDeg = 0;
     ioFrameState.debugYawRateDeg = 0;
     ioFrameState.debugYawStepDeg = 0;

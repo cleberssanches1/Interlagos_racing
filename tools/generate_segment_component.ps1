@@ -3,7 +3,8 @@ param(
     [string]$ObjDir = "C:\Models\png\sectors\source",
     [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
-    [int]$Lod = 8
+    [int]$Lod = 8,
+    [string]$SeamOwnershipPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -150,6 +151,38 @@ function To-I16Uv([double]$v) {
     return [int16]$scaled
 }
 
+function Get-SeamDropIndexSet {
+    param(
+        [string]$Path,
+        [int]$LodValue,
+        [int]$SegId
+    )
+
+    $set = New-Object 'System.Collections.Generic.HashSet[int]'
+    if ([string]::IsNullOrWhiteSpace($Path)) { return ,$set }
+    if (-not (Test-Path -LiteralPath $Path)) { return ,$set }
+
+    try {
+        $json = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    }
+    catch {
+        Write-Host ("Aviso: falha ao ler mapa de costura '{0}': {1}" -f $Path, $_.Exception.Message)
+        return ,$set
+    }
+    if ($null -eq $json -or -not ($json.PSObject.Properties.Name -contains "entries")) { return ,$set }
+
+    foreach ($entry in @($json.entries)) {
+        if ($null -eq $entry) { continue }
+        if ([int]$entry.lod -ne $LodValue) { continue }
+        if ([int]$entry.segmentId -ne $SegId) { continue }
+        foreach ($idx in @($entry.dropFaceIndices)) {
+            [void]$set.Add([int]$idx)
+        }
+        break
+    }
+    return ,$set
+}
+
 if (-not (Test-Path $ObjDir)) { throw "ObjDir nao encontrado: $ObjDir" }
 if (-not (Test-Path $JsonPath)) { throw "JSON nao encontrado: $JsonPath" }
 New-Item -Path $OutDir -ItemType Directory -Force | Out-Null
@@ -293,6 +326,29 @@ if ($objFaceFamilies.Count -eq $faces.Count -and $objFaceFamilies.Count -gt 0) {
         }
     }
     $faceFamilies = @($mergedFaceFamilies.ToArray())
+}
+
+# Remove faces duplicadas de costura (ownership por segmento/LOD), quando fornecido.
+$dropFaceIndexSet = Get-SeamDropIndexSet -Path $SeamOwnershipPath -LodValue $Lod -SegId $SegmentId
+if ($dropFaceIndexSet.Count -gt 0) {
+    $filteredFaces = New-Object System.Collections.Generic.List[object]
+    $filteredFamilies = New-Object System.Collections.Generic.List[uint32]
+    for ($i = 0; $i -lt $faces.Count; $i++) {
+        if ($dropFaceIndexSet.Contains($i)) { continue }
+        $filteredFaces.Add($faces[$i]) | Out-Null
+        if ($i -lt $faceFamilies.Count) {
+            $filteredFamilies.Add([uint32]$faceFamilies[$i]) | Out-Null
+        }
+        else {
+            $filteredFamilies.Add([uint32]0) | Out-Null
+        }
+    }
+    $removedCount = $faces.Count - $filteredFaces.Count
+    if ($removedCount -gt 0) {
+        Write-Host ("Seam dedup SEG_{0:D3} LOD{1}: -{2} face(s)" -f $SegmentId, $Lod, $removedCount)
+    }
+    $faces = $filteredFaces
+    $faceFamilies = @($filteredFamilies.ToArray())
 }
 
 $geoShortPath = Join-Path $OutDir ("S{0:D3}.GEO" -f $SegmentId)

@@ -12281,6 +12281,8 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
                                                     const Vector3D& cameraLocation,
                                                     const Vector3D& cameraLookTarget)
 {
+    // Keep window direction synced with camera forward intent.
+    // Rebuild only when the sign changes. Sliding will handle start movement.
     if (!segmentsReady_ || totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
 
     const int8_t desiredDirection =
@@ -12308,7 +12310,7 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
     bool needsRebuild = false;
     if (desiredDirection < 0)
     {
-        needsRebuild = (windowDirection_ >= 0) || (activeWindowStartId_ != desiredStartId);
+        needsRebuild = (windowDirection_ >= 0);
     }
     else
     {
@@ -12335,10 +12337,11 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
 bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosition,
                                                        const Vector3D& trackOffset)
 {
+    // Advance the active window incrementally in both directions.
+    // This avoids full window rebuild churn when driving in reverse.
     if (!segmentsReady_ || totalSegmentCount_ == 0) return false;
     if (segmentCenterCatalog_.empty()) return false;
-    if (cameraWindowDirection_ < 0) return false;
-    if (windowDirection_ < 0) return false;
+    const int8_t desiredDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
     if (activeWindowSwitchCooldown_ > 0)
     {
         --activeWindowSwitchCooldown_;
@@ -12349,7 +12352,8 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     if (startId <= 0) return false;
     const size_t windowCount = segmentRenderers_.size();
     if (windowCount == 0) return false;
-    const int32_t currentAnchorId = WrapSegmentIdToRange(startId + 1, totalSegmentCount_);
+    const int32_t currentAnchorId =
+        WrapSegmentIdToRange(startId + (desiredDirection > 0 ? 1 : -1), totalSegmentCount_);
     if (currentAnchorId <= 0) return false;
 
     auto scoreToId = [&](int32_t id) -> SRL::Math::Types::Fxp
@@ -12368,6 +12372,13 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         int32_t d = (toId - fromId) % total;
         if (d < 0) d += total;
         return d;
+    };
+
+    auto distanceAlongDirection = [&](int32_t fromId, int32_t toId) -> int32_t
+    {
+        return (desiredDirection > 0)
+            ? wrapDistanceForward(fromId, toId)
+            : wrapDistanceForward(toId, fromId);
     };
 
     auto queueDeferredSlide = [&](int8_t slideDirection, int32_t desiredStartId) -> bool
@@ -12394,7 +12405,9 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         else
         {
             const int32_t total = static_cast<int32_t>(totalSegmentCount_);
-            const int32_t deltaFromTarget = wrapDistanceForward(currentTargetId, desiredStartId);
+            const int32_t deltaFromTarget = (slideDirection > 0)
+                ? wrapDistanceForward(currentTargetId, desiredStartId)
+                : wrapDistanceForward(desiredStartId, currentTargetId);
             if (deltaFromTarget > 0 && deltaFromTarget < (total / 2))
             {
                 targetWindowStartId_ = desiredStartId;
@@ -12413,10 +12426,9 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         int32_t bestId = -1;
         SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
 
-        // Keep the search narrow and forward-biased so nearby hairpins do not
-        // pull the streaming state to a different logical portion of the lap.
-        constexpr int32_t kBackSearch = 1;
-        constexpr int32_t kForwardSearch = 3;
+        // Keep search narrow and biased to movement direction.
+        const int32_t kBackSearch = (desiredDirection > 0) ? 1 : 3;
+        const int32_t kForwardSearch = (desiredDirection > 0) ? 3 : 1;
         for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
         {
             const int32_t candidateId = WrapSegmentIdToRange(seedId + delta, totalSegmentCount_);
@@ -12443,17 +12455,17 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     if (observedCarSegmentId_ > 0 && observedId > 0)
     {
         const int32_t observedStartId =
-            ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, windowDirection_);
+            ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection);
         if (observedStartId > 0)
         {
-            const int32_t observedForwardDistance = wrapDistanceForward(startId, observedStartId);
+            const int32_t observedForwardDistance = distanceAlongDirection(startId, observedStartId);
             const int32_t observedBackwardDistance = wrapDistanceForward(observedStartId, startId);
             if (observedForwardDistance > 0 &&
                 observedForwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2))
             {
                 trackedCarSegmentId_ = observedId;
                 trackedCarSegmentValid_ = true;
-                return queueDeferredSlide(+1, observedStartId);
+                return queueDeferredSlide(desiredDirection, observedStartId);
             }
             if (observedForwardDistance == 0)
             {
@@ -12465,26 +12477,18 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
             {
                 trackedCarSegmentId_ = observedId;
                 trackedCarSegmentValid_ = true;
-                if (kEnableTrackRuntimeStabilization)
-                {
-                    if (RebuildActiveSegmentWindow(observedStartId, windowCount, windowDirection_))
-                    {
-                        targetWindowStartId_ = observedStartId;
-                        activeWindowSwitchCooldown_ = 0;
-                        return true;
-                    }
-                    return false;
-                }
-                return queueDeferredSlide(-1, observedStartId);
+                return queueDeferredSlide(-desiredDirection, observedStartId);
             }
         }
 
-        const int32_t observedForwardDistance = wrapDistanceForward(startId, observedId);
+        const int32_t observedForwardDistance = distanceAlongDirection(startId, observedId);
         if (observedForwardDistance > 0 && observedForwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2))
         {
             trackedCarSegmentId_ = observedId;
             trackedCarSegmentValid_ = true;
-            return queueDeferredSlide(+1, ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, windowDirection_));
+            return queueDeferredSlide(
+                desiredDirection,
+                ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection));
         }
         if (observedForwardDistance == 0)
         {
@@ -12512,15 +12516,16 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         trackedCarSegmentValid_ = true;
 
         const int32_t localStartId =
-            ResolveWindowStartFromCarSegment(localSegmentId, totalSegmentCount_, windowDirection_);
-        const int32_t forwardDistance = (localStartId > 0) ? wrapDistanceForward(startId, localStartId) : 0;
+            ResolveWindowStartFromCarSegment(localSegmentId, totalSegmentCount_, desiredDirection);
+        const int32_t forwardDistance = (localStartId > 0) ? distanceAlongDirection(startId, localStartId) : 0;
         if (localStartId > 0 && forwardDistance > 0)
         {
-            return queueDeferredSlide(+1, localStartId);
+            return queueDeferredSlide(desiredDirection, localStartId);
         }
     }
 
-    const int32_t nextAnchorId = WrapSegmentIdToRange(currentAnchorId + 1, totalSegmentCount_);
+    const int32_t nextAnchorId =
+        WrapSegmentIdToRange(currentAnchorId + (desiredDirection > 0 ? 1 : -1), totalSegmentCount_);
     if (nextAnchorId <= 0) return false;
     const SRL::Math::Types::Fxp currentScore = scoreToId(currentAnchorId);
     const SRL::Math::Types::Fxp nextScore = scoreToId(nextAnchorId);
@@ -12529,7 +12534,9 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     {
         trackedCarSegmentId_ = nextAnchorId;
         trackedCarSegmentValid_ = true;
-        return queueDeferredSlide(+1, WrapSegmentIdToRange(startId + 1, totalSegmentCount_));
+        return queueDeferredSlide(
+            desiredDirection,
+            WrapSegmentIdToRange(startId + (desiredDirection > 0 ? 1 : -1), totalSegmentCount_));
     }
 
     return false;

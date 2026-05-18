@@ -132,7 +132,9 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
     zHeld_ = pad.IsHeld(SRL::Input::Digital::Button::Z);
     const bool orbitControlActive = zHeld_ && (lHeld || rHeld || upHeld || downHeld);
     const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
-    const bool chaseNearCalibActive = xHeld && (chasePreset_ == ChasePreset::ChaseNear);
+    // Keep chase calibration disabled in normal gameplay to avoid runtime drift.
+    const bool chaseNearCalibActive =
+        debugLogsEnabled_ && xHeld && (chasePreset_ == ChasePreset::ChaseNear);
 
     if (chaseNearCalibActive)
     {
@@ -146,7 +148,8 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
             if (upHeld) ++nextOffsetZ;    // frente
             if (downHeld) --nextOffsetZ;  // tras
             nextOffsetX = std::clamp<int16_t>(nextOffsetX, -120, 120);
-            nextOffsetZ = std::clamp<int16_t>(nextOffsetZ, -220, 60);
+            // Keep camera 2 always behind the car (negative Z in local-forward space).
+            nextOffsetZ = std::clamp<int16_t>(nextOffsetZ, -320, -80);
             if (nextOffsetX != chaseNearOffsetX_ || nextOffsetZ != chaseNearOffsetZ_)
             {
                 chaseNearOffsetX_ = nextOffsetX;
@@ -292,8 +295,15 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
     const Fxp zero = Fxp::BuildRaw(0);
     const int32_t headingYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_);
     const Vector3D headingForward = ForwardFromYawDeg(headingYawDeg);
-    // Arcade chase lock: always look along car heading.
-    const Vector3D chaseForward = headingForward;
+    Vector3D chaseForward = headingForward;
+    if (chasePreset_ != ChasePreset::FirstPerson)
+    {
+        constexpr int32_t kMoveDirEnableRaw = (1 << 12); // ~0.0625
+        if (movementSpeedNormRaw_ > kMoveDirEnableRaw)
+        {
+            chaseForward = movementForwardWorld_;
+        }
+    }
 
     // First-person camera keeps a rigid look vector aligned with car yaw.
     if (chasePreset_ == ChasePreset::FirstPerson)
@@ -305,12 +315,14 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         return lastResolvedLookTarget_;
     }
 
-    // Arcade chase: target is always aligned to current car heading with speed-based look-ahead.
+    // Arcade chase (rigid): keep target tightly anchored to the car so the
+    // vehicle stays framed even on long straights and 180 turns.
     const Fxp speedNorm = Fxp::BuildRaw(movementSpeedNormRaw_);
-    constexpr int32_t kLookAheadSpeedGainUnits = 28;
-    constexpr int32_t kLookAheadMinUnits = 88;
-    constexpr int32_t kLookAheadMaxUnits = 210;
-    int32_t dynamicLookAheadUnits = cfg.lookAhead;
+    constexpr int32_t kLookAheadBaseUnits = 20;
+    constexpr int32_t kLookAheadSpeedGainUnits = 10;
+    constexpr int32_t kLookAheadMinUnits = 12;
+    constexpr int32_t kLookAheadMaxUnits = 56;
+    int32_t dynamicLookAheadUnits = kLookAheadBaseUnits;
     dynamicLookAheadUnits += static_cast<int32_t>(
         (static_cast<int64_t>(kLookAheadSpeedGainUnits) * speedNorm.RawValue()) >> 16);
     dynamicLookAheadUnits = std::clamp<int32_t>(
@@ -407,7 +419,7 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
             -16,  // offsetY
             chaseNearOffsetZ_,
             120,  // lookAhead
-            0,    // lookHeight
+            -30,  // lookHeight (extra lift so CAM2 pitch change is visible)
             0     // viewPitchDeg
         };
     }
@@ -489,11 +501,42 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
 
     const int32_t baseHeadingYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_);
     const Vector3D headingForward = ForwardFromYawDeg(baseHeadingYawDeg);
-    // Arcade chase lock: offset follows car heading directly.
-    const Vector3D forward = headingForward;
+    // Use real movement direction while moving to prevent chase drift when
+    // gameplay yaw and displacement temporarily diverge.
+    Vector3D forward = headingForward;
+    if (chasePreset_ != ChasePreset::FirstPerson)
+    {
+        constexpr int32_t kMoveDirEnableRaw = (1 << 12); // ~0.0625
+        if (movementSpeedNormRaw_ > kMoveDirEnableRaw)
+        {
+            forward = movementForwardWorld_;
+        }
+    }
     offsetXUnits = std::clamp<int32_t>(offsetXUnits, -140, 140);
+    // Requested tuning:
+    // - global Y shift: -20
+    // - camera 2 (ChaseNear): extra -20 (total -40)
+    offsetYUnits -= 20;
+    if (chasePreset_ == ChasePreset::ChaseNear)
+    {
+        offsetYUnits -= 20;
+    }
     offsetYUnits = std::clamp<int32_t>(offsetYUnits, -56, 20);
-    offsetZUnits = std::clamp<int32_t>(offsetZUnits, -280, 80);
+    // Chase cameras must stay behind the car to avoid forward drift/overshoot.
+    if (chasePreset_ == ChasePreset::FirstPerson)
+    {
+        offsetZUnits = std::clamp<int32_t>(offsetZUnits, -40, 80);
+    }
+    else
+    {
+        offsetZUnits = std::clamp<int32_t>(offsetZUnits, -320, -80);
+    }
+    // Hard rule for arcade chase: camera must stay behind the car.
+    if (chasePreset_ != ChasePreset::FirstPerson)
+    {
+        offsetZUnits = -std::abs(offsetZUnits);
+    }
+
     const Fxp offX = Fxp::BuildRaw(offsetXUnits * (1 << 16));
     const Fxp offY = Fxp::BuildRaw(offsetYUnits * (1 << 16));
     const Fxp offZ = Fxp::BuildRaw(offsetZUnits * (1 << 16));

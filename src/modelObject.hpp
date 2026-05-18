@@ -2235,4 +2235,39 @@ public:
             }
         }
     }
+
+    /** @brief Enable/disable half transparency display bit on all faces */
+    void ForceHalfTransparency(bool enabled = true)
+    {
+        if (!this->meshes) return;
+
+        auto applyAttr = [&](SRL::Types::Attribute& attr)
+        {
+            if (enabled) attr.Display |= CL_Trans;
+            else attr.Display &= static_cast<uint16_t>(~CL_Trans);
+        };
+
+        if (this->type == 0)
+        {
+            SRL::Types::Mesh* m = (SRL::Types::Mesh*)this->meshes;
+            for (size_t mi = 0; mi < this->meshCount; ++mi)
+            {
+                for (size_t fi = 0; fi < m[mi].FaceCount; ++fi)
+                {
+                    applyAttr(m[mi].Attributes[fi]);
+                }
+            }
+        }
+        else
+        {
+            SRL::Types::SmoothMesh* m = (SRL::Types::SmoothMesh*)this->meshes;
+            for (size_t mi = 0; mi < this->meshCount; ++mi)
+            {
+                for (size_t fi = 0; fi < m[mi].FaceCount; ++fi)
+                {
+                    applyAttr(m[mi].Attributes[fi]);
+                }
+            }
+        }
+    }
 };

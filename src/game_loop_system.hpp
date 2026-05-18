@@ -56,6 +56,11 @@ public:
         CameraSystem* cameraSystem = nullptr;
         TrackSystem* trackSystem = nullptr;
         std::unique_ptr<Game::CarSystem>* carSystem = nullptr;
+        MeshRenderer* carShadowRenderer = nullptr;
+        bool renderCarShadowModel = false;
+        bool sbaLoaded = false;
+        uint16_t sbaMeshCount = 0;
+        uint16_t sbaFaceCount = 0;
         RenderPipeline* renderPipeline = nullptr;
         HudSystem* hudSystem = nullptr;
         Game::ITrackCollisionQuery* trackCollision = nullptr;
@@ -1179,6 +1184,35 @@ private:
 
         if (useSlaveSim)
         {
+            if (context_.slaveSimulationLockstep)
+            {
+                // True lockstep: camera/render must consume the same frame state
+                // produced by simulation to avoid chase drift.
+                if (simJobInFlight_)
+                {
+                    (void)DrainSimulationJobIfInFlight(true);
+                    if (simHasCompleted_)
+                    {
+                        simHasCompleted_ = false;
+                        return;
+                    }
+                }
+
+                if (TryDispatchSimulationOnSlave(frameState))
+                {
+                    (void)DrainSimulationJobIfInFlight(true);
+                    if (simHasCompleted_)
+                    {
+                        simHasCompleted_ = false;
+                        return;
+                    }
+                }
+
+                // Fallback safety: if Slave dispatch/drain fails, keep frame coherent.
+                RunGameplayFrameSynchronously(frameState);
+                return;
+            }
+
             // Non-lockstep mode: never block Master waiting for Slave sim.
             // Consume completion opportunistically and keep rendering with last
             // committed state while a new sim job is in-flight.
@@ -1431,6 +1465,28 @@ private:
         SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency, prevHalfTrans ? 1 : 0);
     }
 
+    void DrawCarShadowModel(const SRL::Math::Types::Vector3D& carRenderPos)
+    {
+        using SRL::Math::Types::Angle;
+        using SRL::Math::Types::Fxp;
+        using SRL::Math::Types::Vector3D;
+
+        if (!context_.carShadowRenderer) return;
+
+        Vector3D shadowPos = carRenderPos;
+        if (lastGroundProbeMask_ != 0u)
+        {
+            shadowPos.Y = Fxp::BuildRaw(static_cast<int32_t>(lastGroundProbeTargetY_) << 16);
+        }
+        // Small upward bias to avoid z-fighting with asphalt faces.
+        // In this project, negative Y is up.
+        shadowPos.Y -= Fxp::BuildRaw(0x00000800); // ~0.03125
+
+        const Angle yaw =
+            Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(carYawDeg_) << 16));
+        context_.carShadowRenderer->Render(shadowPos, yaw, false);
+    }
+
     void RenderCar(const CameraFrameState& /*camera*/)
     {
         if (!CanRenderCar()) return;
@@ -1452,7 +1508,14 @@ private:
             lastValidCarRenderPos_ = carRenderPos;
         }
 
-        DrawCarShadowBlob(carRenderPos);
+        if (context_.renderCarShadowModel && context_.carShadowRenderer)
+        {
+            DrawCarShadowModel(carRenderPos);
+        }
+        else
+        {
+            DrawCarShadowBlob(carRenderPos);
+        }
 
         car->SetWorldPosition(carRenderPos);
         // Keep render yaw authoritative from gameplay state to avoid
@@ -1584,7 +1647,10 @@ private:
                                                       submittedTrackFaces,
                                                       submittedCarFaces);
         PrintSegmentOverlapDiagnostics(submittedTrackFaces, submittedCarFaces);
-        PrintSh2SplitTelemetry();
+        if (context_.enableRuntimeStatsLogs)
+        {
+            PrintSh2SplitTelemetry();
+        }
         if (context_.enableManualGouraudCopy)
         {
             SRL::Scene3D::LightCopyGouraudTable();
@@ -1601,7 +1667,10 @@ private:
         hwrStageTrace_.postSync = MaybeCaptureHighWorkRamSnapshot();
         lwrStageTrace_.postSync = MaybeCaptureLowWorkRamSnapshot(true);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
-        UpdateRealtimeFpsOverlay();
+        if (context_.enableRuntimeStatsLogs)
+        {
+            UpdateRealtimeFpsOverlay();
+        }
         constexpr bool kEnableWorkRamOverlayTelemetry = kEnableDetailedWorkRamTelemetry;
         constexpr uint16_t kWorkRamOverlayCadenceFrames = 10u;
         bool workRamOverlayDue = false;
@@ -1749,6 +1818,11 @@ private:
                           static_cast<unsigned>(submittedTrackFaces),
                           static_cast<unsigned>(submittedCarFaces),
                           static_cast<unsigned>(submittedFacesTotal));
+        SRL::Debug::Print(1, 24, "OVR sba ld:%u rd:%u m:%u f:%u",
+                          static_cast<unsigned>(context_.sbaLoaded ? 1u : 0u),
+                          static_cast<unsigned>((context_.renderCarShadowModel && context_.carShadowRenderer) ? 1u : 0u),
+                          static_cast<unsigned>(context_.sbaMeshCount),
+                          static_cast<unsigned>(context_.sbaFaceCount));
         SRL::Debug::Print(1, 29, "OVR gp m:%u dx:%d dz:%d wh:%u wx:%d wz:%d",
                           static_cast<unsigned>(lastGroundProbeMask_),
                           static_cast<int>(deltaX),

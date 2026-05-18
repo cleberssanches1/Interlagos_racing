@@ -221,6 +221,8 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     wheelInput_.yawStepDeg = frameState.debugYawStepDeg;
     wheelInput_.groundRearY = frameState.debugGroundYRear;
     wheelInput_.groundFrontY = frameState.debugGroundYFront;
+    wheelInput_.groundRearYRaw = frameState.debugGroundYRearRaw;
+    wheelInput_.groundFrontYRaw = frameState.debugGroundYFrontRaw;
     wheelInput_.groundMask = frameState.debugGroundMask;
 }
 

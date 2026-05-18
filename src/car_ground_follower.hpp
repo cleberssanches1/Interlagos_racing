@@ -449,6 +449,8 @@ private:
 
         ioFrameState.debugGroundYRear = rearValid ? FxpToDebugInt(rearY) : 0;
         ioFrameState.debugGroundYFront = frontValid ? FxpToDebugInt(frontY) : 0;
+        ioFrameState.debugGroundYRearRaw = rearValid ? rearY.RawValue() : 0;
+        ioFrameState.debugGroundYFrontRaw = frontValid ? frontY.RawValue() : 0;
 
         if (!ioState.hasGroundSupport)
         {

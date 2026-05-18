@@ -13,7 +13,8 @@
     [int]$TexPadWidth = 8,
     [switch]$UseLodSubfolders = $false,
     [switch]$RebuildSegmentsMap = $false,
-    [bool]$ExportSurfaceFamilyMap = $true
+    [bool]$ExportSurfaceFamilyMap = $true,
+    [bool]$EnableSeamFaceDedup = $true
 )
 
 Set-StrictMode -Version Latest
@@ -92,6 +93,7 @@ $script:copyRenScript = Join-Path $scriptDir "copy_ren_textures_to_data.ps1"
 $script:updateSegmentsMapScript = Join-Path $scriptDir "update_segments_map_with_renamed_textures.ps1"
 $script:canonicalizeSegmentsMapScript = Join-Path $scriptDir "canonicalize_segments_map_texture_families.ps1"
 $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
+$script:seamOwnershipScript = Join-Path $scriptDir "build_seam_face_ownership.ps1"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -105,6 +107,7 @@ if (-not (Test-Path -LiteralPath $script:copyRenScript)) { throw "Script nao enc
 if (-not (Test-Path -LiteralPath $script:updateSegmentsMapScript)) { throw "Script nao encontrado: $script:updateSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
+if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnershipScript)) { throw "Script nao encontrado: $script:seamOwnershipScript" }
 
 Write-Host "=== Etapa 1/3: Exportar NYA + segments_map.json ==="
 $exportArgs = @{
@@ -639,6 +642,16 @@ if (-not (Test-Path -LiteralPath $componentScriptPath)) {
     throw "Script de componente nao encontrado: $componentScriptPath"
 }
 
+$seamOwnershipPath = ""
+if ($EnableSeamFaceDedup) {
+    Write-Host "=== Etapa 2.98/7: Gerar ownership de faces de costura ==="
+    $seamOwnershipPath = Join-Path $PackageDir "seam_face_ownership.json"
+    & $script:seamOwnershipScript `
+        -ResultDir $ResultDir `
+        -Pattern $Pattern `
+        -OutJsonPath $seamOwnershipPath
+}
+
 $segmentsDone = New-Object System.Collections.Generic.HashSet[int]
 foreach ($entry in $lodDirs) {
     if (-not (Test-Path -LiteralPath $entry.Dir)) {
@@ -656,7 +669,8 @@ foreach ($entry in $lodDirs) {
                 -ObjDir $entry.Dir `
                 -JsonPath $jsonPath `
                 -OutDir $PackageDir `
-                -Lod $entry.Lod
+                -Lod $entry.Lod `
+                -SeamOwnershipPath $seamOwnershipPath
         }
         catch {
             Write-Host ("Falha LOD{0} SEG_{1:D3}: {2}" -f $entry.Lod, $id, $_.Exception.Message)
