@@ -177,6 +177,7 @@ public:
 
         if (!ioState.surfaceYInitialized)
         {
+            ioState.surfaceYFilterInitialized = false;
             if (!ioState.hasGroundSupport && ioState.lastStablePlanarInitialized)
             {
                 ioCarWorldPosition.X = ioState.lastStableX;
@@ -185,15 +186,23 @@ public:
             return;
         }
 
-        Fxp deltaY = ioState.surfaceYTarget - ioCarWorldPosition.Y;
-        if (deltaY > Tunables::kSnapDownThreshold)
+        // Smooth target Y to reduce visual hops on sharp joints between faces.
+        if (!ioState.surfaceYFilterInitialized)
         {
-            ioCarWorldPosition.Y = ioState.surfaceYTarget;
-            deltaY = Fxp::BuildRaw(0);
+            ioState.surfaceYFiltered = ioState.surfaceYTarget;
+            ioState.surfaceYFilterInitialized = true;
         }
-        else if (deltaY < Fxp::BuildRaw(-Tunables::kSnapUpThreshold.RawValue()))
+        else
         {
-            ioCarWorldPosition.Y = ioState.surfaceYTarget;
+            const Fxp filterDelta = ioState.surfaceYTarget - ioState.surfaceYFiltered;
+            ioState.surfaceYFiltered += filterDelta * Tunables::kChassisVerticalFollowAlpha;
+        }
+
+        Fxp deltaY = ioState.surfaceYFiltered - ioCarWorldPosition.Y;
+        const Fxp absDeltaY = deltaY.Abs();
+        if (absDeltaY > Tunables::kChassisVerticalHardSnapThreshold)
+        {
+            ioCarWorldPosition.Y = ioState.surfaceYFiltered;
             deltaY = Fxp::BuildRaw(0);
         }
 
@@ -228,6 +237,7 @@ public:
     static void Reset(GroundState& ioState)
     {
         ioState.surfaceYTarget = Fxp::BuildRaw(0);
+        ioState.surfaceYFiltered = Fxp::BuildRaw(0);
         ioState.correctionX = Fxp::BuildRaw(0);
         ioState.correctionZ = Fxp::BuildRaw(0);
         ioState.lastStableX = Fxp::BuildRaw(0);
@@ -243,6 +253,7 @@ public:
         ioState.edgeRightLost = false;
         ioState.lastStablePlanarInitialized = false;
         ioState.surfaceYInitialized = false;
+        ioState.surfaceYFilterInitialized = false;
         ioState.lastWallQueryFrameId = -1;
         ioState.lastWallApplyFrameId = -1;
         ioState.lastWallQueryHit = false;

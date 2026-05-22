@@ -213,11 +213,14 @@ void CarWheelRig::Update(const Input& input)
                 ? input.groundFrontYRaw
                 : (static_cast<int32_t>(input.groundFrontY) << 16);
         const int32_t deltaYRaw = frontYRaw - rearYRaw;
+        const int32_t absDeltaYRaw = std::abs(deltaYRaw);
+        const bool smallSlope = absDeltaYRaw < (4 << 16);
         targetPitch =
             ClampInt(-static_cast<int32_t>((static_cast<int64_t>(deltaYRaw) * kPitchDegPerUnitX16) >> 16),
                      -kMaxPitchDegX16,
                      kMaxPitchDegX16);
-        targetFrontSusp = ClampInt((deltaYRaw >> 5),
+        // Keep suspension effect short and smooth to mimic a stiff race damper.
+        targetFrontSusp = smallSlope ? 0 : ClampInt((deltaYRaw >> 8),
                                    -kMaxSuspensionOffsetX16,
                                    kMaxSuspensionOffsetX16);
         targetRearSusp = -targetFrontSusp;

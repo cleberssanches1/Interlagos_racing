@@ -1058,17 +1058,66 @@ private:
             {
                 const bool steerLeftRequested = input.leftHeld || input.lHeld;
                 const bool steerRightRequested = input.rightHeld || input.rHeld;
-                if (input.cHeld) car->Command()->Accelerate();
-                if (input.bHeld) car->Command()->Brake();
+                const bool leftJustPressed = input.leftHeld && !leftHeldPrev_;
+                const bool rightJustPressed = input.rightHeld && !rightHeldPrev_;
+                if (leftJustPressed) lastLeftPressFrame_ = frameCounter_;
+                if (rightJustPressed) lastRightPressFrame_ = frameCounter_;
+                // Input mapping:
+                // B = accelerate
+                // C = brake / reverse when stopped
+                if (input.bHeld) car->Command()->Accelerate();
+                int8_t desiredSteerDir = 0;
                 if (steerLeftRequested && !steerRightRequested)
                 {
-                    car->Command()->SteerLeft();
+                    desiredSteerDir = -1;
                 }
                 else if (steerRightRequested && !steerLeftRequested)
                 {
-                    car->Command()->SteerRight();
+                    desiredSteerDir = 1;
                 }
-                car->UpdateWheels(input.cHeld, input.bHeld);
+                else if (steerLeftRequested && steerRightRequested)
+                {
+                    // Newest pressed direction always wins.
+                    if (lastLeftPressFrame_ > lastRightPressFrame_) desiredSteerDir = -1;
+                    else if (lastRightPressFrame_ > lastLeftPressFrame_) desiredSteerDir = 1;
+                    else desiredSteerDir = 0;
+                }
+
+                if (desiredSteerDir < 0) car->Command()->SteerLeft();
+                else if (desiredSteerDir > 0) car->Command()->SteerRight();
+
+                // Reverse direction swap assist:
+                // when holding reverse and switching steering side, cut reverse
+                // acceleration for one frame so the chassis can change yaw side cleanly.
+                bool suppressReverseThisFrame = false;
+                if (input.cHeld)
+                {
+                    if (desiredSteerDir != 0 &&
+                        reverseSteerDirWhileHeld_ != 0 &&
+                        desiredSteerDir != reverseSteerDirWhileHeld_)
+                    {
+                        suppressReverseThisFrame = true;
+                    }
+                    if (desiredSteerDir != 0)
+                    {
+                        reverseSteerDirWhileHeld_ = desiredSteerDir;
+                    }
+                }
+                else
+                {
+                    reverseSteerDirWhileHeld_ = 0;
+                }
+
+                if (suppressReverseThisFrame)
+                {
+                    // Do not submit Brake() this frame.
+                    // A one-frame release is enough to allow quick side swap in reverse.
+                }
+                else
+                {
+                    if (input.cHeld) car->Command()->Brake();
+                }
+                car->UpdateWheels(input.bHeld, input.cHeld);
             }
             else
             {
@@ -1088,6 +1137,7 @@ private:
                 frameState.steering = commands.steering;
                 frameState.braking = commands.braking;
                 frameState.wheelsSpinning = commands.wheelsSpinning;
+                frameState.brakeHoldFrames = commands.brakeHoldFrames;
             }
             else
             {
@@ -1095,6 +1145,7 @@ private:
                 frameState.steering = 0;
                 frameState.braking = false;
                 frameState.wheelsSpinning = false;
+                frameState.brakeHoldFrames = 0;
             }
         }
         return frameState;
@@ -1333,10 +1384,74 @@ private:
     CameraFrameState ResolveCameraFrameState()
     {
         UpdateCameraPathFrameContext();
-        const SRL::Math::Types::Vector3D rawCameraLocation =
+        SRL::Math::Types::Vector3D rawCameraLocation =
             context_.cameraSystem->CameraLocation(context_.carWorldPosition);
-        const SRL::Math::Types::Vector3D rawLookTarget =
+        SRL::Math::Types::Vector3D rawLookTarget =
             context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
+
+        // Follow track slope by lifting camera on uphill and relaxing on level ground.
+        // Ground probes are already in world Y units used by telemetry.
+        {
+            const int32_t slopeDelta = static_cast<int32_t>(lastGroundProbeFrontY_) -
+                                       static_cast<int32_t>(lastGroundProbeRearY_);
+            const int32_t uphillDelta = std::max<int32_t>(0, slopeDelta);
+            enum class SlopeCamProfile : int32_t { Suave = 0, Medio = 1, Forte = 2 };
+            constexpr SlopeCamProfile kSlopeCamProfile = SlopeCamProfile::Medio;
+            int32_t kSlopeDeadZone = 4;
+            int32_t kSlopeGainNum = 1;
+            int32_t kSlopeGainDen = 2;
+            int32_t kSlopeLiftMax = 36;
+            int32_t kSlopeBlendRaw = (1 << 15); // 0.5
+
+            switch (kSlopeCamProfile)
+            {
+            case SlopeCamProfile::Suave:
+                kSlopeDeadZone = 6;
+                kSlopeGainNum = 1;
+                kSlopeGainDen = 3;
+                kSlopeLiftMax = 24;
+                kSlopeBlendRaw = (1 << 14); // 0.25
+                break;
+            case SlopeCamProfile::Forte:
+                kSlopeDeadZone = 2;
+                kSlopeGainNum = 1;
+                kSlopeGainDen = 1;
+                kSlopeLiftMax = 52;
+                kSlopeBlendRaw = (3 << 14); // 0.75
+                break;
+            case SlopeCamProfile::Medio:
+            default:
+                break;
+            }
+
+            int32_t targetLiftUnits = 0;
+            if (uphillDelta > kSlopeDeadZone)
+            {
+                const int32_t effective = uphillDelta - kSlopeDeadZone;
+                targetLiftUnits = (effective * kSlopeGainNum) / kSlopeGainDen;
+                targetLiftUnits = std::clamp<int32_t>(targetLiftUnits, 0, kSlopeLiftMax);
+            }
+
+            // Smooth response so camera does not jitter on uneven faces.
+            cameraSlopeLiftRaw_ = cameraSlopeLiftRaw_ +
+                                  static_cast<int32_t>(
+                                      (static_cast<int64_t>(targetLiftUnits - cameraSlopeLiftRaw_) * kSlopeBlendRaw) >> 16);
+
+            const SRL::Math::Types::Fxp lift =
+                SRL::Math::Types::Fxp::BuildRaw(cameraSlopeLiftRaw_ << 16);
+            // In this project, negative Y is up.
+            rawCameraLocation.Y -= lift;
+            rawLookTarget.Y -= lift;
+
+            if (context_.verboseFrameLogs)
+            {
+                SRL::Debug::Print(1, 31, "CAM slp p:%d dy:%d lf:%d",
+                                  static_cast<int>(kSlopeCamProfile),
+                                  static_cast<int>(uphillDelta),
+                                  static_cast<int>(cameraSlopeLiftRaw_));
+            }
+        }
+
         const SRL::Math::Types::Vector3D resolvedCameraLocation = rawCameraLocation;
         const bool cameraReady =
             IsFiniteCameraPoint(resolvedCameraLocation) &&
@@ -1377,20 +1492,29 @@ private:
         using SRL::Math::Types::Vector2D;
         using SRL::Math::Types::Vector3D;
 
-        constexpr Fxp kShadowHalfLength = Fxp::BuildRaw(0x00022000); // 2.125
-        constexpr Fxp kShadowHalfWidth = Fxp::BuildRaw(0x00010000);  // 1.0
-        constexpr Fxp kShadowGroundBias = Fxp::BuildRaw(0x0000199A); // 0.10
-        constexpr Fxp kShadowSortBias = Fxp::BuildRaw(0x00001000);   // slight front bias
-        constexpr SRL::Types::HighColor kShadowColor = SRL::Types::HighColor::FromRGB555(12, 12, 12);
+        constexpr Fxp kShadowHalfLength = Fxp::BuildRaw(0x00220000); // 34.0 (smaller to avoid overlap)
+        constexpr Fxp kShadowHalfWidth = Fxp::BuildRaw(0x00100000);  // 16.0 (smaller to avoid overlap)
+        constexpr Fxp kShadowGroundBias = Fxp::BuildRaw(10 << 16);   // +10.0 over sampled ground Y
+        // Scene2D sort bias: positive pushes farther back in the VDP1 order used here.
+        constexpr Fxp kShadowSortBias = Fxp::BuildRaw(0x00100000);   // force shadow behind car
+        constexpr SRL::Types::HighColor kShadowColor = SRL::Types::HighColor::FromRGB555(0, 0, 0);
 
         Vector3D center = carRenderPos;
+        // Anchor shadow to sampled ground to keep it detached from car body.
         if (lastGroundProbeMask_ != 0u)
         {
             center.Y = Fxp::BuildRaw(static_cast<int32_t>(lastGroundProbeTargetY_) << 16);
         }
         center.Y += kShadowGroundBias;
 
-        const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(carYawDeg_) << 16));
+        int32_t shadowYawDeg = carYawDeg_;
+        if (Game::CarSystem* car = ActiveCarSystem())
+        {
+            shadowYawDeg = car->RenderYawDegrees();
+        }
+        lastShadowWorldPos_ = center;
+        lastShadowYawDeg_ = shadowYawDeg;
+        const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
         const Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
         const Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
 
@@ -1454,14 +1578,20 @@ private:
             screenPts[3] = Vector2D(center2D.X - Fxp::BuildRaw(halfW << 16), center2D.Y + Fxp::BuildRaw(halfH << 16));
         }
 
+        // Use screen-door dithering instead of half-transparency to avoid
+        // washing out the car texture when layers overlap.
         const int32_t prevHalfTrans =
             SRL::Scene2D::GetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency);
+        const int32_t prevScreenDoors =
+            SRL::Scene2D::GetEffect(SRL::Scene2D::SpriteEffect::ScreenDoors);
         SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency, 0);
+        SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::ScreenDoors, 1);
         bool drawn = SRL::Scene2D::DrawPolygon(screenPts, true, kShadowColor, sort);
         if (!drawn)
         {
             (void)SRL::Scene2D::DrawPolygon(screenPts, true, kShadowColor, Fxp::BuildRaw(0));
         }
+        SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::ScreenDoors, prevScreenDoors ? 1 : 0);
         SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency, prevHalfTrans ? 1 : 0);
     }
 
@@ -1478,16 +1608,22 @@ private:
         {
             shadowPos.Y = Fxp::BuildRaw(static_cast<int32_t>(lastGroundProbeTargetY_) << 16);
         }
-        // Small upward bias to avoid z-fighting with asphalt faces.
-        // In this project, negative Y is up.
-        shadowPos.Y -= Fxp::BuildRaw(0x00000800); // ~0.03125
+        // Keep shadow slightly below car and close to ground to avoid z-fighting.
+        // In this project, positive Y is down.
+        shadowPos.Y += Fxp::BuildRaw(1 << 16); // 1 world unit down
 
+        int32_t shadowYawDeg = carYawDeg_;
+        if (Game::CarSystem* car = ActiveCarSystem())
+        {
+            // Match the exact visual yaw used by the car mesh.
+            shadowYawDeg = car->RenderYawDegrees();
+        }
         const Angle yaw =
-            Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(carYawDeg_) << 16));
+            Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
         context_.carShadowRenderer->Render(shadowPos, yaw, false);
     }
 
-    void RenderCar(const CameraFrameState& /*camera*/)
+    void RenderCar(const CameraFrameState& camera)
     {
         if (!CanRenderCar()) return;
 
@@ -1508,13 +1644,38 @@ private:
             lastValidCarRenderPos_ = carRenderPos;
         }
 
+        // Small camera depth bias to reduce seam overdraw on car body.
+        // Keep bias tiny so gameplay position feel is preserved.
+        {
+            const int32_t dxRaw = camera.location.X.RawValue() - carRenderPos.X.RawValue();
+            const int32_t dzRaw = camera.location.Z.RawValue() - carRenderPos.Z.RawValue();
+            const int32_t adx = (dxRaw < 0) ? -dxRaw : dxRaw;
+            const int32_t adz = (dzRaw < 0) ? -dzRaw : dzRaw;
+            const int32_t maxAxis = (adx > adz) ? adx : adz;
+            if (maxAxis > 0)
+            {
+                constexpr int32_t kCarDepthBiasUnits = 3;
+                const int32_t biasRaw = (kCarDepthBiasUnits << 16);
+                const int32_t offXRaw = static_cast<int32_t>((static_cast<int64_t>(dxRaw) * biasRaw) / maxAxis);
+                const int32_t offZRaw = static_cast<int32_t>((static_cast<int64_t>(dzRaw) * biasRaw) / maxAxis);
+                carRenderPos.X += SRL::Math::Types::Fxp::BuildRaw(offXRaw);
+                carRenderPos.Z += SRL::Math::Types::Fxp::BuildRaw(offZRaw);
+            }
+        }
+
+        // Visual lift for seam overlap testing.
+        // This does not change gameplay physics state.
+        {
+            constexpr int32_t kCarVisualLiftUnits = 0;
+            carRenderPos.Y -= SRL::Math::Types::Fxp::BuildRaw(kCarVisualLiftUnits << 16);
+        }
+
+        // Arcade style shadow: draw 2D blob under the car.
+        // Keep model shadow optional and disabled by default.
+        DrawCarShadowBlob(carRenderPos);
         if (context_.renderCarShadowModel && context_.carShadowRenderer)
         {
             DrawCarShadowModel(carRenderPos);
-        }
-        else
-        {
-            DrawCarShadowBlob(carRenderPos);
         }
 
         car->SetWorldPosition(carRenderPos);
@@ -1823,6 +1984,20 @@ private:
                           static_cast<unsigned>((context_.renderCarShadowModel && context_.carShadowRenderer) ? 1u : 0u),
                           static_cast<unsigned>(context_.sbaMeshCount),
                           static_cast<unsigned>(context_.sbaFaceCount));
+        const int32_t shX = fxpToInt(lastShadowWorldPos_.X);
+        const int32_t shY = fxpToInt(lastShadowWorldPos_.Y);
+        const int32_t shZ = fxpToInt(lastShadowWorldPos_.Z);
+        const char shXSgn = (shX < 0) ? '-' : '+';
+        const char shYSgn = (shY < 0) ? '-' : '+';
+        const char shZSgn = (shZ < 0) ? '-' : '+';
+        SRL::Debug::Print(1, 25, "OVR shd X:%c%d Y:%c%d Z:%c%d y:%d",
+                          shXSgn,
+                          static_cast<int>(std::abs(shX)),
+                          shYSgn,
+                          static_cast<int>(std::abs(shY)),
+                          shZSgn,
+                          static_cast<int>(std::abs(shZ)),
+                          static_cast<int>(lastShadowYawDeg_));
         SRL::Debug::Print(1, 29, "OVR gp m:%u dx:%d dz:%d wh:%u wx:%d wz:%d",
                           static_cast<unsigned>(lastGroundProbeMask_),
                           static_cast<int>(deltaX),
@@ -3176,6 +3351,9 @@ private:
     int16_t lastGroundProbeFrontY_ = 0;
     int16_t lastGroundProbeTargetY_ = 0;
     uint8_t lastGroundProbeMask_ = 0;
+    SRL::Math::Types::Vector3D lastShadowWorldPos_{0.0, 0.0, 0.0};
+    int32_t lastShadowYawDeg_ = 0;
+    int32_t cameraSlopeLiftRaw_ = 0;
     Game::GameplayFrameState lastRuntimeFrameState_{};
     int16_t diagPrevCarSegmentId_ = -1;
     int16_t diagPrevWindowStartId_ = -1;
@@ -3233,6 +3411,9 @@ private:
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;
+    uint32_t lastLeftPressFrame_ = 0;
+    uint32_t lastRightPressFrame_ = 0;
+    int8_t reverseSteerDirWhileHeld_ = 0;
     FrameInputState lastInput_{};
     uint8_t carForwardOffsetRepeatFrames_ = 0u;
 };

@@ -189,10 +189,10 @@ static RdrBuildScratch g_rdrBuildScratch{};
 static SdrBuildScratch g_sdrBuildScratch{};
 static SegmentRuntimeDraw::Blob g_rdrFamilyIdsScratch{};
 static SegmentDrawReady::Blob g_sdrFamilyIdsScratch{};
-// Visible window LOD distribution (20 segments total):
-// 10x 64x64 + 10x 32x32 only.
-static constexpr uint32_t kLodBand64Count = 10u;
-static constexpr uint32_t kLodBand32Count = 10u;
+// Visible window LOD distribution (50 segments total):
+// 25x 64x64 + 25x 32x32 only.
+static constexpr uint32_t kLodBand64Count = 25u;
+static constexpr uint32_t kLodBand32Count = 25u;
 static constexpr size_t kWorkRamPlanningHeadroomBytes = 48u * 1024u;
 static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
 // Release the emergency reserve slightly earlier so runtime maintenance does
@@ -245,18 +245,18 @@ static constexpr size_t kLodRecoveryFreeBytes = kWorkRamHardFloorBytes + (48u * 
 // This isolates runtime lifetime bugs from the offline asset pipeline.
 static constexpr bool kEnableTrackRuntimeStabilization = true;
 // Leak isolation mode:
-// - fixed 20-segment window
+// - fixed 50-segment window
 // - keep runtime sliding active (new segments keep entering/leaving the 20-slot window)
 // - disable prefetch/recovery/texture-compaction dynamics
 // - mixed profile fixed in leak-isolation:
-//   first 10 ranks in 64x64, next 10 ranks in 32x32
+//   first 25 ranks in 64x64, next 25 ranks in 32x32
 // Use this mode to isolate allocator/retention behavior with controlled texture churn.
 static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
-static constexpr size_t kTrackLeakIsolationWindowSegments = 20u;
+static constexpr size_t kTrackLeakIsolationWindowSegments = 50u;
 static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
 static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
 static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
-static constexpr size_t kLeakIsolationNearLodCount = 10u;
+static constexpr size_t kLeakIsolationNearLodCount = 25u;
 static_assert(kLeakIsolationNearLodCount <= kTrackLeakIsolationWindowSegments,
               "Near LOD count must fit leak-isolation window.");
 // Keep active window storage persistent and reuse slot renderers on rebuild.
@@ -314,6 +314,9 @@ static constexpr bool kEnableLegacyTrackOverlayTelemetry = false;
 // SH2 overlays disabled to keep screen focused on FPS + WorkRAM tracking.
 static constexpr bool kEnableSh2UsageOverlay = false;
 static constexpr bool kEnableLegacyTrackOverlaySh2Telemetry = false;
+// Test mode: force track draw order by segment id ascending (1..N).
+// This is useful to validate seam overlap behavior independent of depth sort.
+static constexpr bool kTestRenderSegmentsAscendingById = false;
 // Prefetch speed tiers are based on planar car displacement (world units/frame).
 // Tier 1: moderate speed, Tier 2: high speed.
 static constexpr uint16_t kPrefetchSpeedTier1UnitsPerFrame = 6u;
@@ -9575,6 +9578,17 @@ void TrackSystem::TryPrefetchUpcomingSegment()
             prefetchRetryCooldown_ = speedTier2 ? 0u : 1u;
             return;
         }
+        // Reverse traversal suffers more from late prefetch misses.
+        // Prime one extra segment in reverse direction when possible.
+        if (windowDirection_ < 0 && speedTier1)
+        {
+            const int32_t reverseExtraId =
+                WrapSegmentIdToRange(nextId - 1, totalSegmentCount_);
+            if (reverseExtraId > 0 && reverseExtraId != nextId)
+            {
+                (void)BuildSegmentIntoPrefetch(reverseExtraId, false);
+            }
+        }
         prefetchRetryCooldown_ = 0u;
         return;
     }
@@ -12282,12 +12296,48 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
                                                     const Vector3D& cameraLookTarget)
 {
     // Keep window direction synced with camera forward intent.
-    // Rebuild only when the sign changes. Sliding will handle start movement.
+    // Use switch confirmation and cooldown to avoid transient direction thrash
+    // during 360 turns that can cause one-frame window holes.
     if (!segmentsReady_ || totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
 
-    const int8_t desiredDirection =
+    const int8_t rawDesiredDirection =
         ResolveCameraWindowDirection(trackOffset, cameraLocation, cameraLookTarget);
-    cameraWindowDirection_ = desiredDirection;
+    const int8_t currentDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
+    constexpr uint8_t kDirectionConfirmFrames = 3;
+    constexpr uint8_t kDirectionFlipCooldownFrames = 8;
+    if (cameraDirectionFlipCooldown_ > 0) --cameraDirectionFlipCooldown_;
+
+    int8_t desiredDirection = currentDirection;
+    if (rawDesiredDirection != currentDirection)
+    {
+        if (cameraDirectionPending_ != rawDesiredDirection)
+        {
+            cameraDirectionPending_ = rawDesiredDirection;
+            cameraDirectionConfirmFrames_ = 1;
+        }
+        else if (cameraDirectionConfirmFrames_ < 255u)
+        {
+            ++cameraDirectionConfirmFrames_;
+        }
+
+        if (cameraDirectionConfirmFrames_ < kDirectionConfirmFrames ||
+            cameraDirectionFlipCooldown_ > 0)
+        {
+            return;
+        }
+
+        desiredDirection = rawDesiredDirection;
+        cameraWindowDirection_ = desiredDirection;
+        cameraDirectionFlipCooldown_ = kDirectionFlipCooldownFrames;
+        cameraDirectionConfirmFrames_ = 0;
+    }
+    else
+    {
+        cameraDirectionPending_ = currentDirection;
+        cameraDirectionConfirmFrames_ = 0;
+        desiredDirection = currentDirection;
+        cameraWindowDirection_ = desiredDirection;
+    }
 
     int32_t anchorId = -1;
     if (observedCarSegmentId_ > 0)
@@ -12319,6 +12369,24 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
     if (!needsRebuild) return;
 
     const size_t windowCount = segmentRenderers_.size();
+    const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    const int32_t forwardDistance = WrapDistanceForward(currentStartId, desiredStartId, totalSegmentCount_);
+    const int32_t backwardDistance = WrapDistanceForward(desiredStartId, currentStartId, totalSegmentCount_);
+    const int32_t half = static_cast<int32_t>(totalSegmentCount_) / 2;
+    const int32_t alongDistance = (desiredDirection > 0) ? forwardDistance : backwardDistance;
+
+    // If the new direction target is still close, avoid hard rebuild.
+    // Let sliding converge to prevent transient full-window holes.
+    if (alongDistance > 0 && alongDistance <= static_cast<int32_t>(windowCount))
+    {
+        targetWindowStartId_ = desiredStartId;
+        trackedCarSegmentId_ = anchorId;
+        trackedCarSegmentValid_ = true;
+        activeWindowSwitchCooldown_ = 0;
+        windowDirection_ = desiredDirection;
+        return;
+    }
+
     if (!RebuildActiveSegmentWindow(desiredStartId, windowCount, desiredDirection)) return;
 
     targetWindowStartId_ = desiredStartId;
@@ -12427,8 +12495,10 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
 
         // Keep search narrow and biased to movement direction.
-        const int32_t kBackSearch = (desiredDirection > 0) ? 1 : 3;
-        const int32_t kForwardSearch = (desiredDirection > 0) ? 3 : 1;
+        // Reverse traversal needs a slightly wider local search to avoid
+        // anchor oscillation when observed segment reports arrive late.
+        const int32_t kBackSearch = (desiredDirection > 0) ? 1 : 4;
+        const int32_t kForwardSearch = (desiredDirection > 0) ? 3 : 2;
         for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
         {
             const int32_t candidateId = WrapSegmentIdToRange(seedId + delta, totalSegmentCount_);
@@ -12473,7 +12543,10 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
                 trackedCarSegmentValid_ = true;
                 return false;
             }
-            if (observedBackwardDistance == 1)
+            // Reverse mode may report behind by a few ids during wrap/turn.
+            // Accept short backward deltas as valid incremental slides.
+            const int32_t backwardTolerance = (desiredDirection < 0) ? 3 : 1;
+            if (observedBackwardDistance <= backwardTolerance)
             {
                 trackedCarSegmentId_ = observedId;
                 trackedCarSegmentValid_ = true;
@@ -12554,6 +12627,9 @@ void TrackSystem::ResetInitializationState()
     activeWindowHead_ = 0;
     windowDirection_ = 1;
     cameraWindowDirection_ = 1;
+    cameraDirectionPending_ = 1;
+    cameraDirectionConfirmFrames_ = 0;
+    cameraDirectionFlipCooldown_ = 0;
     activeWindowSwitchCooldown_ = 0;
     targetWindowStartId_ = 1;
     trackedCarSegmentId_ = 1;
@@ -14188,6 +14264,7 @@ void TrackSystem::BeginFrame(uint32_t frameId)
         if (kEnableTrackRuntimeStabilization)
         {
             int32_t backlog = 0;
+            const int8_t slideDirection = (windowDirection_ < 0) ? -1 : 1;
             if (segmentsReady_ && totalSegmentCount_ > 0)
             {
                 const int32_t currentStartId =
@@ -14197,7 +14274,12 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                 if (currentStartId > 0 && targetStartId > 0)
                 {
                     const int32_t total = static_cast<int32_t>(totalSegmentCount_);
-                    backlog = (targetStartId - currentStartId) % total;
+                    // Direction aware backlog:
+                    // +1 uses forward wrap distance current -> target.
+                    // -1 uses backward wrap distance current -> target.
+                    backlog = (slideDirection > 0)
+                        ? ((targetStartId - currentStartId) % total)
+                        : ((currentStartId - targetStartId) % total);
                     if (backlog < 0) backlog += total;
                     if (backlog >= (total / 2)) backlog = 0;
                 }
@@ -14241,12 +14323,16 @@ void TrackSystem::BeginFrame(uint32_t frameId)
             segmentsReady_ &&
             totalSegmentCount_ > 0)
         {
+            const int8_t slideDirection = (windowDirection_ < 0) ? -1 : 1;
             const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
             const int32_t targetStartId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
             if (currentStartId > 0 && targetStartId > 0)
             {
                 const int32_t total = static_cast<int32_t>(totalSegmentCount_);
-                int32_t backlog = (targetStartId - currentStartId) % total;
+                // Direction aware catch-up for both forward and reverse travel.
+                int32_t backlog = (slideDirection > 0)
+                    ? ((targetStartId - currentStartId) % total)
+                    : ((currentStartId - targetStartId) % total);
                 if (backlog < 0) backlog += total;
                 if (backlog > 0 && backlog < (total / 2))
                 {
@@ -14262,7 +14348,7 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                     for (uint8_t i = 0; i < slideBudget; ++i)
                     {
                         TryPrefetchUpcomingSegment();
-                        if (!SlideActiveSegmentWindow(1, +1))
+                        if (!SlideActiveSegmentWindow(1, slideDirection))
                         {
                             bool freeValid = false;
                             const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
@@ -14569,6 +14655,34 @@ const TrackLowWorkVector<TrackSystem::SegmentHandle>& TrackSystem::BuildStabiliz
     }
     if (stabilizedDepthItemsScratch_.empty()) return stabilizedSortedHandlesScratch_;
 
+    if (kTestRenderSegmentsAscendingById)
+    {
+        std::sort(stabilizedDepthItemsScratch_.begin(),
+                  stabilizedDepthItemsScratch_.end(),
+                  [&](const TrackDepthSortItem<SegmentHandle, int64_t>& a,
+                      const TrackDepthSortItem<SegmentHandle, int64_t>& b)
+                  {
+                      const auto* ea = segmentPool_.Resolve(a.handle);
+                      const auto* eb = segmentPool_.Resolve(b.handle);
+                      if (!ea && !eb) return false;
+                      if (!ea) return false;
+                      if (!eb) return true;
+                      if (ea->id == eb->id) return a.handle.slot < b.handle.slot;
+                      return ea->id < eb->id;
+                  });
+        const size_t maxVisible = std::min<size_t>(
+            stabilizedDepthItemsScratch_.size(),
+            std::max<size_t>(1u, static_cast<size_t>(fixedVisibleSegmentCap_)));
+        stabilizedSortedHandlesScratch_.reserve(maxVisible);
+        for (size_t i = 0; i < maxVisible; ++i)
+        {
+            stabilizedSortedHandlesScratch_.push_back(stabilizedDepthItemsScratch_[i].handle);
+        }
+        stabilizedDepthStats_ = {};
+        sh2SlaveSortTicksThisFrame_ = 0u;
+        return stabilizedSortedHandlesScratch_;
+    }
+
     const size_t maxVisible = std::min<size_t>(
         stabilizedDepthItemsScratch_.size(),
         std::max<size_t>(1u, static_cast<size_t>(fixedVisibleSegmentCap_)));
@@ -14652,13 +14766,6 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
     const int32_t desiredStartId =
         ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection);
     if (desiredStartId <= 0) return;
-    if (cameraWindowDirection_ < 0)
-    {
-        targetWindowStartId_ = desiredStartId;
-        trackedCarSegmentId_ = observedId;
-        trackedCarSegmentValid_ = true;
-        return;
-    }
 
     const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
     const int32_t currentTargetId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
@@ -14667,6 +14774,9 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
         WrapDistanceForward(currentStartId, desiredStartId, totalSegmentCount_);
     const int32_t windowBackwardDistance =
         WrapDistanceForward(desiredStartId, currentStartId, totalSegmentCount_);
+    const int32_t windowDirectionalDistance = (desiredDirection > 0)
+        ? windowForwardDistance
+        : windowBackwardDistance;
     const bool bootstrapWindow =
         currentStartId == 1 &&
         currentTargetId == 1 &&
@@ -14675,7 +14785,7 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
         activeWindowHead_ == 0;
     if (bootstrapWindow &&
         windowCount > 0 &&
-        (windowForwardDistance >= static_cast<int32_t>(windowCount) || windowBackwardDistance == 1))
+        (windowDirectionalDistance >= static_cast<int32_t>(windowCount) || windowBackwardDistance == 1))
     {
         // Avoid full 20-segment rebuild on runtime bootstrap alignment.
         // Keep the deterministic sliding window and converge through normal
@@ -14697,9 +14807,15 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
     const int32_t anchorId = (currentTargetId > 0) ? currentTargetId : currentStartId;
     const int32_t forwardDistance = WrapDistanceForward(anchorId, desiredStartId, totalSegmentCount_);
     const int32_t backwardDistance = WrapDistanceForward(desiredStartId, anchorId, totalSegmentCount_);
-    if (forwardDistance == 0 ||
-        (forwardDistance > 0 && forwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2)) ||
-        backwardDistance == 1)
+    const int32_t directionalDistance = (desiredDirection > 0) ? forwardDistance : backwardDistance;
+    const int32_t reverseDistance = (desiredDirection > 0) ? backwardDistance : forwardDistance;
+    // Guard against large target jumps during tight circles / camera flips.
+    // Accept only near-forward targets in current direction.
+    const int32_t maxAcceptedDirectionalDistance =
+        std::max<int32_t>(2, std::min<int32_t>(static_cast<int32_t>(windowCount) + 2, 8));
+    if (directionalDistance == 0 ||
+        (directionalDistance > 0 && directionalDistance <= maxAcceptedDirectionalDistance) ||
+        reverseDistance == 1)
     {
         targetWindowStartId_ = desiredStartId;
         trackedCarSegmentId_ = observedId;
@@ -14793,6 +14909,23 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(
             orderedHandles.size(),
             static_cast<size_t>(fixedVisibleSegmentCap_));
     orderedHandles.resize(keepCount);
+
+    if (kTestRenderSegmentsAscendingById)
+    {
+        std::sort(orderedHandles.begin(), orderedHandles.end(),
+            [&](const SegmentHandle& a, const SegmentHandle& b)
+            {
+                const auto* ea = segmentPool_.Resolve(a);
+                const auto* eb = segmentPool_.Resolve(b);
+                if (!ea && !eb) return false;
+                if (!ea) return false;
+                if (!eb) return true;
+                if (ea->id == eb->id) return a.slot < b.slot;
+                return ea->id < eb->id;
+            });
+        return orderedHandles;
+    }
+
     // Draw in camera-space painter order (far -> near).
     // VDP1 has no Z-buffer for this path, so camera-relative order is required
     // to avoid distortion when camera rotates around the car.
@@ -14956,6 +15089,10 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
     std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
     bool& segment01Prepared)
 {
+    // Two pass stabilized draw:
+    // pass 1 draws segments outside the local car neighborhood,
+    // pass 2 draws segments near the car segment window rank.
+    // This reduces seam overdraw flicker near the car during segment transitions.
     std::array<SegmentRenderEntry*, kTrackSegmentLimit> preparedEntries{};
     size_t preparedCount = 0;
     auto backupRuntimeFaceSlots = [&](const SegmentRenderEntry& entry)
@@ -15231,6 +15368,16 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
 
         if (preparedCount < preparedEntries.size())
         {
+            // Skip duplicated segment ids inside the same frame prepare list.
+            // Duplicate draw of the same segment can cause overdraw artifacts.
+            if (entry->id > 0 && entry->id <= static_cast<int>(kTrackSegmentLimit))
+            {
+                const size_t idx = static_cast<size_t>(entry->id);
+                if (preparedCountById[idx] > 0)
+                {
+                    continue;
+                }
+            }
             preparedEntries[preparedCount++] = entry;
             if (entry->id > 0 && entry->id <= static_cast<int>(kTrackSegmentLimit))
             {
@@ -15247,14 +15394,13 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
     }
 
-    for (size_t i = 0; i < preparedCount; ++i)
+    auto renderPreparedEntry = [&](SegmentRenderEntry* entry)
     {
-        auto* entry = preparedEntries[i];
-        if (!entry || !entry->renderer) continue;
+        if (!entry || !entry->renderer) return;
         if (kEnableLeakABSkipTrackRenderSubmit)
         {
             ++runtimeSafeNoDrawThisFrame_;
-            continue;
+            return;
         }
         entry->renderer->SetOffset(trackOffset);
         SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackBackend);
@@ -15274,7 +15420,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             if (entry->renderer->LastDrawnMeshes() == 0)
             {
                 ++runtimeSafeNoDrawThisFrame_;
-                continue;
+                return;
             }
         }
         ++runtimeSafeRenderedThisFrame_;
@@ -15286,6 +15432,72 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                 ++renderedCountById[static_cast<size_t>(sid)];
             }
         }
+    };
+
+    std::array<uint8_t, kTrackSegmentLimit> farOrder{};
+    std::array<uint8_t, kTrackSegmentLimit> nearOrder{};
+    size_t farCount = 0u;
+    size_t nearCount = 0u;
+
+    size_t windowCount = segmentRenderers_.size();
+    if (windowCount == 0u) windowCount = preparedCount;
+    const int32_t carRefSegmentId =
+        (observedCarSegmentId_ > 0)
+            ? WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_)
+            : (trackedCarSegmentValid_ ? WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_) : -1);
+    size_t carRank = 0u;
+    const bool hasCarRank =
+        (carRefSegmentId > 0) &&
+        TryGetWindowLogicalRank(carRefSegmentId, carRank);
+
+    // Build deterministic two pass order by local window rank distance to car.
+    for (size_t i = 0; i < preparedCount; ++i)
+    {
+        SegmentRenderEntry* entry = preparedEntries[i];
+        if (!entry)
+        {
+            if (farCount < farOrder.size()) farOrder[farCount++] = static_cast<uint8_t>(i);
+            continue;
+        }
+
+        bool isNearCar = false;
+        if (hasCarRank)
+        {
+            size_t entryRank = 0u;
+            if (TryGetWindowLogicalRank(entry->id, entryRank) && windowCount > 0u)
+            {
+                const size_t linearDist =
+                    (entryRank > carRank) ? (entryRank - carRank) : (carRank - entryRank);
+                const size_t wrapDist = (linearDist <= windowCount)
+                    ? std::min(linearDist, windowCount - std::min(linearDist, windowCount))
+                    : linearDist;
+                isNearCar = (wrapDist <= 1u);
+            }
+        }
+
+        if (isNearCar)
+        {
+            if (nearCount < nearOrder.size()) nearOrder[nearCount++] = static_cast<uint8_t>(i);
+        }
+        else
+        {
+            if (farCount < farOrder.size()) farOrder[farCount++] = static_cast<uint8_t>(i);
+        }
+    }
+
+    // Pass 1: draw far from car.
+    for (size_t i = 0; i < farCount; ++i)
+    {
+        const size_t idx = static_cast<size_t>(farOrder[i]);
+        if (idx >= preparedCount) continue;
+        renderPreparedEntry(preparedEntries[idx]);
+    }
+    // Pass 2: draw local seam neighborhood around car.
+    for (size_t i = 0; i < nearCount; ++i)
+    {
+        const size_t idx = static_cast<size_t>(nearOrder[i]);
+        if (idx >= preparedCount) continue;
+        renderPreparedEntry(preparedEntries[idx]);
     }
 }
 

@@ -12,7 +12,14 @@ void CarSystem::CarCommandAdapter::Accelerate()
     if (!state) return;
     state->throttleInputHeld = true;
     state->braking = false;
-    int16_t next = static_cast<int16_t>(state->throttle + CarSystem::kThrottleStep);
+    if (state->accelHoldFrames < 255u) ++state->accelHoldFrames;
+    // Digital button pressure simulation:
+    // longer hold increases acceleration step progressively.
+    const int16_t boost = static_cast<int16_t>(
+        std::min<int32_t>(CarSystem::kThrottleStepBoostMax,
+                          static_cast<int32_t>(state->accelHoldFrames / 6u)));
+    const int16_t step = static_cast<int16_t>(CarSystem::kThrottleStep + boost);
+    int16_t next = static_cast<int16_t>(state->throttle + step);
     state->throttle = std::min<int16_t>(next, CarSystem::kThrottleMax);
 }
 
@@ -21,6 +28,8 @@ void CarSystem::CarCommandAdapter::Brake()
     if (!state) return;
     state->brakeInputHeld = true;
     state->braking = true;
+    if (state->brakeHoldFrames < 255u) ++state->brakeHoldFrames;
+    state->accelHoldFrames = 0u;
     int16_t next = static_cast<int16_t>(state->throttle - (CarSystem::kThrottleStep * 2));
     state->throttle = std::max<int16_t>(next, 0);
 }
@@ -136,10 +145,19 @@ void CarSystem::TickCommandState()
             (commandState_.steerDirection > 0)
                 ? CarSystem::kSteeringMax
                 : static_cast<int16_t>(-CarSystem::kSteeringMax);
+        // In brake/reverse mode steering follows the current arrow directly.
+        // No cross-center smoothing or one-shot limits.
+        if (commandState_.braking)
+        {
+            commandState_.steering = target;
+        }
+        else
+        {
         // If the player changed side (left->right or right->left), recenter fast first.
         if ((commandState_.steerDirection > 0 && commandState_.steering < 0) ||
             (commandState_.steerDirection < 0 && commandState_.steering > 0))
         {
+            // Forward mode keeps smoother cross-center behavior.
             if (commandState_.steering > 0)
             {
                 commandState_.steering = static_cast<int16_t>(
@@ -153,13 +171,16 @@ void CarSystem::TickCommandState()
         }
         if (commandState_.steering < target)
         {
+            const int16_t step = CarSystem::kSteeringStep;
             commandState_.steering = static_cast<int16_t>(
-                std::min<int16_t>(target, static_cast<int16_t>(commandState_.steering + CarSystem::kSteeringStep)));
+                std::min<int16_t>(target, static_cast<int16_t>(commandState_.steering + step)));
         }
         else if (commandState_.steering > target)
         {
+            const int16_t step = CarSystem::kSteeringStep;
             commandState_.steering = static_cast<int16_t>(
-                std::max<int16_t>(target, static_cast<int16_t>(commandState_.steering - CarSystem::kSteeringStep)));
+                std::max<int16_t>(target, static_cast<int16_t>(commandState_.steering - step)));
+        }
         }
     }
     else
@@ -187,6 +208,10 @@ void CarSystem::TickCommandState()
     {
         commandState_.throttle = static_cast<int16_t>(std::max<int16_t>(0, commandState_.throttle - CarSystem::kThrottleDecay));
     }
+    if (!commandState_.throttleInputHeld)
+    {
+        commandState_.accelHoldFrames = 0u;
+    }
 
     // Brake decays when button is released, allowing natural transition to reverse.
     if (commandState_.braking)
@@ -199,7 +224,12 @@ void CarSystem::TickCommandState()
             {
                 commandState_.braking = false;
             }
+            commandState_.brakeHoldFrames = 0u;
         }
+    }
+    else
+    {
+        commandState_.brakeHoldFrames = 0u;
     }
 
     // Reset per-frame latches.

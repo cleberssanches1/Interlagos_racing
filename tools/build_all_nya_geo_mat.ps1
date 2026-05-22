@@ -107,7 +107,10 @@ if (-not (Test-Path -LiteralPath $script:copyRenScript)) { throw "Script nao enc
 if (-not (Test-Path -LiteralPath $script:updateSegmentsMapScript)) { throw "Script nao encontrado: $script:updateSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
-if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnershipScript)) { throw "Script nao encontrado: $script:seamOwnershipScript" }
+if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnershipScript)) {
+    Write-Warning ("Script de seam dedup nao encontrado: {0}. Etapa sera ignorada." -f $script:seamOwnershipScript)
+    $EnableSeamFaceDedup = $false
+}
 
 Write-Host "=== Etapa 1/3: Exportar NYA + segments_map.json ==="
 $exportArgs = @{

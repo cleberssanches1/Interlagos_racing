@@ -24,6 +24,7 @@ struct DynamicsState
 struct GroundState
 {
     Fxp surfaceYTarget = Fxp::BuildRaw(0);
+    Fxp surfaceYFiltered = Fxp::BuildRaw(0);
     Fxp correctionX = Fxp::BuildRaw(0);
     Fxp correctionZ = Fxp::BuildRaw(0);
     Fxp lastStableX = Fxp::BuildRaw(0);
@@ -39,6 +40,7 @@ struct GroundState
     bool edgeRightLost = false;
     bool lastStablePlanarInitialized = false;
     bool surfaceYInitialized = false;
+    bool surfaceYFilterInitialized = false;
     int32_t lastWallQueryFrameId = -1;
     int32_t lastWallApplyFrameId = -1;
     bool lastWallQueryHit = false;
@@ -110,6 +112,7 @@ struct Tunables
     static constexpr Fxp kReverseAccelPerFrame = Fxp::BuildRaw(0x00002000); // 0.125
     static constexpr Fxp kBrakeDecelPerFrame = Fxp::BuildRaw(0x0000570A);  // ~0.340
     static constexpr Fxp kBrakeStopSpeedThreshold = Fxp::BuildRaw(0x0000A000); // ~0.625
+    static constexpr uint8_t kReverseEngageDelayFrames = 10u; // brake deadzone before reverse
     static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000068);       // ~0.0016
     static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x00000106);    // ~0.0040
     static constexpr Fxp kCoastDampingPerFrame = Fxp::BuildRaw(0x000000A4);// ~0.0025
@@ -177,6 +180,11 @@ struct Tunables
     static constexpr Fxp kNoSupportSpeedDamping = Fxp::BuildRaw(0x00010000);   // 1.0
     static constexpr Fxp kEdgeForwardDamping = Fxp::BuildRaw(0x0000A000);      // 0.625
     static constexpr Fxp kEdgeLateralDamping = Fxp::BuildRaw(0x0000E000);      // 0.875
+    // Vertical smoothing for chassis over sharp face joins.
+    // 0.30 means 30 percent of target delta per frame (about 70 percent smoothing).
+    static constexpr Fxp kChassisVerticalFollowAlpha = Fxp::BuildRaw(0x00002666); // ~0.15 (50 percent smoother)
+    // Allow hard snap only when error is very large to avoid micro hops.
+    static constexpr Fxp kChassisVerticalHardSnapThreshold = Fxp::BuildRaw(0x00030000); // 3.0
 };
 
 inline Fxp Clamp(const Fxp& value, const Fxp& minValue, const Fxp& maxValue)

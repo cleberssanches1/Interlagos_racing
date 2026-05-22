@@ -643,6 +643,11 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     CameraSystem& cameraSystem,
                                                     TrackSystem& trackSystem,
                                                     std::unique_ptr<Game::CarSystem>& carSystem,
+                                                    MeshRenderer* carShadowRenderer,
+                                                    bool renderCarShadowModel,
+                                                    bool sbaLoaded,
+                                                    uint16_t sbaMeshCount,
+                                                    uint16_t sbaFaceCount,
                                                     RenderPipeline& renderPipeline,
                                                     HudSystem& hudSystem,
                                                     bool enableRuntimeSimulation,
@@ -681,6 +686,11 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.cameraSystem = &cameraSystem;
     loopContext.trackSystem = &trackSystem;
     loopContext.carSystem = &carSystem;
+    loopContext.carShadowRenderer = carShadowRenderer;
+    loopContext.renderCarShadowModel = renderCarShadowModel;
+    loopContext.sbaLoaded = sbaLoaded;
+    loopContext.sbaMeshCount = sbaMeshCount;
+    loopContext.sbaFaceCount = sbaFaceCount;
     loopContext.renderPipeline = &renderPipeline;
     loopContext.hudSystem = &hudSystem;
     loopContext.trackCollision = enableRuntimeSimulation ? trackCollision : nullptr;
@@ -892,7 +902,8 @@ static int RunPhysicsPocMode()
     }
 
     // Camera/projecao de teste
-    constexpr float kCameraFovDeg = 34.0f;
+    // Narrower FOV reduces affine texture warp near screen edges.
+    constexpr float kCameraFovDeg = 30.0f;
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
 
     // Sky via VDP2
@@ -919,13 +930,19 @@ static int RunPhysicsPocMode()
     CameraSystem cameraSystem;
     cameraSystem.SetDebugLogsEnabled(false);
     cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
-    cameraSystem.SetChaseNearFollowDistance(240);
+    cameraSystem.SetChaseNearFollowDistance(320);
 
     const char* carPaths[] = {
         "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
         "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
+    };
+    const char* sbaPaths[] = {
+        "CD/DATA/SBA.NYA;1", "CD/DATA/SBA.NYA",
+        "DATA/SBA.NYA;1", "DATA/SBA.NYA",
+        "SBA.NYA;1", "SBA.NYA",
+        "sba.nya;1", "sba.nya"
     };
     // POC: try WRAM-first before track runtime startup.
     const bool useCartCopyPipeline = true;
@@ -958,8 +975,8 @@ static int RunPhysicsPocMode()
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 15u;
-    trackConfig.minSegments = 15u;
+    trackConfig.initialSegments = 50u;
+    trackConfig.minSegments = 50u;
     trackConfig.initialMeshes = 512u;
     trackConfig.initialFaces =
         static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
@@ -1043,12 +1060,48 @@ static int RunPhysicsPocMode()
             : static_cast<Game::ITrackCollisionQuery*>(&pocTrackCollision);
     if (trackSystemReady)
     {
+        constexpr int32_t kInitialSpawnSegmentId = 3;
         Vector3D segCenter(0.0, 0.0, 0.0);
-        if (trackSystem.FindSegmentCenterById(1, trackSegOffset, segCenter))
+        if (trackSystem.FindSegmentCenterById(kInitialSpawnSegmentId, trackSegOffset, segCenter))
         {
             carWorldPosition.X = segCenter.X;
             carWorldPosition.Z = segCenter.Z;
             carWorldPosition.Y = segCenter.Y;
+        }
+
+        // Keep camera 2 far enough from the car for track visibility tests.
+        cameraSystem.SetChaseNearFollowDistance(320);
+    }
+
+    std::unique_ptr<ModelObject> sbaModel{};
+    std::unique_ptr<MeshRenderer> sbaRenderer{};
+    bool sbaLoaded = false;
+    uint16_t sbaMeshCount = 0;
+    uint16_t sbaFaceCount = 0;
+    constexpr bool kEnableSbaShadowModelLoad = false;
+    if (renderCar && kEnableSbaShadowModelLoad)
+    {
+        const char* sbaPath = FindExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
+        if (sbaPath)
+        {
+            sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
+            if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
+            {
+                MeshRenderer::Config sbaCfg{};
+                sbaCfg.modelCenter = ComputeCarModelCenter(sbaModel.get(),
+                                                           sbaModel->GetMeshCount(),
+                                                           sbaModel->IsSmooth());
+                sbaCfg.lightDirection = Vector3D(0.35, -0.15, 0.35);
+                sbaCfg.drawOrderCount = std::min<size_t>(8u, sbaModel->GetMeshCount());
+                for (size_t i = 0; i < sbaCfg.drawOrderCount; ++i) sbaCfg.drawOrder[i] = i;
+                sbaCfg.useBudget = false;
+                sbaCfg.rotateModelX180 = false;
+                sbaCfg.rotateModelZ180 = false;
+                sbaRenderer = std::make_unique<MeshRenderer>(*sbaModel, sbaModel->IsSmooth(), sbaCfg);
+                sbaLoaded = (sbaRenderer != nullptr);
+                sbaMeshCount = static_cast<uint16_t>(sbaModel->GetMeshCount());
+                sbaFaceCount = static_cast<uint16_t>(sbaModel->GetFaceCount());
+            }
         }
     }
     SRL::Math::Types::Fxp spawnSurfaceY{};
@@ -1088,6 +1141,12 @@ static int RunPhysicsPocMode()
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
 
+    // Apply inverse direction on Y: -16 units relative to sampled asphalt surface.
+    // This affects spawn and runtime ground adhesion target consistently.
+    constexpr int32_t kCarLiftUnits = 16;
+    Game::CarPhysics::SetRideHeightOffset(
+        Game::CarPhysics::GetRideHeightOffset() - SRL::Math::Types::Fxp::BuildRaw(kCarLiftUnits << 16));
+
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
     Game::SimpleAudioEvents audioEvents;
@@ -1116,6 +1175,11 @@ static int RunPhysicsPocMode()
                                                                cameraSystem,
                                                                trackSystem,
                                                                carSystem,
+                                                               sbaRenderer.get(),
+                                                               sbaLoaded,
+                                                               false,
+                                                               sbaMeshCount,
+                                                               sbaFaceCount,
                                                                renderPipeline,
                                                                hudSystem,
                                                                enableRuntimeSimulation,
@@ -1215,6 +1279,12 @@ int GameApp::Run()
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
     };
+    const char* sbaPaths[] = {
+        "CD/DATA/SBA.NYA;1", "CD/DATA/SBA.NYA",
+        "DATA/SBA.NYA;1", "DATA/SBA.NYA",
+        "SBA.NYA;1", "SBA.NYA",
+        "sba.nya;1", "sba.nya"
+    };
     // Keep an independent WRAM copy of CAR1.NYA to isolate car rendering from
     // track Cart RAM streaming activity.
     const bool useCartCopyPipeline = true; // cart + WRAM copy
@@ -1249,6 +1319,38 @@ int GameApp::Run()
              static_cast<unsigned>(vertexCount),
              isSmoothMesh ? 1u : 0u);
     }
+
+    std::unique_ptr<ModelObject> sbaModel{};
+    std::unique_ptr<MeshRenderer> sbaRenderer{};
+    bool sbaLoaded = false;
+    uint16_t sbaMeshCount = 0;
+    uint16_t sbaFaceCount = 0;
+    constexpr bool kEnableSbaShadowModelLoad = false;
+    if (renderCar && kEnableSbaShadowModelLoad)
+    {
+        const char* sbaPath = FindExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
+        if (sbaPath)
+        {
+            sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
+            if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
+            {
+                MeshRenderer::Config sbaCfg{};
+                sbaCfg.modelCenter = ComputeCarModelCenter(sbaModel.get(),
+                                                           sbaModel->GetMeshCount(),
+                                                           sbaModel->IsSmooth());
+                sbaCfg.lightDirection = Vector3D(0.35, -0.15, 0.35);
+                sbaCfg.drawOrderCount = std::min<size_t>(8u, sbaModel->GetMeshCount());
+                for (size_t i = 0; i < sbaCfg.drawOrderCount; ++i) sbaCfg.drawOrder[i] = i;
+                sbaCfg.useBudget = false;
+                sbaCfg.rotateModelX180 = false;
+                sbaCfg.rotateModelZ180 = false;
+                sbaRenderer = std::make_unique<MeshRenderer>(*sbaModel, sbaModel->IsSmooth(), sbaCfg);
+                sbaLoaded = (sbaRenderer != nullptr);
+                sbaMeshCount = static_cast<uint16_t>(sbaModel->GetMeshCount());
+                sbaFaceCount = static_cast<uint16_t>(sbaModel->GetFaceCount());
+            }
+        }
+    }
     // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
     if constexpr (kCarLogs)
@@ -1263,8 +1365,8 @@ int GameApp::Run()
 
     // Simple frustum
 
-    // Balanced FOV: reduce fisheye without flattening car proportions.
-    constexpr float kCameraFovDeg = 34.0f;
+    // Narrower FOV: reduces near-edge asphalt distortion while keeping track readability.
+    constexpr float kCameraFovDeg = 30.0f;
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
 
 
@@ -1333,10 +1435,10 @@ int GameApp::Run()
     static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    // Fixed visible budget: 15 segments.
-    // Runtime LOD split is handled inside TrackSystem: 8x 64x64 (near) + 7x 32x32 (far).
-    trackConfig.initialSegments = 15u;
-    trackConfig.minSegments     = 15u;
+    // Fixed visible budget: 50 segments.
+    // Runtime LOD split is handled inside TrackSystem: 25x 64x64 (near) + 25x 32x32 (far).
+    trackConfig.initialSegments = 50u;
+    trackConfig.minSegments     = 50u;
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
@@ -1358,15 +1460,19 @@ int GameApp::Run()
     }
     if (renderTrack && trackSystemReady)
     {
+        constexpr int32_t kInitialSpawnSegmentId = 3;
         Vector3D seg01Center(0.0, 0.0, 0.0);
-        if (trackSystem.FindSegmentCenterById(1, trackSegOffset, seg01Center))
+        if (trackSystem.FindSegmentCenterById(kInitialSpawnSegmentId, trackSegOffset, seg01Center))
         {
-            // Spawn aligned to segment 1 center.
+            // Spawn aligned to segment 3 center.
             carWorldPosition.X = seg01Center.X;
             carWorldPosition.Z = seg01Center.Z;
             carWorldPosition.Y = seg01Center.Y;
             // Car spawn debug log disabled to keep on-screen diagnostics concise.
         }
+
+        // Keep camera 2 far enough from the car for track visibility tests.
+        cameraSystem.SetChaseNearFollowDistance(320);
     }
     if (renderCar && loadCarAfterTrack)
     {
@@ -1522,7 +1628,7 @@ int GameApp::Run()
     {
         // Camera 2 calibration baseline requested:
         // CAM2 off x:0 y:-20 z:-144
-        constexpr int16_t kCam2BehindUnits = 240;
+        constexpr int16_t kCam2BehindUnits = 320;
         cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
         cameraSystem.SetChaseNearFollowDistance(kCam2BehindUnits);
     }
@@ -1532,6 +1638,13 @@ int GameApp::Run()
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
+
+    // Apply inverse direction on Y: -16 units relative to sampled asphalt surface.
+    // This affects spawn and runtime ground adhesion target consistently.
+    constexpr int32_t kCarLiftUnits = 16;
+    Game::CarPhysics::SetRideHeightOffset(
+        Game::CarPhysics::GetRideHeightOffset() - SRL::Math::Types::Fxp::BuildRaw(kCarLiftUnits << 16));
+
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
     Game::SimpleAudioEvents audioEvents;
@@ -1565,6 +1678,11 @@ int GameApp::Run()
                                                                cameraSystem,
                                                                trackSystem,
                                                                carSystem,
+                                                               sbaRenderer.get(),
+                                                               sbaLoaded,
+                                                               false,
+                                                               sbaMeshCount,
+                                                               sbaFaceCount,
                                                                renderPipeline,
                                                                hudSystem,
                                                                enableRuntimeSimulation,

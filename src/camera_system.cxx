@@ -67,6 +67,7 @@ CameraSystem::CameraSystem()
     tuning_.yawStepDeg = 4;
     Camera::RefreshAngles(state_);
     headingForwardWorld_ = ForwardFromYawDeg(cachedCarYawDeg_);
+    smoothedHeadingForwardWorld_ = headingForwardWorld_;
     ApplyChasePreset(chasePreset_, false);
     InitializeManualOffset();
     orbitConfig_.yawStepDeg = tuning_.yawStepDeg;
@@ -105,6 +106,8 @@ void CameraSystem::ResetToDefaultView()
     tuning_.targetDistance = Fxp::BuildRaw(120 << 16);
     tuning_.yawStepDeg = 4;
     Camera::RefreshAngles(state_);
+    headingForwardWorld_ = ForwardFromYawDeg(cachedCarYawDeg_);
+    smoothedHeadingForwardWorld_ = headingForwardWorld_;
     ApplyChasePreset(chasePreset_, false);
     InitializeManualOffset();
     cameraLocationInitialized_ = false;
@@ -179,14 +182,10 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
     }
     startHeldPrev_ = startHeld;
 
-    // Allow L/R car yaw while accelerating/braking; only block in explicit orbit/edit modes.
-    if (allowCarYawInput && !orbitControlActive && !xHeld)
-    {
-        if (lHeld) carYawDeg -= carYawStepDeg_;
-        if (rHeld) carYawDeg += carYawStepDeg_;
-        if (carYawDeg < 0) carYawDeg += 360;
-        if (carYawDeg >= 360) carYawDeg -= 360;
-    }
+    // Camera must not drive gameplay yaw in chase mode.
+    // Keep car yaw ownership in gameplay/physics to avoid follow jitter
+    // and side-dependent resistance during continuous steering.
+    (void)allowCarYawInput;
     cachedCarYawDeg_ = NormalizeYawDeg(carYawDeg);
 
     if (zHeld_)
@@ -293,15 +292,22 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
     const auto cfg = PresetConfig(chasePreset_);
     const Fxp lookAheadBase = Fxp::BuildRaw(static_cast<int32_t>(cfg.lookAhead) << 16);
     const Fxp zero = Fxp::BuildRaw(0);
-    const int32_t headingYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_);
-    const Vector3D headingForward = ForwardFromYawDeg(headingYawDeg);
+    const Vector3D headingForward = smoothedHeadingForwardWorld_;
     Vector3D chaseForward = headingForward;
     if (chasePreset_ != ChasePreset::FirstPerson)
     {
+        // Use movement forward only when aligned with heading.
+        // This avoids look target oscillation during tight circles.
         constexpr int32_t kMoveDirEnableRaw = (1 << 12); // ~0.0625
         if (movementSpeedNormRaw_ > kMoveDirEnableRaw)
         {
-            chaseForward = movementForwardWorld_;
+            const int32_t dotRaw = ((headingForward.X * movementForwardWorld_.X) +
+                                    (headingForward.Z * movementForwardWorld_.Z)).RawValue();
+            constexpr int32_t kMinAlignedDotRaw = (1 << 15); // cos ~60 deg
+            if (dotRaw >= kMinAlignedDotRaw)
+            {
+                chaseForward = movementForwardWorld_;
+            }
         }
     }
 
@@ -349,6 +355,8 @@ void CameraSystem::SetCinematicFrame(const Vector3D& location, const Vector3D& t
 void CameraSystem::SetChaseNearFollowDistance(int16_t behindDistance)
 {
     if (behindDistance < 1) behindDistance = 1;
+    // Clamp chase distance to keep camera stable during tight steering loops.
+    if (behindDistance > 420) behindDistance = 420;
     chaseNearOffsetZ_ = static_cast<int16_t>(-behindDistance);
     if (chasePreset_ == ChasePreset::ChaseNear)
     {
@@ -405,7 +413,7 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
     case ChasePreset::ChaseFar:
         return ChasePresetConfig{
             0,    // offsetX
-            -26,  // offsetY
+            -97,  // offsetY (raised to keep far camera above near asphalt)
             -320, // offsetZ (farther behind)
             180,  // lookAhead
             0,    // lookHeight
@@ -438,7 +446,8 @@ Vector3D CameraSystem::ForwardFromYawDeg(int32_t yawDeg)
 
 void CameraSystem::UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) const
 {
-    // Keep chase forward aligned with gameplay yaw (physics heading).
+    // Keep chase forward aligned with gameplay yaw.
+    // Apply a small angular smoothing to remove steering jitter.
     const int32_t baseHeadingYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_);
     headingForwardWorld_ = ForwardFromYawDeg(baseHeadingYawDeg);
 
@@ -446,10 +455,20 @@ void CameraSystem::UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) 
     {
         hasObservedCarWorldPosition_ = true;
         lastObservedCarWorldPosition_ = carWorldPosition;
+        smoothedHeadingForwardWorld_ = headingForwardWorld_;
         movementForwardWorld_ = headingForwardWorld_;
         movementSpeedNormRaw_ = 0;
         return;
     }
+
+    constexpr int32_t kHeadingSmoothBlendRaw = 18350; // 0.28
+    const Vector3D blendedHeading = LerpVectorRaw(smoothedHeadingForwardWorld_,
+                                                  headingForwardWorld_,
+                                                  kHeadingSmoothBlendRaw);
+    smoothedHeadingForwardWorld_ = NormalizeFlatDirectionRaw(
+        blendedHeading.X.RawValue(),
+        blendedHeading.Z.RawValue(),
+        headingForwardWorld_);
 
     const int32_t dxRaw = carWorldPosition.X.RawValue() - lastObservedCarWorldPosition_.X.RawValue();
     const int32_t dzRaw = carWorldPosition.Z.RawValue() - lastObservedCarWorldPosition_.Z.RawValue();
@@ -488,8 +507,8 @@ int32_t CameraSystem::CameraFollowBlendRaw() const
         return (1 << 16);
     }
 
-    // Arcade lock: keep the chase camera rigidly behind the car.
-    return (1 << 16);
+    // Keep follow stable while preserving responsiveness.
+    return 19661; // 0.30
 }
 
 Vector3D CameraSystem::ResolvePresetOffsetWorld() const
@@ -499,19 +518,10 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     int32_t offsetYUnits = cfg.offsetY;
     int32_t offsetZUnits = cfg.offsetZ;
 
-    const int32_t baseHeadingYawDeg = NormalizeYawDeg(cachedCarYawDeg_ + carForwardYawOffsetDeg_);
-    const Vector3D headingForward = ForwardFromYawDeg(baseHeadingYawDeg);
-    // Use real movement direction while moving to prevent chase drift when
-    // gameplay yaw and displacement temporarily diverge.
-    Vector3D forward = headingForward;
-    if (chasePreset_ != ChasePreset::FirstPerson)
-    {
-        constexpr int32_t kMoveDirEnableRaw = (1 << 12); // ~0.0625
-        if (movementSpeedNormRaw_ > kMoveDirEnableRaw)
-        {
-            forward = movementForwardWorld_;
-        }
-    }
+    const Vector3D headingForward = smoothedHeadingForwardWorld_;
+    // Keep chase position rigidly tied to heading to prevent side-dependent
+    // jitter when movement direction becomes noisy while steering hard.
+    const Vector3D forward = headingForward;
     offsetXUnits = std::clamp<int32_t>(offsetXUnits, -140, 140);
     // Requested tuning:
     // - global Y shift: -20

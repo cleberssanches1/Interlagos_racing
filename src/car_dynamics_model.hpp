@@ -27,8 +27,15 @@ public:
             }
             else
             {
-                // B acts as stop brake: do not auto-engage reverse while braking.
-                ioState.forwardSpeed = Fxp::BuildRaw(0);
+                // Brake deadzone: engage reverse only after a short hold at stop.
+                if (ioFrameState.brakeHoldFrames >= Tunables::kReverseEngageDelayFrames)
+                {
+                    ioState.forwardSpeed -= Tunables::kReverseAccelPerFrame;
+                }
+                else
+                {
+                    ioState.forwardSpeed = Fxp::BuildRaw(0);
+                }
             }
         }
         else if (throttleNorm > Fxp::BuildRaw(0))
@@ -54,6 +61,7 @@ public:
                                      Fxp::BuildRaw(-Tunables::kMaxReverseSpeed.RawValue()),
                                      Tunables::kMaxForwardSpeed);
         if (ioFrameState.braking &&
+            ioState.forwardSpeed > Fxp::BuildRaw(0) &&
             ioState.forwardSpeed.Abs() < Tunables::kBrakeStopSpeedThreshold)
         {
             ioState.forwardSpeed = Fxp::BuildRaw(0);
@@ -72,18 +80,37 @@ public:
             Clamp(outStep.speedAbs / Tunables::kMaxForwardSpeed,
                   Fxp::BuildRaw(0),
                   Fxp::BuildRaw(1 << 16));
+        // No in-place rotation: steering authority fades out near zero speed.
+        const Fxp steerSpeedGate =
+            Clamp((outStep.speedAbs - Fxp::BuildRaw(0x00004000)) / Fxp::BuildRaw(0x0000C000),
+                  Fxp::BuildRaw(0),
+                  Fxp::BuildRaw(1 << 16));
         Fxp steerAuthority = Fxp::BuildRaw(1 << 16) - (speedRatio * Tunables::kHighSpeedSteerLoss * gripScale);
         if (steerAuthority < Tunables::kSteerAuthorityMin)
         {
             steerAuthority = Tunables::kSteerAuthorityMin;
         }
+        // Keep minimum steering authority while user is actively commanding
+        // accel or brake/reverse, so direction can be changed repeatedly in reverse.
+        Fxp steerGate = steerSpeedGate;
+        if (ioFrameState.braking || ioFrameState.throttle > 0)
+        {
+            const Fxp kCommandSteerMinGate = Fxp::BuildRaw(0x0000599A); // ~0.35
+            if (steerGate < kCommandSteerMinGate) steerGate = kCommandSteerMinGate;
+        }
+        steerAuthority = steerAuthority * steerGate;
 
         // Two-axle slip model inspired by TORCS/VDrift, adapted for fixed-point Saturn:
         // alpha_f ~= delta - (vy + lf*r)/|vx|, alpha_r ~= -(vy - lr*r)/|vx|
         // Fy = clamp(-Ca * alpha, +/- FyCap)
         // Match gameplay convention directly:
         // negative steering => left turn, positive steering => right turn.
-        const Fxp steerEffDeg = ioState.steerDeg * steerAuthority;
+        // Reverse steering: yaw response must be inverted when moving backwards.
+        Fxp steerEffDeg = ioState.steerDeg * steerAuthority;
+        if (ioState.forwardSpeed < Fxp::BuildRaw(0))
+        {
+            steerEffDeg = Fxp::BuildRaw(-steerEffDeg.RawValue());
+        }
         const Fxp steerEffRad = steerEffDeg * Tunables::kDegToRad;
         const Fxp yawRateRadPerFrame = ioState.yawRateDegPerFrame * Tunables::kDegToRad;
         const Fxp vxAbs = ioState.forwardSpeed.Abs();
@@ -117,6 +144,15 @@ public:
         ioState.yawRateDegPerFrame +=
             (targetYawRateDegPerFrame - ioState.yawRateDegPerFrame) * Tunables::kYawRateResponse;
         ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kYawDamping;
+
+        // Hard safety: if almost stopped and not accelerating or braking, do not rotate.
+        if (outStep.speedAbs < Fxp::BuildRaw(0x00006000) &&
+            ioFrameState.throttle == 0 &&
+            !ioFrameState.braking)
+        {
+            ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+            ioState.yawAccumulatorDegRaw = 0;
+        }
 
         if (ioFrameState.throttle == 0 && !ioFrameState.braking)
         {

@@ -46,13 +46,13 @@ private:
     static constexpr int32_t kMaxSteerDegX16 = 22 << 16;
     static constexpr int32_t kMaxPitchDegX16 = 18 << 16;
     static constexpr int32_t kMaxRollDegX16 = 8 << 16;
-    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00007000); // ~0.44
+    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00002000); // ~0.125 short travel
     static constexpr int32_t kSteerFilterShift = 2;  // 1/4
     static constexpr int32_t kPitchFilterShift = 1;  // 1/2 (faster body pitch response)
     static constexpr int32_t kRollFilterShift = 3;   // 1/8
-    static constexpr int32_t kSuspFilterShift = 2;   // 1/4
+    static constexpr int32_t kSuspFilterShift = 4;   // 1/16 smoother wheel travel
     static constexpr int32_t kSpinDegPerKmhX16 = 2200; // tune visual spin
-    static constexpr int32_t kPitchDegPerUnitX16 = 4 << 16; // visual gain from slope deltaY
+    static constexpr int32_t kPitchDegPerUnitX16 = 1 << 16; // 50 percent lower pitch gain
 
     bool DetectWheelIdsFromMeshtex(size_t meshCount, std::array<size_t, 4>& outIds, size_t& outCount) const;
     bool DetectWheelIdsFromMeshStats(ModelObject& model,

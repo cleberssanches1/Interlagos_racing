@@ -23,6 +23,7 @@ struct GameplayFrameState
     int16_t steering = 0;
     bool braking = false;
     bool wheelsSpinning = false;
+    uint8_t brakeHoldFrames = 0;
     int16_t speedProxy = 0;
     int32_t activeSegmentId = -1;
     int16_t debugGroundYRear = 0;

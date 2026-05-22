@@ -72,7 +72,7 @@ using TrackLowWorkUniquePtr = std::unique_ptr<T, TrackObjectDeleter<T, SRL::Memo
 class TrackSystem
 {
 public:
-    static constexpr size_t kTrackSegmentLimit = 30;
+    static constexpr size_t kTrackSegmentLimit = 82;
     static constexpr size_t kWindowSegmentIdDirectIndexCap = 512;
 
     struct Config
@@ -637,6 +637,10 @@ private:
     uint16_t activeWindowHead_ = 0;
     int8_t windowDirection_ = 1;
     int8_t cameraWindowDirection_ = 1;
+    // Camera direction switch stabilization to avoid render window flicker on 360 turns.
+    int8_t cameraDirectionPending_ = 1;
+    uint8_t cameraDirectionConfirmFrames_ = 0;
+    uint8_t cameraDirectionFlipCooldown_ = 0;
     uint8_t activeWindowSwitchCooldown_ = 0;
     int32_t targetWindowStartId_ = 1;
     int32_t trackedCarSegmentId_ = 1;

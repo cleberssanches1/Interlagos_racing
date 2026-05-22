@@ -143,6 +143,7 @@ private:
     int32_t cachedCarYawDeg_ = 0;
     int16_t carForwardYawOffsetDeg_ = 0;
     mutable Vector3D headingForwardWorld_{0.0, 0.0, 1.0f};
+    mutable Vector3D smoothedHeadingForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D movementForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
     mutable bool hasObservedCarWorldPosition_ = false;

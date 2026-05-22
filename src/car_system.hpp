@@ -65,6 +65,8 @@ public:
         bool throttleInputHeld = false;
         bool brakeInputHeld = false;
         bool steerInputHeld = false;
+        uint8_t accelHoldFrames = 0;
+        uint8_t brakeHoldFrames = 0;
     };
 
     const CommandSnapshot& Commands() const { return commandState_; }
@@ -78,6 +80,7 @@ public:
     void SetYawDegrees(int32_t yawDeg) { yawDeg_ = NormalizeYawDeg(yawDeg); }
     void SetVisualYawOffsetDegrees(int32_t offsetDeg) { visualYawOffsetDeg_ = NormalizeSignedYawDeg(offsetDeg); }
     int32_t VisualYawOffsetDegrees() const { return visualYawOffsetDeg_; }
+    int32_t RenderYawDegrees() const { return CurrentRenderYawDeg(); }
 
 private:
     static int32_t NormalizeYawDeg(int32_t yawDeg)
@@ -117,7 +120,8 @@ private:
         }
     };
 
-    static constexpr int16_t kThrottleStep = 12;
+    static constexpr int16_t kThrottleStep = 8;
+    static constexpr int16_t kThrottleStepBoostMax = 10;
     static constexpr int16_t kThrottleMax = 100;
     static constexpr int16_t kSteeringStep = 24;
     static constexpr int16_t kSteeringMax = 100;
