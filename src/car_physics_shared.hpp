@@ -21,6 +21,8 @@ struct DynamicsState
     int32_t yawAccumulatorDegRaw = 0; // 16.16 integrated yaw delta
     uint8_t gear = 1u;                // 1..6 forward gears
     int16_t engineRpm = 1000;         // debug/telemetry
+    uint8_t launchStraightFrames = 0u;
+    bool steerLaunchArmed = true;
 };
 
 struct GroundState
@@ -173,6 +175,8 @@ struct Tunables
     static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
     static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25
     static constexpr Fxp kBrakeResidualYawCutoff = Fxp::BuildRaw(0x00004000);     // 0.25 deg/frame
+    static constexpr uint8_t kLaunchStraightFrameCount = 2u;
+    static constexpr Fxp kLaunchStraightEntrySpeed = Fxp::BuildRaw(0x00014000); // 1.25
     static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 14));    // -0.25
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00050000); // 5.0
     static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00010000);      // 1.0

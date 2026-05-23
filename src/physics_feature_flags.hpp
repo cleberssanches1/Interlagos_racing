@@ -27,6 +27,10 @@
 #define PHYS_WALL_COLLISION_RUNTIME 0
 #endif
 
+#ifndef PHYSICS_V2_ENABLED
+#define PHYSICS_V2_ENABLED 1
+#endif
+
 namespace Game::PhysicsFeatureFlags
 {
 static constexpr bool kEnableSurfaceTypeQuery = (PHYS_SURFACE_TYPE_QUERY != 0);
@@ -35,4 +39,5 @@ static constexpr bool kEnableScmapRuntime = (PHYS_SCMAP_RUNTIME != 0);
 static constexpr bool kEnableLocalFaceNeighbor = (PHYS_LOCAL_FACE_NEIGHBOR != 0);
 static constexpr bool kEnableSafeTelemetry = (PHYS_SAFE_TELEMETRY != 0);
 static constexpr bool kEnableWallCollisionRuntime = (PHYS_WALL_COLLISION_RUNTIME != 0);
+static constexpr bool kEnablePhysicsV2 = (PHYSICS_V2_ENABLED != 0);
 } // namespace Game::PhysicsFeatureFlags

@@ -1,0 +1,77 @@
+#pragma once
+
+#include "car_physics_shared.hpp"
+#include "interfaces.hpp"
+
+namespace Game::CarPhysicsV2
+{
+class LongitudinalController
+{
+public:
+    enum class Mode : uint8_t
+    {
+        Idle = 0,
+        DriveForward = 1,
+        BrakeToStop = 2,
+        ReverseEngage = 3,
+        DriveReverse = 4
+    };
+
+    void Reset()
+    {
+        mode_ = Mode::Idle;
+        transitionHoldFrames_ = 0u;
+    }
+
+    void PrepareInputs(const GameplayFrameState& rawFrame,
+                       const CarPhysics::DynamicsState& dynamics,
+                       GameplayFrameState& outFrame)
+    {
+        outFrame = rawFrame;
+
+        const bool throttleOn = rawFrame.throttle > 0;
+        const bool brakeOn = rawFrame.braking;
+        const bool movingForward = dynamics.forwardSpeed > CarPhysics::Fxp::BuildRaw(0);
+        const bool movingReverse = dynamics.forwardSpeed < CarPhysics::Fxp::BuildRaw(0);
+
+        if (brakeOn)
+        {
+            outFrame.throttle = 0;
+            outFrame.braking = true;
+            if (movingForward)
+            {
+                mode_ = Mode::BrakeToStop;
+            }
+            else if (rawFrame.brakeHoldFrames >= CarPhysics::Tunables::kReverseEngageDelayFrames)
+            {
+                mode_ = Mode::DriveReverse;
+            }
+            else
+            {
+                mode_ = Mode::ReverseEngage;
+            }
+        }
+        else if (throttleOn)
+        {
+            outFrame.braking = false;
+            // Conservative pass-through for drive input during rollout:
+            // avoid accidentally suppressing throttle and freezing movement.
+            transitionHoldFrames_ = 0u;
+            mode_ = Mode::DriveForward;
+        }
+        else
+        {
+            outFrame.throttle = 0;
+            outFrame.braking = false;
+            transitionHoldFrames_ = 0u;
+            mode_ = Mode::Idle;
+        }
+    }
+
+    Mode CurrentMode() const { return mode_; }
+
+private:
+    Mode mode_ = Mode::Idle;
+    uint8_t transitionHoldFrames_ = 0u;
+};
+} // namespace Game::CarPhysicsV2

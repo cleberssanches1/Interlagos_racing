@@ -5,6 +5,8 @@
 
 #include "car_dynamics_model.hpp"
 #include "car_ground_follower.hpp"
+#include "car_physics_v2.hpp"
+#include "physics_feature_flags.hpp"
 
 namespace Game
 {
@@ -19,6 +21,12 @@ public:
               Vector3D& ioCarWorldPosition,
               int32_t& ioCarYawDeg) override
     {
+        if constexpr (PhysicsFeatureFlags::kEnablePhysicsV2)
+        {
+            v2_.Step(ioFrameState, trackQuery, ioCarWorldPosition, ioCarYawDeg);
+            return;
+        }
+
         CarPhysics::ResetGroundDebug(ioFrameState);
 
         if (ioFrameState.resetRequested)
@@ -169,6 +177,7 @@ private:
     CarPhysics::DynamicsState dynamicsState_{};
     CarPhysics::GroundState groundState_{};
     int32_t lastGripSeedSegmentId_ = -1;
+    VehiclePhysicsV2 v2_{};
 
 };
 } // namespace Game
