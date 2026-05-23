@@ -55,36 +55,72 @@ struct SkyPanorama
             tile = nullptr;
         }
 
-        SRL::Cd::ChangeDir((const char*)0);
-        const char* path = ResolvePath(paths, count);
-        if (!path)
+        SRL::Bitmap::TGA* tga = nullptr;
+        const char* loadedPath = nullptr;
+        if (paths && count > 0)
         {
-            SRL::Debug::Print(0, 3, "SPN miss ceup");
-            return false;
+            for (size_t i = 0; i < count && !tga; ++i)
+            {
+                const char* candidate = paths[i];
+                if (!candidate || candidate[0] == '\0') continue;
+                SRL::Cd::ChangeDir((const char*)0);
+                SRL::Cd::File file(candidate);
+                if (!file.Exists() || file.Size.Bytes <= 0) continue;
+                SRL::Bitmap::TGA* probe = lwnew SRL::Bitmap::TGA(&file);
+                if (!probe) continue;
+                const auto info = probe->GetInfo();
+                if (info.Width == kExpectedWidthPx && info.Height == kExpectedHeightPx)
+                {
+                    tga = probe;
+                    loadedPath = candidate;
+                    break;
+                }
+                delete probe;
+            }
         }
-
-        SRL::Cd::File file(path);
-        if (!file.Exists() || file.Size.Bytes <= 0)
-        {
-            SRL::Debug::Print(0, 3, "SPN file fail");
-            return false;
-        }
-
-        // Keep runtime track/PATH in LWR. Sky decode/build remains in HWR.
-        SRL::Bitmap::TGA* tga = lwnew SRL::Bitmap::TGA(&file);
         if (!tga)
         {
-            SRL::Debug::Print(0, 3, "SPN oom tga");
-            return false;
+            static constexpr std::array<const char*, 19> kFallback = {
+                "cd/data/ceup.tga",
+                "cd/data/CEUP.TGA",
+                "/CD/DATA/CEUP.TGA",
+                "/CD/DATA/CEUP.TGA;1",
+                "/DATA/CEUP.TGA",
+                "/DATA/CEUP.TGA;1",
+                "data/CEUP.TGA",
+                "DATA/CEUP.TGA",
+                "DATA/CEUP.TGA;1",
+                "CEUP.TGA",
+                "ceup.tga",
+                "ceup.tga;1",
+                "CEUP.TGA;1",
+                "cd/data/SKY.tga",
+                "cd/data/SKY1.tga",
+                "cd/data/skybox_1.tga",
+                "SKY.tga",
+                "SKY1.tga",
+                "skybox_1.tga"
+            };
+            for (size_t i = 0; i < kFallback.size() && !tga; ++i)
+            {
+                SRL::Cd::ChangeDir((const char*)0);
+                SRL::Cd::File file(kFallback[i]);
+                if (!file.Exists() || file.Size.Bytes <= 0) continue;
+                SRL::Bitmap::TGA* probe = lwnew SRL::Bitmap::TGA(&file);
+                if (!probe) continue;
+                const auto info = probe->GetInfo();
+                if (info.Width == kExpectedWidthPx && info.Height == kExpectedHeightPx)
+                {
+                    tga = probe;
+                    loadedPath = kFallback[i];
+                    break;
+                }
+                delete probe;
+            }
         }
-
-        const auto info = tga->GetInfo();
-        if (info.Width != kExpectedWidthPx || info.Height != kExpectedHeightPx)
+        if (!tga)
         {
-            SRL::Debug::Print(0, 3, "SPN dim %ux%u",
-                              static_cast<unsigned>(info.Width),
-                              static_cast<unsigned>(info.Height));
-            delete tga;
+            SRL::Debug::Print(0, 3, "SPN dim 0x0");
             return false;
         }
 
@@ -183,6 +219,7 @@ struct SkyPanorama
         SRL::VDP2::NBG1::ScrollDisable();
 
         SRL::Debug::Print(0, 3, "SPN ok mw:%d sw:%d", mapWidthPx, scrollWrapWidthPx);
+        (void)loadedPath;
         loaded = true;
         return true;
     }
@@ -239,43 +276,5 @@ private:
         return deg;
     }
 
-    static const char* ResolvePath(const char* const* paths, size_t count)
-    {
-        if (paths && count > 0)
-        {
-            for (size_t i = 0; i < count; ++i)
-            {
-                const char* candidate = paths[i];
-                if (!candidate || candidate[0] == '\0') continue;
-                SRL::Cd::File file(candidate);
-                if (file.Exists() && file.Size.Bytes > 0)
-                {
-                    return candidate;
-                }
-            }
-        }
-
-        static constexpr std::array<const char*, 13> kFallback = {
-            "cd/data/ceup.tga",
-            "cd/data/CEUP.TGA",
-            "/CD/DATA/CEUP.TGA",
-            "/CD/DATA/CEUP.TGA;1",
-            "/DATA/CEUP.TGA",
-            "/DATA/CEUP.TGA;1",
-            "data/CEUP.TGA",
-            "DATA/CEUP.TGA",
-            "DATA/CEUP.TGA;1",
-            "CEUP.TGA",
-            "ceup.tga",
-            "ceup.tga;1",
-            "CEUP.TGA;1"
-        };
-
-        for (size_t i = 0; i < kFallback.size(); ++i)
-        {
-            SRL::Cd::File file(kFallback[i]);
-            if (file.Exists() && file.Size.Bytes > 0) return kFallback[i];
-        }
-        return nullptr;
-    }
+    // Path probing is handled in Load() so we can validate dimensions before accepting a file.
 };

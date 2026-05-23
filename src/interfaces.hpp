@@ -35,6 +35,9 @@ struct GameplayFrameState
     int16_t debugSteerDeg = 0;
     int16_t debugYawRateDeg = 0;
     int16_t debugYawStepDeg = 0;
+    int16_t debugEngineRpm = 0;
+    int16_t debugGear = 1;
+    int16_t debugSpeedKmh = 0;
     int16_t debugPlanarDx = 0;
     int16_t debugPlanarDz = 0;
     int16_t debugNetDx = 0;

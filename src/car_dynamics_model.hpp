@@ -19,6 +19,39 @@ public:
                                     Tunables::kGripScaleFallback,
                                     Tunables::kGripScaleAsphalt);
 
+        // Estimate speed in km/h from forward speed proxy units.
+        const Fxp speedToKmh = Fxp::BuildRaw(
+            ((static_cast<int32_t>(Tunables::kTargetTopSpeedKmh) << 16) /
+             std::max<int32_t>(1, Tunables::kMaxForwardSpeed.RawValue() >> 16)));
+        const int16_t speedKmhSigned = (ioState.forwardSpeed * speedToKmh).As<int16_t>();
+        const int16_t speedKmhAbs = static_cast<int16_t>((speedKmhSigned < 0) ? -speedKmhSigned : speedKmhSigned);
+
+        if (ioState.gear < 1u) ioState.gear = 1u;
+        if (ioState.gear > 6u) ioState.gear = 6u;
+        const int16_t gearTopKmh =
+            Tunables::kGearTopSpeedKmh[static_cast<size_t>(ioState.gear - 1u)];
+        int32_t rpm = Tunables::kEngineIdleRpm;
+        if (gearTopKmh > 0)
+        {
+            rpm = (static_cast<int32_t>(speedKmhAbs) * Tunables::kEngineMaxRpm) / gearTopKmh;
+            if (rpm < Tunables::kEngineIdleRpm) rpm = Tunables::kEngineIdleRpm;
+            if (rpm > Tunables::kEngineMaxRpm) rpm = Tunables::kEngineMaxRpm;
+        }
+        ioState.engineRpm = static_cast<int16_t>(rpm);
+
+        if (!ioFrameState.braking && ioFrameState.throttle > 0)
+        {
+            // Automatic 6-speed shift logic with hysteresis.
+            if (ioState.engineRpm >= Tunables::kEngineUpShiftRpm && ioState.gear < 6u)
+            {
+                ++ioState.gear;
+            }
+            else if (ioState.engineRpm <= Tunables::kEngineDownShiftRpm && ioState.gear > 1u)
+            {
+                --ioState.gear;
+            }
+        }
+
         if (ioFrameState.braking)
         {
             if (ioState.forwardSpeed > Fxp::BuildRaw(0))
@@ -40,10 +73,23 @@ public:
         }
         else if (throttleNorm > Fxp::BuildRaw(0))
         {
-            ioState.forwardSpeed += throttleNorm * Tunables::kEngineAccelPerFrame;
+            const bool wasReversing = (ioState.forwardSpeed < Fxp::BuildRaw(0));
+            const Fxp gearAccel =
+                Tunables::kGearAccelPerFrame[static_cast<size_t>(ioState.gear - 1u)];
+            ioState.forwardSpeed += throttleNorm * gearAccel;
             if (ioState.forwardSpeed < Fxp::BuildRaw(0))
             {
                 ioState.forwardSpeed += Tunables::kBrakeDecelPerFrame;
+            }
+            // Transition from reverse to forward:
+            // remove sideways/yaw residue to prevent a lateral slide before moving ahead.
+            if (wasReversing)
+            {
+                ioState.lateralSpeed -= ioState.lateralSpeed * Fxp::BuildRaw(0x00010000); // 1.0
+                ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Fxp::BuildRaw(0x00010000); // 1.0
+                ioState.lateralSpeed = Fxp::BuildRaw(0);
+                ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                ioState.yawAccumulatorDegRaw = 0;
             }
         }
 
@@ -115,6 +161,12 @@ public:
         const Fxp yawRateRadPerFrame = ioState.yawRateDegPerFrame * Tunables::kDegToRad;
         const Fxp vxAbs = ioState.forwardSpeed.Abs();
         const Fxp slipDenom = (vxAbs > Tunables::kSlipDenomMin) ? vxAbs : Tunables::kSlipDenomMin;
+        const bool launchForwardSteerAssist =
+            (ioFrameState.throttle > 0) &&
+            !ioFrameState.braking &&
+            (ioState.forwardSpeed >= Fxp::BuildRaw(0)) &&
+            (vxAbs < Fxp::BuildRaw(0x00014000)) && // 1.25 units/frame
+            (ioFrameState.steering != 0);
 
         const Fxp vyFront = ioState.lateralSpeed + (yawRateRadPerFrame * Tunables::kWheelbaseFront);
         const Fxp vyRear = ioState.lateralSpeed - (yawRateRadPerFrame * Tunables::kWheelbaseRear);
@@ -130,9 +182,14 @@ public:
 
         Fxp lateralAccel = fyFront + fyRear;
         const Fxp yawCoupling = ioState.forwardSpeed * yawRateRadPerFrame * Tunables::kYawCoupling;
-        // Body frame uses +X to the right; coupling must follow yaw sign or
-        // both steering directions can drift to the same side.
-        lateralAccel += yawCoupling;
+        const bool launchForwardSteerLeft =
+            (ioFrameState.throttle > 0) &&
+            !ioFrameState.braking &&
+            (ioState.forwardSpeed >= Fxp::BuildRaw(0)) &&
+            (vxAbs < Fxp::BuildRaw(0x00014000)) &&
+            (ioFrameState.steering < 0);
+        // Left launch: invert rear kick direction as requested.
+        lateralAccel += launchForwardSteerLeft ? Fxp::BuildRaw(-yawCoupling.RawValue()) : yawCoupling;
         ioState.lateralSpeed += lateralAccel;
         ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kLateralDampingCoeff;
 
@@ -144,6 +201,41 @@ public:
         ioState.yawRateDegPerFrame +=
             (targetYawRateDegPerFrame - ioState.yawRateDegPerFrame) * Tunables::kYawRateResponse;
         ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kYawDamping;
+
+        // Low speed traction assist:
+        // prevent side slip on launch and force an immediate circular turn response.
+        {
+            const bool hasDriveCommand = (ioFrameState.throttle > 0) &&
+                                         !ioFrameState.braking &&
+                                         (ioState.forwardSpeed >= Fxp::BuildRaw(0));
+            const bool hasSteerCommand = (ioFrameState.steering != 0);
+            const Fxp lowSpeedLimit = Fxp::BuildRaw(0x00014000); // 1.25 units/frame
+            if (hasDriveCommand && hasSteerCommand && outStep.speedAbs < lowSpeedLimit)
+            {
+                // No lateral launch impulse: start the maneuver in pure rolling arc.
+                ioState.lateralSpeed = Fxp::BuildRaw(0);
+
+                // Guarantee immediate yaw entry (both left/right) at launch.
+                const int16_t steerAbsInt = static_cast<int16_t>(
+                    (ioFrameState.steering < 0) ? -ioFrameState.steering : ioFrameState.steering);
+                const Fxp steerLaunchNorm = Fxp::BuildRaw((static_cast<int32_t>(steerAbsInt) << 16) / 100);
+                const Fxp minLaunchYaw = steerLaunchNorm * Fxp::BuildRaw(0x0000A000); // ~0.625 deg/frame @ 100%
+                if (ioFrameState.steering < 0)
+                {
+                    if (ioState.yawRateDegPerFrame > Fxp::BuildRaw(-minLaunchYaw.RawValue()))
+                    {
+                        ioState.yawRateDegPerFrame = Fxp::BuildRaw(-minLaunchYaw.RawValue());
+                    }
+                }
+                else
+                {
+                    if (ioState.yawRateDegPerFrame < minLaunchYaw)
+                    {
+                        ioState.yawRateDegPerFrame = minLaunchYaw;
+                    }
+                }
+            }
+        }
 
         // Hard safety: if almost stopped and not accelerating or braking, do not rotate.
         if (outStep.speedAbs < Fxp::BuildRaw(0x00006000) &&
@@ -267,6 +359,9 @@ public:
         ioFrameState.debugSteerDeg = FxpToDebugInt(ioState.steerDeg);
         ioFrameState.debugYawRateDeg = FxpToDebugInt(ioState.yawRateDegPerFrame);
         ioFrameState.debugYawStepDeg = static_cast<int16_t>(outStep.yawStepDeg);
+        ioFrameState.debugEngineRpm = ioState.engineRpm;
+        ioFrameState.debugGear = static_cast<int16_t>(ioState.gear);
+        ioFrameState.debugSpeedKmh = speedKmhAbs;
         ioFrameState.debugPlanarDx = FxpToDebugInt(outStep.planarDx);
         ioFrameState.debugPlanarDz = FxpToDebugInt(outStep.planarDz);
     }
@@ -296,6 +391,8 @@ public:
         ioState.steerDeg = Fxp::BuildRaw(0);
         ioState.surfaceGripScale = Tunables::kGripScaleAsphalt;
         ioState.yawAccumulatorDegRaw = 0;
+        ioState.gear = 1u;
+        ioState.engineRpm = Tunables::kEngineIdleRpm;
     }
 
 private:

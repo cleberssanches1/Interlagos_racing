@@ -19,6 +19,8 @@ struct DynamicsState
     Fxp steerDeg = Fxp::BuildRaw(0);
     Fxp surfaceGripScale = Fxp::BuildRaw(1 << 16);
     int32_t yawAccumulatorDegRaw = 0; // 16.16 integrated yaw delta
+    uint8_t gear = 1u;                // 1..6 forward gears
+    int16_t engineRpm = 1000;         // debug/telemetry
 };
 
 struct GroundState
@@ -68,7 +70,7 @@ struct Tunables
     static constexpr uint8_t kSurfaceTypeAsphalt = 1u;
     static constexpr uint8_t kSurfaceTypeEscapeArea = 2u;
     static constexpr uint8_t kSurfaceTypeGrass = 3u;
-    static constexpr int16_t kTargetTopSpeedKmh = 260;
+    static constexpr int16_t kTargetTopSpeedKmh = 300;
     static constexpr std::array<uint16_t, 16> kDriveableFamilies = {
         337u, // F05564
         32u,  // F04764
@@ -108,16 +110,31 @@ struct Tunables
     static constexpr Fxp kGripScaleAsphalt = Fxp::BuildRaw(1 << 16);
     static constexpr Fxp kGripScaleOffroad = Fxp::BuildRaw(0x0000B333); // ~0.70
     static constexpr Fxp kGripScaleFallback = Fxp::BuildRaw(0x0000999A); // ~0.60
-    static constexpr Fxp kEngineAccelPerFrame = Fxp::BuildRaw(0x000047AE); // ~0.280
+    static constexpr Fxp kEngineAccelPerFrame = Fxp::BuildRaw(0x000047AE); // base (legacy)
+    static constexpr std::array<Fxp, 6> kGearAccelPerFrame = {
+        Fxp::BuildRaw(0x00007AE1), // 0.48
+        Fxp::BuildRaw(0x00006666), // 0.40
+        Fxp::BuildRaw(0x000051EC), // 0.32
+        Fxp::BuildRaw(0x00004189), // 0.256
+        Fxp::BuildRaw(0x00003333), // 0.20
+        Fxp::BuildRaw(0x000028F6)  // 0.16
+    };
+    static constexpr std::array<int16_t, 6> kGearTopSpeedKmh = {
+        95, 130, 170, 215, 255, 300
+    };
+    static constexpr int16_t kEngineIdleRpm = 2200;
+    static constexpr int16_t kEngineUpShiftRpm = 12800;
+    static constexpr int16_t kEngineDownShiftRpm = 7800;
+    static constexpr int16_t kEngineMaxRpm = 13500;
     static constexpr Fxp kReverseAccelPerFrame = Fxp::BuildRaw(0x00002000); // 0.125
     static constexpr Fxp kBrakeDecelPerFrame = Fxp::BuildRaw(0x0000570A);  // ~0.340
     static constexpr Fxp kBrakeStopSpeedThreshold = Fxp::BuildRaw(0x0000A000); // ~0.625
     static constexpr uint8_t kReverseEngageDelayFrames = 10u; // brake deadzone before reverse
-    static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000068);       // ~0.0016
-    static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x00000106);    // ~0.0040
+    static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000058);       // ~0.00134
+    static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x000000D7);    // ~0.0033
     static constexpr Fxp kCoastDampingPerFrame = Fxp::BuildRaw(0x000000A4);// ~0.0025
     static constexpr Fxp kCoastStopSpeedThreshold = Fxp::BuildRaw(0x00010000); // 1.0
-    static constexpr Fxp kMaxForwardSpeed = Fxp::BuildRaw(0x00070000);     // ~7.0
+    static constexpr Fxp kMaxForwardSpeed = Fxp::BuildRaw(0x00072000);     // ~7.125
     static constexpr Fxp kMaxReverseSpeed = Fxp::BuildRaw(0x00028000);     // ~2.5
     static constexpr Fxp kMaxSteerDeg = Fxp::BuildRaw(12 << 16);           // 12 deg
     static constexpr Fxp kSteerResponse = Fxp::BuildRaw(0x00003333);       // 0.20
@@ -242,6 +259,9 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugSteerDeg = 0;
     ioFrameState.debugYawRateDeg = 0;
     ioFrameState.debugYawStepDeg = 0;
+    ioFrameState.debugEngineRpm = 0;
+    ioFrameState.debugGear = 1;
+    ioFrameState.debugSpeedKmh = 0;
     ioFrameState.debugPlanarDx = 0;
     ioFrameState.debugPlanarDz = 0;
     ioFrameState.debugNetDx = 0;

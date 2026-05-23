@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Especificação Técnica de Física de Carros — Interlagos Racing</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --accent: #e6a817;
+    --accent2: #58a6ff;
+    --red: #f85149;
+    --green: #3fb950;
+    --purple: #bc8cff;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  #sidebar {
+    position: fixed; top: 0; left: 0; width: 260px; height: 100vh;
+    background: var(--surface); border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 20px 0; z-index: 100;
+  }
+  #sidebar .logo {
+    padding: 0 20px 20px; border-bottom: 1px solid var(--border);
+    font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  #sidebar .logo span { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; text-transform: none; letter-spacing: 0; }
+  #sidebar nav { padding: 12px 0; }
+  #sidebar nav a {
+    display: block; padding: 6px 20px; color: var(--muted); font-size: 13px;
+    border-left: 3px solid transparent; transition: all 0.15s;
+  }
+  #sidebar nav a:hover, #sidebar nav a.active {
+    color: var(--text); background: var(--surface2); border-left-color: var(--accent); text-decoration: none;
+  }
+  #sidebar nav .section-header {
+    padding: 12px 20px 4px; font-size: 11px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  #sidebar nav a.sub { padding-left: 32px; font-size: 12px; }
+
+  #content { margin-left: 260px; padding: 48px 56px; max-width: 1100px; }
+
+  /* Typography */
+  h1 { font-size: 2.2rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  h2 { font-size: 1.6rem; font-weight: 700; color: var(--text); margin: 56px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; color: var(--accent2); margin: 32px 0 12px; }
+  h4 { font-size: 0.95rem; font-weight: 600; color: var(--accent); margin: 20px 0 8px; }
+  p { margin-bottom: 14px; color: #cdd9e5; }
+  ul, ol { margin: 0 0 14px 24px; color: #cdd9e5; }
+  li { margin-bottom: 4px; }
+  strong { color: var(--text); font-weight: 600; }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, #1c2128 0%, #161b22 50%, #0d1117 100%);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 40px 48px; margin-bottom: 48px;
+  }
+  .hero .badge {
+    display: inline-block; background: var(--accent); color: #000;
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .hero p { font-size: 1.05rem; max-width: 700px; }
+  .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 28px; }
+  .meta-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .meta-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .meta-card .value { font-size: 14px; font-weight: 600; color: var(--accent2); margin-top: 4px; }
+
+  /* Callouts */
+  .callout {
+    border-radius: 8px; padding: 16px 20px; margin: 20px 0;
+    border-left: 4px solid; font-size: 14px;
+  }
+  .callout.info { background: rgba(88,166,255,0.07); border-color: var(--accent2); }
+  .callout.warning { background: rgba(230,168,23,0.07); border-color: var(--accent); }
+  .callout.danger { background: rgba(248,81,73,0.08); border-color: var(--red); }
+  .callout .callout-title { font-weight: 700; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .callout.info .callout-title { color: var(--accent2); }
+  .callout.warning .callout-title { color: var(--accent); }
+  .callout.danger .callout-title { color: var(--red); }
+
+  /* Formula boxes */
+  .formula {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 24px; margin: 16px 0; font-family: 'Courier New', monospace;
+    font-size: 14px; color: var(--purple); overflow-x: auto;
+  }
+  .formula .comment { color: var(--muted); font-style: italic; }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px 24px; overflow-x: auto; margin: 16px 0; tab-size: 4;
+  }
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.6;
+  }
+  pre code { color: #e6edf3; }
+  p code, li code {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-size: 12px; color: var(--purple);
+  }
+
+  /* Syntax highlighting */
+  .kw { color: #ff7b72; }        /* keywords */
+  .ty { color: #ffa657; }        /* types */
+  .fn { color: #d2a8ff; }        /* functions */
+  .cm { color: #8b949e; font-style: italic; } /* comments */
+  .st { color: #a5d6ff; }        /* strings */
+  .nm { color: #79c0ff; }        /* numbers */
+  .pp { color: #ff7b72; }        /* preprocessor */
+  .op { color: #79c0ff; }        /* operators */
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th { background: var(--surface2); color: var(--accent); font-weight: 600; padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+  td { padding: 9px 14px; border: 1px solid var(--border); color: #cdd9e5; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+  /* Section anchors */
+  .anchor { scroll-margin-top: 24px; }
+
+  /* Diagram */
+  .diagram {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 24px; margin: 16px 0; font-family: monospace; font-size: 12px;
+    color: var(--muted); line-height: 1.8; overflow-x: auto;
+  }
+  .diagram .hi { color: var(--accent); }
+  .diagram .hi2 { color: var(--accent2); }
+
+  /* Tag chips */
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .tag {
+    font-size: 11px; padding: 3px 10px; border-radius: 20px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .tag.cpp { background: rgba(188,140,255,0.15); color: var(--purple); border: 1px solid rgba(188,140,255,0.3); }
+  .tag.physics { background: rgba(63,185,80,0.12); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .tag.math { background: rgba(88,166,255,0.12); color: var(--accent2); border: 1px solid rgba(88,166,255,0.3); }
+  .tag.perf { background: rgba(230,168,23,0.12); color: var(--accent); border: 1px solid rgba(230,168,23,0.3); }
+
+  /* TOC */
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; margin-bottom: 32px; }
+  .toc h4 { margin: 0 0 12px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc li { margin: 4px 0; font-size: 13px; }
+  .toc a { color: var(--muted); }
+  .toc a:hover { color: var(--text); }
+
+  @media (max-width: 900px) {
+    #sidebar { display: none; }
+    #content { margin-left: 0; padding: 24px 20px; }
+    .meta-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="logo">
+    Interlagos Racing
+    <span>Especificação de Física de Carros</span>
+  </div>
+  <nav>
+    <div class="section-header">Visão Geral</div>
+    <a href="#introducao">Introdução</a>
+    <a href="#arquitetura">Arquitetura do Sistema</a>
+
+    <div class="section-header">Fundamentos</div>
+    <a href="#vetores">Vetores e Matemática</a>
+    <a href="#cinematica">Cinemática</a>
+    <a href="#forcas">Forças e Massa</a>
+
+    <div class="section-header">Sistemas do Carro</div>
+    <a href="#motor">Motor e Transmissão</a>
+    <a href="#rodas">Rodas e Suspensão</a>
+    <a href="#frenagem">Frenagem</a>
+    <a href="#direcao">Direção</a>
+    <a href="#aerodinamica">Aerodinâmica</a>
+    <a href="#atrito">Atrito e Pneus</a>
+
+    <div class="section-header">Avançado</div>
+    <a href="#rotacao">Dinâmica Rotacional</a>
+    <a href="#colisoes">Colisões</a>
+    <a href="#integracao">Loop de Integração</a>
+    <a href="#parametros">Tabela de Parâmetros</a>
+  </nav>
+</div>
+
+<!-- Main content -->
+<div id="content">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="badge">v1.0 — Especificação Técnica</div>
+    <h1>Física de Movimento de Carros</h1>
+    <p>Especificação técnica completa para implementação de física veicular em jogos de corrida 3D. Cobre cinemática, forças, atrito de pneus, aerodinâmica, suspensão, transmissão e dinâmica rotacional — com classes e exemplos em C++17.</p>
+    <div class="meta-grid">
+      <div class="meta-card"><div class="label">Linguagem</div><div class="value">C++17</div></div>
+      <div class="meta-card"><div class="label">Domínio</div><div class="value">Física Veicular</div></div>
+      <div class="meta-card"><div class="label">Padrão</div><div class="value">Profissional / Arcade</div></div>
+      <div class="meta-card"><div class="label">Projeto</div><div class="value">Interlagos Racing</div></div>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <h4>Índice</h4>
+    <ol>
+      <li><a href="#introducao">Introdução e Objetivos</a></li>
+      <li><a href="#arquitetura">Arquitetura do Sistema de Física</a></li>
+      <li><a href="#vetores">Vetores e Matemática Fundamental</a></li>
+      <li><a href="#cinematica">Cinemática — Posição, Velocidade e Aceleração</a></li>
+      <li><a href="#forcas">Forças, Massa e Segunda Lei de Newton</a></li>
+      <li><a href="#motor">Motor, Curva de Torque e Transmissão</a></li>
+      <li><a href="#rodas">Rodas, Pneus e Suspensão</a></li>
+      <li><a href="#frenagem">Sistema de Frenagem e ABS</a></li>
+      <li><a href="#direcao">Direção e Esterçamento</a></li>
+      <li><a href="#aerodinamica">Aerodinâmica — Drag e Downforce</a></li>
+      <li><a href="#atrito">Modelo de Atrito de Pneus (Pacejka)</a></li>
+      <li><a href="#rotacao">Dinâmica Rotacional e Torque</a></li>
+      <li><a href="#colisoes">Colisões e Impulsos</a></li>
+      <li><a href="#integracao">Loop de Integração Física</a></li>
+      <li><a href="#parametros">Tabela de Parâmetros de Referência</a></li>
+    </ol>
+  </div>
+
+  <!-- ================================================================ -->
+  <h2 id="introducao" class="anchor">1. Introdução e Objetivos</h2>
+
+  <p>Este documento define a especificação técnica completa do sistema de física veicular do <strong>Interlagos Racing</strong>. O objetivo é um modelo que equilibre <em>fidelidade física</em> com <em>jogabilidade responsiva</em> — um ponto entre simulação pura (iRacing, Gran Turismo) e arcade (Mario Kart).</p>
+
+  <div class="callout info">
+    <div class="callout-title">Princípio de Design</div>
+    Cada subsistema é fisicamente correto na sua base matemática, mas expõe coeficientes ajustáveis para que o designer possa "tunar" a sensação sem quebrar a consistência interna.
+  </div>
+
+  <h3>Subsistemas Implementados</h3>
+  <ul>
+    <li><strong>Cinemática:</strong> integração de posição/velocidade/aceleração via Verlet semi-implícito</li>
+    <li><strong>Motor e Câmbio:</strong> curva de torque polinomial, relações de marcha, diferencial</li>
+    <li><strong>Rodas e Suspensão:</strong> modelo de mola-amortecedor (spring-damper) por roda</li>
+    <li><strong>Pneus:</strong> modelo de Pacejka simplificado (Magic Formula) para força lateral e longitudinal</li>
+    <li><strong>Aerodinâmica:</strong> drag proporcional a v², downforce e wash lateral</li>
+    <li><strong>Frenagem:</strong> distribuição de frenagem, bloqueio de roda e ABS digital</li>
+    <li><strong>Direção:</strong> esterçamento com Ackermann geometry e retorno de centro</li>
+    <li><strong>Colisões:</strong> impulsos com coeficiente de restituição e fricção de contato</li>
+  </ul>
+
+  <!-- ================================================================ -->
+  <h2 id="arquitetura" class="anchor">2. Arquitetura do Sistema de Física</h2>
+
+  <p>O sistema é organizado em camadas. A camada mais interna trata matemática pura; a camada do veículo agrega todos os subsistemas; a camada de integração avança o estado no tempo a cada tick fixo.</p>
+
+  <div class="diagram">
+<span class="hi">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="hi">│                      PhysicsWorld                          │</span>
+<span class="hi">│  tick(dt)  →  colide  →  integra  →  notifica listeners   │</span>
+<span class="hi">└─────────────────────────┬───────────────────────────────────┘</span>
+                          │ possui N
+<span class="hi2">┌─────────────────────────▼───────────────────────────────────┐</span>
+<span class="hi2">│                       CarBody                               │</span>
+<span class="hi2">│  RigidBody3D  +  Engine  +  Transmission  +  Aerodynamics  │</span>
+<span class="hi2">└──────┬──────────────────┬──────────────────┬───────────────┘</span>
+       │ [4]              │                  │
+<span class="hi">┌──────▼──────┐    ┌──────▼──────┐  ┌──────▼──────┐</span>
+<span class="hi">│  Wheel[FL]  │    │  Wheel[FR]  │  │  Wheel[R*]  │</span>
+<span class="hi">│  Suspension │    │  Suspension │  │  Suspension │</span>
+<span class="hi">│  TireModel  │    │  TireModel  │  │  TireModel  │</span>
+<span class="hi">└─────────────┘    └─────────────┘  └─────────────┘</span>
+  </div>
+
+  <div class="tags">
+    <span class="tag cpp">C++17</span>
+    <span class="tag physics">RigidBody</span>
+    <span class="tag perf">Fixed Timestep</span>
+  </div>
+
+  <h3>Classe Central — CarBody</h3>
+
+<pre><code><span class="pp">#pragma once</span>
+<span class="pp">#include</span> <span class="st">"vec3.hpp"</span>
+<span class="pp">#include</span> <span class="st">"rigid_body.hpp"</span>
+<span class="pp">#include</span> <span class="st">"wheel.hpp"</span>
+<span class="pp">#include</span> <span class="st">"engine.hpp"</span>
+<span class="pp">#include</span> <span class="st">"aerodynamics.hpp"</span>
+<span class="pp">#include</span> <span class="st">&lt;array&gt;</span>
+
+<span class="kw">enum class</span> <span class="ty">WheelIndex</span> : <span class="ty">int</span> {
+    FrontLeft  = <span class="nm">0</span>,
+    FrontRight = <span class="nm">1</span>,
+    RearLeft   = <span class="nm">2</span>,
+    RearRight  = <span class="nm">3</span>
+};
+
+<span class="kw">struct</span> <span class="ty">CarConfig</span> {
+    <span class="ty">float</span> mass_kg          = <span class="nm">1200.0f</span>;   <span class="cm">// massa total do veículo</span>
+    <span class="ty">float</span> wheelbase_m      = <span class="nm">2.7f</span>;     <span class="cm">// distância entre eixos</span>
+    <span class="ty">float</span> track_width_m    = <span class="nm">1.5f</span>;     <span class="cm">// distância entre rodas do mesmo eixo</span>
+    <span class="ty">float</span> cg_height_m      = <span class="nm">0.45f</span>;    <span class="cm">// altura do centro de gravidade</span>
+    <span class="ty">float</span> cg_bias          = <span class="nm">0.45f</span>;    <span class="cm">// 0=todo no eixo frontal, 1=traseiro</span>
+    <span class="ty">Vec3</span>  inertia_tensor   = {<span class="nm">1800</span>, <span class="nm">3200</span>, <span class="nm">800</span>}; <span class="cm">// kg·m² (pitch, yaw, roll)</span>
+};
+
+<span class="kw">class</span> <span class="ty">CarBody</span> {
+<span class="kw">public</span>:
+    <span class="kw">explicit</span> <span class="fn">CarBody</span>(<span class="kw">const</span> <span class="ty">CarConfig</span>&amp; cfg);
+
+    <span class="kw">void</span> <span class="fn">update</span>(<span class="ty">float</span> dt, <span class="ty">float</span> throttle, <span class="ty">float</span> brake, <span class="ty">float</span> steer);
+
+    <span class="cm">// Estado do corpo rígido</span>
+    <span class="ty">RigidBody3D</span>  body;
+
+    <span class="cm">// Subsistemas</span>
+    <span class="ty">Engine</span>       engine;
+    <span class="ty">Transmission</span> transmission;
+    <span class="ty">Aerodynamics</span> aero;
+    <span class="ty">std::array</span>&lt;<span class="ty">Wheel</span>, <span class="nm">4</span>&gt; wheels;
+
+    <span class="cm">// Entradas do jogador (normalizadas 0..1 ou -1..1)</span>
+    <span class="ty">float</span> input_throttle = <span class="nm">0.0f</span>;
+    <span class="ty">float</span> input_brake    = <span class="nm">0.0f</span>;
+    <span class="ty">float</span> input_steer    = <span class="nm">0.0f</span>;  <span class="cm">// -1=esq, +1=dir</span>
+
+<span class="kw">private</span>:
+    <span class="ty">CarConfig</span>  _cfg;
+
+    <span class="kw">void</span> <span class="fn">computeWheelLoads</span>();
+    <span class="kw">void</span> <span class="fn">applyDriveTorque</span>(<span class="ty">float</span> dt);
+    <span class="kw">void</span> <span class="fn">applyAeroForces</span>();
+    <span class="kw">void</span> <span class="fn">integrateBody</span>(<span class="ty">float</span> dt);
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="vetores" class="anchor">3. Vetores e Matemática Fundamental</h2>
+
+  <p>Toda física depende de operações vetoriais. Definimos <code>Vec3</code> como a estrutura central, com operadores sobrecarregados e utilitários comuns:</p>
+
+<pre><code><span class="kw">struct</span> <span class="ty">Vec3</span> {
+    <span class="ty">float</span> x, y, z;
+
+    <span class="fn">Vec3</span>() : <span class="fn">x</span>(<span class="nm">0</span>), <span class="fn">y</span>(<span class="nm">0</span>), <span class="fn">z</span>(<span class="nm">0</span>) {}
+    <span class="fn">Vec3</span>(<span class="ty">float</span> x, <span class="ty">float</span> y, <span class="ty">float</span> z) : x(x), y(y), z(z) {}
+
+    <span class="ty">Vec3</span> <span class="kw">operator</span>+(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; o) <span class="kw">const</span> { <span class="kw">return</span> {x+o.x, y+o.y, z+o.z}; }
+    <span class="ty">Vec3</span> <span class="kw">operator</span>-(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; o) <span class="kw">const</span> { <span class="kw">return</span> {x-o.x, y-o.y, z-o.z}; }
+    <span class="ty">Vec3</span> <span class="kw">operator</span>*(<span class="ty">float</span> s)         <span class="kw">const</span> { <span class="kw">return</span> {x*s, y*s, z*s}; }
+    <span class="ty">Vec3</span> <span class="kw">operator</span>/(<span class="ty">float</span> s)         <span class="kw">const</span> { <span class="kw">return</span> {x/s, y/s, z/s}; }
+    <span class="ty">Vec3</span>&amp; <span class="kw">operator</span>+=(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; o)  { x+=o.x; y+=o.y; z+=o.z; <span class="kw">return</span> *<span class="kw">this</span>; }
+
+    <span class="ty">float</span> <span class="fn">dot</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; o) <span class="kw">const</span> { <span class="kw">return</span> x*o.x + y*o.y + z*o.z; }
+    <span class="ty">Vec3</span>  <span class="fn">cross</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; o) <span class="kw">const</span> {
+        <span class="kw">return</span> { y*o.z - z*o.y, z*o.x - x*o.z, x*o.y - y*o.x };
+    }
+    <span class="ty">float</span> <span class="fn">lengthSq</span>() <span class="kw">const</span>    { <span class="kw">return</span> x*x + y*y + z*z; }
+    <span class="ty">float</span> <span class="fn">length</span>()   <span class="kw">const</span>    { <span class="kw">return</span> std::<span class="fn">sqrt</span>(<span class="fn">lengthSq</span>()); }
+    <span class="ty">Vec3</span>  <span class="fn">normalized</span>() <span class="kw">const</span>  {
+        <span class="ty">float</span> l = <span class="fn">length</span>();
+        <span class="kw">return</span> l &gt; <span class="nm">1e-6f</span> ? (*<span class="kw">this</span>) / l : <span class="ty">Vec3</span>{};
+    }
+    <span class="ty">Vec3</span> <span class="fn">projectOnto</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; n) <span class="kw">const</span> { <span class="kw">return</span> n * <span class="fn">dot</span>(n); }
+    <span class="ty">Vec3</span> <span class="fn">rejectFrom</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; n)  <span class="kw">const</span> { <span class="kw">return</span> *<span class="kw">this</span> - <span class="fn">projectOnto</span>(n); }
+
+    <span class="kw">static</span> <span class="ty">Vec3</span> <span class="fn">lerp</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; a, <span class="kw">const</span> <span class="ty">Vec3</span>&amp; b, <span class="ty">float</span> t) {
+        <span class="kw">return</span> a + (b - a) * t;
+    }
+};
+</code></pre>
+
+  <h3>Quaternion para Rotação</h3>
+  <p>Rotações do corpo do carro são representadas por quaternions para evitar gimbal lock:</p>
+
+<pre><code><span class="kw">struct</span> <span class="ty">Quat</span> {
+    <span class="ty">float</span> w, x, y, z;
+
+    <span class="fn">Quat</span>() : w(<span class="nm">1</span>), x(<span class="nm">0</span>), y(<span class="nm">0</span>), z(<span class="nm">0</span>) {}
+    <span class="fn">Quat</span>(<span class="ty">float</span> w, <span class="ty">float</span> x, <span class="ty">float</span> y, <span class="ty">float</span> z) : w(w), x(x), y(y), z(z) {}
+
+    <span class="cm">// Cria quaternion a partir de eixo+ângulo (ângulo em radianos)</span>
+    <span class="kw">static</span> <span class="ty">Quat</span> <span class="fn">fromAxisAngle</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; axis, <span class="ty">float</span> angle) {
+        <span class="ty">float</span> s = std::<span class="fn">sin</span>(angle * <span class="nm">0.5f</span>);
+        <span class="kw">return</span> { std::<span class="fn">cos</span>(angle * <span class="nm">0.5f</span>), axis.x*s, axis.y*s, axis.z*s };
+    }
+
+    <span class="ty">Quat</span> <span class="kw">operator</span>*(<span class="kw">const</span> <span class="ty">Quat</span>&amp; q) <span class="kw">const</span> {
+        <span class="kw">return</span> {
+            w*q.w - x*q.x - y*q.y - z*q.z,
+            w*q.x + x*q.w + y*q.z - z*q.y,
+            w*q.y - x*q.z + y*q.w + z*q.x,
+            w*q.z + x*q.y - y*q.x + z*q.w
+        };
+    }
+
+    <span class="ty">Vec3</span> <span class="fn">rotate</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; v) <span class="kw">const</span> {
+        <span class="ty">Vec3</span> u{x, y, z};
+        <span class="kw">return</span> u * (<span class="nm">2.0f</span> * u.<span class="fn">dot</span>(v))
+             + v * (w*w - u.<span class="fn">dot</span>(u))
+             + u.<span class="fn">cross</span>(v) * (<span class="nm">2.0f</span> * w);
+    }
+
+    <span class="ty">Quat</span> <span class="fn">normalized</span>() <span class="kw">const</span> {
+        <span class="ty">float</span> n = std::<span class="fn">sqrt</span>(w*w + x*x + y*y + z*z);
+        <span class="kw">return</span> {w/n, x/n, y/n, z/n};
+    }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="cinematica" class="anchor">4. Cinemática — Posição, Velocidade e Aceleração</h2>
+
+  <p>A cinemática descreve o movimento de um objeto <em>sem considerar suas causas</em>. A equação fundamental é:</p>
+
+  <div class="formula">
+    x<sub>f</sub> = x<sub>i</sub> + v·Δt + ½·a·Δt²<br>
+    v<sub>f</sub> = v<sub>i</sub> + a·Δt
+    <div class="comment">// Onde: x=posição, v=velocidade, a=aceleração, Δt=timestep</div>
+  </div>
+
+  <p>No sistema do carro, usamos <strong>integração semi-implícita de Euler</strong> (Symplectic Euler), que é mais estável que Euler explícito para sistemas oscilatórios como suspensões:</p>
+
+<pre><code><span class="kw">struct</span> <span class="ty">RigidBody3D</span> {
+    <span class="ty">Vec3</span> position;      <span class="cm">// metros, espaço mundial</span>
+    <span class="ty">Vec3</span> velocity;      <span class="cm">// m/s</span>
+    <span class="ty">Vec3</span> acceleration;  <span class="cm">// m/s²  (calculado em cada frame)</span>
+
+    <span class="ty">Quat</span> orientation;          <span class="cm">// rotação atual</span>
+    <span class="ty">Vec3</span> angularVelocity;      <span class="cm">// rad/s em espaço local</span>
+    <span class="ty">Vec3</span> angularAcceleration;  <span class="cm">// rad/s²</span>
+
+    <span class="ty">float</span> mass;               <span class="cm">// kg</span>
+    <span class="ty">Vec3</span>  inertiaTensor;      <span class="cm">// kg·m² (diagonal simplificada)</span>
+
+    <span class="ty">Vec3</span> forceAccumulator;    <span class="cm">// reset a cada tick</span>
+    <span class="ty">Vec3</span> torqueAccumulator;
+
+    <span class="kw">void</span> <span class="fn">addForce</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; f) { forceAccumulator += f; }
+    <span class="kw">void</span> <span class="fn">addForceAtPoint</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; f, <span class="kw">const</span> <span class="ty">Vec3</span>&amp; worldPoint) {
+        forceAccumulator += f;
+        <span class="ty">Vec3</span> r = worldPoint - position;
+        torqueAccumulator += r.<span class="fn">cross</span>(f);
+    }
+
+    <span class="cm">// Integração Symplectic Euler — atualiza velocidade antes da posição</span>
+    <span class="kw">void</span> <span class="fn">integrate</span>(<span class="ty">float</span> dt) {
+        <span class="cm">// Linear</span>
+        acceleration = forceAccumulator / mass;
+        velocity    += acceleration * dt;        <span class="cm">// v_new = v + a·dt</span>
+        position    += velocity * dt;            <span class="cm">// x_new = x + v_new·dt</span>
+
+        <span class="cm">// Angular</span>
+        angularAcceleration = {
+            torqueAccumulator.x / inertiaTensor.x,
+            torqueAccumulator.y / inertiaTensor.y,
+            torqueAccumulator.z / inertiaTensor.z
+        };
+        angularVelocity += angularAcceleration * dt;
+
+        <span class="cm">// Integra orientação via quaternion</span>
+        <span class="ty">Quat</span> spin = <span class="ty">Quat</span>{
+            <span class="nm">0</span>,
+            angularVelocity.x * <span class="nm">0.5f</span> * dt,
+            angularVelocity.y * <span class="nm">0.5f</span> * dt,
+            angularVelocity.z * <span class="nm">0.5f</span> * dt
+        };
+        orientation = (orientation * spin).<span class="fn">normalized</span>();
+
+        <span class="cm">// Limpa acumuladores para o próximo tick</span>
+        forceAccumulator  = {};
+        torqueAccumulator = {};
+    }
+
+    <span class="cm">// Converte direção local → global</span>
+    <span class="ty">Vec3</span> <span class="fn">localToWorld</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; local) <span class="kw">const</span> {
+        <span class="kw">return</span> orientation.<span class="fn">rotate</span>(local);
+    }
+
+    <span class="ty">Vec3</span> <span class="fn">forward</span>() <span class="kw">const</span> { <span class="kw">return</span> <span class="fn">localToWorld</span>({<span class="nm">0</span>, <span class="nm">0</span>, <span class="nm">1</span>}); }
+    <span class="ty">Vec3</span> <span class="fn">right</span>()   <span class="kw">const</span> { <span class="kw">return</span> <span class="fn">localToWorld</span>({<span class="nm">1</span>, <span class="nm">0</span>, <span class="nm">0</span>}); }
+    <span class="ty">Vec3</span> <span class="fn">up</span>()      <span class="kw">const</span> { <span class="kw">return</span> <span class="fn">localToWorld</span>({<span class="nm">0</span>, <span class="nm">1</span>, <span class="nm">0</span>}); }
+
+    <span class="ty">float</span> <span class="fn">speedKmh</span>() <span class="kw">const</span> { <span class="kw">return</span> velocity.<span class="fn">length</span>() * <span class="nm">3.6f</span>; }
+};
+</code></pre>
+
+  <div class="callout warning">
+    <div class="callout-title">Timestep Fixo</div>
+    Sempre integre a física com um <code>dt</code> fixo (ex: 1/120 s). Nunca passe o tempo real do frame diretamente — acumule o tempo restante e chame <code>integrate()</code> em loop até consumir o acumulador.
+  </div>
+
+  <!-- ================================================================ -->
+  <h2 id="forcas" class="anchor">5. Forças, Massa e Segunda Lei de Newton</h2>
+
+  <p>A Segunda Lei de Newton (<strong>F = ma</strong>) é o pilar de toda a dinâmica. Reescrevendo: <strong>a = F/m</strong>. Quanto maior a massa, menor a aceleração para a mesma força.</p>
+
+  <div class="formula">
+    F<sub>net</sub> = F<sub>motor</sub> + F<sub>freio</sub> + F<sub>normal</sub> + F<sub>atrito</sub> + F<sub>aero</sub> + F<sub>gravidade</sub>
+  </div>
+
+  <h3>Gravidade e Força Normal</h3>
+  <p>O peso do carro gera a <strong>força normal</strong> em cada roda, que por sua vez determina o atrito disponível. Em terreno plano:</p>
+
+  <div class="formula">
+    W = m · g = 1200 · 9.81 = <strong>11772 N</strong><br>
+    N<sub>dianteiro</sub> = W · (1 - cg_bias)    <span class="comment">// cg_bias=0.45 → 55% no eixo dianteiro</span><br>
+    N<sub>traseiro</sub>  = W · cg_bias
+  </div>
+
+  <p>Em curvas, a transferência de carga lateral é crítica para o comportamento do carro:</p>
+
+  <div class="formula">
+    ΔN<sub>lateral</sub> = m · a<sub>lat</sub> · h<sub>CG</sub> / track_width
+    <div class="comment">// Transferência de peso para o lado externo da curva</div>
+  </div>
+
+<pre><code><span class="kw">struct</span> <span class="ty">WheelLoad</span> {
+    <span class="ty">float</span> fl, fr, rl, rr;  <span class="cm">// Newtons em cada roda</span>
+};
+
+<span class="ty">WheelLoad</span> <span class="fn">computeWheelLoads</span>(<span class="kw">const</span> <span class="ty">CarConfig</span>&amp; cfg,
+                              <span class="kw">const</span> <span class="ty">Vec3</span>&amp; accel_local,
+                              <span class="ty">float</span> g = <span class="nm">9.81f</span>)
+{
+    <span class="ty">float</span> W      = cfg.mass_kg * g;
+    <span class="ty">float</span> a_long = accel_local.z;   <span class="cm">// aceleração longitudinal (frente=+)</span>
+    <span class="ty">float</span> a_lat  = accel_local.x;   <span class="cm">// aceleração lateral (direita=+)</span>
+    <span class="ty">float</span> L      = cfg.wheelbase_m;
+    <span class="ty">float</span> tw     = cfg.track_width_m;
+    <span class="ty">float</span> h      = cfg.cg_height_m;
+
+    <span class="cm">// Distribuição longitudinal estática</span>
+    <span class="ty">float</span> W_front = W * (<span class="nm">1.0f</span> - cfg.cg_bias);
+    <span class="ty">float</span> W_rear  = W * cfg.cg_bias;
+
+    <span class="cm">// Transferência longitudinal por aceleração/frenagem</span>
+    <span class="ty">float</span> dN_long = cfg.mass_kg * a_long * h / L;
+    W_front -= dN_long;
+    W_rear  += dN_long;
+
+    <span class="cm">// Transferência lateral (mesma lógica para cada eixo)</span>
+    <span class="ty">float</span> dN_lat = cfg.mass_kg * a_lat * h / tw;
+
+    <span class="ty">WheelLoad</span> out;
+    out.fl = std::<span class="fn">max</span>(<span class="nm">0.0f</span>, W_front * <span class="nm">0.5f</span> - dN_lat);
+    out.fr = std::<span class="fn">max</span>(<span class="nm">0.0f</span>, W_front * <span class="nm">0.5f</span> + dN_lat);
+    out.rl = std::<span class="fn">max</span>(<span class="nm">0.0f</span>, W_rear  * <span class="nm">0.5f</span> - dN_lat);
+    out.rr = std::<span class="fn">max</span>(<span class="nm">0.0f</span>, W_rear  * <span class="nm">0.5f</span> + dN_lat);
+    <span class="kw">return</span> out;
+}
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="motor" class="anchor">6. Motor, Curva de Torque e Transmissão</h2>
+
+  <p>O motor gera torque em função do RPM. A curva real é não-linear e é aproximada por uma função polinomial cúbica ou uma tabela com interpolação linear.</p>
+
+  <div class="formula">
+    T<sub>roda</span> = T<sub>motor</sub> · G<sub>marcha</sub> · G<sub>final</sub> · η<sub>driveline</sub><br>
+    F<sub>tração</sub> = T<sub>roda</sub> / r<sub>pneu</sub>
+    <div class="comment">// G=relação de transmissão, η≈0.85 (perda por atrito interno)</div>
+  </div>
+
+<pre><code><span class="kw">class</span> <span class="ty">Engine</span> {
+<span class="kw">public</span>:
+    <span class="kw">struct</span> <span class="ty">Config</span> {
+        <span class="ty">float</span> idle_rpm      = <span class="nm">800.0f</span>;
+        <span class="ty">float</span> redline_rpm   = <span class="nm">7500.0f</span>;
+        <span class="ty">float</span> max_torque_nm = <span class="nm">350.0f</span>;   <span class="cm">// pico de torque</span>
+        <span class="ty">float</span> peak_torque_rpm = <span class="nm">4500.0f</span>;
+        <span class="ty">float</span> inertia_kgm2  = <span class="nm">0.25f</span>;   <span class="cm">// inércia do volante</span>
+        <span class="ty">float</span> friction_coeff= <span class="nm">15.0f</span>;   <span class="cm">// atrito interno do motor</span>
+    };
+
+    <span class="ty">Config</span> cfg;
+    <span class="ty">float</span>  rpm        = <span class="nm">900.0f</span>;
+    <span class="ty">float</span>  throttle   = <span class="nm">0.0f</span>;   <span class="cm">// 0..1</span>
+
+    <span class="cm">// Curva de torque — polinômio que pica no peak_torque_rpm e cai no redline</span>
+    <span class="ty">float</span> <span class="fn">torqueAt</span>(<span class="ty">float</span> r) <span class="kw">const</span> {
+        <span class="ty">float</span> t = r / cfg.redline_rpm;   <span class="cm">// 0..1 ao longo da faixa</span>
+
+        <span class="cm">// Forma de sino: sobe rápido, pica perto de 0.6, desce suave</span>
+        <span class="ty">float</span> curve = <span class="nm">4.0f</span>*t*(<span class="nm">1.0f</span>-t);   <span class="cm">// parábola simétrica</span>
+
+        <span class="cm">// Ajuste assimétrico: torque máximo um pouco antes do redline</span>
+        curve = std::<span class="fn">pow</span>(curve, <span class="nm">0.85f</span>);
+
+        <span class="kw">return</span> curve * cfg.max_torque_nm;
+    }
+
+    <span class="cm">// Torque líquido disponível no virabrequim</span>
+    <span class="ty">float</span> <span class="fn">netTorque</span>() <span class="kw">const</span> {
+        <span class="ty">float</span> drive    = <span class="fn">torqueAt</span>(rpm) * throttle;
+        <span class="ty">float</span> friction = cfg.friction_coeff * (rpm / cfg.redline_rpm);
+        <span class="kw">return</span> drive - friction;
+    }
+
+    <span class="cm">// Atualiza RPM dado torque de resistência da caixa de câmbio</span>
+    <span class="kw">void</span> <span class="fn">update</span>(<span class="ty">float</span> dt, <span class="ty">float</span> load_torque) {
+        <span class="ty">float</span> net  = <span class="fn">netTorque</span>() - load_torque;
+        <span class="ty">float</span> alpha = net / cfg.inertia_kgm2;   <span class="cm">// F=Iα → α=F/I</span>
+        rpm += alpha * dt * (<span class="nm">60.0f</span> / (<span class="nm">2.0f</span> * <span class="nm">3.14159f</span>));  <span class="cm">// rad/s → RPM</span>
+        rpm  = std::<span class="fn">clamp</span>(rpm, cfg.idle_rpm, cfg.redline_rpm);
+    }
+};
+
+<span class="kw">class</span> <span class="ty">Transmission</span> {
+<span class="kw">public</span>:
+    <span class="cm">// Relações de cada marcha (0=neutro, 1..6=marchas)</span>
+    <span class="ty">float</span> gear_ratios[<span class="nm">7</span>] = { <span class="nm">0.0f</span>, <span class="nm">3.85f</span>, <span class="nm">2.16f</span>, <span class="nm">1.45f</span>, <span class="nm">1.10f</span>, <span class="nm">0.88f</span>, <span class="nm">0.74f</span> };
+    <span class="ty">float</span> final_drive    = <span class="nm">4.1f</span>;
+    <span class="ty">float</span> efficiency     = <span class="nm">0.87f</span>;
+    <span class="ty">int</span>   current_gear   = <span class="nm">1</span>;
+
+    <span class="ty">float</span> <span class="fn">totalRatio</span>() <span class="kw">const</span> {
+        <span class="kw">return</span> gear_ratios[current_gear] * final_drive;
+    }
+
+    <span class="cm">// Torque nas rodas motrizes</span>
+    <span class="ty">float</span> <span class="fn">wheelTorque</span>(<span class="ty">float</span> engine_torque) <span class="kw">const</span> {
+        <span class="kw">return</span> engine_torque * <span class="fn">totalRatio</span>() * efficiency;
+    }
+
+    <span class="cm">// RPM do motor dado a velocidade angular da roda</span>
+    <span class="ty">float</span> <span class="fn">engineRpmFromWheel</span>(<span class="ty">float</span> wheel_omega_rads) <span class="kw">const</span> {
+        <span class="ty">float</span> engine_rads = wheel_omega_rads * <span class="fn">totalRatio</span>();
+        <span class="kw">return</span> engine_rads * (<span class="nm">60.0f</span> / (<span class="nm">2.0f</span> * <span class="nm">3.14159f</span>));
+    }
+
+    <span class="cm">// Troca de marcha automática simples (heurística)</span>
+    <span class="kw">void</span> <span class="fn">autoShift</span>(<span class="ty">float</span> rpm, <span class="ty">float</span> throttle) {
+        <span class="kw">if</span> (rpm > <span class="nm">6800.0f</span> &amp;&amp; current_gear < <span class="nm">6</span>) { ++current_gear; }
+        <span class="kw">if</span> (rpm < <span class="nm">2200.0f</span> &amp;&amp; current_gear > <span class="nm">1</span>) { --current_gear; }
+    }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="rodas" class="anchor">7. Rodas, Pneus e Suspensão</h2>
+
+  <h3>Suspensão — Modelo Mola-Amortecedor</h3>
+  <p>Cada roda tem uma suspensão independente modelada como um sistema de mola-amortecedor. A força gerada pela suspensão é:</p>
+
+  <div class="formula">
+    F<sub>suspensão</sub> = −k · x − c · ẋ
+    <div class="comment">// k=rigidez da mola (N/m), x=compressão, c=coeficiente de amortecimento, ẋ=velocidade de compressão</div>
+  </div>
+
+<pre><code><span class="kw">struct</span> <span class="ty">SuspensionConfig</span> {
+    <span class="ty">float</span> rest_length    = <span class="nm">0.35f</span>;   <span class="cm">// comprimento de repouso (m)</span>
+    <span class="ty">float</span> min_length     = <span class="nm">0.10f</span>;   <span class="cm">// compressão máxima</span>
+    <span class="ty">float</span> max_length     = <span class="nm">0.55f</span>;   <span class="cm">// extensão máxima</span>
+    <span class="ty">float</span> spring_rate    = <span class="nm">35000.0f</span>; <span class="cm">// N/m</span>
+    <span class="ty">float</span> damper_rate    = <span class="nm">3500.0f</span>;  <span class="cm">// N·s/m</span>
+    <span class="ty">float</span> anti_roll_bar  = <span class="nm">5000.0f</span>;  <span class="cm">// rigidez da barra estabilizadora (N/m)</span>
+};
+
+<span class="kw">struct</span> <span class="ty">SuspensionState</span> {
+    <span class="ty">float</span> length          = <span class="nm">0.35f</span>;   <span class="cm">// comprimento atual</span>
+    <span class="ty">float</span> velocity        = <span class="nm">0.0f</span>;    <span class="cm">// taxa de variação do comprimento</span>
+    <span class="ty">float</span> force           = <span class="nm">0.0f</span>;    <span class="cm">// força resultante (N, positivo=empurra pra cima)</span>
+    <span class="ty">bool</span>  in_contact      = <span class="kw">false</span>;
+};
+
+<span class="ty">float</span> <span class="fn">computeSuspensionForce</span>(<span class="kw">const</span> <span class="ty">SuspensionConfig</span>&amp; cfg,
+                              <span class="ty">SuspensionState</span>&amp; state,
+                              <span class="ty">float</span> contact_length,   <span class="cm">// comprimento até o chão</span>
+                              <span class="ty">float</span> dt)
+{
+    state.in_contact = (contact_length &lt;= cfg.max_length);
+    <span class="kw">if</span> (!state.in_contact) {
+        state.force = <span class="nm">0.0f</span>;
+        <span class="kw">return</span> <span class="nm">0.0f</span>;
+    }
+
+    <span class="ty">float</span> clamped = std::<span class="fn">clamp</span>(contact_length, cfg.min_length, cfg.max_length);
+    <span class="ty">float</span> compression = cfg.rest_length - clamped;  <span class="cm">// positivo = comprimida</span>
+
+    <span class="cm">// Velocidade de compressão (derivada discreta)</span>
+    <span class="ty">float</span> new_velocity = (clamped - state.length) / dt;
+    state.length   = clamped;
+    state.velocity = new_velocity;
+
+    state.force = cfg.spring_rate * compression
+                - cfg.damper_rate * new_velocity;
+
+    state.force = std::<span class="fn">max</span>(<span class="nm">0.0f</span>, state.force);  <span class="cm">// suspensão só empurra</span>
+    <span class="kw">return</span> state.force;
+}
+</code></pre>
+
+  <h3>Classe Wheel — Estado Completo da Roda</h3>
+
+<pre><code><span class="kw">class</span> <span class="ty">Wheel</span> {
+<span class="kw">public</span>:
+    <span class="kw">struct</span> <span class="ty">Config</span> {
+        <span class="ty">float</span> radius_m       = <span class="nm">0.32f</span>;   <span class="cm">// raio do pneu (m)</span>
+        <span class="ty">float</span> width_m        = <span class="nm">0.25f</span>;
+        <span class="ty">float</span> inertia_kgm2   = <span class="nm">1.8f</span>;    <span class="cm">// inércia rotacional da roda+pneu</span>
+        <span class="ty">float</span> rolling_resist = <span class="nm">0.015f</span>;  <span class="cm">// coeficiente de resistência de rolamento</span>
+        <span class="ty">bool</span>  is_driven      = <span class="kw">false</span>;   <span class="cm">// recebe torque do motor?</span>
+        <span class="ty">bool</span>  is_steered     = <span class="kw">false</span>;   <span class="cm">// vira com o volante?</span>
+        <span class="ty">Vec3</span>  attach_local;              <span class="cm">// ponto de ancoragem no chassi (local)</span>
+        <span class="ty">SuspensionConfig</span> suspension;
+    };
+
+    <span class="ty">Config</span>         cfg;
+    <span class="ty">SuspensionState</span> susp;
+
+    <span class="cm">// Estado dinâmico</span>
+    <span class="ty">float</span> omega_rads     = <span class="nm">0.0f</span>;  <span class="cm">// velocidade angular (rad/s)</span>
+    <span class="ty">float</span> steer_angle    = <span class="nm">0.0f</span>;  <span class="cm">// ângulo de esterçamento (rad)</span>
+    <span class="ty">float</span> brake_torque   = <span class="nm">0.0f</span>;  <span class="cm">// torque de frenagem aplicado</span>
+    <span class="ty">float</span> drive_torque   = <span class="nm">0.0f</span>;  <span class="cm">// torque de tração aplicado</span>
+    <span class="ty">float</span> normal_force   = <span class="nm">0.0f</span>;  <span class="cm">// carga vertical (N)</span>
+
+    <span class="cm">// Saídas do modelo de pneu</span>
+    <span class="ty">Vec3</span>  force_world;            <span class="cm">// força total no espaço mundial</span>
+    <span class="ty">float</span> slip_ratio     = <span class="nm">0.0f</span>;  <span class="cm">// escorregamento longitudinal</span>
+    <span class="ty">float</span> slip_angle_rad = <span class="nm">0.0f</span>;  <span class="cm">// ângulo de deslizamento lateral</span>
+    <span class="ty">bool</span>  is_locked      = <span class="kw">false</span>; <span class="cm">// roda travada (ABS)?</span>
+
+    <span class="cm">// Velocidade linear da superfície do pneu em contato com o chão</span>
+    <span class="ty">float</span> <span class="fn">surfaceSpeed</span>() <span class="kw">const</span> { <span class="kw">return</span> omega_rads * cfg.radius_m; }
+
+    <span class="kw">void</span> <span class="fn">updateSpin</span>(<span class="ty">float</span> dt) {
+        <span class="ty">float</span> net_torque = drive_torque
+                         - brake_torque
+                         - normal_force * cfg.rolling_resist * cfg.radius_m;
+        <span class="ty">float</span> alpha = net_torque / cfg.inertia_kgm2;
+        omega_rads += alpha * dt;
+        omega_rads  = std::<span class="fn">max</span>(<span class="nm">0.0f</span>, omega_rads);  <span class="cm">// não gira ao contrário</span>
+    }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="frenagem" class="anchor">8. Sistema de Frenagem e ABS</h2>
+
+  <p>A frenagem é modelada como um torque oposto à rotação da roda. O ponto de bloqueio ocorre quando o torque de frenagem supera o atrito disponível no pneu.</p>
+
+  <div class="formula">
+    T<sub>freio</sub> = P<sub>hidráulico</sub> · A<sub>pistão</sub> · μ<sub>pastilha</sub> · r<sub>disco</sub><br>
+    F<sub>freio_max</sub> = μ<sub>pneu</sub> · N<sub>roda</sub>
+    <div class="comment">// Bloqueio quando T_freio > F_freio_max · r_pneu</div>
+  </div>
+
+<pre><code><span class="kw">class</span> <span class="ty">BrakeSystem</span> {
+<span class="kw">public</span>:
+    <span class="kw">struct</span> <span class="ty">Config</span> {
+        <span class="ty">float</span> max_torque_front = <span class="nm">1800.0f</span>;  <span class="cm">// N·m por roda dianteira</span>
+        <span class="ty">float</span> max_torque_rear  = <span class="nm">1200.0f</span>;  <span class="cm">// N·m por roda traseira</span>
+        <span class="ty">float</span> bias             = <span class="nm">0.6f</span>;     <span class="cm">// 60% dianteiro</span>
+        <span class="ty">bool</span>  abs_enabled      = <span class="kw">true</span>;
+        <span class="ty">float</span> abs_slip_target  = <span class="nm">0.15f</span>;   <span class="cm">// slip ratio alvo com ABS ativo</span>
+    };
+
+    <span class="ty">Config</span> cfg;
+
+    <span class="cm">// Calcula torque de frenagem por roda, com ABS digital simples</span>
+    <span class="ty">float</span> <span class="fn">brakeForWheel</span>(<span class="ty">float</span> input,          <span class="cm">// 0..1</span>
+                         <span class="ty">float</span> slip_ratio,
+                         <span class="ty">float</span> normal_force,
+                         <span class="ty">bool</span>  is_front) <span class="kw">const</span>
+    {
+        <span class="ty">float</span> max_T = is_front ? cfg.max_torque_front : cfg.max_torque_rear;
+        <span class="ty">float</span> bias  = is_front ? cfg.bias : (<span class="nm">1.0f</span> - cfg.bias);
+        <span class="ty">float</span> requested = input * max_T * bias;
+
+        <span class="kw">if</span> (cfg.abs_enabled) {
+            <span class="cm">// ABS: reduz pressão se slip ratio ultrapassou o alvo</span>
+            <span class="ty">float</span> slip_abs = std::<span class="fn">abs</span>(slip_ratio);
+            <span class="kw">if</span> (slip_abs > cfg.abs_slip_target) {
+                <span class="ty">float</span> reduction = <span class="nm">1.0f</span> - (slip_abs - cfg.abs_slip_target) * <span class="nm">4.0f</span>;
+                requested *= std::<span class="fn">clamp</span>(reduction, <span class="nm">0.0f</span>, <span class="nm">1.0f</span>);
+            }
+        }
+        <span class="kw">return</span> requested;
+    }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="direcao" class="anchor">9. Direção e Esterçamento</h2>
+
+  <p>O modelo de direção usa a <strong>geometria de Ackermann</strong>: as rodas dianteiras internas e externas giram ângulos diferentes para manter os centros de curvatura alinhados.</p>
+
+  <div class="formula">
+    θ<sub>inner</sub> = arctan( L / (R − tw/2) )<br>
+    θ<sub>outer</sub> = arctan( L / (R + tw/2) )
+    <div class="comment">// L=distância entre eixos, R=raio de curva, tw=bitola</div>
+  </div>
+
+<pre><code><span class="kw">class</span> <span class="ty">SteeringSystem</span> {
+<span class="kw">public</span>:
+    <span class="kw">struct</span> <span class="ty">Config</span> {
+        <span class="ty">float</span> max_angle_rad    = <span class="nm">0.52f</span>;  <span class="cm">// ~30° máximo</span>
+        <span class="ty">float</span> steering_ratio   = <span class="nm">14.0f</span>;  <span class="cm">// volante / roda (14:1)</span>
+        <span class="ty">float</span> return_speed     = <span class="nm">5.0f</span>;   <span class="cm">// velocidade de retorno ao centro</span>
+        <span class="ty">float</span> speed_sensitivity = <span class="nm">0.3f</span>;  <span class="cm">// reduz ângulo em alta velocidade</span>
+    };
+
+    <span class="ty">Config</span> cfg;
+    <span class="ty">float</span>  current_angle = <span class="nm">0.0f</span>;
+
+    <span class="cm">// Atualiza ângulo das rodas com base no input e velocidade do carro</span>
+    <span class="kw">void</span> <span class="fn">update</span>(<span class="ty">float</span> dt, <span class="ty">float</span> input, <span class="ty">float</span> speed_ms) {
+        <span class="cm">// Redução progressiva do ângulo em alta velocidade</span>
+        <span class="ty">float</span> speed_factor = <span class="nm">1.0f</span> / (<span class="nm">1.0f</span> + cfg.speed_sensitivity * speed_ms);
+        <span class="ty">float</span> target = input * cfg.max_angle_rad * speed_factor;
+
+        <span class="cm">// Retorno ao centro quando input=0</span>
+        <span class="kw">if</span> (std::<span class="fn">abs</span>(input) < <span class="nm">0.01f</span>) {
+            target = <span class="fn">lerp</span>(current_angle, <span class="nm">0.0f</span>, cfg.return_speed * dt);
+        }
+        current_angle = target;
+    }
+
+    <span class="cm">// Ackermann: ângulo interno e externo para uma dada curvatura</span>
+    <span class="kw">struct</span> <span class="ty">WheelAngles</span> { <span class="ty">float</span> left, right; };
+    <span class="ty">WheelAngles</span> <span class="fn">ackermannAngles</span>(<span class="ty">float</span> wheelbase, <span class="ty">float</span> track) <span class="kw">const</span> {
+        <span class="ty">float</span> a = current_angle;
+        <span class="kw">if</span> (std::<span class="fn">abs</span>(a) < <span class="nm">1e-4f</span>) <span class="kw">return</span> {<span class="nm">0</span>, <span class="nm">0</span>};
+
+        <span class="ty">float</span> R     = wheelbase / std::<span class="fn">tan</span>(std::<span class="fn">abs</span>(a));
+        <span class="ty">float</span> inner = std::<span class="fn">atan2</span>(wheelbase, R - track * <span class="nm">0.5f</span>);
+        <span class="ty">float</span> outer = std::<span class="fn">atan2</span>(wheelbase, R + track * <span class="nm">0.5f</span>);
+
+        <span class="kw">if</span> (a > <span class="nm">0</span>) <span class="kw">return</span> { inner,  outer };  <span class="cm">// curva à esquerda</span>
+        <span class="kw">else</span>       <span class="kw">return</span> {-outer, -inner };  <span class="cm">// curva à direita</span>
+    }
+
+<span class="kw">private</span>:
+    <span class="ty">float</span> <span class="fn">lerp</span>(<span class="ty">float</span> a, <span class="ty">float</span> b, <span class="ty">float</span> t) { <span class="kw">return</span> a + (b-a)*t; }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="aerodinamica" class="anchor">10. Aerodinâmica — Drag e Downforce</h2>
+
+  <p>O arrasto aerodinâmico cresce com o quadrado da velocidade. Em carros de corrida, o downforce (força para baixo) aumenta a carga nas rodas e melhora o grip em alta velocidade.</p>
+
+  <div class="formula">
+    F<sub>drag</sub>      = ½ · ρ · v² · C<sub>d</sub> · A<br>
+    F<sub>downforce</sub> = ½ · ρ · v² · C<sub>l</sub> · A
+    <div class="comment">// ρ=densidade do ar (1.225 kg/m³), Cd=coef. de arrasto, Cl=coef. de sustentação negativa, A=área frontal</div>
+  </div>
+
+<pre><code><span class="kw">class</span> <span class="ty">Aerodynamics</span> {
+<span class="kw">public</span>:
+    <span class="kw">struct</span> <span class="ty">Config</span> {
+        <span class="ty">float</span> drag_coeff       = <span class="nm">0.32f</span>;   <span class="cm">// Cd</span>
+        <span class="ty">float</span> downforce_coeff  = <span class="nm">0.8f</span>;    <span class="cm">// Cl negativo</span>
+        <span class="ty">float</span> frontal_area_m2  = <span class="nm">2.1f</span>;    <span class="cm">// m²</span>
+        <span class="ty">float</span> air_density      = <span class="nm">1.225f</span>;  <span class="cm">// kg/m³ ao nível do mar</span>
+        <span class="ty">float</span> downforce_bias   = <span class="nm">0.4f</span>;   <span class="cm">// 40% dianteiro, 60% traseiro</span>
+    };
+
+    <span class="ty">Config</span> cfg;
+
+    <span class="kw">struct</span> <span class="ty">Result</span> {
+        <span class="ty">Vec3</span>  drag_force;          <span class="cm">// oposta à velocidade</span>
+        <span class="ty">float</span> downforce_front;    <span class="cm">// N extra nas rodas dianteiras</span>
+        <span class="ty">float</span> downforce_rear;     <span class="cm">// N extra nas rodas traseiras</span>
+    };
+
+    <span class="ty">Result</span> <span class="fn">compute</span>(<span class="kw">const</span> <span class="ty">Vec3</span>&amp; velocity_world) <span class="kw">const</span> {
+        <span class="ty">float</span> speed_sq = velocity_world.<span class="fn">lengthSq</span>();
+        <span class="ty">float</span> dyn_p    = <span class="nm">0.5f</span> * cfg.air_density * speed_sq;  <span class="cm">// pressão dinâmica</span>
+
+        <span class="ty">float</span> drag_mag = dyn_p * cfg.drag_coeff * cfg.frontal_area_m2;
+        <span class="ty">float</span> df_total = dyn_p * cfg.downforce_coeff * cfg.frontal_area_m2;
+
+        <span class="ty">Result</span> r;
+        r.drag_force       = velocity_world.<span class="fn">normalized</span>() * (-drag_mag);
+        r.downforce_front  = df_total * cfg.downforce_bias;
+        r.downforce_rear   = df_total * (<span class="nm">1.0f</span> - cfg.downforce_bias);
+        <span class="kw">return</span> r;
+    }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="atrito" class="anchor">11. Modelo de Atrito de Pneus (Pacejka)</h2>
+
+  <p>O modelo de Pacejka (Magic Formula) é a referência da indústria para simular o comportamento de pneus. Ele descreve como a força gerada pelo pneu varia com o <strong>slip ratio</strong> (longitudinal) e o <strong>slip angle</strong> (lateral).</p>
+
+  <div class="formula">
+    F = D · sin( C · arctan( B·x − E·(B·x − arctan(B·x)) ) )
+    <div class="comment">// B=stiffness, C=shape, D=peak, E=curvature — "Magic Formula"</div>
+  </div>
+
+  <h3>Slip Ratio (Longitudinal)</h3>
+  <div class="formula">
+    σ = (v<sub>wheel</sub> − v<sub>car</sub>) / max(v<sub>car</sub>, ε)
+    <div class="comment">// σ>0: aceleração (roda girando mais rápido que carro), σ&lt;0: frenagem</div>
+  </div>
+
+  <h3>Slip Angle (Lateral)</h3>
+  <div class="formula">
+    α = arctan( v<sub>lateral</sub> / v<sub>longitudinal</sub> )
+    <div class="comment">// ângulo entre a direção que a roda aponta e a direção que ela se move</div>
+  </div>
+
+<pre><code><span class="kw">struct</span> <span class="ty">PacejkaParams</span> {
+    <span class="ty">float</span> B = <span class="nm">10.0f</span>;   <span class="cm">// Stiffness Factor</span>
+    <span class="ty">float</span> C = <span class="nm">1.9f</span>;    <span class="cm">// Shape Factor</span>
+    <span class="ty">float</span> D = <span class="nm">1.0f</span>;    <span class="cm">// Peak Value (multiplicado pela carga normal)</span>
+    <span class="ty">float</span> E = <span class="nm">0.97f</span>;   <span class="cm">// Curvature Factor</span>
+};
+
+<span class="cm">// Retorna coeficiente de força (0..1), multiplicar pela carga normal</span>
+<span class="ty">float</span> <span class="fn">pacejka</span>(<span class="kw">const</span> <span class="ty">PacejkaParams</span>&amp; p, <span class="ty">float</span> slip) {
+    <span class="ty">float</span> x = slip;
+    <span class="kw">return</span> p.D * std::<span class="fn">sin</span>(
+        p.C * std::<span class="fn">atan</span>(
+            p.B * x - p.E * (p.B * x - std::<span class="fn">atan</span>(p.B * x))
+        )
+    );
+}
+
+<span class="kw">class</span> <span class="ty">TireModel</span> {
+<span class="kw">public</span>:
+    <span class="ty">PacejkaParams</span> long_params  = { <span class="nm">12.0f</span>, <span class="nm">1.65f</span>, <span class="nm">1.0f</span>, <span class="nm">0.97f</span> };
+    <span class="ty">PacejkaParams</span> lat_params   = { <span class="nm">8.0f</span>,  <span class="nm">1.4f</span>,  <span class="nm">0.9f</span>, <span class="nm">0.97f</span> };
+
+    <span class="kw">struct</span> <span class="ty">Input</span> {
+        <span class="ty">float</span> normal_force;        <span class="cm">// N — carga vertical</span>
+        <span class="ty">float</span> slip_ratio;          <span class="cm">// adimensional</span>
+        <span class="ty">float</span> slip_angle_rad;      <span class="cm">// radianos</span>
+        <span class="ty">float</span> friction_coeff;      <span class="cm">// μ da superfície</span>
+    };
+
+    <span class="kw">struct</span> <span class="ty">Output</span> {
+        <span class="ty">float</span> long_force;    <span class="cm">// N — longitudinal (tração/freio)</span>
+        <span class="ty">float</span> lat_force;     <span class="cm">// N — lateral (cornering)</span>
+    };
+
+    <span class="ty">Output</span> <span class="fn">evaluate</span>(<span class="kw">const</span> <span class="ty">Input</span>&amp; in) <span class="kw">const</span> {
+        <span class="ty">float</span> Fz = in.normal_force;
+
+        <span class="cm">// Forças máximas escaladas pela carga e coeficiente de atrito</span>
+        <span class="ty">float</span> Fx_raw = <span class="fn">pacejka</span>(long_params, in.slip_ratio) * Fz * in.friction_coeff;
+        <span class="ty">float</span> Fy_raw = <span class="fn">pacejka</span>(lat_params, in.slip_angle_rad) * Fz * in.friction_coeff;
+
+        <span class="cm">// Círculo de fricção: Fx² + Fy² ≤ (μ·Fz)²</span>
+        <span class="ty">float</span> limit   = in.friction_coeff * Fz;
+        <span class="ty">float</span> combined = std::<span class="fn">sqrt</span>(Fx_raw*Fx_raw + Fy_raw*Fy_raw);
+        <span class="kw">if</span> (combined > limit) {
+            <span class="ty">float</span> scale = limit / combined;
+            Fx_raw *= scale;
+            Fy_raw *= scale;
+        }
+
+        <span class="kw">return</span> { Fx_raw, Fy_raw };
+    }
+
+    <span class="cm">// Calcula slip ratio dado velocidade linear do carro e da roda</span>
+    <span class="kw">static</span> <span class="ty">float</span> <span class="fn">computeSlipRatio</span>(<span class="ty">float</span> wheel_surface_speed,
+                                    <span class="ty">float</span> car_forward_speed) {
+        <span class="ty">float</span> denom = std::<span class="fn">max</span>(std::<span class="fn">abs</span>(car_forward_speed), <span class="nm">0.5f</span>);
+        <span class="kw">return</span> (wheel_surface_speed - car_forward_speed) / denom;
+    }
+
+    <span class="cm">// Calcula slip angle dado velocidade local da roda no chassi</span>
+    <span class="kw">static</span> <span class="ty">float</span> <span class="fn">computeSlipAngle</span>(<span class="ty">float</span> lateral_vel, <span class="ty">float</span> longitudinal_vel) {
+        <span class="kw">if</span> (std::<span class="fn">abs</span>(longitudinal_vel) < <span class="nm">0.1f</span>) <span class="kw">return</span> <span class="nm">0.0f</span>;
+        <span class="kw">return</span> std::<span class="fn">atan2</span>(lateral_vel, std::<span class="fn">abs</span>(longitudinal_vel));
+    }
+};
+</code></pre>
+
+  <div class="callout info">
+    <div class="callout-title">Círculo de Fricção</div>
+    A capacidade total de atrito do pneu é limitada. Usar 100% para frenagem deixa 0% para curva. Este conceito é implementado normalizando o vetor (Fx, Fy) quando seu módulo ultrapassa μ·Fz.
+  </div>
+
+  <!-- ================================================================ -->
+  <h2 id="rotacao" class="anchor">12. Dinâmica Rotacional e Torque</h2>
+
+  <p>O equivalente rotacional de F=ma é <strong>τ = I·α</strong>, onde τ é o torque, I é o momento de inércia e α é a aceleração angular.</p>
+
+  <div class="formula">
+    τ = r × F  (produto vetorial da alavanca pelo força)<br>
+    α = τ / I
+    <div class="comment">// Torque positivo = sentido anti-horário (regra da mão direita)</div>
+  </div>
+
+<pre><code><span class="cm">// Torque do motor aplicado nas rodas motrizes</span>
+<span class="kw">void</span> <span class="fn">applyDriveTorque</span>(<span class="ty">CarBody</span>&amp; car, <span class="ty">float</span> dt) {
+    <span class="ty">float</span> engine_torque = car.engine.<span class="fn">netTorque</span>();
+    <span class="ty">float</span> wheel_torque  = car.transmission.<span class="fn">wheelTorque</span>(engine_torque);
+
+    <span class="cm">// Distribuição simples: 50/50 entre rodas motrizes traseiras</span>
+    <span class="ty">float</span> per_wheel = wheel_torque * <span class="nm">0.5f</span>;
+    car.wheels[<span class="kw">static_cast</span>&lt;<span class="ty">int</span>&gt;(<span class="ty">WheelIndex</span>::RearLeft)].drive_torque  = per_wheel;
+    car.wheels[<span class="kw">static_cast</span>&lt;<span class="ty">int</span>&gt;(<span class="ty">WheelIndex</span>::RearRight)].drive_torque = per_wheel;
+}
+
+<span class="cm">// Torque de yaw gerado por força lateral desigual entre eixos</span>
+<span class="ty">float</span> <span class="fn">computeYawTorque</span>(<span class="kw">const</span> <span class="ty">std::array</span>&lt;<span class="ty">Wheel</span>, <span class="nm">4</span>&gt;&amp; wheels,
+                        <span class="ty">float</span> wheelbase)
+{
+    <span class="cm">// Momento gerado pela diferença lateral entre eixo dianteiro e traseiro</span>
+    <span class="ty">float</span> Fy_front = wheels[<span class="nm">0</span>].force_world.x + wheels[<span class="nm">1</span>].force_world.x;
+    <span class="ty">float</span> Fy_rear  = wheels[<span class="nm">2</span>].force_world.x + wheels[<span class="nm">3</span>].force_world.x;
+
+    <span class="ty">float</span> a = wheelbase * <span class="nm">0.45f</span>;  <span class="cm">// distância CG → eixo dianteiro</span>
+    <span class="ty">float</span> b = wheelbase * <span class="nm">0.55f</span>;  <span class="cm">// distância CG → eixo traseiro</span>
+
+    <span class="kw">return</span> Fy_front * a - Fy_rear * b;
+}
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="colisoes" class="anchor">13. Colisões e Impulsos</h2>
+
+  <p>Quando o carro colide, usamos <strong>impulsos</strong> para alterar instantaneamente a velocidade do corpo. O impulso J é calculado a partir do coeficiente de restituição e das massas envolvidas:</p>
+
+  <div class="formula">
+    J = −(1 + e) · v<sub>rel</sub> · n̂ / (1/m<sub>A</sub> + 1/m<sub>B</sub>)
+    <div class="comment">// e=coeficiente de restituição (0=perfeitamente inelástico, 1=elástico)</div>
+  </div>
+
+<pre><code><span class="kw">struct</span> <span class="ty">ContactManifold</span> {
+    <span class="ty">Vec3</span>  point;         <span class="cm">// ponto de contato no mundo</span>
+    <span class="ty">Vec3</span>  normal;        <span class="cm">// normal apontando de B → A</span>
+    <span class="ty">float</span> penetration;   <span class="cm">// profundidade de interpenetração (m)</span>
+};
+
+<span class="kw">void</span> <span class="fn">resolveCollision</span>(<span class="ty">RigidBody3D</span>&amp; A, <span class="ty">RigidBody3D</span>&amp; B,
+                       <span class="kw">const</span> <span class="ty">ContactManifold</span>&amp; c,
+                       <span class="ty">float</span> restitution = <span class="nm">0.3f</span>,
+                       <span class="ty">float</span> friction_mu = <span class="nm">0.5f</span>)
+{
+    <span class="ty">Vec3</span> rA = c.point - A.position;
+    <span class="ty">Vec3</span> rB = c.point - B.position;
+
+    <span class="cm">// Velocidade relativa no ponto de contato</span>
+    <span class="ty">Vec3</span> vA = A.velocity + A.angularVelocity.<span class="fn">cross</span>(rA);
+    <span class="ty">Vec3</span> vB = B.velocity + B.angularVelocity.<span class="fn">cross</span>(rB);
+    <span class="ty">float</span> vRel_n = (vA - vB).<span class="fn">dot</span>(c.normal);
+
+    <span class="kw">if</span> (vRel_n >= <span class="nm">0</span>) <span class="kw">return</span>;  <span class="cm">// objetos já se afastando</span>
+
+    <span class="cm">// Denominador do impulso (considera inércia rotacional)</span>
+    <span class="ty">auto</span> <span class="fn">invInertia</span> = [](RigidBody3D&amp; rb, <span class="kw">const</span> <span class="ty">Vec3</span>&amp; r, <span class="kw">const</span> <span class="ty">Vec3</span>&amp; n) {
+        <span class="ty">Vec3</span> cross = r.<span class="fn">cross</span>(n);
+        <span class="kw">return</span> <span class="ty">Vec3</span>{
+            cross.x / rb.inertiaTensor.x,
+            cross.y / rb.inertiaTensor.y,
+            cross.z / rb.inertiaTensor.z
+        }.<span class="fn">cross</span>(r).<span class="fn">dot</span>(n);
+    };
+
+    <span class="ty">float</span> invMassSum = <span class="nm">1.0f</span>/A.mass + <span class="nm">1.0f</span>/B.mass
+                     + <span class="fn">invInertia</span>(A, rA, c.normal)
+                     + <span class="fn">invInertia</span>(B, rB, c.normal);
+
+    <span class="ty">float</span> j = -((<span class="nm">1.0f</span> + restitution) * vRel_n) / invMassSum;
+
+    <span class="ty">Vec3</span> impulse = c.normal * j;
+    A.velocity += impulse * (<span class="nm">1.0f</span> / A.mass);
+    B.velocity -= impulse * (<span class="nm">1.0f</span> / B.mass);
+    A.angularVelocity += <span class="ty">Vec3</span>{
+        rA.<span class="fn">cross</span>(impulse).x / A.inertiaTensor.x,
+        rA.<span class="fn">cross</span>(impulse).y / A.inertiaTensor.y,
+        rA.<span class="fn">cross</span>(impulse).z / A.inertiaTensor.z
+    };
+
+    <span class="cm">// Correção de posição (evita afundamento)</span>
+    <span class="ty">float</span> slop    = <span class="nm">0.01f</span>;
+    <span class="ty">float</span> percent  = <span class="nm">0.4f</span>;
+    <span class="ty">Vec3</span>  correction = c.normal *
+        (std::<span class="fn">max</span>(c.penetration - slop, <span class="nm">0.0f</span>) / invMassSum * percent);
+    A.position += correction * (<span class="nm">1.0f</span>/A.mass);
+    B.position -= correction * (<span class="nm">1.0f</span>/B.mass);
+}
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="integracao" class="anchor">14. Loop de Integração Física</h2>
+
+  <p>O sistema de física roda em um timestep fixo separado do framerate de renderização. O padrão recomendado é <strong>120 Hz</strong> (dt = 1/120 ≈ 8.33ms).</p>
+
+<pre><code><span class="kw">class</span> <span class="ty">PhysicsWorld</span> {
+<span class="kw">public</span>:
+    <span class="kw">static</span> <span class="kw">constexpr</span> <span class="ty">float</span> FIXED_DT   = <span class="nm">1.0f</span> / <span class="nm">120.0f</span>;
+    <span class="kw">static</span> <span class="kw">constexpr</span> <span class="ty">float</span> MAX_STEPS  = <span class="nm">8</span>;     <span class="cm">// evita espiral da morte</span>
+    <span class="kw">static</span> <span class="kw">constexpr</span> <span class="ty">float</span> GRAVITY    = <span class="nm">9.81f</span>;
+
+    <span class="kw">void</span> <span class="fn">stepFrame</span>(<span class="ty">float</span> real_dt, <span class="ty">CarBody</span>&amp; car,
+                   <span class="ty">float</span> throttle, <span class="ty">float</span> brake, <span class="ty">float</span> steer)
+    {
+        accumulator += real_dt;
+        <span class="ty">int</span> steps = <span class="nm">0</span>;
+
+        <span class="kw">while</span> (accumulator >= FIXED_DT &amp;&amp; steps < MAX_STEPS) {
+            <span class="fn">stepFixed</span>(FIXED_DT, car, throttle, brake, steer);
+            accumulator -= FIXED_DT;
+            ++steps;
+        }
+        <span class="cm">// alpha = accumulator/FIXED_DT → usar para interpolação de renderização</span>
+    }
+
+<span class="kw">private</span>:
+    <span class="ty">float</span> accumulator = <span class="nm">0.0f</span>;
+
+    <span class="kw">void</span> <span class="fn">stepFixed</span>(<span class="ty">float</span> dt, <span class="ty">CarBody</span>&amp; car,
+                    <span class="ty">float</span> throttle, <span class="ty">float</span> brake, <span class="ty">float</span> steer)
+    {
+        <span class="cm">// 1. Atualizar inputs</span>
+        car.input_throttle = throttle;
+        car.input_brake    = brake;
+        car.input_steer    = steer;
+
+        <span class="cm">// 2. Atualizar direção</span>
+        car.steering.<span class="fn">update</span>(dt, steer, car.body.<span class="fn">speedKmh</span>() / <span class="nm">3.6f</span>);
+
+        <span class="cm">// 3. Calcular carga por roda (transferência de peso)</span>
+        <span class="ty">Vec3</span> accel_local = car.body.orientation.<span class="fn">rotate</span>(car.body.acceleration);
+        <span class="ty">WheelLoad</span> loads = <span class="fn">computeWheelLoads</span>(car._cfg, accel_local);
+
+        <span class="cm">// 4. Processar cada roda</span>
+        <span class="kw">for</span> (<span class="ty">int</span> i = <span class="nm">0</span>; i < <span class="nm">4</span>; ++i) {
+            <span class="ty">Wheel</span>&amp; w = car.wheels[i];
+            <span class="ty">float</span> Fz = (&amp;loads.fl)[i];
+
+            <span class="cm">// Raycast suspensão para detectar chão</span>
+            <span class="ty">float</span> contact_len = <span class="fn">rayCastGround</span>(car.body, w.cfg.attach_local);
+            <span class="ty">float</span> Fsusp = <span class="fn">computeSuspensionForce</span>(w.cfg.suspension, w.susp, contact_len, dt);
+
+            w.normal_force = Fsusp + Fz;
+
+            <span class="cm">// Velocidade da roda no espaço local</span>
+            <span class="ty">Vec3</span> wp_world  = car.body.orientation.<span class="fn">rotate</span>(w.cfg.attach_local) + car.body.position;
+            <span class="ty">Vec3</span> vel_world = car.body.velocity
+                           + car.body.angularVelocity.<span class="fn">cross</span>(wp_world - car.body.position);
+            <span class="ty">Vec3</span> vel_local = car.body.orientation.<span class="fn">rotate</span>(vel_world);  <span class="cm">// simplificado</span>
+
+            <span class="cm">// Slip ratio e ângulo</span>
+            w.slip_ratio    = <span class="ty">TireModel</span>::<span class="fn">computeSlipRatio</span>(w.<span class="fn">surfaceSpeed</span>(), vel_local.z);
+            w.slip_angle_rad= <span class="ty">TireModel</span>::<span class="fn">computeSlipAngle</span>(vel_local.x, vel_local.z);
+
+            <span class="cm">// Forças do pneu</span>
+            <span class="ty">TireModel::Input</span> tin{ w.normal_force, w.slip_ratio, w.slip_angle_rad, <span class="nm">0.85f</span> };
+            <span class="ty">TireModel::Output</span> tout = car.tire_model.<span class="fn">evaluate</span>(tin);
+
+            <span class="cm">// Converte para espaço mundial e aplica no corpo</span>
+            <span class="ty">Vec3</span> wheel_fwd = car.body.orientation.<span class="fn">rotate</span>({<span class="nm">0</span>,<span class="nm">0</span>,<span class="nm">1</span>});
+            <span class="ty">Vec3</span> wheel_right= car.body.orientation.<span class="fn">rotate</span>({<span class="nm">1</span>,<span class="nm">0</span>,<span class="nm">0</span>});
+            <span class="ty">Vec3</span> tire_force = wheel_fwd * tout.long_force + wheel_right * tout.lat_force;
+            <span class="ty">Vec3</span> susp_force = car.body.<span class="fn">up</span>() * Fsusp;
+
+            car.body.<span class="fn">addForceAtPoint</span>(tire_force + susp_force, wp_world);
+
+            <span class="cm">// Atualiza spin da roda</span>
+            w.drive_torque = <span class="cm">/* calculado pelo motor */</span> <span class="nm">0.0f</span>;
+            w.brake_torque = car.brake_system.<span class="fn">brakeForWheel</span>(
+                brake, w.slip_ratio, w.normal_force, i < <span class="nm">2</span>);
+            w.<span class="fn">updateSpin</span>(dt);
+        }
+
+        <span class="cm">// 5. Gravidade</span>
+        car.body.<span class="fn">addForce</span>({<span class="nm">0</span>, -GRAVITY * car._cfg.mass_kg, <span class="nm">0</span>});
+
+        <span class="cm">// 6. Aerodinâmica</span>
+        <span class="kw">auto</span> aero = car.aero.<span class="fn">compute</span>(car.body.velocity);
+        car.body.<span class="fn">addForce</span>(aero.drag_force);
+
+        <span class="cm">// 7. Motor e câmbio</span>
+        <span class="fn">applyDriveTorque</span>(car, dt);
+        car.engine.<span class="fn">update</span>(dt, <span class="nm">0.0f</span>);
+        car.transmission.<span class="fn">autoShift</span>(car.engine.rpm, throttle);
+
+        <span class="cm">// 8. Integrar corpo rígido</span>
+        car.body.<span class="fn">integrate</span>(dt);
+    }
+};
+</code></pre>
+
+  <!-- ================================================================ -->
+  <h2 id="parametros" class="anchor">15. Tabela de Parâmetros de Referência</h2>
+
+  <p>Valores de referência para um carro de corrida GT de nível médio:</p>
+
+  <table>
+    <tr>
+      <th>Parâmetro</th><th>Símbolo</th><th>Valor</th><th>Unidade</th><th>Notas</th>
+    </tr>
+    <tr><td>Massa total</td><td>m</td><td>1200</td><td>kg</td><td>Com motorista</td></tr>
+    <tr><td>Distância entre eixos</td><td>L</td><td>2.70</td><td>m</td><td></td></tr>
+    <tr><td>Bitola</td><td>tw</td><td>1.55</td><td>m</td><td></td></tr>
+    <tr><td>Altura do CG</td><td>h</td><td>0.42</td><td>m</td><td></td></tr>
+    <tr><td>Distribuição de peso</td><td>—</td><td>45/55</td><td>%</td><td>Frente/Trás</td></tr>
+    <tr><td>Inércia de yaw</td><td>Izz</td><td>1800</td><td>kg·m²</td><td></td></tr>
+    <tr><td>Raio do pneu</td><td>r</td><td>0.32</td><td>m</td><td></td></tr>
+    <tr><td>Torque máximo</td><td>T<sub>max</sub></td><td>380</td><td>N·m</td><td>em 4500 RPM</td></tr>
+    <tr><td>RPM máximo</td><td>—</td><td>7500</td><td>RPM</td><td>Redline</td></tr>
+    <tr><td>Coeficiente de arrasto</td><td>Cd</td><td>0.32</td><td>—</td><td></td></tr>
+    <tr><td>Coeficiente de downforce</td><td>Cl</td><td>0.80</td><td>—</td><td></td></tr>
+    <tr><td>Área frontal</td><td>A</td><td>2.1</td><td>m²</td><td></td></tr>
+    <tr><td>Rigidez da mola (diant.)</td><td>k<sub>f</sub></td><td>40000</td><td>N/m</td><td></td></tr>
+    <tr><td>Rigidez da mola (tras.)</td><td>k<sub>r</sub></td><td>35000</td><td>N/m</td><td></td></tr>
+    <tr><td>Amortecimento</td><td>c</td><td>3500</td><td>N·s/m</td><td></td></tr>
+    <tr><td>μ pneu (seco)</td><td>μ</td><td>1.65</td><td>—</td><td>Composto macio</td></tr>
+    <tr><td>μ pneu (molhado)</td><td>μ<sub>wet</sub></td><td>0.75</td><td>—</td><td></td></tr>
+    <tr><td>Torque de freio (diant.)</td><td>—</td><td>1800</td><td>N·m</td><td>por roda</td></tr>
+    <tr><td>Ângulo máx. de direção</td><td>—</td><td>30</td><td>°</td><td>nas rodas</td></tr>
+    <tr><td>Relação final</td><td>G<sub>d</sub></td><td>4.10</td><td>:1</td><td></td></tr>
+    <tr><td>Timestep físico</td><td>dt</td><td>1/120</td><td>s</td><td>≈ 8.33 ms</td></tr>
+  </table>
+
+  <h3>Coeficientes de Atrito por Superfície</h3>
+
+  <table>
+    <tr><th>Superfície</th><th>μ estático</th><th>μ cinético</th><th>Notas</th></tr>
+    <tr><td>Asfalto seco (corrida)</td><td>1.65</td><td>1.50</td><td>Composto macio</td></tr>
+    <tr><td>Asfalto seco (rua)</td><td>0.85</td><td>0.75</td><td></td></tr>
+    <tr><td>Asfalto molhado</td><td>0.60</td><td>0.50</td><td></td></tr>
+    <tr><td>Cascalho (gravel)</td><td>0.50</td><td>0.40</td><td></td></tr>
+    <tr><td>Grama / terra</td><td>0.35</td><td>0.28</td><td></td></tr>
+    <tr><td>Pista de gelo</td><td>0.15</td><td>0.10</td><td></td></tr>
+    <tr><td>Bordas de pista (curb)</td><td>0.55</td><td>0.45</td><td>Com instabilidade</td></tr>
+  </table>
+
+  <div class="callout warning">
+    <div class="callout-title">Ajuste Iterativo</div>
+    Nenhum conjunto de parâmetros funciona perfeitamente na primeira tentativa. O fluxo recomendado é: implemente o modelo → ajuste a massa e inércia → calibre a suspensão em linha reta → calibre o comportamento de curva → adicione aerodinâmica e repita.
+  </div>
+
+  <div style="margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px;">
+    <strong style="color: var(--text)">Interlagos Racing</strong> — Especificação Técnica de Física Veicular v1.0<br>
+    Gerado para o projeto <code>SaturnRingLib / Interlagos_racing</code>. Baseado em fundamentos de mecânica clássica, modelo de Pacejka e práticas de física para jogos.
+  </div>
+
+</div><!-- /content -->
+
+<script>
+  // Highlight active sidebar link on scroll
+  const sections = document.querySelectorAll('.anchor');
+  const links    = document.querySelectorAll('#sidebar nav a');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const a = document.querySelector(`#sidebar nav a[href="#${e.target.id}"]`);
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>

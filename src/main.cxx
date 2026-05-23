@@ -1078,7 +1078,7 @@ static int RunPhysicsPocMode()
     bool sbaLoaded = false;
     uint16_t sbaMeshCount = 0;
     uint16_t sbaFaceCount = 0;
-    constexpr bool kEnableSbaShadowModelLoad = false;
+    constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
         const char* sbaPath = FindExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
@@ -1087,6 +1087,10 @@ static int RunPhysicsPocMode()
             sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
             if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
             {
+                // Configure SBA as a shadow-only model.
+                sbaModel->ForceSolidColorPreserveDisplay(SRL::Types::HighColor::FromRGB555(0, 0, 0));
+                sbaModel->ForceHalfTransparency(true);
+
                 MeshRenderer::Config sbaCfg{};
                 sbaCfg.modelCenter = ComputeCarModelCenter(sbaModel.get(),
                                                            sbaModel->GetMeshCount(),
@@ -1177,7 +1181,7 @@ static int RunPhysicsPocMode()
                                                                carSystem,
                                                                sbaRenderer.get(),
                                                                sbaLoaded,
-                                                               false,
+                                                               true,
                                                                sbaMeshCount,
                                                                sbaFaceCount,
                                                                renderPipeline,
@@ -1325,7 +1329,7 @@ int GameApp::Run()
     bool sbaLoaded = false;
     uint16_t sbaMeshCount = 0;
     uint16_t sbaFaceCount = 0;
-    constexpr bool kEnableSbaShadowModelLoad = false;
+    constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
         const char* sbaPath = FindExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
@@ -1334,6 +1338,10 @@ int GameApp::Run()
             sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
             if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
             {
+                // Configure SBA as a shadow-only model.
+                sbaModel->ForceSolidColorPreserveDisplay(SRL::Types::HighColor::FromRGB555(0, 0, 0));
+                sbaModel->ForceHalfTransparency(true);
+
                 MeshRenderer::Config sbaCfg{};
                 sbaCfg.modelCenter = ComputeCarModelCenter(sbaModel.get(),
                                                            sbaModel->GetMeshCount(),
@@ -1680,7 +1688,7 @@ int GameApp::Run()
                                                                carSystem,
                                                                sbaRenderer.get(),
                                                                sbaLoaded,
-                                                               false,
+                                                               true,
                                                                sbaMeshCount,
                                                                sbaFaceCount,
                                                                renderPipeline,

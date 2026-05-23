@@ -1492,8 +1492,8 @@ private:
         using SRL::Math::Types::Vector2D;
         using SRL::Math::Types::Vector3D;
 
-        constexpr Fxp kShadowHalfLength = Fxp::BuildRaw(0x00220000); // 34.0 (smaller to avoid overlap)
-        constexpr Fxp kShadowHalfWidth = Fxp::BuildRaw(0x00100000);  // 16.0 (smaller to avoid overlap)
+        constexpr Fxp kShadowHalfLength = Fxp::BuildRaw(0x002C0000); // 44.0 (+~30%)
+        constexpr Fxp kShadowHalfWidth = Fxp::BuildRaw(0x00150000);  // 21.0 (+~30%)
         constexpr Fxp kShadowGroundBias = Fxp::BuildRaw(10 << 16);   // +10.0 over sampled ground Y
         // Scene2D sort bias: positive pushes farther back in the VDP1 order used here.
         constexpr Fxp kShadowSortBias = Fxp::BuildRaw(0x00100000);   // force shadow behind car
@@ -1578,14 +1578,13 @@ private:
             screenPts[3] = Vector2D(center2D.X - Fxp::BuildRaw(halfW << 16), center2D.Y + Fxp::BuildRaw(halfH << 16));
         }
 
-        // Use screen-door dithering instead of half-transparency to avoid
-        // washing out the car texture when layers overlap.
+        // Keep shadow fully opaque for debugging background interaction.
         const int32_t prevHalfTrans =
             SRL::Scene2D::GetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency);
         const int32_t prevScreenDoors =
             SRL::Scene2D::GetEffect(SRL::Scene2D::SpriteEffect::ScreenDoors);
         SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency, 0);
-        SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::ScreenDoors, 1);
+        SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::ScreenDoors, 0);
         bool drawn = SRL::Scene2D::DrawPolygon(screenPts, true, kShadowColor, sort);
         if (!drawn)
         {
@@ -1608,9 +1607,9 @@ private:
         {
             shadowPos.Y = Fxp::BuildRaw(static_cast<int32_t>(lastGroundProbeTargetY_) << 16);
         }
-        // Keep shadow slightly below car and close to ground to avoid z-fighting.
+        // Keep SBA close to asphalt. Large positive offsets can bury the model.
         // In this project, positive Y is down.
-        shadowPos.Y += Fxp::BuildRaw(1 << 16); // 1 world unit down
+        shadowPos.Y += Fxp::BuildRaw(1 << 16); // 1 world unit down from sampled asphalt
 
         int32_t shadowYawDeg = carYawDeg_;
         if (Game::CarSystem* car = ActiveCarSystem())
@@ -1618,6 +1617,8 @@ private:
             // Match the exact visual yaw used by the car mesh.
             shadowYawDeg = car->RenderYawDegrees();
         }
+        lastShadowWorldPos_ = shadowPos;
+        lastShadowYawDeg_ = shadowYawDeg;
         const Angle yaw =
             Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
         context_.carShadowRenderer->Render(shadowPos, yaw, false);
@@ -1670,12 +1671,19 @@ private:
             carRenderPos.Y -= SRL::Math::Types::Fxp::BuildRaw(kCarVisualLiftUnits << 16);
         }
 
-        // Arcade style shadow: draw 2D blob under the car.
-        // Keep model shadow optional and disabled by default.
-        DrawCarShadowBlob(carRenderPos);
-        if (context_.renderCarShadowModel && context_.carShadowRenderer)
+        // Shadow path selection for runtime tests.
+        constexpr bool kEnableCarShadowRendering = true;
+        constexpr bool kUseBlobShadow = false;
+        if constexpr (kEnableCarShadowRendering)
         {
-            DrawCarShadowModel(carRenderPos);
+            if constexpr (kUseBlobShadow)
+            {
+                DrawCarShadowBlob(carRenderPos);
+            }
+            if (context_.renderCarShadowModel && context_.carShadowRenderer)
+            {
+                DrawCarShadowModel(carRenderPos);
+            }
         }
 
         car->SetWorldPosition(carRenderPos);
