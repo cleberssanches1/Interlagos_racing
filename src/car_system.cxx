@@ -145,9 +145,14 @@ void CarSystem::TickCommandState()
             (commandState_.steerDirection > 0)
                 ? CarSystem::kSteeringMax
                 : static_cast<int16_t>(-CarSystem::kSteeringMax);
+        const bool launchSteerSnap =
+            !commandState_.braking &&
+            commandState_.throttleInputHeld &&
+            ((wheelInput_.speedKmh <= CarSystem::kLaunchSteerSnapSpeedKmh) ||
+             (std::abs(commandState_.steering) <= CarSystem::kSteeringStep));
         // In brake/reverse mode steering follows the current arrow directly.
         // No cross-center smoothing or one-shot limits.
-        if (commandState_.braking)
+        if (commandState_.braking || launchSteerSnap)
         {
             commandState_.steering = target;
         }

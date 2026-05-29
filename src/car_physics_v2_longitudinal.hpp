@@ -54,6 +54,22 @@ public:
         else if (throttleOn)
         {
             outFrame.braking = false;
+            // Launch with steering: mirror reverse's gentle pickup so the chassis
+            // does not receive a large lateral impulse from full first-gear torque.
+            const bool hasSteer = (rawFrame.steering != 0);
+            const bool forwardOrStopped = dynamics.forwardSpeed >= CarPhysics::Fxp::BuildRaw(0);
+            const bool launchSteerForward =
+                hasSteer &&
+                forwardOrStopped &&
+                (dynamics.forwardSpeed.Abs() < CarPhysics::Tunables::kForwardSteerLaunchSpeedThreshold);
+            if (launchSteerForward)
+            {
+                const int32_t rawThrottle =
+                    (CarPhysics::Tunables::kForwardSteerLaunchAccelPerFrame.RawValue() * 100) /
+                    std::max<int32_t>(1, CarPhysics::Tunables::kGearAccelPerFrame[0].RawValue());
+                const int16_t throttleCap = static_cast<int16_t>(std::clamp<int32_t>(rawThrottle, 15, 100));
+                if (outFrame.throttle > throttleCap) outFrame.throttle = throttleCap;
+            }
             // Conservative pass-through for drive input during rollout:
             // avoid accidentally suppressing throttle and freezing movement.
             transitionHoldFrames_ = 0u;

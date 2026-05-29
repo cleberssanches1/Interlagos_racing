@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagnostico Curva Partindo do Carro Parado</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131a2f;
+      --panel2: #1a2340;
+      --text: #e6ecff;
+      --muted: #aab6de;
+      --line: #2a3763;
+      --acc: #70b2ff;
+      --warn: #ffd166;
+      --ok: #7bd88f;
+      --bad: #ff7f7f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(160deg, var(--bg), #090d1b 60%);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 12px;
+      color: #fff;
+    }
+    h1 {
+      font-size: 30px;
+      letter-spacing: 0.3px;
+    }
+    h2 {
+      margin-top: 28px;
+      font-size: 22px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 6px;
+    }
+    h3 {
+      margin-top: 22px;
+      font-size: 18px;
+      color: var(--acc);
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-top: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      margin-right: 8px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--panel2);
+    }
+    code, pre {
+      font-family: "Cascadia Code", Consolas, monospace;
+    }
+    pre {
+      overflow-x: auto;
+      background: #0b1124;
+      border: 1px solid #25345f;
+      border-radius: 10px;
+      padding: 12px;
+      color: #d7e5ff;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th { background: #1f2c4f; }
+    .muted { color: var(--muted); }
+    .warn { color: var(--warn); }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    .mono { font-family: "Cascadia Code", Consolas, monospace; }
+    ol li { margin-bottom: 8px; }
+    ul li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Diagnostico: Curva Saindo do Carro Parado</h1>
+    <p class="muted">
+      Projeto: <span class="mono">Interlagos_racing</span><br>
+      Objetivo: eliminar o comportamento em que, com <span class="mono">seta esquerda + B</span> (ou o equivalente para direita),
+      o carro desloca primeiro para o lado oposto antes de entrar na curva correta.
+    </p>
+    <div>
+      <span class="tag">Physics V2 habilitada</span>
+      <span class="tag">Steering digital</span>
+      <span class="tag">Fixed-point (Fxp)</span>
+      <span class="tag">Saturn SH2</span>
+    </div>
+
+    <h2>1) Problema Atual e Comportamento Esperado</h2>
+    <div class="grid">
+      <div class="card">
+        <h3 class="bad">Sintoma observado</h3>
+        <ul>
+          <li>Carro parado + <span class="mono">esquerda + B</span>: abre arco para direita por 1+ frames, depois curva para esquerda.</li>
+          <li>Em alguns cenarios o problema e assimetrico: um lado fica melhor, o outro pior.</li>
+          <li>Em velocidade maior que zero, curva tende a funcionar melhor.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 class="ok">Comportamento esperado</h3>
+        <ul>
+          <li>Carro parado + comando de curva deve iniciar deslocamento imediatamente no lado comandado.</li>
+          <li>Sem deslocamento lateral inicial no lado oposto.</li>
+          <li>Mesma qualidade de resposta para esquerda e direita (simetria de sinal).</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>2) Cadeia de Responsabilidade no Codigo</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Camada</th>
+            <th>Classe / Metodo</th>
+            <th>Arquivo</th>
+            <th>Responsabilidade</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Input -> FrameState</td>
+            <td><span class="mono">GameLoopSystem::BuildGameplayFrameState()</span></td>
+            <td><span class="mono">src/game_loop_system.hpp</span></td>
+            <td>Le botao B/C/setas, resolve direcao ativa, aplica assist de troca de direcao em re e chama <span class="mono">TickCommandState</span>.</td>
+          </tr>
+          <tr>
+            <td>Comandos do carro</td>
+            <td><span class="mono">CarSystem::TickCommandState()</span></td>
+            <td><span class="mono">src/car_system.cxx</span></td>
+            <td>Suaviza throttle/steering, snap de esterco em baixa velocidade, decay de entrada digital.</td>
+          </tr>
+          <tr>
+            <td>Pipeline V2</td>
+            <td><span class="mono">VehiclePhysicsV2::StepOnce()</span></td>
+            <td><span class="mono">src/car_physics_v2.hpp</span></td>
+            <td>Orquestra longitudinal, assist de yaw de launch, dinamica planar, adesao ao solo e aplicacao de correcao.</td>
+          </tr>
+          <tr>
+            <td>Longitudinal</td>
+            <td><span class="mono">LongitudinalController::PrepareInputs()</span></td>
+            <td><span class="mono">src/car_physics_v2_longitudinal.hpp</span></td>
+            <td>Define modo drive/brake/reverse e limita throttle no launch com esterco.</td>
+          </tr>
+          <tr>
+            <td>Assist low-speed yaw</td>
+            <td><span class="mono">LateralYawController::ApplyLaunchTurnAssist()</span></td>
+            <td><span class="mono">src/car_physics_v2_lateral_yaw.hpp</span></td>
+            <td>Suprime side-slip em launch, injeta yaw minimo, lock/blend de entrada em curva.</td>
+          </tr>
+          <tr>
+            <td>Integracao principal</td>
+            <td><span class="mono">DynamicsModel::IntegratePlanar()</span></td>
+            <td><span class="mono">src/car_dynamics_model.hpp</span></td>
+            <td>Atualiza velocidade, steer efetivo, yawRate, yawStep, deslocamento planar (dx/dz).</td>
+          </tr>
+          <tr>
+            <td>Aderencia/correcao solo</td>
+            <td><span class="mono">GroundFollower::UpdateTarget()</span> + <span class="mono">ApplyVerticalAdhesion()</span></td>
+            <td><span class="mono">src/car_ground_follower.hpp</span></td>
+            <td>Aplica correcao planar (corrX/corrZ) e vertical. Pode alterar deslocamento final do frame.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>3) Fluxo Logico da Curva Partindo do Zero</h2>
+    <div class="card">
+      <ol>
+        <li>Input define <span class="mono">steering</span> e <span class="mono">throttle</span>.</li>
+        <li><span class="mono">TickCommandState</span> pode snapar steering para lado alvo em baixa velocidade.</li>
+        <li>Longitudinal ajusta throttle efetivo de launch (evitar chute lateral por torque).</li>
+        <li>LateralYawController pode zerar lateral e forcar yaw minimo no inicio.</li>
+        <li><span class="mono">IntegratePlanar</span> calcula <span class="mono">yawRate -> yawAccumulator -> yawStep</span>.</li>
+        <li>Mesmo frame aplica movimento: <span class="mono">planarDx/planarDz</span>.</li>
+        <li>GroundFollower pode somar <span class="mono">correctionX/correctionZ</span> e mudar o deslocamento final.</li>
+      </ol>
+    </div>
+
+    <h2>4) Onde o Bug Pode Nascer (Hipoteses Tecnicas)</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>H1: Ordem temporal no 1o frame de launch</h3>
+        <p>
+          Se a deteccao de "forward drive command" usa estado antigo, protecoes de launch podem nao ativar exatamente no frame critico.
+        </p>
+      </div>
+      <div class="card">
+        <h3>H2: Residuo de yawAccumulator/yawRate</h3>
+        <p>
+          Pequeno residuo de sinal oposto no acumulador pode gerar <span class="mono">yawStep</span> contrario no primeiro ou segundo frame.
+        </p>
+      </div>
+      <div class="card">
+        <h3>H3: Correcao planar do solo</h3>
+        <p>
+          Mesmo com <span class="mono">planarDx/planarDz</span> corretos, <span class="mono">correctionX/correctionZ</span> pode deslocar para lado oposto.
+        </p>
+      </div>
+      <div class="card">
+        <h3>H4: Mistura de modelos em baixa velocidade</h3>
+        <p>
+          Transicao entre ramo cinematico e ramo de slip pode criar sinal diferente de yaw/lateral no limiar.
+        </p>
+      </div>
+      <div class="card">
+        <h3>H5: Assimetria de convencao de sinal</h3>
+        <p>
+          Qualquer ponto da cadeia com convencao diferente (left negativo vs positivo) quebra simetria.
+        </p>
+      </div>
+      <div class="card">
+        <h3>H6: Efeito visual x efeito fisico</h3>
+        <p>
+          Parte da percepcao pode ser camera/visual yaw offset, mas logs de <span class="mono">netDx/netDz</span> devem confirmar se o bug e fisico real.
+        </p>
+      </div>
+    </div>
+
+    <h2>5) Evidencias que Devem Ser Coletadas no Frame Critico</h2>
+    <div class="card">
+      <p>Para cada teste (<span class="mono">parado + esquerda + B</span>, depois <span class="mono">parado + direita + B</span>), registrar 8 frames:</p>
+      <ul>
+        <li><span class="mono">OVR inp</span> (garantir input correto)</li>
+        <li><span class="mono">OVR dyn</span> (steering, yawRate, yawStep, corrX, corrZ)</li>
+        <li><span class="mono">OVR mov</span> (planarDx, planarDz, netDx, netDz)</li>
+        <li><span class="mono">OVR dir</span> (yaw, fwd vector)</li>
+        <li><span class="mono">OVR car X/Z</span> (posicao no mundo)</li>
+      </ul>
+      <p class="warn">
+        Regra diagnostica: se <span class="mono">planarDx</span> ja tem sinal errado, o erro esta na dinamica.
+        Se <span class="mono">planarDx</span> esta correto e <span class="mono">netDx</span> errado, o erro esta na correcao do solo/parede.
+      </p>
+    </div>
+
+    <h2>6) Prompt Mestre para Time Multiagente</h2>
+    <div class="card">
+<pre>Voce e um time de engenharia multiagente para depurar curva de carro em simulacao fixed-point.
+
+Contexto:
+- Projeto C++: Interlagos_racing (Saturn).
+- Bug: saindo do carro parado, ao pressionar esquerda + B, o carro abre arco para direita e so depois curva para esquerda.
+- Em velocidade > 0, curva funciona melhor.
+- Physics V2 esta habilitada.
+
+Objetivo:
+1) Encontrar causa raiz com prova por dados de frame.
+2) Propor patch minimo, simetrico esquerda/direita, sem regressao em re.
+3) Entregar checklist de validacao objetiva.
+
+Arquivos principais:
+- src/game_loop_system.hpp (BuildGameplayFrameState)
+- src/car_system.cxx (TickCommandState)
+- src/car_physics_v2.hpp (StepOnce)
+- src/car_physics_v2_longitudinal.hpp (PrepareInputs)
+- src/car_physics_v2_lateral_yaw.hpp (ApplyLaunchTurnAssist)
+- src/car_dynamics_model.hpp (IntegratePlanar)
+- src/car_ground_follower.hpp (UpdateTarget, ApplyVerticalAdhesion)
+
+Metodologia obrigatoria:
+- Comparar 8 frames de launch esquerdo e 8 frames de launch direito.
+- Rastrear sinal e magnitude de: steering, yawRate, yawStep, yawAccumulator, planarDx, netDx, corrX.
+- Determinar primeiro ponto onde sinal diverge do esperado.
+- Corrigir no ponto mais a montante possivel (onde o erro nasce).
+
+Saida esperada:
+- Relatorio tecnico com causa raiz.
+- Patch sugerido por arquivo/metodo.
+- Riscos de regressao.
+- Casos de teste: parado->esquerda, parado->direita, troca rapida de lado, re com troca de lado.</pre>
+    </div>
+
+    <h2>7) Prompts Especificos por Especialidade</h2>
+
+    <div class="card">
+      <h3>Agente 1 - Fisica veicular (bicycle/slip)</h3>
+<pre>Analise IntegratePlanar em src/car_dynamics_model.hpp.
+Foco:
+- Consistencia de sinal entre steerDeg, steerEffDeg, yawRateDegPerFrame e yawStepDeg.
+- Transicao ramo cinematico x slip no limiar de baixa velocidade.
+- Regra: input esquerda nunca pode gerar yawStep positivo em launch forward.
+Entregue:
+- Diagnostico por frame.
+- Patch minimo para preservar simetria esquerda/direita.
+- Justificativa matematica.</pre>
+    </div>
+
+    <div class="card">
+      <h3>Agente 2 - Geometria e referenciais 3D</h3>
+<pre>Valide coerencia de referenciais (mundo x local):
+- forward = (sin(yaw), -cos(yaw))
+- right   = (cos(yaw),  sin(yaw))
+Verifique se a interpretacao de esquerda/direita no mundo bate com o yaw e com o deslocamento local.
+Entregue:
+- Tabela de sinais esperados para yaw 0, 90, 180, 270.
+- Verificacao de eventuais inversoes de base entre modulos.</pre>
+    </div>
+
+    <div class="card">
+      <h3>Agente 3 - C++ gameplay/input pipeline</h3>
+<pre>Analise cadeia de input:
+- BuildGameplayFrameState
+- TickCommandState
+- LongitudinalController::PrepareInputs
+Foco:
+- Ordem temporal do estado no frame critico de saida do zero.
+- Latches e snaps de steering que possam gerar side-kick assimetrico.
+Entregue:
+- Sequencia temporal exata (frame N -> N+1).
+- Ajuste de ordem/estado se necessario.</pre>
+    </div>
+
+    <div class="card">
+      <h3>Agente 4 - Fixed-point numerics</h3>
+<pre>Audite riscos de truncamento e wrap:
+- yawAccumulatorDegRaw
+- yawStepDeg (divisao inteira)
+- normalize 0..359 vs signed [-180,180]
+Foco:
+- Se residuos pequenos podem virar passo de 1 grau no sinal oposto.
+Entregue:
+- Condicoes de saturacao/clamp recomendadas.
+- Patch de estabilidade numerica com custo baixo.</pre>
+    </div>
+
+    <div class="card">
+      <h3>Agente 5 - Colisao/adesao ao solo</h3>
+<pre>Inspecione GroundFollower:
+- UpdateTarget
+- ApplyVerticalAdhesion
+Foco:
+- Se correctionX/correctionZ esta invertendo deslocamento do launch.
+- Se edge/wall push interfere no 1o frame.
+Entregue:
+- Criterio para separar bug de dinamica x bug de correcao planar.
+- Guarda condicional para nao anular curva em launch.</pre>
+    </div>
+
+    <div class="card">
+      <h3>Agente 6 - QA/telemetria e testes</h3>
+<pre>Defina bateria de testes objetiva:
+- Caso A: parado + esquerda + B
+- Caso B: parado + direita + B
+- Caso C: troca rapida esquerda<->direita em baixa velocidade
+- Caso D: re com troca de lado
+Metrica de aprovacao:
+- Sem deslocamento inicial no lado oposto nos 2 primeiros frames.
+- Simetria de modulo entre A e B.
+Entregue:
+- Checklist e formato unico de logs para comparacao automatizada.</pre>
+    </div>
+
+    <h2>8) Plano de Solucao Recomendado</h2>
+    <div class="card">
+      <ol>
+        <li>Capturar traces curtos (8 frames) para esquerda e direita, com foco em <span class="mono">OVR dyn</span> e <span class="mono">OVR mov</span>.</li>
+        <li>Identificar primeiro sinal incorreto: <span class="mono">yawRate/yawStep</span> ou <span class="mono">corrX/netDx</span>.</li>
+        <li>Aplicar patch unico no ponto de origem (evitar compensacoes espalhadas).</li>
+        <li>Executar regressao minima: launch esquerda/direita, re, troca de direcao.</li>
+        <li>Congelar contrato de sinais em comentarios + teste automatizado.</li>
+      </ol>
+      <p class="ok">
+        Resultado esperado: entrada de curva limpa e imediata em ambos os lados, sem "abre arco" no lado oposto.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -129,6 +129,9 @@ private:
     static constexpr int16_t kSteeringCrossCenterStep = 40;
     static constexpr int16_t kThrottleDecay = 4;
     static constexpr int16_t kBrakeReleaseDecay = 10;
+    // At very low speed, snap steering to commanded side while accelerating.
+    // This mirrors reverse behavior and avoids launch side-slip from steer lag.
+    static constexpr int16_t kLaunchSteerSnapSpeedKmh = 8;
 
     CommandSnapshot commandState_{};
     CarCommandAdapter command_{&worldPosition_, &commandState_};

@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Física da Curva Circular — Carro do Repouso</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1f2937;
+    --border:   #30363d;
+    --accent:   #58a6ff;
+    --accent2:  #3fb950;
+    --yellow:   #e3b341;
+    --red:      #f85149;
+    --text:     #c9d1d9;
+    --text-dim: #8b949e;
+    --heading:  #ffffff;
+    --code-bg:  #0d1117;
+    --radius:   8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  /* ── Layout ── */
+  .page-header {
+    background: linear-gradient(135deg, #0a0f1a 0%, #1a2744 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 64px 40px;
+  }
+  .page-header h1 {
+    font-size: 2.2rem;
+    color: var(--heading);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .page-header p {
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-size: 1rem;
+  }
+  .badge {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 0.78rem;
+    color: var(--accent);
+    margin-right: 8px;
+    margin-top: 12px;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 48px;
+  }
+
+  /* ── Sections ── */
+  section {
+    margin-bottom: 60px;
+  }
+  section h2 {
+    font-size: 1.45rem;
+    color: var(--heading);
+    font-weight: 600;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 10px;
+    margin-bottom: 24px;
+  }
+  section h3 {
+    font-size: 1.1rem;
+    color: var(--accent);
+    font-weight: 600;
+    margin: 28px 0 12px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card-grid .card { margin-bottom: 0; }
+
+  /* ── Formula blocks ── */
+  .formula-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 18px 24px;
+    margin: 16px 0 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 1.05rem;
+    color: var(--heading);
+    overflow-x: auto;
+  }
+  .formula-block .label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-family: 'Segoe UI', sans-serif;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .formula-block .eq {
+    display: block;
+    margin: 6px 0;
+    letter-spacing: 0.3px;
+  }
+  .formula-block .comment {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+  }
+
+  /* ── Code blocks ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    overflow-x: auto;
+    font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    tab-size: 4;
+    margin: 16px 0;
+  }
+  code { font-family: inherit; }
+
+  /* Syntax highlight tokens */
+  .kw  { color: #ff7b72; }      /* keyword */
+  .ty  { color: #ffa657; }      /* type */
+  .fn  { color: #d2a8ff; }      /* function */
+  .nm  { color: #79c0ff; }      /* name / variable */
+  .nu  { color: #f2cc60; }      /* number literal */
+  .cm  { color: #8b949e; font-style: italic; } /* comment */
+  .st  { color: #a5d6ff; }      /* string */
+  .op  { color: #ff7b72; }      /* operator */
+  .pp  { color: #58a6ff; }      /* preprocessor */
+
+  /* ── Axis diagram ── */
+  .axis-diagram {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    margin: 20px 0;
+  }
+  .axis-svg {
+    display: inline-block;
+  }
+
+  /* ── Step list ── */
+  .steps { counter-reset: step; list-style: none; }
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .steps li::before {
+    content: counter(step);
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    background: var(--accent);
+    color: #000;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-top: 2px;
+  }
+
+  /* ── Table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 0.9rem;
+  }
+  th {
+    background: var(--surface2);
+    color: var(--heading);
+    font-weight: 600;
+    padding: 10px 16px;
+    text-align: left;
+    border: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 16px;
+    border: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #12171e; }
+  .mono { font-family: 'Courier New', monospace; color: var(--accent); }
+
+  /* ── Callout ── */
+  .callout {
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-left: 4px solid;
+    font-size: 0.93rem;
+  }
+  .callout.info  { background: #0d2137; border-color: var(--accent);  color: #a0c8f0; }
+  .callout.warn  { background: #1e1a0a; border-color: var(--yellow);  color: #d4b87a; }
+  .callout.ok    { background: #0d1f0f; border-color: var(--accent2); color: #90c990; }
+
+  strong { color: var(--heading); }
+  em     { color: var(--yellow); font-style: normal; font-weight: 600; }
+
+  /* ── Divider ── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════
+     HEADER
+═════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <h1>Física da Curva Circular — Do Repouso ao Arco Completo</h1>
+  <p>Modelo cinemático de bicicleta · Carro parte do repouso e descreve 360° virando à esquerda</p>
+  <div>
+    <span class="badge">Modelo Cinemático</span>
+    <span class="badge">Bicicleta de Dois Eixos</span>
+    <span class="badge">C++17</span>
+    <span class="badge">Sistema Z-Front · X-Right · Y-Up</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ════════════════════════════════════════════════════
+     1. SISTEMA DE COORDENADAS
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>1. Sistema de Coordenadas</h2>
+
+  <p>Todo o desenvolvimento usa o sistema de coordenadas mão-direita com os seguintes eixos:</p>
+
+  <div class="axis-diagram">
+    <svg class="axis-svg" width="320" height="260" viewBox="0 0 320 260">
+      <!-- Grid de fundo -->
+      <defs>
+        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2a3040" stroke-width="0.5"/>
+        </pattern>
+      </defs>
+      <rect width="320" height="260" fill="url(#grid)" rx="6"/>
+
+      <!-- Eixo Z (frente) -->
+      <line x1="160" y1="220" x2="160" y2="60" stroke="#58a6ff" stroke-width="2.5"/>
+      <polygon points="160,48 154,66 166,66" fill="#58a6ff"/>
+      <text x="168" y="58" fill="#58a6ff" font-size="14" font-family="monospace" font-weight="bold">Z</text>
+      <text x="170" y="74" fill="#8b949e" font-size="11" font-family="monospace">(frente)</text>
+
+      <!-- Eixo X (direita) -->
+      <line x1="100" y1="220" x2="280" y2="220" stroke="#f85149" stroke-width="2.5"/>
+      <polygon points="292,220 274,214 274,226" fill="#f85149"/>
+      <text x="284" y="224" fill="#f85149" font-size="14" font-family="monospace" font-weight="bold">X</text>
+      <text x="258" y="236" fill="#8b949e" font-size="11" font-family="monospace">(direita)</text>
+
+      <!-- Eixo Y (cima - saindo da tela, representado como ponto) -->
+      <circle cx="160" cy="220" r="6" fill="#3fb950" stroke="#3fb950"/>
+      <circle cx="160" cy="220" r="2" fill="#0d1117"/>
+      <text x="168" y="218" fill="#3fb950" font-size="14" font-family="monospace" font-weight="bold">Y</text>
+      <text x="168" y="234" fill="#8b949e" font-size="11" font-family="monospace">(cima)</text>
+
+      <!-- Carro (retângulo) -->
+      <g transform="translate(160,180) rotate(0)">
+        <rect x="-12" y="-22" width="24" height="40" fill="#1f2937" stroke="#58a6ff" stroke-width="1.5" rx="3"/>
+        <!-- Rodas -->
+        <rect x="-16" y="-22" width="6" height="10" fill="#444" rx="2"/>
+        <rect x="10" y="-22" width="6" height="10" fill="#444" rx="2"/>
+        <rect x="-16" y="12" width="6" height="10" fill="#444" rx="2"/>
+        <rect x="10" y="12" width="6" height="10" fill="#444" rx="2"/>
+        <!-- Seta de direção -->
+        <line x1="0" y1="0" x2="0" y2="-18" stroke="#e3b341" stroke-width="2"/>
+        <polygon points="0,-22 -4,-14 4,-14" fill="#e3b341"/>
+      </g>
+
+      <!-- Ângulo yaw θ -->
+      <text x="20" y="180" fill="#e3b341" font-size="12" font-family="monospace">θ = 0°</text>
+      <text x="20" y="195" fill="#8b949e" font-size="10" font-family="monospace">(heading)</text>
+    </svg>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <strong>Eixo Z — Frontal</strong>
+      <p style="margin-top:8px">Direção para onde o carro aponta quando θ = 0°. <em>+Z</em> = frente.</p>
+    </div>
+    <div class="card">
+      <strong>Eixo X — Lateral</strong>
+      <p style="margin-top:8px"><em>+X</em> = direita do carro (quando θ = 0°). Curva à esquerda → X diminui.</p>
+    </div>
+    <div class="card">
+      <strong>Eixo Y — Vertical</strong>
+      <p style="margin-top:8px"><em>+Y</em> = cima. O movimento planar ignora Y; a física lateral ocorre no plano XZ.</p>
+    </div>
+    <div class="card">
+      <strong>Ângulo de Yaw θ</strong>
+      <p style="margin-top:8px">Rotação em torno de Y. <em>Positivo = horário</em> visto de cima (gira à direita). Curva à esquerda → θ decresce.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     2. MODELO CINEMÁTICO DE BICICLETA
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>2. Modelo Cinemático de Bicicleta</h2>
+
+  <p>O <strong>modelo cinemático de bicicleta</strong> reduz o carro a dois eixos (dianteiro e traseiro) e assume que as rodas não derrapam — velocidade de cada roda é tangente à sua trajetória. É a base de todos os modelos de física veicular de jogos.</p>
+
+  <div class="callout info">
+    <strong>Por que "bicicleta"?</strong> As duas rodas de cada eixo são fundidas numa só roda central. Isso simplifica os cálculos sem perder a essência da curvatura.
+  </div>
+
+  <h3>2.1 Parâmetros Fundamentais</h3>
+  <table>
+    <thead>
+      <tr><th>Símbolo</th><th>Nome</th><th>Unidade</th><th>Descrição</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">L</td><td>Entre-eixos</td><td>m (unidades de mundo)</td><td>Distância entre o eixo dianteiro e o traseiro.</td></tr>
+      <tr><td class="mono">δ</td><td>Ângulo de esterçamento</td><td>rad</td><td>Ângulo das rodas dianteiras em relação ao eixo longitudinal. Negativo = esquerda.</td></tr>
+      <tr><td class="mono">v</td><td>Velocidade longitudinal</td><td>u/frame</td><td>Velocidade de avanço do centro do eixo traseiro.</td></tr>
+      <tr><td class="mono">θ</td><td>Yaw (heading)</td><td>graus</td><td>Ângulo de rotação do carro em torno de Y. θ=0 aponta para +Z.</td></tr>
+      <tr><td class="mono">R</td><td>Raio de curvatura</td><td>u</td><td>Raio do círculo descrito pelo eixo traseiro.</td></tr>
+      <tr><td class="mono">ω</td><td>Velocidade angular</td><td>rad/frame</td><td>Taxa de variação do yaw. Negativa = curva à esquerda.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2.2 Convenção de Sinal para Curva à Esquerda</h3>
+  <div class="card-grid">
+    <div class="card">
+      <strong>Esterçamento δ</strong>
+      <div class="formula-block" style="margin-top:12px">
+        <span class="eq">δ &lt; 0 → curva à esquerda</span>
+        <span class="eq">δ &gt; 0 → curva à direita</span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Velocidade angular ω</strong>
+      <div class="formula-block" style="margin-top:12px">
+        <span class="eq">ω &lt; 0 → yaw diminui (esquerda)</span>
+        <span class="eq">ω &gt; 0 → yaw aumenta (direita)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     3. FÓRMULAS — RAIO E VELOCIDADE ANGULAR
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>3. Fórmulas Centrais</h2>
+
+  <h3>3.1 Raio de Curvatura</h3>
+  <p>Quando as rodas dianteiras formam ângulo δ com o eixo do veículo, a geometria de Ackermann garante que o eixo traseiro descreve um arco de raio:</p>
+
+  <div class="formula-block">
+    <span class="label">Raio de curvatura (eixo traseiro)</span>
+    <span class="eq">R = L / tan(|δ|)</span>
+    <span class="eq comment">  L   = entre-eixos (distância dianteiro → traseiro)</span>
+    <span class="eq comment">  δ   = ângulo de esterçamento das rodas dianteiras (rad)</span>
+    <span class="eq comment">  R → ∞ quando δ → 0  (linha reta)</span>
+    <span class="eq comment">  R mínimo quando |δ| = máximo (maior curvatura possível)</span>
+  </div>
+
+  <div class="callout warn">
+    <strong>Intuição geométrica:</strong> Imagine prolongar o eixo traseiro e o eixo das rodas dianteiras esterçadas até que se cruzem. O ponto de cruzamento é o <em>centro instantâneo de rotação</em>. A distância desse ponto ao eixo traseiro é exatamente R.
+  </div>
+
+  <h3>3.2 Velocidade Angular (Taxa de Yaw)</h3>
+  <p>Se o carro percorre um arco de raio R a velocidade v, a taxa de variação do heading é:</p>
+
+  <div class="formula-block">
+    <span class="label">Velocidade angular (rad/frame)</span>
+    <span class="eq">ω = v / R = v · tan(δ) / L</span>
+    <span class="eq comment">  Curva à esquerda: δ &lt; 0  →  ω &lt; 0  →  θ decresce</span>
+    <span class="eq comment">  Curva à direita:  δ &gt; 0  →  ω &gt; 0  →  θ aumenta</span>
+  </div>
+
+  <h3>3.3 Direção de Movimento no Espaço Mundial</h3>
+  <p>Para o sistema Z-frente, X-direita, com heading θ (rad, relativo a +Z):</p>
+
+  <div class="formula-block">
+    <span class="label">Vetor direção (plano XZ)</span>
+    <span class="eq">forward.X = sin(θ)</span>
+    <span class="eq">forward.Z = cos(θ)</span>
+    <span class="eq comment">  θ=0°  → forward = (0, 0, 1)  aponta +Z  ✓</span>
+    <span class="eq comment">  θ=90° → forward = (1, 0, 0)  aponta +X  (virou 90° à direita)</span>
+  </div>
+
+  <h3>3.4 Atualização de Posição por Frame</h3>
+  <p>A cada frame de duração Δt, o carro avança <em>v·Δt</em> na direção forward calculada <strong>antes</strong> da atualização do yaw (integração de Euler explícita):</p>
+
+  <div class="formula-block">
+    <span class="label">Integração por frame (Euler explícito)</span>
+    <span class="eq"><strong>1.</strong>  θ_novo  = θ_atual + ω · Δt</span>
+    <span class="eq"><strong>2.</strong>  ΔX = sin(θ_atual) · v · Δt</span>
+    <span class="eq"><strong>3.</strong>  ΔZ = cos(θ_atual) · v · Δt</span>
+    <span class="eq"><strong>4.</strong>  X_novo = X_atual + ΔX</span>
+    <span class="eq"><strong>5.</strong>  Z_novo = Z_atual + ΔZ</span>
+  </div>
+
+  <div class="callout ok">
+    <strong>Nota sobre acumulador sub-grau:</strong> Em implementações de ponto fixo, ω por frame pode ser menor que 1°. Use um acumulador: adicione ω ao acumulador a cada frame e aplique ao yaw inteiro somente quando o acumulador atingir ±1°. Isso elimina truncamento prematuro que distorce o raio real.
+  </div>
+
+  <h3>3.5 Circunferência e Tempo para Completar 360°</h3>
+
+  <div class="formula-block">
+    <span class="label">Volta completa (360°)</span>
+    <span class="eq">Circunferência = 2π · R = 2π · L / |tan(δ)|</span>
+    <span class="eq">Tempo (frames) = 2π · R / v = 2π · L / (|v| · |tan(δ)|)</span>
+    <span class="eq comment">  Quanto menor |δ| (rodas quase retas), maior o raio e mais frames para completar.</span>
+    <span class="eq comment">  Quanto maior |v|, menos frames para completar (mesmo raio).</span>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     4. EXEMPLO NUMÉRICO PASSO A PASSO
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>4. Exemplo Numérico — Do Repouso ao Arco</h2>
+
+  <p>Configuração: <em>L = 2.0 m</em>, <em>δ = −20°</em> (esquerda), aceleração constante de <em>0.5 m/frame</em>, Δt = 1 frame.</p>
+
+  <h3>4.1 Parâmetros Derivados</h3>
+  <div class="card-grid">
+    <div class="card">
+      <strong>Ângulo em radianos</strong>
+      <div class="formula-block" style="margin-top:10px">
+        <span class="eq">δ = −20° · π/180</span>
+        <span class="eq">δ ≈ −0.3491 rad</span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Raio de curvatura</strong>
+      <div class="formula-block" style="margin-top:10px">
+        <span class="eq">R = 2.0 / tan(0.3491)</span>
+        <span class="eq">R ≈ 5.49 u</span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Circunferência (360°)</strong>
+      <div class="formula-block" style="margin-top:10px">
+        <span class="eq">C = 2π · 5.49</span>
+        <span class="eq">C ≈ 34.5 u</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>4.2 Primeiros Frames (velocidade crescendo)</h3>
+  <table>
+    <thead>
+      <tr><th>Frame</th><th>v (u/f)</th><th>ω (°/f)</th><th>θ (°)</th><th>X</th><th>Z</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>0</td><td>0.0</td><td>0.000</td><td>0.0</td><td>0.00</td><td>0.00</td></tr>
+      <tr><td>1</td><td>0.5</td><td>−10.24</td><td>−10.24</td><td>0.00</td><td>0.50</td></tr>
+      <tr><td>2</td><td>1.0</td><td>−10.24</td><td>−20.48</td><td>−0.09</td><td>0.97</td></tr>
+      <tr><td>3</td><td>1.5</td><td>−10.24</td><td>−30.72</td><td>−0.35</td><td>1.81</td></tr>
+      <tr><td>4</td><td>2.0</td><td>−10.24</td><td>−40.96</td><td>−0.84</td><td>2.95</td></tr>
+      <tr><td>5</td><td>2.5</td><td>−10.24</td><td>−51.20</td><td>−1.56</td><td>4.29</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.85rem; color:var(--text-dim); margin-top:6px">ω = v · tan(|δ|) / L = v · tan(20°) / 2.0. Frame 0: carro parado, nenhum yaw. Frame 1 em diante: curva imediata na direção correta.</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     5. IMPLEMENTAÇÃO EM C++
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>5. Implementação em C++</h2>
+
+  <h3>5.1 Estruturas de Dados</h3>
+
+<pre>
+<span class="pp">#pragma once</span>
+<span class="pp">#include</span> <span class="st">&lt;cmath&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;algorithm&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;cstdint&gt;</span>
+
+<span class="cm">// ─────────────────────────────────────────────────────────
+//  Sistema de coordenadas:
+//    Z = frente  (forward)
+//    X = direita (lateral)
+//    Y = cima    (vertical, ignorado na física planar)
+//  Yaw θ positivo = horário visto de cima (virar à direita).
+//  Yaw θ negativo = curva à esquerda.
+// ─────────────────────────────────────────────────────────</span>
+
+<span class="kw">struct</span> <span class="ty">Vec3</span>
+{
+    <span class="ty">float</span> <span class="nm">x</span>, <span class="nm">y</span>, <span class="nm">z</span>;
+    <span class="ty">Vec3</span>(<span class="ty">float</span> <span class="nm">x</span> <span class="op">=</span> <span class="nu">0.f</span>, <span class="ty">float</span> <span class="nm">y</span> <span class="op">=</span> <span class="nu">0.f</span>, <span class="ty">float</span> <span class="nm">z</span> <span class="op">=</span> <span class="nu">0.f</span>) : <span class="nm">x</span>(<span class="nm">x</span>), <span class="nm">y</span>(<span class="nm">y</span>), <span class="nm">z</span>(<span class="nm">z</span>) {}
+};
+
+<span class="cm">// Parâmetros físicos do veículo (configuração estática).</span>
+<span class="kw">struct</span> <span class="ty">VehicleParams</span>
+{
+    <span class="ty">float</span> <span class="nm">wheelbase</span>       <span class="op">=</span> <span class="nu">2.0f</span>;   <span class="cm">// L — entre-eixos (u)</span>
+    <span class="ty">float</span> <span class="nm">maxSteerDeg</span>     <span class="op">=</span> <span class="nu">30.0f</span>;  <span class="cm">// ângulo máximo das rodas (graus)</span>
+    <span class="ty">float</span> <span class="nm">accelPerFrame</span>   <span class="op">=</span> <span class="nu">0.5f</span>;   <span class="cm">// aceleração longitudinal (u/frame²)</span>
+    <span class="ty">float</span> <span class="nm">maxSpeed</span>        <span class="op">=</span> <span class="nu">20.0f</span>;  <span class="cm">// velocidade máxima (u/frame)</span>
+    <span class="ty">float</span> <span class="nm">steerResponse</span>   <span class="op">=</span> <span class="nu">0.20f</span>;  <span class="cm">// lerp da roda por frame [0,1]</span>
+};
+
+<span class="cm">// Estado dinâmico do carro — atualizado a cada frame.</span>
+<span class="kw">struct</span> <span class="ty">CarState</span>
+{
+    <span class="ty">Vec3</span>    <span class="nm">position</span>     <span class="op">=</span> {};       <span class="cm">// posição no espaço mundial (X, Y, Z)</span>
+    <span class="ty">float</span>   <span class="nm">yawDeg</span>       <span class="op">=</span> <span class="nu">0.f</span>;    <span class="cm">// heading (°), positivo = horário</span>
+    <span class="ty">float</span>   <span class="nm">yawAccum</span>     <span class="op">=</span> <span class="nu">0.f</span>;    <span class="cm">// acumulador sub-grau (°)</span>
+    <span class="ty">float</span>   <span class="nm">forwardSpeed</span> <span class="op">=</span> <span class="nu">0.f</span>;    <span class="cm">// velocidade longitudinal (u/frame)</span>
+    <span class="ty">float</span>   <span class="nm">steerDeg</span>     <span class="op">=</span> <span class="nu">0.f</span>;    <span class="cm">// ângulo físico atual das rodas (°)</span>
+};
+
+<span class="cm">// Entradas do jogador por frame.</span>
+<span class="kw">struct</span> <span class="ty">DriverInput</span>
+{
+    <span class="ty">float</span>  <span class="nm">throttle</span>   <span class="op">=</span> <span class="nu">0.f</span>;  <span class="cm">// [0, 1]   — acelerador</span>
+    <span class="ty">float</span>  <span class="nm">steerNorm</span>  <span class="op">=</span> <span class="nu">0.f</span>;  <span class="cm">// [−1, +1] — seta (−1=esq, +1=dir)</span>
+    <span class="ty">bool</span>   <span class="nm">braking</span>    <span class="op">=</span> <span class="kw">false</span>; <span class="cm">// freio</span>
+};
+</pre>
+
+  <h3>5.2 Funções Auxiliares</h3>
+
+<pre>
+<span class="cm">// Converte graus para radianos.</span>
+<span class="kw">inline</span> <span class="ty">float</span> <span class="fn">ToRad</span>(<span class="ty">float</span> <span class="nm">deg</span>) { <span class="kw">return</span> <span class="nm">deg</span> <span class="op">*</span> (<span class="nu">3.14159265f</span> <span class="op">/</span> <span class="nu">180.f</span>); }
+<span class="kw">inline</span> <span class="ty">float</span> <span class="fn">ToDeg</span>(<span class="ty">float</span> <span class="nm">rad</span>) { <span class="kw">return</span> <span class="nm">rad</span> <span class="op">*</span> (<span class="nu">180.f</span> <span class="op">/</span> <span class="nu">3.14159265f</span>); }
+
+<span class="cm">// Normaliza um ângulo para o intervalo [−180°, +180°).</span>
+<span class="ty">float</span> <span class="fn">NormalizeYaw</span>(<span class="ty">float</span> <span class="nm">deg</span>)
+{
+    <span class="nm">deg</span> <span class="op">=</span> <span class="nm">std</span>::<span class="fn">fmod</span>(<span class="nm">deg</span>, <span class="nu">360.f</span>);
+    <span class="kw">if</span> (<span class="nm">deg</span> <span class="op">&gt;</span>  <span class="nu">180.f</span>) <span class="nm">deg</span> <span class="op">-=</span> <span class="nu">360.f</span>;
+    <span class="kw">if</span> (<span class="nm">deg</span> <span class="op">&lt;=</span> <span class="op">-</span><span class="nu">180.f</span>) <span class="nm">deg</span> <span class="op">+=</span> <span class="nu">360.f</span>;
+    <span class="kw">return</span> <span class="nm">deg</span>;
+}
+
+<span class="cm">// Calcula o raio de curvatura a partir do ângulo de esterçamento.
+// Retorna um valor muito grande (quase infinito) para esterçamento nulo.</span>
+<span class="ty">float</span> <span class="fn">TurnRadius</span>(<span class="ty">float</span> <span class="nm">steerDeg</span>, <span class="ty">float</span> <span class="nm">wheelbase</span>)
+{
+    <span class="kw">const</span> <span class="ty">float</span> <span class="nm">tanSteer</span> <span class="op">=</span> <span class="nm">std</span>::<span class="fn">tan</span>(<span class="fn">ToRad</span>(<span class="nm">std</span>::<span class="fn">abs</span>(<span class="nm">steerDeg</span>)));
+    <span class="kw">if</span> (<span class="nm">tanSteer</span> <span class="op">&lt;</span> <span class="nu">1e-6f</span>) <span class="kw">return</span> <span class="nu">1e9f</span>; <span class="cm">// linha reta</span>
+    <span class="kw">return</span> <span class="nm">wheelbase</span> <span class="op">/</span> <span class="nm">tanSteer</span>;
+}
+
+<span class="cm">// Velocidade angular (graus/frame) para dado esterçamento e velocidade.
+// Negativa = curva à esquerda (steerDeg negativo).</span>
+<span class="ty">float</span> <span class="fn">YawRateDegPerFrame</span>(<span class="ty">float</span> <span class="nm">forwardSpeed</span>, <span class="ty">float</span> <span class="nm">steerDeg</span>, <span class="ty">float</span> <span class="nm">wheelbase</span>)
+{
+    <span class="cm">// ω = v · tan(δ) / L  →  em graus/frame = ω_rad · (180/π)</span>
+    <span class="kw">const</span> <span class="ty">float</span> <span class="nm">steerRad</span>  <span class="op">=</span> <span class="fn">ToRad</span>(<span class="nm">steerDeg</span>);
+    <span class="kw">return</span> <span class="fn">ToDeg</span>(<span class="nm">forwardSpeed</span> <span class="op">*</span> <span class="nm">std</span>::<span class="fn">tan</span>(<span class="nm">steerRad</span>) <span class="op">/</span> <span class="nm">wheelbase</span>);
+}
+</pre>
+
+  <h3>5.3 Função Principal de Integração por Frame</h3>
+
+<pre>
+<span class="cm">// Integra a física planar do carro por um frame.
+// Implementa o modelo cinemático de bicicleta com acumulador sub-grau.
+//
+//  Ordem de operações por frame:
+//  1. Atualiza velocidade longitudinal (aceleração/freio).
+//  2. Lerpa ângulo de esterçamento das rodas em direção ao input.
+//  3. Calcula velocidade angular (ω) pelo modelo cinemático.
+//  4. Acumula ω no acumulador sub-grau e aplica yaw inteiro.
+//  5. Avança posição na direção forward (usando yaw PRÉ-rotação).</span>
+<span class="ty">void</span> <span class="fn">IntegrateKinematics</span>(<span class="kw">const</span> <span class="ty">DriverInput</span><span class="op">&amp;</span>    <span class="nm">input</span>,
+                         <span class="kw">const</span> <span class="ty">VehicleParams</span><span class="op">&amp;</span> <span class="nm">params</span>,
+                               <span class="ty">CarState</span><span class="op">&amp;</span>       <span class="nm">state</span>)
+{
+    <span class="cm">// ── 1. Velocidade longitudinal ──────────────────────────────────</span>
+    <span class="kw">if</span> (<span class="nm">input</span>.<span class="nm">braking</span>)
+    {
+        <span class="nm">state</span>.<span class="nm">forwardSpeed</span> <span class="op">*=</span> <span class="nu">0.85f</span>; <span class="cm">// frenagem: decaimento rápido</span>
+        <span class="kw">if</span> (<span class="nm">std</span>::<span class="fn">abs</span>(<span class="nm">state</span>.<span class="nm">forwardSpeed</span>) <span class="op">&lt;</span> <span class="nu">0.01f</span>)
+            <span class="nm">state</span>.<span class="nm">forwardSpeed</span> <span class="op">=</span> <span class="nu">0.f</span>;
+    }
+    <span class="kw">else</span> <span class="kw">if</span> (<span class="nm">input</span>.<span class="nm">throttle</span> <span class="op">&gt;</span> <span class="nu">0.f</span>)
+    {
+        <span class="nm">state</span>.<span class="nm">forwardSpeed</span> <span class="op">+=</span> <span class="nm">input</span>.<span class="nm">throttle</span> <span class="op">*</span> <span class="nm">params</span>.<span class="nm">accelPerFrame</span>;
+        <span class="nm">state</span>.<span class="nm">forwardSpeed</span>  <span class="op">=</span> <span class="nm">std</span>::<span class="fn">min</span>(<span class="nm">state</span>.<span class="nm">forwardSpeed</span>, <span class="nm">params</span>.<span class="nm">maxSpeed</span>);
+    }
+    <span class="kw">else</span>
+    {
+        <span class="nm">state</span>.<span class="nm">forwardSpeed</span> <span class="op">*=</span> <span class="nu">0.97f</span>; <span class="cm">// arrasto em rolagem (coast)</span>
+    }
+
+    <span class="cm">// ── 2. Esterçamento das rodas (lerp em direção ao target) ───────
+    //   steerNorm ∈ [−1, +1], negativo = esquerda, positivo = direita
+    //   O lerp impede mudança instantânea (simula inércia do volante).</span>
+    <span class="kw">const</span> <span class="ty">float</span> <span class="nm">targetSteerDeg</span> <span class="op">=</span> <span class="nm">input</span>.<span class="nm">steerNorm</span> <span class="op">*</span> <span class="nm">params</span>.<span class="nm">maxSteerDeg</span>;
+    <span class="nm">state</span>.<span class="nm">steerDeg</span> <span class="op">+=</span> (<span class="nm">targetSteerDeg</span> <span class="op">-</span> <span class="nm">state</span>.<span class="nm">steerDeg</span>) <span class="op">*</span> <span class="nm">params</span>.<span class="nm">steerResponse</span>;
+
+    <span class="cm">// ── 3. Velocidade angular (modelo cinemático de bicicleta) ──────
+    //   ω = v · tan(δ) / L
+    //   Sinal de steerDeg determina direção: − = esquerda, + = direita.</span>
+    <span class="kw">const</span> <span class="ty">float</span> <span class="nm">yawRateDeg</span> <span class="op">=</span> <span class="fn">YawRateDegPerFrame</span>(
+        <span class="nm">state</span>.<span class="nm">forwardSpeed</span>, <span class="nm">state</span>.<span class="nm">steerDeg</span>, <span class="nm">params</span>.<span class="nm">wheelbase</span>);
+
+    <span class="cm">// ── 4. Acumulador sub-grau e atualização do yaw ─────────────────
+    //   Em ponto fixo ou inteiro, yawRateDeg por frame pode ser &lt; 1°.
+    //   Somar direto causaria truncamento e o raio real seria maior que
+    //   o esperado. O acumulador preserva a fração sub-grau entre frames.</span>
+    <span class="nm">state</span>.<span class="nm">yawAccum</span> <span class="op">+=</span> <span class="nm">yawRateDeg</span>;
+
+    <span class="kw">const</span> <span class="ty">float</span> <span class="nm">yawStep</span> <span class="op">=</span> <span class="nm">std</span>::<span class="fn">trunc</span>(<span class="nm">state</span>.<span class="nm">yawAccum</span>); <span class="cm">// parte inteira (truncamento)</span>
+    <span class="nm">state</span>.<span class="nm">yawAccum</span>  <span class="op">-=</span> <span class="nm">yawStep</span>;                          <span class="cm">// mantém o resíduo</span>
+    <span class="nm">state</span>.<span class="nm">yawDeg</span>   <span class="op">+=</span> <span class="nm">yawStep</span>;
+    <span class="nm">state</span>.<span class="nm">yawDeg</span>    <span class="op">=</span> <span class="fn">NormalizeYaw</span>(<span class="nm">state</span>.<span class="nm">yawDeg</span>);
+
+    <span class="cm">// ── 5. Posição: avança na direção forward PRÉ-rotação ───────────
+    //   Usa o yawDeg ANTES do passo atual para que o deslocamento
+    //   seja tangente ao arco (integração de Euler explícita).</span>
+    <span class="kw">const</span> <span class="ty">float</span> <span class="nm">yawRad</span>   <span class="op">=</span> <span class="fn">ToRad</span>(<span class="nm">state</span>.<span class="nm">yawDeg</span>);
+    <span class="nm">state</span>.<span class="nm">position</span>.<span class="nm">x</span>  <span class="op">+=</span> <span class="nm">std</span>::<span class="fn">sin</span>(<span class="nm">yawRad</span>) <span class="op">*</span> <span class="nm">state</span>.<span class="nm">forwardSpeed</span>;
+    <span class="nm">state</span>.<span class="nm">position</span>.<span class="nm">z</span>  <span class="op">+=</span> <span class="nm">std</span>::<span class="fn">cos</span>(<span class="nm">yawRad</span>) <span class="op">*</span> <span class="nm">state</span>.<span class="nm">forwardSpeed</span>;
+    <span class="cm">// position.y permanece inalterado (física planar)</span>
+}
+</pre>
+
+  <h3>5.4 Função de Verificação — Arco Completo de 360°</h3>
+
+<pre>
+<span class="cm">// Verifica se o carro completou um giro de 360° desde um yaw de referência.
+// Rastreia a variação acumulada de yaw para lidar com o wraparound ±180°.</span>
+<span class="kw">struct</span> <span class="ty">CircleTracker</span>
+{
+    <span class="ty">float</span>   <span class="nm">totalYawDeg</span>   <span class="op">=</span> <span class="nu">0.f</span>;
+    <span class="ty">float</span>   <span class="nm">prevYawDeg</span>    <span class="op">=</span> <span class="nu">0.f</span>;
+    <span class="ty">bool</span>    <span class="nm">initialized</span>   <span class="op">=</span> <span class="kw">false</span>;
+
+    <span class="ty">void</span> <span class="fn">Reset</span>(<span class="ty">float</span> <span class="nm">currentYaw</span>)
+    {
+        <span class="nm">totalYawDeg</span> <span class="op">=</span> <span class="nu">0.f</span>;
+        <span class="nm">prevYawDeg</span>  <span class="op">=</span> <span class="nm">currentYaw</span>;
+        <span class="nm">initialized</span> <span class="op">=</span> <span class="kw">true</span>;
+    }
+
+    <span class="cm">// Atualiza com o yaw atual do carro; retorna true quando 360° concluídos.</span>
+    <span class="ty">bool</span> <span class="fn">Update</span>(<span class="ty">float</span> <span class="nm">currentYaw</span>)
+    {
+        <span class="kw">if</span> (<span class="op">!</span><span class="nm">initialized</span>) { <span class="fn">Reset</span>(<span class="nm">currentYaw</span>); <span class="kw">return</span> <span class="kw">false</span>; }
+
+        <span class="cm">// Delta com correção de wraparound.</span>
+        <span class="ty">float</span> <span class="nm">delta</span> <span class="op">=</span> <span class="nm">currentYaw</span> <span class="op">-</span> <span class="nm">prevYawDeg</span>;
+        <span class="kw">if</span> (<span class="nm">delta</span> <span class="op">&gt;</span>  <span class="nu">180.f</span>) <span class="nm">delta</span> <span class="op">-=</span> <span class="nu">360.f</span>;
+        <span class="kw">if</span> (<span class="nm">delta</span> <span class="op">&lt;=</span> <span class="op">-</span><span class="nu">180.f</span>) <span class="nm">delta</span> <span class="op">+=</span> <span class="nu">360.f</span>;
+
+        <span class="nm">totalYawDeg</span> <span class="op">+=</span> <span class="nm">delta</span>;
+        <span class="nm">prevYawDeg</span>   <span class="op">=</span> <span class="nm">currentYaw</span>;
+
+        <span class="cm">// 360° à esquerda: totalYawDeg ≤ −360°
+        // 360° à direita:  totalYawDeg ≥ +360°</span>
+        <span class="kw">return</span> <span class="nm">std</span>::<span class="fn">abs</span>(<span class="nm">totalYawDeg</span>) <span class="op">&gt;=</span> <span class="nu">360.f</span>;
+    }
+
+    <span class="ty">float</span> <span class="fn">Progress</span>() <span class="kw">const</span>
+    {
+        <span class="kw">return</span> <span class="nm">std</span>::<span class="fn">min</span>(<span class="nm">std</span>::<span class="fn">abs</span>(<span class="nm">totalYawDeg</span>) <span class="op">/</span> <span class="nu">360.f</span>, <span class="nu">1.f</span>);
+    }
+};
+</pre>
+
+  <h3>5.5 Programa Principal — Simula 360° à Esquerda</h3>
+
+<pre>
+<span class="pp">#include</span> <span class="st">&lt;iostream&gt;</span>
+<span class="pp">#include</span> <span class="st">&lt;iomanip&gt;</span>
+<span class="cm">// (inclua os headers das funções acima)</span>
+
+<span class="ty">int</span> <span class="fn">main</span>()
+{
+    <span class="ty">VehicleParams</span> <span class="nm">params</span>;
+    <span class="nm">params</span>.<span class="nm">wheelbase</span>     <span class="op">=</span> <span class="nu">2.0f</span>;
+    <span class="nm">params</span>.<span class="nm">maxSteerDeg</span>   <span class="op">=</span> <span class="nu">25.0f</span>;
+    <span class="nm">params</span>.<span class="nm">accelPerFrame</span> <span class="op">=</span> <span class="nu">0.3f</span>;
+    <span class="nm">params</span>.<span class="nm">maxSpeed</span>      <span class="op">=</span> <span class="nu">8.0f</span>;
+    <span class="nm">params</span>.<span class="nm">steerResponse</span> <span class="op">=</span> <span class="nu">0.15f</span>;
+
+    <span class="ty">CarState</span> <span class="nm">car</span>;  <span class="cm">// posição (0,0,0), yaw 0°, repouso</span>
+
+    <span class="cm">// Input: acelerador 100%, seta esquerda (−1.0)</span>
+    <span class="ty">DriverInput</span> <span class="nm">input</span>;
+    <span class="nm">input</span>.<span class="nm">throttle</span>  <span class="op">=</span> <span class="nu">1.0f</span>;
+    <span class="nm">input</span>.<span class="nm">steerNorm</span> <span class="op">=</span> <span class="op">-</span><span class="nu">1.0f</span>; <span class="cm">// esquerda</span>
+    <span class="nm">input</span>.<span class="nm">braking</span>   <span class="op">=</span> <span class="kw">false</span>;
+
+    <span class="ty">CircleTracker</span> <span class="nm">tracker</span>;
+    <span class="nm">tracker</span>.<span class="fn">Reset</span>(<span class="nm">car</span>.<span class="nm">yawDeg</span>);
+
+    <span class="nm">std</span>::<span class="nm">cout</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">fixed</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setprecision</span>(<span class="nu">2</span>);
+    <span class="nm">std</span>::<span class="nm">cout</span> <span class="op">&lt;&lt;</span> <span class="st">"Frame | Speed  | SteerDeg | YawDeg  | X       | Z       | Progresso\n"</span>;
+    <span class="nm">std</span>::<span class="nm">cout</span> <span class="op">&lt;&lt;</span> <span class="st">"-------+--------+----------+---------+---------+---------+----------\n"</span>;
+
+    <span class="kw">for</span> (<span class="ty">int</span> <span class="nm">frame</span> <span class="op">=</span> <span class="nu">0</span>; <span class="nm">frame</span> <span class="op">&lt;</span> <span class="nu">2000</span>; <span class="op">++</span><span class="nm">frame</span>)
+    {
+        <span class="fn">IntegrateKinematics</span>(<span class="nm">input</span>, <span class="nm">params</span>, <span class="nm">car</span>);
+        <span class="kw">const</span> <span class="ty">bool</span> <span class="nm">done</span> <span class="op">=</span> <span class="nm">tracker</span>.<span class="fn">Update</span>(<span class="nm">car</span>.<span class="nm">yawDeg</span>);
+
+        <span class="kw">if</span> (<span class="nm">frame</span> <span class="op">%</span> <span class="nu">10</span> <span class="op">==</span> <span class="nu">0</span> <span class="op">||</span> <span class="nm">done</span>)
+        {
+            <span class="nm">std</span>::<span class="nm">cout</span>
+                <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setw</span>(<span class="nu">5</span>)  <span class="op">&lt;&lt;</span> <span class="nm">frame</span>
+                <span class="op">&lt;&lt;</span> <span class="st">" | "</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setw</span>(<span class="nu">6</span>)  <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">forwardSpeed</span>
+                <span class="op">&lt;&lt;</span> <span class="st">" | "</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setw</span>(<span class="nu">8</span>)  <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">steerDeg</span>
+                <span class="op">&lt;&lt;</span> <span class="st">" | "</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setw</span>(<span class="nu">7</span>)  <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">yawDeg</span>
+                <span class="op">&lt;&lt;</span> <span class="st">" | "</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setw</span>(<span class="nu">7</span>)  <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">position</span>.<span class="nm">x</span>
+                <span class="op">&lt;&lt;</span> <span class="st">" | "</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setw</span>(<span class="nu">7</span>)  <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">position</span>.<span class="nm">z</span>
+                <span class="op">&lt;&lt;</span> <span class="st">" | "</span> <span class="op">&lt;&lt;</span> <span class="nm">std</span>::<span class="fn">setprecision</span>(<span class="nu">1</span>) <span class="op">&lt;&lt;</span> (<span class="nm">tracker</span>.<span class="fn">Progress</span>() <span class="op">*</span> <span class="nu">100.f</span>) <span class="op">&lt;&lt;</span> <span class="st">"%"</span>
+                <span class="op">&lt;&lt;</span> <span class="st">"\n"</span>;
+        }
+
+        <span class="kw">if</span> (<span class="nm">done</span>)
+        {
+            <span class="nm">std</span>::<span class="nm">cout</span> <span class="op">&lt;&lt;</span> <span class="st">"\n360° concluídos no frame "</span> <span class="op">&lt;&lt;</span> <span class="nm">frame</span>
+                      <span class="op">&lt;&lt;</span> <span class="st">"  |  posição final X="</span> <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">position</span>.<span class="nm">x</span>
+                      <span class="op">&lt;&lt;</span> <span class="st">"  Z="</span> <span class="op">&lt;&lt;</span> <span class="nm">car</span>.<span class="nm">position</span>.<span class="nm">z</span> <span class="op">&lt;&lt;</span> <span class="st">"\n"</span>;
+            <span class="kw">break</span>;
+        }
+    }
+    <span class="kw">return</span> <span class="nu">0</span>;
+}
+</pre>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     6. RELAÇÃO ESTERÇAMENTO × RAIO × TAMANHO DA CURVA
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>6. Esterçamento × Raio × Tamanho da Curva</h2>
+
+  <p>Com <em>L = 2.0 m</em>:</p>
+  <table>
+    <thead>
+      <tr><th>Ângulo |δ|</th><th>tan(|δ|)</th><th>Raio R (u)</th><th>Circunferência 2πR (u)</th><th>Caráter da curva</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>5°</td>  <td>0.0875</td><td>22.9</td><td>143.8</td><td>Curva longa e suave</td></tr>
+      <tr><td>10°</td> <td>0.1763</td><td>11.3</td><td>71.2</td> <td>Curva moderada</td></tr>
+      <tr><td>15°</td> <td>0.2679</td><td>7.5</td> <td>47.1</td> <td>Curva média</td></tr>
+      <tr><td>20°</td> <td>0.3640</td><td>5.5</td> <td>34.5</td> <td>Curva fechada</td></tr>
+      <tr><td>25°</td> <td>0.4663</td><td>4.3</td> <td>27.0</td> <td>Curva muito fechada</td></tr>
+      <tr><td>30°</td> <td>0.5774</td><td>3.5</td> <td>21.8</td> <td>Raio mínimo típico</td></tr>
+      <tr><td>45°</td> <td>1.0000</td><td>2.0</td> <td>12.6</td> <td>Rotação no lugar quase</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>Regra prática:</strong> Dobrar o ângulo de esterçamento (ex.: 10° → 20°) aproximadamente <em>dobra</em> a curvatura (raio cai à metade) para ângulos pequenos, pois tan(δ) ≈ δ (rad) para δ pequeno. Para ângulos grandes a relação não é linear.
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     7. CASOS ESPECIAIS E BOAS PRÁTICAS
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>7. Casos Especiais e Boas Práticas</h2>
+
+  <h3>7.1 Lançamento do Repouso (v = 0)</h3>
+  <ol class="steps">
+    <li>
+      <div>
+        <strong>ω = 0 no primeiro frame</strong> — com v = 0, a fórmula <code>ω = v·tan(δ)/L = 0</code> independentemente do esterçamento. Nenhum yaw ocorre no frame zero.
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Curva começa no frame 1</strong> — após a velocidade crescer no frame 0 (pela aceleração), o frame 1 já tem v > 0 e ω ≠ 0. O carro começa a girar imediatamente na direção correta.
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Acumulador sub-grau deve estar limpo</strong> — se o carro veio de uma curva anterior no sentido oposto, o acumulador pode ter resíduo de sinal errado. Zerá-lo ao detectar troca de direção impede um passo de yaw errado no primeiro frame.
+      </div>
+    </li>
+  </ol>
+
+  <h3>7.2 Troca de Direção (Direita → Esquerda)</h3>
+  <div class="callout warn">
+    <strong>Problema do lag do esterçamento:</strong> O <code>steerDeg</code> lerpa com resposta 0.20/frame. Ao trocar de +100% direita para −100% esquerda, o <code>steerDeg</code> leva ~2–3 frames para cruzar zero. Nesse período a fórmula <code>ω = v·tan(steerDeg)/L</code> produz yaw na direção <em>errada</em>. Solução: suprimir ω (→ 0) enquanto o sinal do input raw discordar do sinal do <code>steerDeg</code>.
+  </div>
+<pre>
+<span class="cm">// Supressão durante a transição de direção.</span>
+<span class="kw">const</span> <span class="ty">bool</span> <span class="nm">steerTransitioning</span> <span class="op">=</span>
+    (<span class="nm">input</span>.<span class="nm">steerNorm</span> <span class="op">&lt;</span> <span class="nu">0.f</span> <span class="op">&amp;&amp;</span> <span class="nm">state</span>.<span class="nm">steerDeg</span> <span class="op">&gt;</span> <span class="nu">0.f</span>) <span class="op">||</span>
+    (<span class="nm">input</span>.<span class="nm">steerNorm</span> <span class="op">&gt;</span> <span class="nu">0.f</span> <span class="op">&amp;&amp;</span> <span class="nm">state</span>.<span class="nm">steerDeg</span> <span class="op">&lt;</span> <span class="nu">0.f</span>);
+
+<span class="ty">float</span> <span class="nm">effectiveYawRate</span> <span class="op">=</span> <span class="nm">steerTransitioning</span> <span class="op">?</span> <span class="nu">0.f</span> <span class="op">:</span>
+    <span class="fn">YawRateDegPerFrame</span>(<span class="nm">state</span>.<span class="nm">forwardSpeed</span>, <span class="nm">state</span>.<span class="nm">steerDeg</span>, <span class="nm">params</span>.<span class="nm">wheelbase</span>);
+
+<span class="kw">if</span> (<span class="nm">steerTransitioning</span>)
+    <span class="nm">state</span>.<span class="nm">yawAccum</span> <span class="op">=</span> <span class="nu">0.f</span>; <span class="cm">// limpa resíduo de sinal oposto</span>
+</pre>
+
+  <h3>7.3 Proteção contra Divisão por Zero</h3>
+<pre>
+<span class="cm">// Impede tan(90°) = infinito e raio zero.</span>
+<span class="kw">constexpr</span> <span class="ty">float</span> <span class="nm">kMaxSteerRad</span> <span class="op">=</span> <span class="fn">ToRad</span>(<span class="nu">89.0f</span>);
+<span class="kw">const</span> <span class="ty">float</span> <span class="nm">clampedSteer</span> <span class="op">=</span> <span class="nm">std</span>::<span class="fn">clamp</span>(<span class="fn">ToRad</span>(<span class="nm">steerDeg</span>),
+                                         <span class="op">-</span><span class="nm">kMaxSteerRad</span>, <span class="nm">kMaxSteerRad</span>);
+</pre>
+
+  <h3>7.4 Aceleração Variável e Raio Dinâmico</h3>
+  <p>Quando o carro acelera durante a curva (<code>v</code> cresce a cada frame), o <strong>raio do arco varia</strong> porque ω = v·tan(δ)/L cresce com v enquanto δ é constante. O círculo perfeito só ocorre a velocidade constante. Para simular espirais de aceleração use a integração frame a frame apresentada — ela trata isso automaticamente.</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     8. FLUXO COMPLETO EM DIAGRAMA
+═════════════════════════════════════════════════════ -->
+<section>
+  <h2>8. Fluxo Completo por Frame</h2>
+
+  <div class="card" style="font-family: 'Courier New', monospace; font-size: 0.88rem; line-height: 2;">
+    <div style="color:#8b949e">Entrada do jogador</div>
+    <div style="color:#e3b341">  throttle, steerNorm, braking</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#8b949e">1. Velocidade longitudinal</div>
+    <div style="color:#c9d1d9">  forwardSpeed += throttle · accel  (ou decaimento)</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#8b949e">2. Esterçamento físico das rodas</div>
+    <div style="color:#c9d1d9">  steerDeg += (targetSteer − steerDeg) · steerResponse</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#8b949e">3. Detecção de transição de direção</div>
+    <div style="color:#c9d1d9">  se sinal(input) ≠ sinal(steerDeg)  →  yawRate = 0, limpa acum</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#8b949e">4. Velocidade angular (modelo cinemático)</div>
+    <div style="color:#c9d1d9">  yawRate = forwardSpeed · tan(steerDeg) / wheelbase</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#8b949e">5. Acumulador sub-grau → passo inteiro de yaw</div>
+    <div style="color:#c9d1d9">  yawAccum += yawRate  →  yawDeg += trunc(yawAccum)</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#8b949e">6. Atualização de posição (Euler explícito)</div>
+    <div style="color:#c9d1d9">  pos.X += sin(yawDeg) · forwardSpeed</div>
+    <div style="color:#c9d1d9">  pos.Z += cos(yawDeg) · forwardSpeed</div>
+    <div style="color:#58a6ff">        ↓</div>
+    <div style="color:#3fb950">  Estado atualizado — pronto para renderização</div>
+  </div>
+</section>
+
+</div><!-- /container -->
+</body>
+</html>

@@ -933,8 +933,6 @@ private:
             }
         }
         yHeldPrev_ = input.yHeld;
-        leftHeldPrev_ = input.leftHeld;
-        rightHeldPrev_ = input.rightHeld;
         lastInput_ = input;
         return input;
     }
@@ -1148,6 +1146,10 @@ private:
                 frameState.brakeHoldFrames = 0;
             }
         }
+        // Update previous directional held-state only after consuming current
+        // frame input, so just-pressed detection remains valid.
+        leftHeldPrev_ = input.leftHeld;
+        rightHeldPrev_ = input.rightHeld;
         return frameState;
     }
 
@@ -1646,7 +1648,8 @@ private:
         }
 
         // Small camera depth bias to reduce seam overdraw on car body.
-        // Keep bias tiny so gameplay position feel is preserved.
+        // Disable at very low speed to avoid visual side-slip impression at launch.
+        if (lastRuntimeFrameState_.speedProxy > 20)
         {
             const int32_t dxRaw = camera.location.X.RawValue() - carRenderPos.X.RawValue();
             const int32_t dzRaw = camera.location.Z.RawValue() - carRenderPos.Z.RawValue();

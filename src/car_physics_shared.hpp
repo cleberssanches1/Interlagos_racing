@@ -129,6 +129,10 @@ struct Tunables
     static constexpr int16_t kEngineDownShiftRpm = 7800;
     static constexpr int16_t kEngineMaxRpm = 13500;
     static constexpr Fxp kReverseAccelPerFrame = Fxp::BuildRaw(0x00002000); // 0.125
+    // Forward launch while steering from standstill:
+    // keep initial traction similar to reverse to reduce side kick.
+    static constexpr Fxp kForwardSteerLaunchAccelPerFrame = Fxp::BuildRaw(0x00003000); // 0.1875
+    static constexpr Fxp kForwardSteerLaunchSpeedThreshold = Fxp::BuildRaw(0x00004000); // 0.25 (~10.5 km/h)
     static constexpr Fxp kBrakeDecelPerFrame = Fxp::BuildRaw(0x0000570A);  // ~0.340
     static constexpr Fxp kBrakeStopSpeedThreshold = Fxp::BuildRaw(0x0000A000); // ~0.625
     static constexpr uint8_t kReverseEngageDelayFrames = 10u; // brake deadzone before reverse
@@ -175,7 +179,15 @@ struct Tunables
     static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
     static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x00004000); // 0.25
     static constexpr Fxp kBrakeResidualYawCutoff = Fxp::BuildRaw(0x00004000);     // 0.25 deg/frame
-    static constexpr uint8_t kLaunchStraightFrameCount = 2u;
+    // Low-speed launch handling:
+    // use a kinematic yaw model and suppress lateral slide until speed stabilizes.
+    static constexpr Fxp kLaunchKinematicSpeedThreshold = Fxp::BuildRaw(0x00028000); // 2.5
+    static constexpr Fxp kLaunchPureForwardSpeedThreshold = Fxp::BuildRaw(0x00002000); // 0.125 (~5.3 km/h)
+    static constexpr Fxp kLaunchCrawlSpeedThreshold = Fxp::BuildRaw(0x00002000); // 0.125 (~5.3 km/h)
+    static constexpr Fxp kLaunchYawRateResponse = Fxp::BuildRaw(0x0000A000);         // 0.625
+    // Zero-speed launch with steering:
+    // immediate turn entry (no forced straight frame).
+    static constexpr uint8_t kLaunchStraightFrameCount = 0u;
     static constexpr Fxp kLaunchStraightEntrySpeed = Fxp::BuildRaw(0x00014000); // 1.25
     static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 14));    // -0.25
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00050000); // 5.0

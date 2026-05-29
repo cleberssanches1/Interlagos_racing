@@ -52,6 +52,7 @@ public:
         {
             phase_ = Phase::Lock;
             phaseStartFrameId_ = frame.frameId;
+            state.yawAccumulatorDegRaw = 0;
         }
 
         if (phase_ == Phase::Lock)
@@ -61,13 +62,14 @@ public:
             {
                 state.lateralSpeed = CarPhysics::Fxp::BuildRaw(0);
                 state.yawRateDegPerFrame = CarPhysics::Fxp::BuildRaw(0);
+                state.yawAccumulatorDegRaw = 0;
                 return;
             }
             phase_ = Phase::Blend;
             phaseStartFrameId_ = frame.frameId;
         }
 
-        // After the first frame, remove side-slip impulse and enter arc.
+        // Remove side-slip impulse and enter arc.
         state.lateralSpeed = CarPhysics::Fxp::BuildRaw(0);
 
         // Force minimum yaw response proportional to steering magnitude.
@@ -110,7 +112,7 @@ public:
     }
 
 private:
-    static constexpr uint32_t kLockFrames = 2u;
+    static constexpr uint32_t kLockFrames = 0u;
     static constexpr uint32_t kBlendFrames = 4u;
 
     static CarPhysics::Fxp BlendAlpha(uint32_t blendDelta)
