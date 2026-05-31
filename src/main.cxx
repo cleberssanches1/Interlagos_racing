@@ -38,7 +38,7 @@ constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 constexpr bool kVerboseFrameLogs = false;
 // Telemetria de runtime (RAM/VDP/slide): desligada por padrão.
-constexpr bool kEnableRuntimeStatsLogs = true;
+constexpr bool kEnableRuntimeStatsLogs = false;
 #ifndef PHYSICS_POC_MODE
 #define PHYSICS_POC_MODE 0
 #endif
@@ -614,10 +614,10 @@ static void ValidateCarTextureSlots(ModelObject* carPtr, uint32_t meshCount, boo
 
 static void BuildCarDrawOrder(uint32_t meshCount, std::array<size_t, 5>& outOrder, size_t& outOrderCount)
 {
+    (void)meshCount;
+    // No fixed order: allow MeshRenderer to iterate all meshes in the model.
     outOrder = {0, 1, 2, 3, 4};
-    outOrderCount = (meshCount < outOrder.size())
-        ? static_cast<size_t>(meshCount)
-        : outOrder.size();
+    outOrderCount = 0u;
 }
 
 static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
@@ -975,8 +975,8 @@ static int RunPhysicsPocMode()
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 50u;
-    trackConfig.minSegments = 50u;
+    trackConfig.initialSegments = 20u;
+    trackConfig.minSegments = 20u;
     trackConfig.initialMeshes = 512u;
     trackConfig.initialFaces =
         static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);

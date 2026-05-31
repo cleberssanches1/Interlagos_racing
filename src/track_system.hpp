@@ -72,7 +72,7 @@ using TrackLowWorkUniquePtr = std::unique_ptr<T, TrackObjectDeleter<T, SRL::Memo
 class TrackSystem
 {
 public:
-    static constexpr size_t kTrackSegmentLimit = 82;
+    static constexpr size_t kTrackSegmentLimit = 48;
     static constexpr size_t kWindowSegmentIdDirectIndexCap = 512;
 
     struct Config

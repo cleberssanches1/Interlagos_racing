@@ -1075,8 +1075,13 @@ private:
                 }
                 else if (steerLeftRequested && steerRightRequested)
                 {
-                    // Newest pressed direction always wins.
-                    if (lastLeftPressFrame_ > lastRightPressFrame_) desiredSteerDir = -1;
+                    // When both sides are seen as pressed (controller noise/ghosting),
+                    // keep the current steering sign first to avoid one-frame opposite
+                    // corrections during launch turns.
+                    const int16_t currentSteer = car->Commands().steering;
+                    if (currentSteer < 0) desiredSteerDir = -1;
+                    else if (currentSteer > 0) desiredSteerDir = 1;
+                    else if (lastLeftPressFrame_ > lastRightPressFrame_) desiredSteerDir = -1;
                     else if (lastRightPressFrame_ > lastLeftPressFrame_) desiredSteerDir = 1;
                     else desiredSteerDir = 0;
                 }

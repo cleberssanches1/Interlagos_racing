@@ -191,8 +191,8 @@ static SegmentRuntimeDraw::Blob g_rdrFamilyIdsScratch{};
 static SegmentDrawReady::Blob g_sdrFamilyIdsScratch{};
 // Visible window LOD distribution (50 segments total):
 // 25x 64x64 + 25x 32x32 only.
-static constexpr uint32_t kLodBand64Count = 25u;
-static constexpr uint32_t kLodBand32Count = 25u;
+static constexpr uint32_t kLodBand64Count = 10u;
+static constexpr uint32_t kLodBand32Count = 10u;
 static constexpr size_t kWorkRamPlanningHeadroomBytes = 48u * 1024u;
 static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
 // Release the emergency reserve slightly earlier so runtime maintenance does
@@ -222,8 +222,8 @@ static constexpr size_t kWorkRamTrackOwnedBypassBytes = 32u * 1024u;
 // Stabilized runtime policy: keep a fixed pre-reserved floor for per-segment
 // face/vertex vectors so long laps do not keep growing capacities as the car
 // reaches heavier segments later in the track.
-static constexpr size_t kStabilizedFaceCapacityFloorCap = 768u;
-static constexpr size_t kStabilizedVertexCapacityFloorCap = 768u;
+static constexpr size_t kStabilizedFaceCapacityFloorCap = 384u;
+static constexpr size_t kStabilizedVertexCapacityFloorCap = 384u;
 static constexpr size_t kLodMandatoryBandSegmentCount =
     kLodBand64Count + kLodBand32Count;
 static constexpr uint16_t kTrackRuntimeMemRev = 7u;
@@ -252,11 +252,11 @@ static constexpr bool kEnableTrackRuntimeStabilization = true;
 //   first 25 ranks in 64x64, next 25 ranks in 32x32
 // Use this mode to isolate allocator/retention behavior with controlled texture churn.
 static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
-static constexpr size_t kTrackLeakIsolationWindowSegments = 50u;
+static constexpr size_t kTrackLeakIsolationWindowSegments = 20u;
 static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
 static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
 static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
-static constexpr size_t kLeakIsolationNearLodCount = 25u;
+static constexpr size_t kLeakIsolationNearLodCount = 10u;
 static_assert(kLeakIsolationNearLodCount <= kTrackLeakIsolationWindowSegments,
               "Near LOD count must fit leak-isolation window.");
 // Keep active window storage persistent and reuse slot renderers on rebuild.
@@ -9467,7 +9467,7 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     if (seg1FamilySlots_.capacity() < familyFloor) seg1FamilySlots_.reserve(familyFloor);
     if (familyMergeCurrentWindowScratch_.capacity() < familyFloor) familyMergeCurrentWindowScratch_.reserve(familyFloor);
     if (slidePrefetchFamilySlotsScratch_.capacity() < familyFloor) slidePrefetchFamilySlotsScratch_.reserve(familyFloor);
-    EnsureTrackTextureSlotQueueCapacityFloor(static_cast<size_t>(SRL_MAX_TEXTURES));
+    EnsureTrackTextureSlotQueueCapacityFloor(std::min<size_t>(static_cast<size_t>(SRL_MAX_TEXTURES), 256u));
     const size_t segmentCap = std::max<size_t>(1u, segmentRenderers_.size());
     if (stabilizedDepthItemsScratch_.capacity() < segmentCap)
     {
@@ -10133,6 +10133,12 @@ TrackSystem::LowWorkCategoryBreakdown TrackSystem::CaptureLowWorkBreakdown() con
 void TrackSystem::AllocateWorkRamEmergencyReserve()
 {
     if (workRamEmergencyReserve_) return;
+    bool freeValid = false;
+    const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+    if (!freeValid) return;
+    // Do not consume the emergency reserve while HWR is already tight.
+    // Keeping these bytes free at boot prevents startup failures (e.g. BG/renderer init).
+    if (freeBytes <= kTrackWorkRamEmergencyReserveReacquireFloorBytes) return;
     void* mem = SRL::Memory::HighWorkRam::Malloc(kTrackWorkRamEmergencyReserveBytes);
     if (!mem) return;
     workRamEmergencyReserve_ = mem;
@@ -13177,7 +13183,10 @@ bool TrackSystem::Initialize(const Config& config)
     ConfigureCoordinatorAndBudget(config);
     LogInitialSegmentDiagnostics();
     ApplyInitialSdrFamilySlots();
-    AllocateWorkRamEmergencyReserve();
+    // Keep emergency reserve lazy. Startup is the most memory-sensitive phase
+    // (track + car + background init), so reserve bytes are reacquired only
+    // when runtime free HWR is comfortably above the configured floor.
+    // This avoids boot-time starvation and emulator startup failures.
     // disabled
 
     // Keep the normal multi segment render path active even when only one segment

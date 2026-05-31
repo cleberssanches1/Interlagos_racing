@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analise Fisica: Trigger Rally x Interlagos Racing</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --orange: #ffa657;
+    --cyan: #39d353;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .header {
+    background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
+    border-bottom: 2px solid var(--blue);
+    padding: 32px 40px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: -0.5px;
+  }
+  .header p { color: var(--text-dim); margin-top: 6px; font-size: 13px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 2px;
+  }
+  .badge-blue { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+  .badge-green { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+  .badge-red { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+  .badge-purple { background: rgba(188,140,255,0.15); color: var(--purple); border: 1px solid rgba(188,140,255,0.3); }
+
+  .toc {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 24px 40px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .toc h3 { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .toc a { color: var(--blue); text-decoration: none; display: block; font-size: 13px; padding: 2px 0; }
+  .toc a:hover { text-decoration: underline; }
+
+  main { padding: 0 40px 60px; }
+
+  .section {
+    margin-top: 48px;
+  }
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--blue);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+  }
+  .section-title .num {
+    color: var(--text-dim);
+    font-weight: 400;
+    font-size: 16px;
+    margin-right: 8px;
+  }
+
+  .subsection { margin-top: 28px; margin-bottom: 8px; }
+  .subsection h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--orange);
+    margin-bottom: 12px;
+  }
+  .subsection h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--yellow);
+    margin: 16px 0 8px;
+  }
+
+  p { color: var(--text); margin-bottom: 10px; }
+
+  pre {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.5;
+    margin: 10px 0;
+  }
+  code {
+    background: rgba(110,118,129,0.2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+    color: var(--cyan);
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+
+  .comment { color: #6a9955; }
+  .keyword { color: #569cd6; }
+  .type { color: #4ec9b0; }
+  .string { color: #ce9178; }
+  .number { color: #b5cea8; }
+  .fn { color: #dcdcaa; }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .grid3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card.green { border-left: 3px solid var(--green); }
+  .card.yellow { border-left: 3px solid var(--yellow); }
+  .card.red { border-left: 3px solid var(--red); }
+  .card.blue { border-left: 3px solid var(--blue); }
+  .card.purple { border-left: 3px solid var(--purple); }
+  .card h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .card.green h4 { color: var(--green); }
+  .card.yellow h4 { color: var(--yellow); }
+  .card.red h4 { color: var(--red); }
+  .card.blue h4 { color: var(--blue); }
+  .card.purple h4 { color: var(--purple); }
+  .card p { font-size: 13px; color: var(--text-dim); margin: 0; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  th {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    text-align: left;
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td {
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: rgba(33,38,45,0.4); }
+
+  .formula {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--purple);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-family: 'Cascadia Code', monospace;
+    font-size: 13px;
+    color: var(--purple);
+    margin: 12px 0;
+  }
+
+  .warn {
+    background: rgba(210,153,34,0.08);
+    border: 1px solid rgba(210,153,34,0.3);
+    border-left: 3px solid var(--yellow);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .info {
+    background: rgba(88,166,255,0.08);
+    border: 1px solid rgba(88,166,255,0.3);
+    border-left: 3px solid var(--blue);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .ok {
+    background: rgba(63,185,80,0.08);
+    border: 1px solid rgba(63,185,80,0.3);
+    border-left: 3px solid var(--green);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .danger {
+    background: rgba(248,81,73,0.08);
+    border: 1px solid rgba(248,81,73,0.3);
+    border-left: 3px solid var(--red);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+  }
+  .flow-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .flow-arrow { color: var(--text-dim); font-size: 16px; }
+
+  ul, ol { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; font-size: 13px; }
+
+  .priority {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .p1 { background: rgba(248,81,73,0.2); color: var(--red); }
+  .p2 { background: rgba(210,153,34,0.2); color: var(--yellow); }
+  .p3 { background: rgba(88,166,255,0.2); color: var(--blue); }
+
+  .impl-step {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 12px 0;
+    position: relative;
+  }
+  .impl-step::before {
+    content: attr(data-step);
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    background: var(--blue);
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 8px 0 8px 0;
+  }
+  .impl-step h4 { color: var(--blue); margin-bottom: 8px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Analise Fisica: Trigger Rally &rarr; Interlagos Racing</h1>
+  <p>
+    Referencia completa de fisica de veiculo para o projeto Sega Saturn.
+    Gerado em 2026-05-30 &mdash; branch <code>feature/POC_FISICA</code>
+  </p>
+  <div style="margin-top:12px">
+    <span class="badge badge-blue">Sega Saturn SH2 dual</span>
+    <span class="badge badge-blue">Fixed-point 16.16</span>
+    <span class="badge badge-green">C++17</span>
+    <span class="badge badge-purple">Trigger Rally Reference</span>
+    <span class="badge badge-yellow">vdrift / TORCS Reference</span>
+  </div>
+</div>
+
+<div class="toc">
+  <div>
+    <h3>Trigger Rally</h3>
+    <a href="#tr-rigidbody">1. Corpo rigido &amp; Integracao</a>
+    <a href="#tr-steering">2. Steering (torque-based)</a>
+    <a href="#tr-wheel">3. Friccao de roda</a>
+    <a href="#tr-body-clip">4. Colisao de corpo (clips)</a>
+    <a href="#tr-suspension">5. Suspensao spring-damper</a>
+    <a href="#tr-wall">6. Colisao com paredes</a>
+    <a href="#tr-substep">7. Sub-stepping</a>
+  </div>
+  <div>
+    <h3>Interlagos Racing</h3>
+    <a href="#ir-kinematic">8. Modo cinematico (partida)</a>
+    <a href="#ir-slip">9. Slip model (dois eixos)</a>
+    <a href="#ir-longitudinal">10. Controle longitudinal</a>
+    <a href="#ir-lateral-yaw">11. LateralYawController</a>
+    <a href="#ir-ground">12. GroundFollower</a>
+    <a href="#ir-fix">13. Fixes implementados (wasKinematic)</a>
+  </div>
+  <div>
+    <h3>Planos de Implementacao</h3>
+    <a href="#plan-accel">14. Aceleracao &amp; Desaceleracao</a>
+    <a href="#plan-steer">15. Curvas &amp; Steering</a>
+    <a href="#plan-friction">16. Friccao lateral</a>
+    <a href="#plan-wall">17. Colisao com paredes</a>
+    <a href="#plan-suspension">18. Suspensao &amp; Terreno</a>
+    <a href="#plan-table">19. Tabela de prioridades</a>
+  </div>
+</div>
+
+<main>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-rigidbody">
+  <div class="section-title"><span class="num">1.</span>Trigger Rally &mdash; Corpo Rigido e Integracao Euler</div>
+
+  <div class="subsection">
+    <h3>Arquivos de Referencia</h3>
+    <p>
+      <code>src/psim/rigidbody.cpp</code> &mdash; integracao Euler pura<br>
+      <code>src/psim/psim.h</code> &mdash; interfaces <code>PRigidBody</code>, <code>PSim</code>
+    </p>
+  </div>
+
+  <div class="subsection">
+    <h3>Integracao de Euler por Frame</h3>
+    <pre><span class="keyword">void</span> <span class="fn">PRigidBody::tick</span>(<span class="keyword">float</span> delta)
+{
+  <span class="comment">// Velocidade linear: F = ma => dv = (F/m + g) * dt</span>
+  linvel += (accum_force * mass_inv + sim.gravity) * delta;
+  pos += linvel * delta;
+
+  <span class="comment">// Velocidade angular: torque / I = alpha</span>
+  vec3f ang_accel = vec3f(
+    accum_torque.x * angmass_inv.x,
+    accum_torque.y * angmass_inv.y,
+    accum_torque.z * angmass_inv.z);
+  angvel += ang_accel * delta;
+
+  <span class="comment">// Orientacao: aplicar delta de angulo (quaternion)</span>
+  quatf angdelta;
+  angdelta.fromThreeAxisAngle(angvel * delta);
+  ori = ori * angdelta;
+
+  <span class="comment">// Zerar acumuladores</span>
+  accum_force = accum_torque = vec3f::zero();
+}</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Tensor de Inercia</h3>
+    <p>O tensor e diagonal (3 componentes independentes). Calculado a partir das dimensoes do modelo:</p>
+    <div class="formula">
+      angmass.x = y * z * mass * 0.4  (roll)<br>
+      angmass.y = z * x * mass * 0.4  (pitch)<br>
+      angmass.z = x * y * mass * 0.4  (yaw)<br>
+      angmass_inv = 1.0 / angmass
+    </div>
+
+    <div class="grid2">
+      <div class="card blue">
+        <h4>Forca aplicada em ponto</h4>
+        <p><code>addForceAtPoint(frc, wpt)</code><br>
+        Gera tanto forca linear quanto torque:<br>
+        torque += (wpt - pos) x frc</p>
+      </div>
+      <div class="card purple">
+        <h4>Vel. linear em ponto</h4>
+        <p><code>getLinearVelAtPoint(wpt)</code><br>
+        = linvel + angvel x (wpt - pos)<br>
+        Essencial para calcular velocidade da roda</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="info">
+    <strong>Diferenca chave para o Interlagos:</strong> O Trigger Rally usa corpo rigido completo com 6 graus de liberdade. O Interlagos usa modelo planar + vertical separados (2D + altura), sem acoplamento de roll/pitch. Isso e CORRETO para Saturn &mdash; roll/pitch sao calculados apenas visualmente.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-steering">
+  <div class="section-title"><span class="num">2.</span>Trigger Rally &mdash; Steering via Torque</div>
+
+  <div class="subsection">
+    <h3>Fluxo de Steering</h3>
+    <div class="flow">
+      <div class="flow-box">Ctrl Input<br><code>ctrl.turn.z</code></div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">Smooth<br><code>PULLTOWARD</code></div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">Torque A<br>puro</div>
+      <div class="flow-arrow">+</div>
+      <div class="flow-box">Torque B<br>speed-dependent</div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">Angular vel<br>do corpo</div>
+    </div>
+
+    <pre><span class="comment">// Suavizacao do input (PULLTOWARD = lerp gradual)</span>
+PULLTOWARD(state.turn.z, ctrl.turn.z, ctrlrate.turn.z * delta);
+
+<span class="keyword">float</span> desiredturn = state.turn.z * type->param.turnspeed.z;
+
+<span class="comment">// Torque A: proporcional ao desvio de heading desejado</span>
+body->addLocTorque(vec3f(<span class="number">0.0f</span>, <span class="number">0.0f</span>, desiredturn * turnspeed_a));
+
+<span class="comment">// Torque B: speed-dependent, freia rotacao excessiva</span>
+<span class="comment">// locangvel.z = vel angular local no eixo Z (yaw)</span>
+<span class="comment">// desiredturn - locangvel = erro de vel angular</span>
+body->addLocTorque(vec3f(<span class="number">0.0f</span>, <span class="number">0.0f</span>, (desiredturn - locangvel) * (turnspeed_b * loclinvel.y)));</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Parametros de Steering</h3>
+    <table>
+      <tr><th>Parametro</th><th>Tipo</th><th>Efeito</th></tr>
+      <tr><td><code>turnspeed_a</code></td><td>float</td><td>Torque base de steering (independente de velocidade). Quanto maior, mais agressiva a curva em baixa velocidade.</td></tr>
+      <tr><td><code>turnspeed_b</code></td><td>float</td><td>Ganho do amortecedor de yaw proporcional a velocidade. Estabiliza curvas em alta velocidade.</td></tr>
+      <tr><td><code>ctrlrate.turn.z</code></td><td>float/s</td><td>Taxa de suavizacao do input. Limita quao rapido o volante responde.</td></tr>
+      <tr><td><code>turnspeed.z</code></td><td>float</td><td>Escala maxima de yaw rate desejado.</td></tr>
+    </table>
+  </div>
+
+  <div class="warn">
+    <strong>Para o nosso sistema:</strong> O modo cinematico do Interlagos ja e equivalente ao Torque A em baixa velocidade: <code>yawRate = -steerNorm * kMaxYawRateDegPerFrame</code>. O Torque B e o que o slip model aproxima em alta velocidade.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-wheel">
+  <div class="section-title"><span class="num">3.</span>Trigger Rally &mdash; Friccao de Roda</div>
+
+  <div class="subsection">
+    <h3>Decomposicao em Eixos da Superficie</h3>
+    <p>Para cada roda em contato com o terreno:</p>
+    <pre><span class="comment">// 1. Eixos locais da superficie no ponto de contato</span>
+vec3f surf_forward = tci.normal ^ rightdir;   <span class="comment">// forward na superficie</span>
+surf_forward.normalize();
+vec3f surf_right = surf_forward ^ tci.normal; <span class="comment">// lateral na superficie</span>
+surf_right.normalize();
+
+<span class="comment">// 2. Velocidade do ponto de contato (inclui vel. angular do corpo)</span>
+vec3f ptvel = body->getLinearVelAtPoint(wclip);
+<span class="comment">// 3. Adicionar vel. tangencial da roda girando</span>
+ptvel += surf_forward * (-wheel.spin_vel * typewheel.radius);
+
+<span class="comment">// 4. Componentes de velocidade de escorregamento</span>
+vec3f surfvel(
+  ptvel * surf_right,    <span class="comment">// slip lateral</span>
+  ptvel * surf_forward,  <span class="comment">// slip longitudinal</span>
+  ptvel * tci.normal);   <span class="comment">// velocidade normal (penetracao)</span>
+
+<span class="comment">// 5. Forca normal (suspensao) + amortecimento</span>
+<span class="keyword">float</span> perpforce = suspension_force;
+<span class="keyword">if</span> (surfvel.z &lt; <span class="number">0.0f</span>) perpforce -= surfvel.z * typewheel.dampening;
+
+<span class="comment">// 6. Friccao = -slip_vel * 10000, limitada por normal * 1.0</span>
+vec2f friction = vec2f(-surfvel.x, -surfvel.y) * <span class="number">10000.0f</span>;
+<span class="keyword">float</span> maxfriction = perpforce * <span class="number">1.0f</span>;
+<span class="keyword">float</span> leng = friction.length();
+<span class="keyword">if</span> (leng > <span class="number">0.0f</span> && leng > maxfriction)
+  friction *= (maxfriction / leng) + <span class="number">0.02f</span>;  <span class="comment">// clamp circular + pequeno overshoot</span>
+
+<span class="comment">// 7. Aplicar forca total no ponto de contato</span>
+frc += tci.normal * perpforce + surf_right * friction.x + surf_forward * friction.y;
+
+<span class="comment">// 8. Retroalimentar a roda (reducao de spin por atrito)</span>
+wheel.spin_vel -= (friction.y * typewheel.radius) * <span class="number">0.1f</span> * delta;</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Drive do Motor</h3>
+    <pre><span class="comment">// Adicionar torque de tracao a cada roda</span>
+wheel.spin_vel += drivetorque * typewheel.drive * delta;
+
+<span class="comment">// Freio: reduzir spin_vel gradualmente</span>
+<span class="keyword">float</span> desiredchange = (state.brake1 * brake1 + state.brake2 * brake2) * delta;
+<span class="keyword">if</span> (wheel.spin_vel > desiredchange) wheel.spin_vel -= desiredchange;
+<span class="keyword">else if</span> (wheel.spin_vel &lt; -desiredchange) wheel.spin_vel += desiredchange;
+<span class="keyword">else</span> wheel.spin_vel = <span class="number">0.0f</span>;</pre>
+  </div>
+
+  <div class="info">
+    <strong>Principio da friccao no Trigger Rally:</strong> A friccao e calculada como <em>rigidez infinita</em> (K * slip * 10000) limitada pelo coeficiente de atrito estatico. Isso e matematicamente semelhante ao modelo de Pacejka em baixo slip (regiao linear), sem o overhead da formula magica.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-body-clip">
+  <div class="section-title"><span class="num">4.</span>Trigger Rally &mdash; Colisao de Corpo (VCLIP_BODY)</div>
+
+  <div class="subsection">
+    <h3>Sistema de Clips</h3>
+    <p>O carro possui pontos de colisao fixos no espaco local (<em>clips</em>). Cada clip e um ponto que, quando penetra o terreno, gera reacao de colisao.</p>
+
+    <div class="grid2">
+      <div class="card blue">
+        <h4>VCLIP_BODY</h4>
+        <p>Pontos da carroceria (laterais, frente, traseira). Gera forca normal + friccao. Usado para colisao geral com terreno e paredes.</p>
+      </div>
+      <div class="card green">
+        <h4>VCLIP_DRIVE_LEFT / RIGHT</h4>
+        <p>Tank drive: empurra o clip na direcao do drive com steering. Usado em veiculos sem rodas convencionais.</p>
+      </div>
+    </div>
+
+    <pre><span class="comment">// VCLIP_BODY: forca de colisao com decomposicao de superficie</span>
+vec3f rightdir;
+<span class="keyword">if</span> (tci.normal.x > <span class="number">0.5f</span>) rightdir = vec3f(<span class="number">0.0f</span>, <span class="number">1.0f</span>, <span class="number">0.0f</span>);
+<span class="keyword">else</span>                        rightdir = vec3f(<span class="number">1.0f</span>, <span class="number">0.0f</span>, <span class="number">0.0f</span>);
+
+vec3f surf_forward = tci.normal ^ rightdir;   surf_forward.normalize();
+vec3f surf_right   = surf_forward ^ tci.normal; surf_right.normalize();
+
+vec3f surfvel(ptvel * surf_right, ptvel * surf_forward, ptvel * tci.normal);
+
+<span class="keyword">float</span> perpforce = depth * clip.force - surfvel.z * clip.dampening;
+
+<span class="keyword">if</span> (perpforce > <span class="number">0.0f</span>) {
+  vec2f friction = vec2f(-surfvel.x, -surfvel.y) * <span class="number">10000.0f</span>;
+  <span class="keyword">float</span> maxfriction = perpforce * <span class="number">0.9f</span>;  <span class="comment">// corpo: 0.9 (menos grip que roda 1.0)</span>
+  <span class="keyword">float</span> leng = friction.length();
+  <span class="keyword">if</span> (leng > <span class="number">0.0f</span> && leng > perpforce * <span class="number">1.2f</span>)
+    friction *= (maxfriction / leng);
+
+  frc += tci.normal * perpforce + surf_right * friction.x + surf_forward * friction.y;
+
+  CLAMP_LOWER(crunch_level, perpforce * <span class="number">0.00001f</span>);
+}
+
+body->addForceAtPoint(frc, wclip);</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Condicao de Contato</h3>
+    <pre><span class="comment">// Colisao ocorre SOMENTE quando o clip esta abaixo da superficie</span>
+<span class="keyword">if</span> (wclip.z &lt;= tci.pos.z) {
+  <span class="keyword">float</span> depth = (tci.pos - wclip) * tci.normal; <span class="comment">// profundidade de penetracao</span>
+  <span class="comment">// ... calcular reacao ...</span>
+}</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Colisao com Paredes</h3>
+    <p>O mesmo mecanismo VCLIP_BODY serve para paredes. Quando <code>tci.normal</code> e horizontal (parede), a reacao e automaticamente convertida em:</p>
+    <ul>
+      <li><strong>Forca normal</strong>: empurra o carro para longe da parede (<code>tci.normal * perpforce</code>)</li>
+      <li><strong>Friccao lateral</strong>: desacelera o movimento paralelo a parede (<code>surf_right * friction.x</code>)</li>
+      <li><strong>Friccao longitudinal</strong>: desacelera o movimento de deslizamento ao longo da parede (<code>surf_forward * friction.y</code>)</li>
+    </ul>
+    <div class="ok">
+      <strong>Elegancia do sistema:</strong> Nao ha codigo especial para "colisao com parede" vs "colisao com chao" &mdash; o normal do terreno (<code>tci.normal</code>) determina automaticamente como a reacao e decomposta. Se a normal for vertical = chao. Se horizontal = parede.
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-suspension">
+  <div class="section-title"><span class="num">5.</span>Trigger Rally &mdash; Suspensao Spring-Damper</div>
+
+  <pre><span class="comment">// Estado de suspensao por roda</span>
+<span class="keyword">float</span> suspension_force = wheel.ride_pos * typewheel.force; <span class="comment">// spring F = k * x</span>
+
+<span class="comment">// Integracao da mola</span>
+wheel.ride_vel += (-suspension_force - wheel.ride_vel * typewheel.dampening) * <span class="number">0.02f</span> * delta;
+wheel.ride_pos += wheel.ride_vel * delta;
+
+<span class="comment">// Se a roda esta em contato</span>
+<span class="keyword">if</span> (wclip.z &lt;= tci.pos.z) {
+  wheel.ride_pos += depth;   <span class="comment">// empurrar para cima pela profundidade</span>
+
+  <span class="comment">// Limite de compressao maxima</span>
+  <span class="keyword">float</span> maxdepth = typewheel.radius * <span class="number">0.7f</span>;
+  <span class="keyword">if</span> (wheel.ride_pos > maxdepth) {
+    <span class="keyword">float</span> overdepth = wheel.ride_pos - maxdepth;
+    wheel.ride_pos = maxdepth;
+    perpforce -= overdepth * surfvel.z * typewheel.dampening * <span class="number">5.0f</span>;
+  }
+
+  <span class="comment">// Vel. de suspensao nao pode ser negativa enquanto em contato</span>
+  <span class="keyword">if</span> (wheel.ride_vel &lt; -surfvel.z) wheel.ride_vel = -surfvel.z;
+}
+
+<span class="comment">// Forca normal = suspensao + amortecimento</span>
+<span class="keyword">if</span> (surfvel.z &lt; <span class="number">0.0f</span>) perpforce -= surfvel.z * typewheel.dampening;</pre>
+
+  <div class="grid3">
+    <div class="card blue">
+      <h4>typewheel.force</h4>
+      <p>Rigidez da mola (N/m). Quanto maior, mais rigida a suspensao.</p>
+    </div>
+    <div class="card yellow">
+      <h4>typewheel.dampening</h4>
+      <p>Amortecimento viscoso. Evita oscilacao. Valores tipicos: 10-50% da rigidez.</p>
+    </div>
+    <div class="card green">
+      <h4>ride_pos</h4>
+      <p>Compressao atual da mola (metros). Zero = repouso, positivo = comprimido.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-wall">
+  <div class="section-title"><span class="num">6.</span>Trigger Rally &mdash; Colisao com Paredes (Detalhes)</div>
+
+  <div class="subsection">
+    <h3>getContactInfo &mdash; Consulta ao Terreno</h3>
+    <p>Para cada clip/roda, o sistema consulta a altura e normal do terreno em (x, y):</p>
+    <pre><span class="comment">// tci.pos.x, tci.pos.y = posicao do clip no mundo</span>
+sim.getTerrain()->getContactInfo(tci);
+<span class="comment">// Retorna: tci.pos.z = altura do terreno</span>
+<span class="comment">//          tci.normal = normal da superficie</span></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Colisao com Paredes Verticais</h3>
+    <p>Quando a geometria do nivel tem uma parede vertical (ex: margem da pista), o normal retornado sera horizontal. O processamento do clip e identico ao chao:</p>
+
+    <div class="formula">
+      depth = (surface_point - clip_point) . normal<br><br>
+      perpforce = depth * clip.force - (ptvel.normal) * clip.dampening<br><br>
+      friction = -surfvel_tangential * 10000  (limitado a perpforce * 0.9)<br><br>
+      F_total = normal * perpforce + surf_right * friction.x + surf_forward * friction.y
+    </div>
+
+    <p>Para uma parede lateral (normal = X local), o resultado e:</p>
+    <ul>
+      <li><code>perpforce</code> &rarr; empurra o carro de volta para a pista (eixo X)</li>
+      <li><code>friction.y</code> &rarr; desacelera o carro na direcao que corre paralela a parede (eixo Z = frente)</li>
+      <li><code>friction.x</code> &rarr; friccao no eixo de deslizamento ao longo da parede</li>
+    </ul>
+  </div>
+
+  <div class="warn">
+    <strong>Limitacao do sistema de clips:</strong> Colisao apenas em pontos discretos, nao em faces. Para o Saturn isso e ideal &mdash; menos calculo, comportamento previsivel.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="tr-substep">
+  <div class="section-title"><span class="num">7.</span>Trigger Rally &mdash; Sub-stepping</div>
+
+  <pre><span class="comment">// sim.cpp: divisao do frame em sub-passos fixos de 5ms</span>
+<span class="keyword">float</span> timeslice = <span class="number">0.005f</span>;                     <span class="comment">// 5ms por sub-passo</span>
+<span class="keyword">int</span> num = (<span class="keyword">int</span>)(delta / timeslice) + <span class="number">1</span>;       <span class="comment">// numeros de passos</span>
+timeslice = delta / (<span class="keyword">float</span>)num;              <span class="comment">// recalcula para preencher exato</span>
+
+<span class="keyword">for</span> (<span class="keyword">int</span> timestep = <span class="number">0</span>; timestep &lt; num; ++timestep) {
+  vehicle->tick(timeslice);   <span class="comment">// calcular forcas</span>
+  body->tick(timeslice);      <span class="comment">// integrar movimento</span>
+  vehicle->updateParts();     <span class="comment">// atualizar posicao das partes</span>
+}</pre>
+
+  <div class="info">
+    <strong>Para o Saturn (60 Hz):</strong> delta = 1/60 ≈ 16.7ms &rarr; num = 3-4 sub-passos por frame. O sub-stepping aumenta estabilidade numerica mas consome mais CPU. No Saturn, usar 1 passo por frame e mais realista dado o poder de processamento limitado.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<hr style="border-color: var(--border); margin: 40px 0;">
+
+<div class="section" id="ir-kinematic">
+  <div class="section-title"><span class="num">8.</span>Interlagos Racing &mdash; Modo Cinematico (Partida)</div>
+
+  <div class="subsection">
+    <h3>Condicao de Ativacao</h3>
+    <pre><span class="comment">// car_dynamics_model.hpp ~linha 205</span>
+<span class="keyword">const bool</span> useLowSpeedKinematic =
+    hasForwardDriveIntent &&
+    hasSteerCommand &&
+    (outStep.speedAbs &lt; Tunables::kLaunchKinematicSpeedThreshold); <span class="comment">// 2.5 u/f</span></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Comportamento</h3>
+    <pre><span class="keyword">if</span> (useLowSpeedKinematic)
+{
+    ioState.lateralSpeed = Fxp::BuildRaw(<span class="number">0</span>);
+    ioState.wasKinematic = <span class="keyword">true</span>;
+    outStep.wasKinematicMode = <span class="keyword">true</span>;
+    <span class="comment">// Negacao: yaw positivo = curva ESQUERDA neste sistema</span>
+    <span class="comment">// steerNorm < 0 para esquerda -> negar -> yawRate positivo -> curva esquerda</span>
+    ioState.yawRateDegPerFrame = Fxp::BuildRaw(
+        -(steerNorm * Tunables::kMaxYawRateDegPerFrame).RawValue());
+}</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Override de Posicao em StepOnce</h3>
+    <pre><span class="comment">// car_physics_v2.hpp: correcao de posicao usando yaw pos-passo</span>
+<span class="keyword">if</span> (stepOutput.wasKinematicMode)
+{
+    <span class="keyword">const auto</span> yawAngle = SRL::Math::Types::Angle::FromDegrees(
+        SRL::Math::Types::Fxp::BuildRaw(ioCarYawDeg &lt;&lt; <span class="number">16</span>));
+    <span class="keyword">const</span> CarPhysics::Fxp sinYaw = SRL::Math::Trigonometry::Sin(yawAngle);
+    <span class="keyword">const</span> CarPhysics::Fxp cosYaw = SRL::Math::Trigonometry::Cos(yawAngle);
+    <span class="keyword">const</span> CarPhysics::Fxp negCosYaw = CarPhysics::Fxp::BuildRaw(-cosYaw.RawValue());
+    <span class="comment">// Move na direcao que o carro aponta APOS a rotacao deste frame</span>
+    ioCarWorldPosition.X = preStepPosition.X + (sinYaw * dynamicsState_.forwardSpeed);
+    ioCarWorldPosition.Z = preStepPosition.Z + (negCosYaw * dynamicsState_.forwardSpeed);
+}</pre>
+  </div>
+
+  <div class="ok">
+    <strong>Convencao de sinal confirmada:</strong> Eixo Z+ aponta para tras do carro em repouso. <code>sin(yaw)</code> = componente X (lateral), <code>-cos(yaw)</code> = componente Z (frente). Yaw crescendo = rotacao anti-horaria = curva ESQUERDA.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="ir-slip">
+  <div class="section-title"><span class="num">9.</span>Interlagos Racing &mdash; Slip Model (Dois Eixos)</div>
+
+  <div class="subsection">
+    <h3>Angulos de Deslizamento</h3>
+    <div class="formula">
+      alpha_front = steer_eff_rad - (vy + yawRate * lf) / |vx|<br>
+      alpha_rear  = 0             - (vy - yawRate * lr) / |vx|<br><br>
+      Fy = clamp( -Ca * alpha, ±FyCap )  (saturacao de friccao)
+    </div>
+
+    <pre><span class="comment">// car_dynamics_model.hpp ~linha 244</span>
+<span class="keyword">const</span> Fxp steerEffRad = steerEffDeg * Tunables::kDegToRad;
+<span class="keyword">const</span> Fxp yawRateRadPerFrame = ioState.yawRateDegPerFrame * Tunables::kDegToRad;
+<span class="keyword">const</span> Fxp slipDenom = (vxAbs > Tunables::kSlipDenomMin) ? vxAbs : Tunables::kSlipDenomMin;
+
+<span class="keyword">const</span> Fxp vyFront = ioState.lateralSpeed + (yawRateRadPerFrame * Tunables::kWheelbaseFront);
+<span class="keyword">const</span> Fxp vyRear  = ioState.lateralSpeed - (yawRateRadPerFrame * Tunables::kWheelbaseRear);
+
+<span class="keyword">const</span> Fxp alphaFront = steerEffRad - (vyFront / slipDenom);
+<span class="keyword">const</span> Fxp alphaRear  = Fxp::BuildRaw(<span class="number">0</span>) - (vyRear / slipDenom);
+
+<span class="keyword">const</span> Fxp fyFront = SaturateSigned(-Tunables::kLateralStiffnessFront * alphaFront, fyCap);
+<span class="keyword">const</span> Fxp fyRear  = SaturateSigned(-Tunables::kLateralStiffnessRear  * alphaRear,  fyCap);
+
+Fxp lateralAccel = fyFront + fyRear + yawCoupling;
+ioState.lateralSpeed += lateralAccel;
+ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kLateralDampingCoeff;
+
+<span class="keyword">const</span> Fxp yawMoment = (fyFront * Tunables::kWheelbaseFront) - (fyRear * Tunables::kWheelbaseRear);
+ioState.yawRateDegPerFrame += (targetYawRate - ioState.yawRateDegPerFrame) * Tunables::kYawRateResponse;
+ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kYawDamping;</pre>
+  </div>
+
+  <div class="subsection">
+    <h3>Constantes Relevantes</h3>
+    <table>
+      <tr><th>Constante</th><th>Valor Raw</th><th>Valor</th><th>Descricao</th></tr>
+      <tr><td><code>kMaxYawRateDegPerFrame</code></td><td>0x00024000</td><td>2.25 deg/frame</td><td>Velocidade maxima de curva (cinematico)</td></tr>
+      <tr><td><code>kLaunchKinematicSpeedThreshold</code></td><td>0x00028000</td><td>2.5 u/f</td><td>Limite de ativacao do cinematico</td></tr>
+      <tr><td><code>kForwardSteerLaunchSpeedThreshold</code></td><td>0x00004000</td><td>0.25 u/f</td><td>Limite de cap de throttle na partida</td></tr>
+      <tr><td><code>kSlipDenomMin</code></td><td>-</td><td>min|vx|</td><td>Evita divisao por zero no slip angle</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="ir-longitudinal">
+  <div class="section-title"><span class="num">10.</span>Interlagos Racing &mdash; Controle Longitudinal</div>
+
+  <div class="subsection">
+    <h3>Maquina de Estados</h3>
+    <div class="grid2">
+      <div class="card blue">
+        <h4>Idle</h4>
+        <p>Throttle = 0, sem freio. Desaceleracao natural (atrito).</p>
+      </div>
+      <div class="card green">
+        <h4>DriveForward</h4>
+        <p>B pressionado. Com steer em baixa velocidade: cap de throttle ~39% para suavizar partida.</p>
+      </div>
+      <div class="card yellow">
+        <h4>BrakeToStop</h4>
+        <p>C pressionado, movendo para frente. Desacelera ate parar.</p>
+      </div>
+      <div class="card red">
+        <h4>ReverseEngage / DriveReverse</h4>
+        <p>C mantido apos parar: engata re. Yaw invertido para steering funcionar corretamente.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Cap de Throttle na Partida com Steer</h3>
+    <pre><span class="comment">// Quando velocidade &lt; 0.25 u/f E steer ativo: limitar aceleracao</span>
+<span class="comment">// Evita impulso lateral grande do modelo de slip no 1o frame</span>
+<span class="keyword">const bool</span> launchSteerForward =
+    hasSteer && forwardOrStopped &&
+    (dynamics.forwardSpeed.Abs() &lt; kForwardSteerLaunchSpeedThreshold);
+
+<span class="keyword">if</span> (launchSteerForward) {
+    <span class="comment">// Throttle cap ~39% do gear[0] max acceleration</span>
+    <span class="keyword">const</span> int16_t throttleCap = ...;
+    <span class="keyword">if</span> (outFrame.throttle > throttleCap) outFrame.throttle = throttleCap;
+}</pre>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="ir-lateral-yaw">
+  <div class="section-title"><span class="num">11.</span>Interlagos Racing &mdash; LateralYawController</div>
+
+  <pre><span class="comment">// car_physics_v2_lateral_yaw.hpp</span>
+<span class="comment">// Dispara quando: throttle ON, !braking, tem steer, velocidade &lt; 1.5 u/f</span>
+<span class="keyword">void</span> <span class="fn">ApplyLaunchTurnAssist</span>(<span class="keyword">const</span> GameplayFrameState& frame,
+                           CarPhysics::DynamicsState& state)
+{
+    <span class="comment">// Se velocidade passou do limite: apenas salva o estado</span>
+    <span class="keyword">if</span> (vxAbs >= launchSpeedLimit || state.forwardSpeed &lt; Fxp::BuildRaw(<span class="number">0</span>)) { ... <span class="keyword">return</span>; }
+
+    <span class="comment">// Na borda de subida do comando (ou mudanca de direcao de steer):</span>
+    <span class="comment">// zerear acumulador para que o novo arco comece do heading atual</span>
+    <span class="keyword">if</span> (launchCommandRisingEdge) {
+        state.yawAccumulatorDegRaw = <span class="number">0</span>;
+    }
+}</pre>
+
+  <div class="info">
+    <strong>Funcao:</strong> Reseta o acumulador de yaw no momento exato em que o jogador inicia uma curva com o carro parado/lento. Garante que o primeiro frame da curva usa o heading atual como base, evitando "saltos" de yaw.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="ir-ground">
+  <div class="section-title"><span class="num">12.</span>Interlagos Racing &mdash; GroundFollower</div>
+
+  <div class="subsection">
+    <h3>ApplyVerticalAdhesion</h3>
+    <p>Apos o passo de fisica, aplica correcoes de posicao para manter o carro colado ao terreno:</p>
+    <ul>
+      <li><code>correctionX / correctionZ</code>: correcoes planares do terreno (rampa lateral)</li>
+      <li><code>lastStableX / lastStableZ</code>: posicao de fallback se <code>!hasGroundSupport</code> (carro no ar / sem chao)</li>
+      <li><code>kEdgeRecoverPush = 0</code>: recuperacao de borda desabilitada</li>
+      <li><code>kEnableWallPlanarPush</code>: push de parede via terreno habilitado</li>
+    </ul>
+  </div>
+
+  <div class="warn">
+    <strong>Interacao critica:</strong> O <code>ApplyVerticalAdhesion</code> e chamado APOS o override cinematico em <code>StepOnce</code>. Se o terreno reportar um <code>correctionX/Z</code> significativo, pode deslocar a posicao calculada pelo cinematico. Monitorar se isso causa artefatos ao curvear em rampas.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="ir-fix">
+  <div class="section-title"><span class="num">13.</span>Fixes Implementados &mdash; wasKinematic</div>
+
+  <div class="subsection">
+    <h3>Problema Corrigido: Slide ao Soltar Botoes</h3>
+    <p>Causa: o <code>yawRateDegPerFrame</code> acumulado no modo cinematico (2.25 deg/f) persistia quando os botoes eram soltos. O slip model o convertia em velocidade lateral, causando deslizamento lateral.</p>
+
+    <div class="flow">
+      <div class="flow-box">Cinematico ativo<br>yawRate = 2.25°/f</div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">Botoes soltos<br>sem steer</div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">Slip model usa<br>yawRate residual</div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box" style="border-color: var(--red)">Slide lateral<br>(BUG)</div>
+    </div>
+
+    <pre><span class="comment">// Fix em car_dynamics_model.hpp</span>
+<span class="keyword">const bool</span> prevWasKinematic = ioState.wasKinematic;
+ioState.wasKinematic = <span class="keyword">false</span>;
+<span class="keyword">if</span> (prevWasKinematic)
+{
+    ioState.lateralSpeed = Fxp::BuildRaw(<span class="number">0</span>);
+    <span class="keyword">if</span> (outStep.speedAbs &lt; Tunables::kLaunchKinematicSpeedThreshold)
+    {
+        <span class="comment">// Saida por soltar botoes (nao por velocidade): zerar residuo de yaw</span>
+        ioState.yawRateDegPerFrame = Fxp::BuildRaw(<span class="number">0</span>);
+        ioState.yawAccumulatorDegRaw = <span class="number">0</span>;
+    }
+}</pre>
+  </div>
+
+  <div class="ok">
+    <strong>Estado atual:</strong> Fix implementado em <code>src/car_dynamics_model.hpp</code> e <code>src/car_physics_shared.hpp</code> (campo <code>wasKinematic</code> em <code>DynamicsState</code>). Aguardando teste em hardware.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<hr style="border-color: var(--border); margin: 40px 0;">
+
+<div class="section" id="plan-accel">
+  <div class="section-title"><span class="num">14.</span>Plano &mdash; Aceleracao e Desaceleracao</div>
+
+  <div class="subsection">
+    <h3>Estado Atual</h3>
+    <p>O modelo longitudinal usa uma tabela de aceleracao por gear (<code>kGearAccelPerFrame[]</code>). A velocidade maxima e controlada por drag implicito. Freio deduz throttle e ativa BrakeToStop.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Referencia Trigger Rally</h3>
+    <ul>
+      <li>Drive engine: <code>wheel.spin_vel += drivetorque * drive * delta</code></li>
+      <li>Drag linear por eixo: <code>frc = -vec3f(vx*drag.x, vy*drag.y, vz*drag.z)</code></li>
+      <li>Friccao de roda desacelera naturalmente pelo atrito</li>
+    </ul>
+  </div>
+
+  <div class="subsection">
+    <h3>Melhorias Possiveis</h3>
+    <div class="impl-step" data-step="MELHORIA 14.1">
+      <h4>Drag Proporcional a Velocidade (Nao Urgente)</h4>
+      <p>Atual: freio subtrai constante do throttle. Melhor: drag F = -k * v^2 que naturalmente limita velocidade maxima e suaviza desaceleracao em coasting.</p>
+      <p><span class="priority p3">P3</span> Complexidade: baixa. Risco: pode alterar velocidade maxima &mdash; requer retuning de constantes.</p>
+    </div>
+
+    <div class="impl-step" data-step="MELHORIA 14.2">
+      <h4>Curva de Torque Realista (Nao Urgente)</h4>
+      <p>Trigger Rally usa sistema de drive com DSysi (drive system instance) que modela curva de torque do motor. Para arcade Saturn: tabela simples de torque por velocidade seria suficiente.</p>
+      <p><span class="priority p3">P3</span> Complexidade: media. Risco: mudanca de feeling de aceleracao.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="plan-steer">
+  <div class="section-title"><span class="num">15.</span>Plano &mdash; Curvas e Steering</div>
+
+  <div class="subsection">
+    <h3>Estado Atual</h3>
+    <p>Dois modos: cinematico (speed &lt; 2.5 u/f, yaw direto) e slip model (acima). Transicao suavizada por wasKinematic. Problema reportado: slide no inicio da curva parado.</p>
+  </div>
+
+  <div class="impl-step" data-step="URGENTE 15.1">
+    <h4>Teste do Fix wasKinematic em Hardware</h4>
+    <p>Os fixes implementados nesta sessao zerando <code>yawRateDegPerFrame + yawAccumulatorDegRaw</code> na saida do cinematico ainda nao foram validados em hardware Saturn.</p>
+    <p><span class="priority p1">P1</span> Cenarios de teste:</p>
+    <ul>
+      <li>B + seta esquerda parado, segura &rarr; curva limpa sem slide</li>
+      <li>B + seta esquerda parado, solta rapido &rarr; carro para sem slide lateral</li>
+      <li>Curva em alta velocidade (> 2.5 u/f) &rarr; comportamento inalterado</li>
+      <li>Curva esquerda e direita &rarr; simetria perfeita</li>
+    </ul>
+  </div>
+
+  <div class="impl-step" data-step="MELHORIA 15.2">
+    <h4>Speed-Dependent Steering (Influencia do Trigger Rally)</h4>
+    <p>O Trigger Rally adiciona um componente de torque proporcional a velocidade * erro de yaw rate. Isso naturalmente reduz a resposta de steering em alta velocidade (mais seguro) e aumenta em baixa (mais manobravel).</p>
+    <p>Equivalente no nosso sistema: escalar <code>kMaxYawRateDegPerFrame</code> pelo inverso da velocidade, ou reduzir <code>kLateralStiffnessFront/Rear</code> em baixa velocidade.</p>
+    <pre><span class="comment">// Ideia para implementar steering speed-dependent no cinematico:</span>
+<span class="comment">// steer authority ja e calculado em funcao de velocidade (ver steerGate)</span>
+<span class="comment">// Ajustar kMaxYawRateDegPerFrame por um fator de velocidade?</span>
+<span class="keyword">const</span> Fxp speedFactor = Fxp::BuildRaw(<span class="number">1</span> &lt;&lt; 16) / (vxAbs + Fxp::BuildRaw(<span class="number">1</span> &lt;&lt; 16));
+ioState.yawRateDegPerFrame = -(steerNorm * kMaxYawRateDegPerFrame * speedFactor);</pre>
+    <p><span class="priority p2">P2</span> Complexidade: baixa. Risco: requer retuning do cinematico.</p>
+  </div>
+
+  <div class="impl-step" data-step="INVESTIGAR 15.3">
+    <h4>Suavizacao de Input (Referencia: PULLTOWARD)</h4>
+    <p>O Trigger Rally usa PULLTOWARD (lerp) para suavizar o input de steering antes de aplicar torque. O Interlagos ja faz isso em <code>TickCommandState</code> (ver <code>car_system.cxx</code> linha 142). Verificar se os rates de suavizacao estao corretos para o feeling desejado.</p>
+    <p><span class="priority p3">P3</span> Ja implementado &mdash; revisar parametros se necessario.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="plan-friction">
+  <div class="section-title"><span class="num">16.</span>Plano &mdash; Friccao Lateral</div>
+
+  <div class="subsection">
+    <h3>Comparacao dos Modelos</h3>
+    <table>
+      <tr>
+        <th>Aspecto</th>
+        <th>Trigger Rally</th>
+        <th>Interlagos Racing</th>
+      </tr>
+      <tr>
+        <td>Modelo base</td>
+        <td>Rigidez infinita + clamping</td>
+        <td>Linear Slip (tipo TORCS/VDrift)</td>
+      </tr>
+      <tr>
+        <td>Formula</td>
+        <td><code>friction = -slip * 10000, clamp(perpforce)</code></td>
+        <td><code>Fy = -Ca * alpha, clamp(FyCap)</code></td>
+      </tr>
+      <tr>
+        <td>Grip escalonavel</td>
+        <td>Via <code>typewheel.dampening</code></td>
+        <td>Via <code>surfaceGripScale</code></td>
+      </tr>
+      <tr>
+        <td>Saturacao</td>
+        <td>Clamp circular (2D)</td>
+        <td>Clamp por eixo (saturate signed)</td>
+      </tr>
+      <tr>
+        <td>Friccao longitudinal</td>
+        <td>Integrada (spin_vel * radius)</td>
+        <td>Separada (longitudinal controller)</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="impl-step" data-step="INVESTIGAR 16.1">
+    <h4>Clamp Circular vs Clamp por Eixo</h4>
+    <p>O Trigger Rally usa clamp circular para friccao (magnitude total &le; maxfriction). O nosso usa clamp separado por eixo, o que pode gerar um "quadrado" de grip em vez de circulo. Em arcade puro isso nao importa, mas pode causar comportamentos estranhos na combinacao aceleracao + curva.</p>
+    <pre><span class="comment">// Trigger Rally: clamp circular</span>
+<span class="keyword">float</span> leng = friction.length();
+<span class="keyword">if</span> (leng > maxfriction) friction *= (maxfriction / leng);
+
+<span class="comment">// Interlagos: clamp por eixo (SaturateSigned)</span>
+<span class="keyword">const</span> Fxp fyFront = SaturateSigned(fyFrontRaw, fyCap);</pre>
+    <p><span class="priority p3">P3</span> Mudar para clamp combinado exigiria refactor significativo do slip model.</p>
+  </div>
+
+  <div class="impl-step" data-step="VERIFICAR 16.2">
+    <h4>Coeficiente de Amortecimento Lateral</h4>
+    <p>O <code>kLateralDampingCoeff</code> e aplicado como <code>lateralSpeed *= (1 - coeff)</code> a cada frame. Verificar se o valor atual e suficiente para eliminar oscilacoess laterais sem tornar o carro rigido demais em curvas rapidas.</p>
+    <p><span class="priority p2">P2</span> Testar aumentando/diminuindo o coeff para ver impacto.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="plan-wall">
+  <div class="section-title"><span class="num">17.</span>Plano &mdash; Colisao com Paredes</div>
+
+  <div class="subsection">
+    <h3>Estado Atual</h3>
+    <p>O GroundFollower faz push lateral via <code>kEnableWallPlanarPush</code> e recuperacao de borda (<code>kEdgeRecoverPush = 0</code>, desabilitado). Nao ha sistema de colisao baseado em normal de parede.</p>
+  </div>
+
+  <div class="subsection">
+    <h3>Referencia Trigger Rally</h3>
+    <p>Colisao com paredes e identica a colisao com chao &mdash; o mesmo mecanismo VCLIP_BODY processa ambos. A normal do terreno determina a direcao da reacao. A friccao na superficie da parede desacelera o carro naturalmente.</p>
+  </div>
+
+  <div class="impl-step" data-step="PLANO 17.1">
+    <h4>Sistema de Clips para Colisao de Corpo</h4>
+    <p>Implementar pontos de colisao no corpo do carro (frente, traseira, laterais) que consultam o terreno e geram reacao baseada em normal, similar ao VCLIP_BODY do Trigger Rally.</p>
+
+    <p><span class="priority p2">P2</span> Arquivos a modificar:</p>
+    <ul>
+      <li><code>src/car_physics_shared.hpp</code> &mdash; Adicionar struct <code>BodyClip</code> com posicao local e parametros</li>
+      <li><code>src/car_dynamics_model.hpp</code> ou <code>car_physics_v2.hpp</code> &mdash; Loop de clips com consulta ao terreno</li>
+      <li><code>src/car_ground_follower.hpp</code> &mdash; Expor <code>QuerySurface(x, z)</code> para o sistema de clips</li>
+    </ul>
+
+    <pre><span class="comment">// Pseudocodigo: clip de colisao de parede</span>
+<span class="keyword">struct</span> BodyClip {
+    Fxp localX, localZ;   <span class="comment">// posicao no espaco do carro</span>
+    Fxp force;            <span class="comment">// rigidez da resposta</span>
+    Fxp dampening;        <span class="comment">// amortecimento</span>
+};
+
+<span class="keyword">for</span> (<span class="keyword">auto</span>& clip : bodyClips_) {
+    <span class="comment">// Transformar para espaco mundo</span>
+    vec2 worldPt = RotateByYaw(clip.local, carYaw) + carPos;
+
+    <span class="comment">// Consultar superficie</span>
+    SurfaceInfo surf = groundFollower_.QuerySurface(worldPt.x, worldPt.z);
+
+    <span class="comment">// Se penetrando</span>
+    <span class="keyword">if</span> (carY &lt;= surf.height) {
+        Fxp depth = surf.height - carY;
+        <span class="comment">// Calcular forca de reacao usando normal da superficie</span>
+        <span class="comment">// Aplicar como correcao planar + impulso de velocidade</span>
+    }
+}</pre>
+
+    <div class="warn">
+      <strong>Limitacao do Saturn:</strong> Consultas ao terreno tem custo. Limitar a 4-6 clips por carro. Usar coordenadas locais pre-definidas (frente-esq, frente-dir, traseira-esq, traseira-dir).
+    </div>
+  </div>
+
+  <div class="impl-step" data-step="ALTERNATIVA 17.2">
+    <h4>Wall Push via GroundFollower Existente</h4>
+    <p>O <code>kEnableWallPlanarPush</code> ja existe em <code>car_ground_follower.hpp</code>. Verificar se ativar e aumentar a forca de push ja fornece o comportamento desejado sem implementar sistema de clips.</p>
+    <p><span class="priority p1">P1</span> Testar primeiro. Se funcionar bem &mdash; sem necessidade de clips.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="plan-suspension">
+  <div class="section-title"><span class="num">18.</span>Plano &mdash; Suspensao e Terreno</div>
+
+  <div class="subsection">
+    <h3>Estado Atual</h3>
+    <p>O GroundFollower controla altura e aderencia ao terreno. Roll/pitch sao calculados com base nos pontos de terreno nas 4 rodas (meshes). O <code>wheelRig_</code> aplica offset visual de roda.</p>
+  </div>
+
+  <div class="impl-step" data-step="INVESTIGAR 18.1">
+    <h4>Oscilacao Vertical (Suspension Bounce)</h4>
+    <p>O Trigger Rally modela a suspensao com spring-damper completo. O Interlagos usa seguimento direto de altura. Se o carro "pula" ao bater em lombadas ou bordas, considerar adicionar amortecimento de velocidade vertical.</p>
+    <pre><span class="comment">// Ideia: velocidade vertical amortecida</span>
+<span class="comment">// Em vez de: carY = terrainY + fixedOffset</span>
+<span class="comment">// Fazer:     carY += (targetY - carY) * kSuspensionRate</span></pre>
+    <p><span class="priority p3">P3</span> Apenas se houver artefato visual de bounce.</p>
+  </div>
+
+  <div class="impl-step" data-step="INVESTIGAR 18.2">
+    <h4>Acoplamento de Pitch com Aceleracao</h4>
+    <p>Em jogos arcades dos anos 90 (Ridge Racer, Daytona USA), o carro "inclina para tras" na aceleracao e "mergulha para frente" na frenagem. Isso e visual (sem efeito na fisica), mas melhora o feedback de jogo.</p>
+    <pre><span class="comment">// Pitch visual por aceleracao/freio</span>
+<span class="comment">// pitchDeg = lerp(pitchDeg, throttle * kPitchPerThrottle, kPitchRate)</span></pre>
+    <p><span class="priority p3">P3</span> Cosmético. Facil de implementar como offset de rotacao no renderer.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section" id="plan-table">
+  <div class="section-title"><span class="num">19.</span>Tabela de Prioridades de Implementacao</div>
+
+  <table>
+    <tr>
+      <th>Prioridade</th>
+      <th>Tarefa</th>
+      <th>Complexidade</th>
+      <th>Risco</th>
+      <th>Arquivo Principal</th>
+    </tr>
+    <tr>
+      <td><span class="priority p1">P1</span></td>
+      <td><strong>Testar fix wasKinematic em hardware</strong> (cenarios de slide)</td>
+      <td>Baixa (ja implementado)</td>
+      <td>Baixo</td>
+      <td><code>car_dynamics_model.hpp</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p1">P1</span></td>
+      <td><strong>Testar wall push do GroundFollower</strong> (17.2)</td>
+      <td>Baixa (parametro existente)</td>
+      <td>Baixo</td>
+      <td><code>car_ground_follower.hpp</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p2">P2</span></td>
+      <td>Verificar amortecimento lateral (16.2)</td>
+      <td>Baixa (tuning de constante)</td>
+      <td>Baixo</td>
+      <td><code>car_physics_shared.hpp</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p2">P2</span></td>
+      <td>Steering speed-dependent no cinematico (15.2)</td>
+      <td>Baixa</td>
+      <td>Medio (retuning)</td>
+      <td><code>car_dynamics_model.hpp</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p2">P2</span></td>
+      <td>Sistema de clips de colisao de corpo (17.1)</td>
+      <td>Media</td>
+      <td>Medio</td>
+      <td><code>car_physics_v2.hpp</code> + <code>ground_follower</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p3">P3</span></td>
+      <td>Drag longitudinal proporcional a velocidade (14.1)</td>
+      <td>Baixa</td>
+      <td>Medio (retuning)</td>
+      <td><code>car_physics_v2_longitudinal.hpp</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p3">P3</span></td>
+      <td>Clamp circular de friccao (16.1)</td>
+      <td>Alta (refactor)</td>
+      <td>Alto</td>
+      <td><code>car_dynamics_model.hpp</code></td>
+    </tr>
+    <tr>
+      <td><span class="priority p3">P3</span></td>
+      <td>Pitch visual por aceleracao/freio (18.2)</td>
+      <td>Baixa (visual only)</td>
+      <td>Nenhum</td>
+      <td><code>car_system.cxx</code> (renderer)</td>
+    </tr>
+    <tr>
+      <td><span class="priority p3">P3</span></td>
+      <td>Amortecimento de bounce vertical (18.1)</td>
+      <td>Baixa</td>
+      <td>Baixo</td>
+      <td><code>car_ground_follower.hpp</code></td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-title">Convencao de Sinais &mdash; Referencia Rapida</div>
+
+  <div class="grid3">
+    <div class="card blue">
+      <h4>Yaw</h4>
+      <p>
+        Positivo = curva ESQUERDA<br>
+        Negativo = curva DIREITA<br>
+        <code>yaw crescendo = anti-horario visto de cima</code>
+      </p>
+    </div>
+    <div class="card green">
+      <h4>Botoes</h4>
+      <p>
+        B = acelerador (throttle)<br>
+        C = freio / re<br>
+        Seta esq = <code>steering &lt; 0</code><br>
+        Seta dir = <code>steering &gt; 0</code>
+      </p>
+    </div>
+    <div class="card purple">
+      <h4>Espaco Local do Carro</h4>
+      <p>
+        Z- = frente do carro<br>
+        X+ = direita do carro<br>
+        <code>sin(yaw)</code> = componente X<br>
+        <code>-cos(yaw)</code> = componente Z (frente)
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-title">Arquivos Modificados nesta Sessao</div>
+
+  <table>
+    <tr>
+      <th>Arquivo</th>
+      <th>Modificacao</th>
+      <th>Status</th>
+    </tr>
+    <tr>
+      <td><code>src/car_physics_shared.hpp</code></td>
+      <td>Adicionado campo <code>bool wasKinematic = false</code> em <code>DynamicsState</code></td>
+      <td><span class="badge badge-green">Implementado</span></td>
+    </tr>
+    <tr>
+      <td><code>src/car_dynamics_model.hpp</code></td>
+      <td>
+        1. <code>ioState.wasKinematic = true</code> no bloco cinematico<br>
+        2. Zeragem de <code>yawRateDegPerFrame + yawAccumulatorDegRaw</code> na saida do cinematico em baixa velocidade<br>
+        3. <code>ioState.wasKinematic = false</code> em <code>Reset()</code>
+      </td>
+      <td><span class="badge badge-green">Implementado</span></td>
+    </tr>
+    <tr>
+      <td><code>src/car_physics_v2.hpp</code></td>
+      <td>Override de posicao cinematica usando yaw pos-passo (<code>wasKinematicMode</code> branch)</td>
+      <td><span class="badge badge-yellow">Em teste</span></td>
+    </tr>
+  </table>
+</div>
+
+</main>
+
+<div style="border-top: 1px solid var(--border); padding: 20px 40px; margin-top: 40px; color: var(--text-dim); font-size: 12px;">
+  Interlagos Racing &mdash; Analise Fisica Trigger Rally &mdash; branch <code>feature/POC_FISICA</code> &mdash; 2026-05-30
+</div>
+
+</body>
+</html>

@@ -10,7 +10,8 @@
       "WebSearch",
       "Bash(ls -la /c/saturn/SaturnRingLib-main/Projects/Interlagos_racing/src/track*.*)",
       "Bash(g++ -std=c++17 tests/track_segment_creation_lwr_tests.cpp -o run_lwr_tests_new.exe)",
-      "Bash(./run_lwr_tests_new.exe)"
+      "Bash(./run_lwr_tests_new.exe)",
+      "Bash(python tools/analyze_turning_examples.py --simulate-only)"
     ]
   }
 }

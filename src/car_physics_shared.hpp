@@ -22,13 +22,16 @@ struct DynamicsState
     uint8_t gear = 1u;                // 1..6 forward gears
     int16_t engineRpm = 1000;         // debug/telemetry
     uint8_t launchStraightFrames = 0u;
+    uint8_t forwardLaunchLateralLockFrames = 0u;
     bool steerLaunchArmed = true;
+    bool wasKinematic = false;
 };
 
 struct GroundState
 {
     Fxp surfaceYTarget = Fxp::BuildRaw(0);
     Fxp surfaceYFiltered = Fxp::BuildRaw(0);
+    Fxp verticalVelocity = Fxp::BuildRaw(0);
     Fxp correctionX = Fxp::BuildRaw(0);
     Fxp correctionZ = Fxp::BuildRaw(0);
     Fxp lastStableX = Fxp::BuildRaw(0);
@@ -39,6 +42,7 @@ struct GroundState
     uint8_t lastSurfaceType = 0u;
     uint8_t surfaceProbeCooldown = 0u;
     uint8_t auxProbeCooldown = 0u;
+    uint8_t surfaceContactCooldown = 0u;
     bool hasGroundSupport = false;
     bool edgeLeftLost = false;
     bool edgeRightLost = false;
@@ -53,6 +57,26 @@ struct GroundState
     Fxp lastWallPushZ = Fxp::BuildRaw(0);
 };
 
+struct SurfaceQueryResult
+{
+    bool valid = false;
+    bool hasDriveableSupport = false;
+    int32_t segmentId = -1;
+    int16_t faceIndex = -1;
+    uint16_t familyId = 0u;
+    uint8_t surfaceType = 0u;
+    Fxp surfaceY = Fxp::BuildRaw(0);
+    Vector3D normal = Vector3D(0.0, -1.0, 0.0);
+};
+
+struct BodyClip
+{
+    Fxp localForward = Fxp::BuildRaw(0);
+    Fxp localRight = Fxp::BuildRaw(0);
+    Fxp force = Fxp::BuildRaw(0);
+    Fxp dampening = Fxp::BuildRaw(0);
+};
+
 struct FrameStepOutput
 {
     Fxp speedAbs = Fxp::BuildRaw(0);
@@ -61,10 +85,13 @@ struct FrameStepOutput
     Fxp planarDx = Fxp::BuildRaw(0);
     Fxp planarDz = Fxp::BuildRaw(0);
     int16_t yawStepDeg = 0;
+    bool wasKinematicMode = false;
 };
 
 struct Tunables
 {
+    static constexpr bool kEnableSaturnLowCostPhysics =
+        Game::PhysicsFeatureFlags::kEnableSaturnLowCostPhysics;
     static constexpr bool kEnableSurfaceTypeQuery =
         Game::PhysicsFeatureFlags::kEnableSurfaceTypeQuery;
     static constexpr bool kEnableFaceCache =
@@ -93,8 +120,10 @@ struct Tunables
     };
 
     static constexpr uint8_t kSurfaceProbeIntervalFrames = 2u;
-    static constexpr uint8_t kLowDynamicsProbeIntervalFrames = 2u;
-    static constexpr uint8_t kMediumDynamicsProbeIntervalFrames = 2u;
+    static constexpr uint8_t kLowDynamicsProbeIntervalFrames =
+        kEnableSaturnLowCostPhysics ? 4u : 2u;
+    static constexpr uint8_t kMediumDynamicsProbeIntervalFrames =
+        kEnableSaturnLowCostPhysics ? 4u : 2u;
     static constexpr int16_t kLowDynamicsSpeedProxyThreshold = 30; // km/h
     static constexpr int16_t kLowDynamicsSteeringThreshold = 8;     // percent
     static constexpr int16_t kMediumDynamicsSpeedProxyMin = 25;     // km/h
@@ -182,6 +211,10 @@ struct Tunables
     // Low-speed launch handling:
     // use a kinematic yaw model and suppress lateral slide until speed stabilizes.
     static constexpr Fxp kLaunchKinematicSpeedThreshold = Fxp::BuildRaw(0x00028000); // 2.5
+    static constexpr uint8_t kForwardLaunchLateralLockFrames = 2u;
+    // Keep steering sign lock active a bit longer after standstill launch so
+    // the car cannot briefly arc to the opposite side during kinematic->slip handoff.
+    static constexpr Fxp kForwardSteerSignLockSpeedThreshold = Fxp::BuildRaw(0x00040000); // 4.0
     static constexpr Fxp kLaunchPureForwardSpeedThreshold = Fxp::BuildRaw(0x00002000); // 0.125 (~5.3 km/h)
     static constexpr Fxp kLaunchCrawlSpeedThreshold = Fxp::BuildRaw(0x00002000); // 0.125 (~5.3 km/h)
     static constexpr Fxp kLaunchYawRateResponse = Fxp::BuildRaw(0x0000A000);         // 0.625
@@ -202,12 +235,31 @@ struct Tunables
     static constexpr Fxp kProbeFrontMax = Fxp::BuildRaw(0x00030000);           // 3.0
     static constexpr Fxp kProbeSlopeAssistSpeed = Fxp::BuildRaw(0x00010000);   // 1.0
     static constexpr uint8_t kAuxProbeCadenceFrames = 2u;
-    static constexpr uint8_t kGripProbeIntervalFrames = 2u;
+    static constexpr uint8_t kGripProbeIntervalFrames =
+        kEnableSaturnLowCostPhysics ? 4u : 2u;
+    static constexpr uint8_t kSurfaceContactCadenceFrames =
+        kEnableSaturnLowCostPhysics ? 4u : 1u;
+    static constexpr bool kPreferReducedGroundProbe =
+        kEnableSaturnLowCostPhysics;
     static constexpr Fxp kProbeHalfWheelBase = Fxp::BuildRaw(0x0000D999);      // ~0.85
     static constexpr Fxp kProbeHalfTrack = Fxp::BuildRaw(0x00008CCC);          // ~0.55
     static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x00012666);     // ~1.15
     static constexpr bool kEnableWallPlanarPush =
         Game::PhysicsFeatureFlags::kEnableWallCollisionRuntime;
+    static constexpr bool kEnableBodyClipPlanarReaction =
+        !kEnableSaturnLowCostPhysics;
+    static constexpr Fxp kBodyClipPenetrationBias = Fxp::BuildRaw(0x00000800);  // 0.03125
+    static constexpr Fxp kBodyClipMaxDepth = Fxp::BuildRaw(0x00018000);         // 1.5
+    static constexpr Fxp kBodyClipMinPlanarNormalAbs = Fxp::BuildRaw(0x00002000); // 0.125
+    static constexpr Fxp kBodyClipWallRadius = Fxp::BuildRaw(0x0000A666);       // ~0.65
+    static constexpr Fxp kBodyClipWallPushScale = Fxp::BuildRaw(0x00008000);    // 0.50
+    static constexpr Fxp kBodyClipMaxPushPerClip = Fxp::BuildRaw(0x0000999A);   // 0.60
+    static constexpr std::array<BodyClip, 4> kBodyClips = {{
+        { kProbeHalfWheelBase,  Fxp::BuildRaw(-kProbeHalfTrack.RawValue()), Fxp::BuildRaw(0x0000999A), Fxp::BuildRaw(0x00002000) },
+        { kProbeHalfWheelBase,  kProbeHalfTrack,                              Fxp::BuildRaw(0x0000999A), Fxp::BuildRaw(0x00002000) },
+        { Fxp::BuildRaw(-kProbeHalfWheelBase.RawValue()), Fxp::BuildRaw(-kProbeHalfTrack.RawValue()), Fxp::BuildRaw(0x0000999A), Fxp::BuildRaw(0x00002000) },
+        { Fxp::BuildRaw(-kProbeHalfWheelBase.RawValue()), kProbeHalfTrack,    Fxp::BuildRaw(0x0000999A), Fxp::BuildRaw(0x00002000) }
+    }};
     static constexpr Fxp kEdgeRecoverPush = Fxp::BuildRaw(0);                  // disabled (bias fix)
     static constexpr Fxp kMaxPlanarCorrectionPerFrame = Fxp::BuildRaw(0x00008000); // 0.50
     static constexpr Fxp kNoSupportSpeedDamping = Fxp::BuildRaw(0x00010000);   // 1.0
@@ -218,6 +270,11 @@ struct Tunables
     static constexpr Fxp kChassisVerticalFollowAlpha = Fxp::BuildRaw(0x00002666); // ~0.15 (50 percent smoother)
     // Allow hard snap only when error is very large to avoid micro hops.
     static constexpr Fxp kChassisVerticalHardSnapThreshold = Fxp::BuildRaw(0x00030000); // 3.0
+    static constexpr bool kEnableVerticalBounceSmoothing = true;
+    // Conservative spring-damper approximation for SH2 stability.
+    // Keep steady-state gain <= 1.0 to avoid bounce amplification.
+    static constexpr Fxp kVerticalBounceFollow = Fxp::BuildRaw(0x00003000); // 0.1875
+    static constexpr Fxp kVerticalBounceDamping = Fxp::BuildRaw(0x0000A000); // 0.625
 };
 
 inline Fxp Clamp(const Fxp& value, const Fxp& minValue, const Fxp& maxValue)

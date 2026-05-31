@@ -1,5 +1,5 @@
 # Configuration
-SRL_MAX_TEXTURES = 1000         # Number of VDP1 texture slots
+SRL_MAX_TEXTURES = 512          # Number of VDP1 texture slots (memory-optimized for Saturn)
 SRL_MODE = NTSC                 # Valid options are PAL or NTSC
 SRL_HIGH_RES = 0                # 480i mode
 SRL_FRAMERATE = 0               # Framerate control (0=dynamic VDP1 double-buffer, 1=fixed, 2=30fps, etc.)
@@ -27,9 +27,9 @@ PHYSICS_POC_MODE ?= 1
 #   make                      → debug (default): LWR stage tracing enabled
 #   make BUILD_PROFILE=perf   → perf: tracing disabled, cleanest LWR baseline
 ifeq ($(BUILD_PROFILE),perf)
-SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE)
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DPHYS_SATURN_LOW_COST=1
 else
-SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DTRACK_LWR_STAGE_TRACE
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DPHYS_SATURN_LOW_COST=1
 endif
 
 # Disk name

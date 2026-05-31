@@ -41,6 +41,11 @@ public:
     }
 
 private:
+    static CarPhysics::Fxp DotPlanar(const Vector3D& a, const Vector3D& b)
+    {
+        return (a.X * b.X) + (a.Z * b.Z);
+    }
+
     static SRL::Math::Types::Fxp ResolveGripScaleFromSurfaceType(uint8_t surfaceType)
     {
         switch (surfaceType)
@@ -100,6 +105,147 @@ private:
         }
     }
 
+    void ApplyBodyClipPlanarReaction(const ITrackCollisionQuery* trackQuery,
+                                     GameplayFrameState& ioFrameState,
+                                     const Vector3D& carWorldPosition,
+                                     int32_t carYawDeg)
+    {
+        if constexpr (!CarPhysics::Tunables::kEnableBodyClipPlanarReaction)
+        {
+            return;
+        }
+        if (!trackQuery)
+        {
+            return;
+        }
+
+        const auto yawAngle = SRL::Math::Types::Angle::FromDegrees(
+            SRL::Math::Types::Fxp::BuildRaw(carYawDeg << 16));
+        const CarPhysics::Fxp sinYaw = SRL::Math::Trigonometry::Sin(yawAngle);
+        const CarPhysics::Fxp cosYaw = SRL::Math::Trigonometry::Cos(yawAngle);
+        const CarPhysics::Fxp forwardX = sinYaw;
+        const CarPhysics::Fxp forwardZ = CarPhysics::Fxp::BuildRaw(-cosYaw.RawValue());
+        const CarPhysics::Fxp rightX = cosYaw;
+        const CarPhysics::Fxp rightZ = sinYaw;
+
+        const Vector3D forwardDirection(forwardX, CarPhysics::Fxp::BuildRaw(0), forwardZ);
+        const CarPhysics::Fxp worldVelX =
+            (forwardX * dynamicsState_.forwardSpeed) + (rightX * dynamicsState_.lateralSpeed);
+        const CarPhysics::Fxp worldVelZ =
+            (forwardZ * dynamicsState_.forwardSpeed) + (rightZ * dynamicsState_.lateralSpeed);
+        const Vector3D worldPlanarVelocity(worldVelX,
+                                           CarPhysics::Fxp::BuildRaw(0),
+                                           worldVelZ);
+
+        const CarPhysics::Fxp maxPushPerClip = CarPhysics::Tunables::kBodyClipMaxPushPerClip;
+        const CarPhysics::Fxp minPushPerClip =
+            CarPhysics::Fxp::BuildRaw(-maxPushPerClip.RawValue());
+
+        int32_t seedSegmentId = (groundState_.lastSurfaceSegmentId > 0)
+            ? static_cast<int32_t>(groundState_.lastSurfaceSegmentId)
+            : ioFrameState.activeSegmentId;
+        if (seedSegmentId <= 0)
+        {
+            seedSegmentId = -1;
+        }
+
+        for (const auto& clip : CarPhysics::Tunables::kBodyClips)
+        {
+            Vector3D clipWorldPosition = carWorldPosition;
+            clipWorldPosition.X +=
+                (forwardX * clip.localForward) + (rightX * clip.localRight);
+            clipWorldPosition.Z +=
+                (forwardZ * clip.localForward) + (rightZ * clip.localRight);
+
+            CarPhysics::SurfaceQueryResult surface{};
+            if (!CarPhysics::GroundFollower::QuerySurface(trackQuery,
+                                                          clipWorldPosition,
+                                                          seedSegmentId,
+                                                          surface))
+            {
+                continue;
+            }
+            if (surface.segmentId > 0)
+            {
+                seedSegmentId = surface.segmentId;
+            }
+
+            if constexpr (CarPhysics::Tunables::kEnableWallPlanarPush)
+            {
+                Vector3D wallPush{};
+                int32_t wallSegmentId = -1;
+                if (trackQuery->ResolvePlanarWallPush(clipWorldPosition,
+                                                      forwardDirection,
+                                                      CarPhysics::Tunables::kBodyClipWallRadius,
+                                                      wallPush,
+                                                      &wallSegmentId,
+                                                      seedSegmentId))
+                {
+                    const CarPhysics::Fxp wallPushX = CarPhysics::Clamp(
+                        wallPush.X * CarPhysics::Tunables::kBodyClipWallPushScale,
+                        minPushPerClip,
+                        maxPushPerClip);
+                    const CarPhysics::Fxp wallPushZ = CarPhysics::Clamp(
+                        wallPush.Z * CarPhysics::Tunables::kBodyClipWallPushScale,
+                        minPushPerClip,
+                        maxPushPerClip);
+                    groundState_.correctionX += wallPushX;
+                    groundState_.correctionZ += wallPushZ;
+                    if (wallSegmentId > 0) seedSegmentId = wallSegmentId;
+                    if (ioFrameState.debugWallHit == 0u)
+                    {
+                        ioFrameState.debugWallHit = 1u;
+                        ioFrameState.debugWallSegmentId = wallSegmentId;
+                        ioFrameState.debugWallPushX = CarPhysics::FxpToDebugInt(wallPushX);
+                        ioFrameState.debugWallPushZ = CarPhysics::FxpToDebugInt(wallPushZ);
+                    }
+                }
+            }
+
+            const CarPhysics::Fxp penetrationDepth =
+                (surface.surfaceY - clipWorldPosition.Y) * surface.normal.Y;
+            if (penetrationDepth <= CarPhysics::Tunables::kBodyClipPenetrationBias)
+            {
+                continue;
+            }
+
+            const CarPhysics::Fxp planarNormalAbs = surface.normal.X.Abs() + surface.normal.Z.Abs();
+            if (planarNormalAbs < CarPhysics::Tunables::kBodyClipMinPlanarNormalAbs)
+            {
+                continue;
+            }
+
+            const CarPhysics::Fxp clampedDepth =
+                CarPhysics::Fxp::Min(penetrationDepth, CarPhysics::Tunables::kBodyClipMaxDepth);
+            const CarPhysics::Fxp response = clampedDepth * clip.force;
+            const Vector3D planarNormal(surface.normal.X,
+                                        CarPhysics::Fxp::BuildRaw(0),
+                                        surface.normal.Z);
+            const CarPhysics::Fxp normalSpeed =
+                DotPlanar(worldPlanarVelocity, planarNormal);
+            const CarPhysics::Fxp dampedResponse =
+                response - (normalSpeed * clip.dampening);
+
+            const CarPhysics::Fxp clipPushX = CarPhysics::Clamp(
+                surface.normal.X * dampedResponse,
+                minPushPerClip,
+                maxPushPerClip);
+            const CarPhysics::Fxp clipPushZ = CarPhysics::Clamp(
+                surface.normal.Z * dampedResponse,
+                minPushPerClip,
+                maxPushPerClip);
+            groundState_.correctionX += clipPushX;
+            groundState_.correctionZ += clipPushZ;
+        }
+
+        const CarPhysics::Fxp maxPlanar = CarPhysics::Tunables::kMaxPlanarCorrectionPerFrame;
+        const CarPhysics::Fxp minPlanar = CarPhysics::Fxp::BuildRaw(-maxPlanar.RawValue());
+        groundState_.correctionX = CarPhysics::Clamp(groundState_.correctionX, minPlanar, maxPlanar);
+        groundState_.correctionZ = CarPhysics::Clamp(groundState_.correctionZ, minPlanar, maxPlanar);
+        ioFrameState.debugCorrX = CarPhysics::FxpToDebugInt(groundState_.correctionX);
+        ioFrameState.debugCorrZ = CarPhysics::FxpToDebugInt(groundState_.correctionZ);
+    }
+
     void ResetState(GameplayFrameState& ioFrameState)
     {
         CarPhysics::DynamicsModel::Reset(dynamicsState_);
@@ -121,35 +267,57 @@ private:
         physicsFrame.carWorldPosition = ioCarWorldPosition;
         physicsFrame.carYawDeg = ioCarYawDeg;
         longitudinal_.PrepareInputs(ioFrameState, dynamicsState_, physicsFrame);
-        lateralYaw_.ApplyLaunchTurnAssist(physicsFrame, dynamicsState_);
+        const auto launchAssist = lateralYaw_.ApplyLaunchTurnAssist(physicsFrame, dynamicsState_);
+        if (launchAssist.launchEdge)
+        {
+            dynamicsState_.forwardLaunchLateralLockFrames =
+                CarPhysics::Tunables::kForwardLaunchLateralLockFrames;
+        }
 
         UpdateSurfaceGripScale(trackQuery, physicsFrame, ioCarWorldPosition);
 
         const Vector3D preStepPosition = ioCarWorldPosition;
-        const int32_t preStepYawDeg = ioCarYawDeg;
+        const bool wasKinematicPrev = dynamicsState_.wasKinematic;
         CarPhysics::FrameStepOutput stepOutput{};
         CarPhysics::DynamicsModel::IntegratePlanar(physicsFrame,
                                                    dynamicsState_,
                                                    ioCarWorldPosition,
                                                    ioCarYawDeg,
                                                    stepOutput);
+        const bool kinematicToSlipTransition =
+            wasKinematicPrev && !stepOutput.wasKinematicMode;
 
-        if (lateralYaw_.ShouldForceStraightThisFrame(physicsFrame.frameId))
+        if (stepOutput.wasKinematicMode)
         {
-            // Lock launch displacement to forward axis for this frame.
+            // Kinematic mode: displace along the post-step heading so the car always
+            // moves in the direction it now faces — no crab-walk from pre-step yaw lag.
             const auto yawAngle = SRL::Math::Types::Angle::FromDegrees(
-                SRL::Math::Types::Fxp::BuildRaw(preStepYawDeg << 16));
+                SRL::Math::Types::Fxp::BuildRaw(ioCarYawDeg << 16));
             const CarPhysics::Fxp sinYaw = SRL::Math::Trigonometry::Sin(yawAngle);
             const CarPhysics::Fxp cosYaw = SRL::Math::Trigonometry::Cos(yawAngle);
             const CarPhysics::Fxp negCosYaw = CarPhysics::Fxp::BuildRaw(-cosYaw.RawValue());
-
-            const Vector3D delta = ioCarWorldPosition - preStepPosition;
-            const CarPhysics::Fxp localLong =
-                (sinYaw * delta.X) + (negCosYaw * delta.Z);
-
+            ioCarWorldPosition.X = preStepPosition.X + (sinYaw * dynamicsState_.forwardSpeed);
+            ioCarWorldPosition.Z = preStepPosition.Z + (negCosYaw * dynamicsState_.forwardSpeed);
+        }
+        else if (kinematicToSlipTransition && launchAssist.lowSpeedAssistActive)
+        {
+            // First slip frame after low-speed kinematic launch:
+            // drop lateral projection from the integrated displacement so entry
+            // remains symmetric/deterministic for left/right starts at zero speed.
+            const auto yawAngle = SRL::Math::Types::Angle::FromDegrees(
+                SRL::Math::Types::Fxp::BuildRaw(ioCarYawDeg << 16));
+            const CarPhysics::Fxp sinYaw = SRL::Math::Trigonometry::Sin(yawAngle);
+            const CarPhysics::Fxp cosYaw = SRL::Math::Trigonometry::Cos(yawAngle);
+            const CarPhysics::Fxp negCosYaw = CarPhysics::Fxp::BuildRaw(-cosYaw.RawValue());
+            const CarPhysics::Fxp deltaX = ioCarWorldPosition.X - preStepPosition.X;
+            const CarPhysics::Fxp deltaZ = ioCarWorldPosition.Z - preStepPosition.Z;
+            CarPhysics::Fxp localLong = (sinYaw * deltaX) + (negCosYaw * deltaZ);
+            if (localLong < CarPhysics::Fxp::BuildRaw(0))
+            {
+                localLong = CarPhysics::Fxp::BuildRaw(0);
+            }
             ioCarWorldPosition.X = preStepPosition.X + (sinYaw * localLong);
             ioCarWorldPosition.Z = preStepPosition.Z + (negCosYaw * localLong);
-            ioCarYawDeg = preStepYawDeg;
         }
 
         const int32_t sampledSegmentId =
@@ -158,6 +326,13 @@ private:
                                                      stepOutput,
                                                      groundState_,
                                                      physicsFrame);
+        if constexpr (CarPhysics::Tunables::kEnableBodyClipPlanarReaction)
+        {
+            ApplyBodyClipPlanarReaction(trackQuery,
+                                        physicsFrame,
+                                        ioCarWorldPosition,
+                                        ioCarYawDeg);
+        }
         CarPhysics::GroundFollower::ApplyVerticalAdhesion(groundState_, ioCarWorldPosition);
 
         const int32_t netDxRaw =

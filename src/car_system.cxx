@@ -71,14 +71,7 @@ CarSystem::CarSystem(ModelObject* carObj, bool smooth, const Config& config)
         if (meshId >= meshCount) continue;
         rendererConfig.drawOrder[validOrderCount++] = meshId;
     }
-    if (validOrderCount == 0u && meshCount > 0u)
-    {
-        validOrderCount = std::min(meshCount, rendererConfig.drawOrder.size());
-        for (size_t i = 0; i < validOrderCount; ++i)
-        {
-            rendererConfig.drawOrder[i] = i;
-        }
-    }
+    // If no explicit draw order was configured, MeshRenderer will draw all meshes.
     rendererConfig.drawOrderCount = validOrderCount;
     rendererConfig.wireframeOnly = config_.wireframeOnly;
 
@@ -145,11 +138,18 @@ void CarSystem::TickCommandState()
             (commandState_.steerDirection > 0)
                 ? CarSystem::kSteeringMax
                 : static_cast<int16_t>(-CarSystem::kSteeringMax);
+        // Snap also when steering is crossing center (opposite sign) with throttle —
+        // the cross-center ramp would deliver wrong-sign steering to physics for 1-2 frames,
+        // causing a visible arc in the wrong direction before the intended turn.
+        const bool steeringCrossing =
+            (commandState_.steerDirection < 0 && commandState_.steering > 0) ||
+            (commandState_.steerDirection > 0 && commandState_.steering < 0);
         const bool launchSteerSnap =
             !commandState_.braking &&
             commandState_.throttleInputHeld &&
             ((wheelInput_.speedKmh <= CarSystem::kLaunchSteerSnapSpeedKmh) ||
-             (std::abs(commandState_.steering) <= CarSystem::kSteeringStep));
+             (std::abs(commandState_.steering) <= CarSystem::kSteeringStep) ||
+             steeringCrossing);
         // In brake/reverse mode steering follows the current arrow directly.
         // No cross-center smoothing or one-shot limits.
         if (commandState_.braking || launchSteerSnap)

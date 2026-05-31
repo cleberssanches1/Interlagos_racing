@@ -24,15 +24,37 @@ public:
     }
 
     void PrepareInputs(const GameplayFrameState& rawFrame,
+                       CarPhysics::DynamicsState& dynamics,
+                       GameplayFrameState& outFrame)
+    {
+        PrepareInputsCore(rawFrame, dynamics, outFrame);
+        if ((rawFrame.throttle == 0) &&
+            !rawFrame.braking &&
+            (dynamics.forwardSpeed > CarPhysics::Fxp::BuildRaw(0)))
+        {
+            ApplyCoastLinearDrag(dynamics);
+        }
+    }
+
+    void PrepareInputs(const GameplayFrameState& rawFrame,
                        const CarPhysics::DynamicsState& dynamics,
                        GameplayFrameState& outFrame)
+    {
+        PrepareInputsCore(rawFrame, dynamics, outFrame);
+    }
+
+    Mode CurrentMode() const { return mode_; }
+
+private:
+    void PrepareInputsCore(const GameplayFrameState& rawFrame,
+                           const CarPhysics::DynamicsState& dynamics,
+                           GameplayFrameState& outFrame)
     {
         outFrame = rawFrame;
 
         const bool throttleOn = rawFrame.throttle > 0;
         const bool brakeOn = rawFrame.braking;
         const bool movingForward = dynamics.forwardSpeed > CarPhysics::Fxp::BuildRaw(0);
-        const bool movingReverse = dynamics.forwardSpeed < CarPhysics::Fxp::BuildRaw(0);
 
         if (brakeOn)
         {
@@ -84,9 +106,12 @@ public:
         }
     }
 
-    Mode CurrentMode() const { return mode_; }
+    static void ApplyCoastLinearDrag(CarPhysics::DynamicsState& dynamics)
+    {
+        // Trigger Rally-inspired linear drag term (F = -k*v) for natural coasting.
+        dynamics.forwardSpeed -= dynamics.forwardSpeed * CarPhysics::Tunables::kRollingDragCoeff;
+    }
 
-private:
     Mode mode_ = Mode::Idle;
     uint8_t transitionHoldFrames_ = 0u;
 };

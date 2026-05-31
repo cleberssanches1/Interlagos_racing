@@ -22,8 +22,6 @@ public:
         const bool hasForwardDriveIntent =
             (ioFrameState.throttle > 0) &&
             !ioFrameState.braking;
-        const bool hasDriveOrBrakeCommand =
-            (ioFrameState.throttle > 0) || ioFrameState.braking;
 
         // Estimate speed in km/h from forward speed proxy units.
         const Fxp speedToKmh = Fxp::BuildRaw(
@@ -141,10 +139,14 @@ public:
         const Fxp steerScale =
             coastNoSlideMode ? Tunables::kCoastNoSlideSteerScale : Fxp::BuildRaw(1 << 16);
         const Fxp targetSteerDeg = (steerNorm * steerScale) * Tunables::kMaxSteerDeg;
+        const bool steerCrossesZero =
+            ((ioFrameState.steering < 0) && (ioState.steerDeg > Fxp::BuildRaw(0))) ||
+            ((ioFrameState.steering > 0) && (ioState.steerDeg < Fxp::BuildRaw(0)));
         const bool launchSteerSnap =
             (ioFrameState.steering != 0) &&
-            (ioState.forwardSpeed.Abs() < Tunables::kForwardSteerLaunchSpeedThreshold) &&
-            (ioFrameState.throttle > 0 || ioFrameState.braking);
+            (ioFrameState.throttle > 0 || ioFrameState.braking) &&
+            ((ioState.forwardSpeed.Abs() < Tunables::kForwardSteerLaunchSpeedThreshold) ||
+             (steerCrossesZero && outStep.speedAbs < Tunables::kLaunchKinematicSpeedThreshold));
         if (launchSteerSnap)
         {
             // Remove cross-zero lag at launch so yaw cannot start on the wrong side.
@@ -182,8 +184,10 @@ public:
         // Match gameplay convention directly:
         // negative steering => left turn, positive steering => right turn.
         // Reverse steering: yaw response must be inverted when moving backwards.
+        // Only invert during intentional reverse (braking held) — not during reverse→forward
+        // transition where forwardSpeed is briefly negative but throttle is pressed.
         Fxp steerEffDeg = ioState.steerDeg * steerAuthority;
-        if (ioState.forwardSpeed < Fxp::BuildRaw(0))
+        if (ioState.forwardSpeed < Fxp::BuildRaw(0) && ioFrameState.braking)
         {
             steerEffDeg = Fxp::BuildRaw(-steerEffDeg.RawValue());
         }
@@ -192,50 +196,63 @@ public:
             hasForwardDriveCommand &&
             hasSteerCommand &&
             (ioState.launchStraightFrames > 0u);
-        const bool steerTransitioning =
-            ((ioFrameState.steering < 0) && (ioState.steerDeg > Fxp::BuildRaw(0))) ||
-            ((ioFrameState.steering > 0) && (ioState.steerDeg < Fxp::BuildRaw(0)));
-        if (steerTransitioning)
-        {
-            // Prevent one-frame yaw in the wrong direction while steer lerp crosses zero.
-            ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
-            ioState.yawAccumulatorDegRaw = 0;
-        }
 
+        // Use hasForwardDriveIntent (not hasForwardDriveCommand) so kinematic fires even during
+        // the reverse→forward transition (forwardSpeed briefly < 0), preventing the slip model
+        // from generating wrong-direction yaw before forwardSpeed crosses zero.
         const bool useLowSpeedKinematic =
-            hasForwardDriveCommand &&
+            hasForwardDriveIntent &&
             hasSteerCommand &&
             (outStep.speedAbs < Tunables::kLaunchKinematicSpeedThreshold);
-        const bool forcePureForwardLaunch =
-            hasForwardDriveCommand &&
-            hasSteerCommand &&
-            (outStep.speedAbs < Tunables::kLaunchPureForwardSpeedThreshold);
 
         if (useLowSpeedKinematic)
         {
-            // Launch from rest and low-speed turning must not inject lateral slide.
+            // Arcade kinematic: yaw rate = steer x maxYaw, lateralSpeed = 0.
+            // Direct mapping means the sign is always correct from frame 1 — no guards needed.
             ioState.lateralSpeed = Fxp::BuildRaw(0);
-            if (forceStraightLaunch || forcePureForwardLaunch || steerTransitioning)
+            ioState.wasKinematic = true;
+            outStep.wasKinematicMode = true;
+            const Fxp kKinematicYawSpeedLoss = Fxp::BuildRaw(0x00010000); // 1.0
+            const Fxp kKinematicYawMinScale = Fxp::BuildRaw(0x00008000); // 0.5
+            Fxp kinematicYawScale = Fxp::BuildRaw(1 << 16) - (speedRatio * kKinematicYawSpeedLoss);
+            if (kinematicYawScale < kKinematicYawMinScale)
             {
-                // First launch frame: move straight, then begin turn.
-                ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
-                ioState.yawAccumulatorDegRaw = 0;
+                kinematicYawScale = kKinematicYawMinScale;
             }
-            else
-            {
-                // Low-speed kinematic bicycle yaw: omega ~= v * delta / L
-                // (small-angle form, stable for our max steer range).
-                const Fxp wheelbase = Tunables::kWheelbaseFront + Tunables::kWheelbaseRear;
-                const Fxp steerEffRad = steerEffDeg * Tunables::kDegToRad;
-                const Fxp targetYawRateDegPerFrame =
-                    ((ioState.forwardSpeed * steerEffRad) / wheelbase) * Tunables::kRadToDeg;
-                ioState.yawRateDegPerFrame +=
-                    (targetYawRateDegPerFrame - ioState.yawRateDegPerFrame) *
-                    Tunables::kLaunchYawRateResponse;
-            }
+
+            const Fxp yawKinematic =
+                (steerNorm * Tunables::kMaxYawRateDegPerFrame) * kinematicYawScale;
+            // Sign convention preserved:
+            // steering < 0 (left) -> positive yaw rate.
+            ioState.yawRateDegPerFrame = Fxp::BuildRaw(-yawKinematic.RawValue());
         }
         else
         {
+            // Arcade: zero all lateral state on kinematic exit to prevent slip model
+            // from using the accumulated yaw rate as a lateral impulse (the "slide" bug).
+            // If kinematic exited because speed crossed the threshold, keep yawRate
+            // for smooth transition; otherwise the exit was due to input release — zero it.
+            const bool prevWasKinematic = ioState.wasKinematic;
+            ioState.wasKinematic = false;
+            if (prevWasKinematic)
+            {
+                ioState.lateralSpeed = Fxp::BuildRaw(0);
+                if (outStep.speedAbs < Tunables::kLaunchKinematicSpeedThreshold)
+                {
+                    // Input was released while at low speed: clear yaw residue so the
+                    // slip model cannot convert it into lateral slide.
+                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                    ioState.yawAccumulatorDegRaw = 0;
+                }
+                else
+                {
+                    // Speed-cross exit from kinematic: keep yaw continuity but
+                    // reduce first-frame lateral impulse.
+                    ioState.yawRateDegPerFrame -=
+                        ioState.yawRateDegPerFrame * Fxp::BuildRaw(0x00004000); // 0.25
+                }
+            }
+
             // Two-axle slip model inspired by TORCS/VDrift, adapted for fixed-point Saturn:
             // alpha_f ~= delta - (vy + lf*r)/|vx|, alpha_r ~= -(vy - lr*r)/|vx|
             // Fy = clamp(-Ca * alpha, +/- FyCap)
@@ -260,7 +277,17 @@ public:
             const Fxp yawCoupling = ioState.forwardSpeed * yawRateRadPerFrame * Tunables::kYawCoupling;
             lateralAccel += yawCoupling;
             ioState.lateralSpeed += lateralAccel;
-            ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kLateralDampingCoeff;
+            // 16.2: strengthen damping at low speed to suppress launch oscillation
+            // while keeping high-speed slip behavior close to current tuning.
+            const Fxp kLateralDampingLowSpeedBoost = Fxp::BuildRaw(0x00002000); // 0.125
+            const Fxp lowSpeedBlend = Fxp::BuildRaw(1 << 16) - speedRatio;
+            Fxp lateralDampingCoeff =
+                Tunables::kLateralDampingCoeff + (lowSpeedBlend * kLateralDampingLowSpeedBoost);
+            if (lateralDampingCoeff > Tunables::kCoastLateralDampingCoeff)
+            {
+                lateralDampingCoeff = Tunables::kCoastLateralDampingCoeff;
+            }
+            ioState.lateralSpeed -= ioState.lateralSpeed * lateralDampingCoeff;
 
             const Fxp yawMoment =
                 (fyFront * Tunables::kWheelbaseFront) - (fyRear * Tunables::kWheelbaseRear);
@@ -272,47 +299,19 @@ public:
             ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kYawDamping;
         }
 
-        const bool crawlLaunchMode =
-            hasDriveOrBrakeCommand &&
-            hasSteerCommand &&
-            (outStep.speedAbs < Tunables::kLaunchCrawlSpeedThreshold);
-        if (crawlLaunchMode)
-        {
-            // Crawl launch must not inject lateral slip and must never rotate
-            // to the opposite side of the current steering command.
-            ioState.lateralSpeed = Fxp::BuildRaw(0);
-            if (ioFrameState.steering < 0 && ioState.yawRateDegPerFrame > Fxp::BuildRaw(0))
-            {
-                ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
-                ioState.yawAccumulatorDegRaw = 0;
-            }
-            else if (ioFrameState.steering > 0 && ioState.yawRateDegPerFrame < Fxp::BuildRaw(0))
-            {
-                ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
-                ioState.yawAccumulatorDegRaw = 0;
-            }
-        }
-
+        // Keep steering direction stable while accelerating in a turn.
+        // This prevents right/left sign inversions injected by slip transients
+        // after the standstill launch phase.
         const bool forwardLaunchSignLock =
-            hasForwardDriveCommand &&
-            hasSteerCommand &&
-            (outStep.speedAbs < Tunables::kLaunchKinematicSpeedThreshold);
+            hasForwardDriveIntent &&
+            hasSteerCommand;
         if (forwardLaunchSignLock)
         {
-            // Keep launch sign strictly symmetric:
-            // left input never allows right yaw residue, and vice-versa.
+            // Keep launch sign strictly symmetric.
+            // Coord convention: yaw increasing = left turn.
+            // Left steer (steering < 0) should produce positive yaw rate.
+            // Clamp any negative residue that would cause a right-turn artifact.
             if (ioFrameState.steering < 0)
-            {
-                if (ioState.yawRateDegPerFrame > Fxp::BuildRaw(0))
-                {
-                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
-                }
-                if (ioState.yawAccumulatorDegRaw > 0)
-                {
-                    ioState.yawAccumulatorDegRaw = 0;
-                }
-            }
-            else if (ioFrameState.steering > 0)
             {
                 if (ioState.yawRateDegPerFrame < Fxp::BuildRaw(0))
                 {
@@ -323,6 +322,45 @@ public:
                     ioState.yawAccumulatorDegRaw = 0;
                 }
             }
+            else if (ioFrameState.steering > 0)
+            {
+                if (ioState.yawRateDegPerFrame > Fxp::BuildRaw(0))
+                {
+                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                }
+                if (ioState.yawAccumulatorDegRaw > 0)
+                {
+                    ioState.yawAccumulatorDegRaw = 0;
+                }
+            }
+        }
+
+        // Launch stabilization (symmetric L/R):
+        // 1) first frames after standstill launch: hard-lock lateral drift.
+        // 2) next low-speed frames: strong damping as soft fallback.
+        const bool lowSpeedForwardSteerLaunch =
+            hasForwardDriveIntent &&
+            hasSteerCommand &&
+            (outStep.speedAbs < Tunables::kForwardSteerSignLockSpeedThreshold);
+        if (lowSpeedForwardSteerLaunch)
+        {
+            if (ioState.forwardLaunchLateralLockFrames > 0u)
+            {
+                ioState.lateralSpeed = Fxp::BuildRaw(0);
+                --ioState.forwardLaunchLateralLockFrames;
+            }
+            else
+            {
+                ioState.lateralSpeed -= ioState.lateralSpeed * Fxp::BuildRaw(0x0000C000); // 0.75
+                if (ioState.lateralSpeed.Abs() < Fxp::BuildRaw(0x00002000))
+                {
+                    ioState.lateralSpeed = Fxp::BuildRaw(0);
+                }
+            }
+        }
+        else
+        {
+            ioState.forwardLaunchLateralLockFrames = 0u;
         }
 
         // Hard safety: if almost stopped and not accelerating or braking, do not rotate.
@@ -431,12 +469,13 @@ public:
         int32_t yawStepDeg = ioState.yawAccumulatorDegRaw / (1 << 16);
         if (forwardLaunchSignLock)
         {
-            if (ioFrameState.steering < 0 && yawStepDeg > 0)
+            // Left steer expects positive yaw step; clamp wrong-sign (negative) steps.
+            if (ioFrameState.steering < 0 && yawStepDeg < 0)
             {
                 yawStepDeg = 0;
                 ioState.yawAccumulatorDegRaw = 0;
             }
-            else if (ioFrameState.steering > 0 && yawStepDeg < 0)
+            else if (ioFrameState.steering > 0 && yawStepDeg > 0)
             {
                 yawStepDeg = 0;
                 ioState.yawAccumulatorDegRaw = 0;
@@ -502,7 +541,9 @@ public:
         ioState.gear = 1u;
         ioState.engineRpm = Tunables::kEngineIdleRpm;
         ioState.launchStraightFrames = 0u;
+        ioState.forwardLaunchLateralLockFrames = 0u;
         ioState.steerLaunchArmed = true;
+        ioState.wasKinematic = false;
     }
 
 private:

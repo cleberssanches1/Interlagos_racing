@@ -12,10 +12,18 @@ namespace std
 
 extern "C"
 {
+    static void* AllocFromWorkRam(size_t size)
+    {
+        void* ptr = SRL::Memory::HighWorkRam::Malloc(size);
+        if (ptr != nullptr) return ptr;
+        // Fallback: keep application alive when HWR is saturated but LWR is still available.
+        return SRL::Memory::LowWorkRam::Malloc(size);
+    }
+
     void* malloc(size_t size)
     {
         if (size == 0u) return nullptr;
-        return SRL::Memory::HighWorkRam::Malloc(size);
+        return AllocFromWorkRam(size);
     }
 
     void free(void* ptr)
@@ -26,8 +34,9 @@ extern "C"
     void* calloc(size_t count, size_t size)
     {
         if (count == 0u || size == 0u) return nullptr;
+        if (count > (static_cast<size_t>(-1) / size)) return nullptr;
         const size_t total = count * size;
-        void* ptr = SRL::Memory::HighWorkRam::Malloc(total);
+        void* ptr = AllocFromWorkRam(total);
         if (ptr != nullptr)
         {
             SRL::Memory::MemSet(ptr, 0, total);
