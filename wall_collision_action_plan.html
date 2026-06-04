@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plano de Ação: Colisão com Paredes — Interlagos Racing</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+    --border: #30363d; --text: #c9d1d9; --dim: #8b949e;
+    --blue: #58a6ff; --green: #3fb950; --yellow: #d29922;
+    --red: #f85149; --purple: #bc8cff; --orange: #ffa657;
+    --cyan: #39d353;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+  .hdr { background: linear-gradient(135deg,#1a1f2e,#0d1117); border-bottom: 2px solid var(--red); padding: 28px 40px; }
+  .hdr h1 { font-size: 26px; font-weight: 700; color: var(--red); }
+  .hdr p { color: var(--dim); margin-top: 5px; font-size: 13px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; margin:2px; }
+  .bb { background:rgba(88,166,255,.15); color:var(--blue); border:1px solid rgba(88,166,255,.3); }
+  .bg { background:rgba(63,185,80,.15); color:var(--green); border:1px solid rgba(63,185,80,.3); }
+  .by { background:rgba(210,153,34,.15); color:var(--yellow); border:1px solid rgba(210,153,34,.3); }
+  .br { background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.3); }
+  .bp { background:rgba(188,140,255,.15); color:var(--purple); border:1px solid rgba(188,140,255,.3); }
+
+  main { padding: 0 40px 60px; }
+  .section { margin-top: 44px; }
+  .stitle { font-size: 20px; font-weight: 700; color: var(--blue); border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
+  .stitle .num { color: var(--dim); font-weight: 400; font-size: 15px; margin-right: 6px; }
+
+  h3 { font-size:15px; font-weight:600; color:var(--orange); margin:20px 0 8px; }
+  h4 { font-size:13px; font-weight:600; color:var(--yellow); margin:14px 0 6px; }
+  p { margin-bottom: 9px; }
+  ul, ol { padding-left: 20px; margin: 7px 0; }
+  li { margin: 3px 0; font-size: 13px; }
+
+  pre { background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:14px; overflow-x:auto; font-size:12px; font-family:'Cascadia Code','Consolas',monospace; line-height:1.5; margin:10px 0; }
+  code { background:rgba(110,118,129,.2); padding:1px 5px; border-radius:3px; font-family:'Cascadia Code','Consolas',monospace; font-size:12px; color:var(--cyan); }
+  pre code { background:none; padding:0; color:var(--text); }
+
+  .cm { color:#6a9955; }
+  .kw { color:#569cd6; }
+  .tp { color:#4ec9b0; }
+  .fn { color:#dcdcaa; }
+  .nb { color:#b5cea8; }
+
+  .card { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:16px; margin:12px 0; }
+  .card.red   { border-left:3px solid var(--red); }
+  .card.yellow{ border-left:3px solid var(--yellow); }
+  .card.blue  { border-left:3px solid var(--blue); }
+  .card.green { border-left:3px solid var(--green); }
+  .card.purple{ border-left:3px solid var(--purple); }
+  .card h4 { margin-top:0; }
+  .card.red    h4 { color:var(--red); }
+  .card.yellow h4 { color:var(--yellow); }
+  .card.blue   h4 { color:var(--blue); }
+  .card.green  h4 { color:var(--green); }
+  .card.purple h4 { color:var(--purple); }
+
+  .pbox { display:inline-block; padding:1px 7px; border-radius:4px; font-size:11px; font-weight:700; }
+  .p1 { background:rgba(248,81,73,.2); color:var(--red); }
+  .p2 { background:rgba(210,153,34,.2); color:var(--yellow); }
+  .p3 { background:rgba(88,166,255,.2); color:var(--blue); }
+
+  .step { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:18px; margin:14px 0; position:relative; }
+  .step::before { content:attr(data-n); position:absolute; top:-1px; left:-1px; background:var(--red); color:#000; font-size:10px; font-weight:700; padding:2px 8px; border-radius:8px 0 8px 0; }
+  .step h4 { color:var(--red); margin-top:6px; font-size:14px; }
+  .step.p2::before { background:var(--yellow); }
+  .step.p2 h4 { color:var(--yellow); }
+  .step.p3::before { background:var(--blue); }
+  .step.p3 h4 { color:var(--blue); }
+
+  .flow { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:10px 0; }
+  .fbox { background:var(--bg3); border:1px solid var(--border); border-radius:5px; padding:5px 10px; font-size:12px; white-space:nowrap; }
+  .farr { color:var(--dim); }
+  .fbox.bad { border-color:rgba(248,81,73,.5); color:var(--red); }
+  .fbox.ok  { border-color:rgba(63,185,80,.5); color:var(--green); }
+
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th { background:var(--bg3); border:1px solid var(--border); padding:8px 12px; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.5px; text-align:left; }
+  td { border:1px solid var(--border); padding:9px 12px; vertical-align:top; }
+  tr:nth-child(even) td { background:rgba(33,38,45,.4); }
+
+  .info { background:rgba(88,166,255,.08); border:1px solid rgba(88,166,255,.3); border-left:3px solid var(--blue); border-radius:6px; padding:11px 14px; margin:10px 0; font-size:13px; }
+  .warn { background:rgba(210,153,34,.08); border:1px solid rgba(210,153,34,.3); border-left:3px solid var(--yellow); border-radius:6px; padding:11px 14px; margin:10px 0; font-size:13px; }
+  .danger { background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.3); border-left:3px solid var(--red); border-radius:6px; padding:11px 14px; margin:10px 0; font-size:13px; }
+  .ok { background:rgba(63,185,80,.08); border:1px solid rgba(63,185,80,.3); border-left:3px solid var(--green); border-radius:6px; padding:11px 14px; margin:10px 0; font-size:13px; }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:12px 0; }
+  @media(max-width:800px){ .grid2{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>Plano de Ação: Colisão com Paredes</h1>
+  <p>Análise de causa raiz e plano de correção para o problema de traversal em paredes laterais.<br>
+     Referência: <code>wall_collision_issue_report.html</code> &mdash; branch <code>feature/POC_FISICA</code></p>
+  <div style="margin-top:10px">
+    <span class="badge br">Bug: Traversal de parede</span>
+    <span class="badge bb">Saturn SH2</span>
+    <span class="badge bb">Fixed-point 16.16</span>
+    <span class="badge by">4 causas raiz identificadas</span>
+  </div>
+</div>
+
+<main>
+
+<!-- ======================== DIAGNÓSTICO ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">1.</span>Diagnóstico: Fluxo de Colisão Atual</div>
+
+  <h3>Fluxo por Frame (como está)</h3>
+  <div class="flow">
+    <div class="fbox">StepOnce</div><div class="farr">→</div>
+    <div class="fbox">IntegratePlanar<br><small>move posição</small></div><div class="farr">→</div>
+    <div class="fbox">UpdateTarget<br><small>probe chão + wall push</small></div><div class="farr">→</div>
+    <div class="fbox">ApplyBodyClips<br><small>desativado no Saturn</small></div><div class="farr">→</div>
+    <div class="fbox">ApplyVerticalAdhesion<br><small>aplica correctionX/Z</small></div>
+  </div>
+
+  <h3>O que o wall push faz (quando funciona)</h3>
+  <p>Em <code>car_ground_follower.hpp::ProbeSurfaceTarget</code> (linha 682):</p>
+  <pre><span class="cm">// wall query toda vez que shouldRefreshWallQuery é true</span>
+ioState.lastWallQueryHit = trackQuery->ResolvePlanarWallPush(
+    worldPosition, forwardDirection, wallRadius, wallPush, ...);
+
+<span class="cm">// aplica o push salvo (pode ser do frame anterior)</span>
+<span class="kw">if</span> (ioState.lastWallQueryHit)
+{
+    ioState.correctionX += ioState.lastWallPushX;
+    ioState.correctionZ += ioState.lastWallPushZ;
+}</pre>
+
+  <p>A correção acumulada é aplicada em <code>ApplyVerticalAdhesion</code> como <code>ioCarWorldPosition.X += correctionX</code>.</p>
+</div>
+
+<!-- ======================== CAUSAS RAIZ ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">2.</span>Causas Raiz do Traversal</div>
+
+  <div class="step p1" data-n="BUG 1 — P1 CRITICO">
+    <h4>Wall push perdido no early-exit de low-dynamics</h4>
+    <p>Em <code>car_ground_follower.hpp::UpdateTarget</code> linhas 197–208:</p>
+    <pre><span class="kw">if</span> (canReuseLastSurface && ioState.surfaceProbeCooldown > <span class="nb">0</span>u)
+{
+    --ioState.surfaceProbeCooldown;
+    ioState.hasGroundSupport = <span class="kw">true</span>;
+    ioState.correctionX = Fxp::BuildRaw(<span class="nb">0</span>);  <span class="cm">// ← ZERA</span>
+    ioState.correctionZ = Fxp::BuildRaw(<span class="nb">0</span>);  <span class="cm">// ← ZERA</span>
+    <span class="cm">// retorna SEM chamar ProbeSurfaceTarget</span>
+    <span class="cm">// wall push não é nem consultado nem aplicado</span>
+    <span class="kw">return</span>;
+}</pre>
+    <p><strong>Efeito:</strong> quando o carro está em baixa dinâmica (parado ou velocidade baixa, steering pequeno), <code>surfaceProbeCooldown > 0</code> por até 4 frames. Nesses frames o wall push é ZERO. O carro que está encostado em uma parede a baixa velocidade recebe push em apenas 1 de cada 4 frames — e o clamp de 1.20 u/frame não é suficiente para bloquear completamente.</p>
+    <div class="danger"><strong>Este é o bug principal para o caso de baixa velocidade.</strong> Carro parado pressionando contra parede → encosta lentamente e atravessa porque o push é aplicado só 25% dos frames.</div>
+  </div>
+
+  <div class="step p1" data-n="BUG 2 — P1 CRITICO">
+    <h4>Tunneling: sem teste swept, só posição pontual</h4>
+    <p><code>FindPlanarWallPush</code> testa apenas a posição <em>atual</em> contra as walls. Se o deslocamento de um frame for maior que o raio de colisão (<code>kWallCollisionRadius = 1.25 u</code>), o carro pode <strong>passar pelo lado oposto da parede sem detecção</strong>.</p>
+    <div class="grid2">
+      <div class="card red">
+        <h4>Caso de tunneling</h4>
+        <p>
+          Velocidade máxima = 7.125 u/frame<br>
+          Raio de colisão = 1.25 u<br>
+          Espessura mínima de parede ≈ 0 u (faces infinitely thin)<br>
+          <br>
+          Em 1 frame: carro avança 7 u.<br>
+          Se parede tem 0.5 u de espessura e o carro está a 0.6 u dela:<br>
+          Frame anterior: 0.6 u de distância (dentro do raio 1.25) → push correto<br>
+          Mas se a query falhar (bug 1) neste frame → carro avança para -6.5 u (outro lado)
+        </p>
+      </div>
+      <div class="card yellow">
+        <h4>Caso intermediário</h4>
+        <p>
+          Velocidade = 3 u/frame (120 km/h)<br>
+          Raio = 1.25 u<br>
+          Carro entra na zona de detecção, recebe push<br>
+          Mas push é clampado a 1.20 u/frame<br>
+          Carro ainda avança 3 - 1.2 = 1.8 u para dentro da parede<br>
+          No próximo frame: mais push, mas penetração aumenta<br>
+          Em 2-3 frames: traversal completo
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="step p1" data-n="BUG 3 — P1 CRITICO">
+    <h4>Correção de posição não cancela velocidade</h4>
+    <p><code>correctionX/Z</code> apenas translada a posição, sem tocar em <code>dynamicsState_.forwardSpeed</code> ou <code>dynamicsState_.lateralSpeed</code>. No próximo frame, a física recalcula o deslocamento usando as mesmas velocidades → o carro é empurrado de volta para fora, depois entra de novo. Jitter ou traversal acumulado.</p>
+    <p>O correto é: quando wall push significativo é detectado, <strong>zerar o componente de velocidade perpendicular à parede</strong>.</p>
+  </div>
+
+  <div class="step p2" data-n="BUG 4 — P2 IMPORTANTE">
+    <h4>kEnableBodyClipPlanarReaction = false no Saturn</h4>
+    <pre><span class="cm">// car_physics_shared.hpp linha 251</span>
+<span class="kw">static constexpr bool</span> kEnableBodyClipPlanarReaction =
+    !kEnableSaturnLowCostPhysics;  <span class="cm">// false no Saturn!</span></pre>
+    <p>O sistema de clips (4 pontos no carro) está desabilitado no perfil Saturn. Com clips ativos, a detecção seria em 4 pontos da carroceria, cobrindo casos onde o centro do carro não toca a parede mas a lateral sim (curvas rasantes).</p>
+    <p><strong>Motivo do disable:</strong> custo de 4 extra <code>ResolvePlanarWallPush</code> + 4 <code>QuerySurface</code> por frame. A QuerySurface é o custo caro — a wall query sozinha é barata.</p>
+  </div>
+</div>
+
+<!-- ======================== PLANO DE AÇÃO ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">3.</span>Plano de Ação — Correções em Ordem de Prioridade</div>
+
+  <!-- FIX 1 -->
+  <div class="step p1" data-n="FIX 1 — P1">
+    <h4>Preservar wall push no early-exit de low-dynamics</h4>
+    <p><span class="pbox p1">P1</span> &nbsp; Arquivo: <code>src/car_ground_follower.hpp</code> — função <code>UpdateTarget</code> (~linha 197)</p>
+    <p><strong>Mudança:</strong> Antes de retornar no early-exit, aplicar <code>lastWallPushX/Z</code> se <code>lastWallQueryHit == true</code>.</p>
+
+    <pre><span class="cm">// ANTES (linhas 197-208):</span>
+<span class="kw">if</span> (canReuseLastSurface && ioState.surfaceProbeCooldown > <span class="nb">0</span>u)
+{
+    --ioState.surfaceProbeCooldown;
+    ioState.hasGroundSupport = <span class="kw">true</span>;
+    ioState.edgeLeftLost = <span class="kw">false</span>;
+    ioState.edgeRightLost = <span class="kw">false</span>;
+    ioState.correctionX = Fxp::BuildRaw(<span class="nb">0</span>);
+    ioState.correctionZ = Fxp::BuildRaw(<span class="nb">0</span>);
+    ioFrameState.groundFaceIndex = ioState.lastSurfaceFaceIndex;
+    ioFrameState.groundFamilyId = ioState.lastSurfaceFamilyId;
+    ioFrameState.groundSurfaceType = ioState.lastSurfaceType;
+    <span class="kw">return</span> static_cast&lt;<span class="tp">int32_t</span>&gt;(ioState.lastSurfaceSegmentId);
+}</pre>
+
+    <pre><span class="cm">// DEPOIS (acrescentar antes do return):</span>
+<span class="kw">if</span> (canReuseLastSurface && ioState.surfaceProbeCooldown > <span class="nb">0</span>u)
+{
+    --ioState.surfaceProbeCooldown;
+    ioState.hasGroundSupport = <span class="kw">true</span>;
+    ioState.edgeLeftLost = <span class="kw">false</span>;
+    ioState.edgeRightLost = <span class="kw">false</span>;
+    ioState.correctionX = Fxp::BuildRaw(<span class="nb">0</span>);
+    ioState.correctionZ = Fxp::BuildRaw(<span class="nb">0</span>);
+    <span class="cm">// Manter wall push ativo em frames de probe reuse.</span>
+    <span class="cm">// Sem isso, carro pressionando parede a baixa velocidade só recebe</span>
+    <span class="cm">// push em 1 de cada kLowDynamicsProbeIntervalFrames frames.</span>
+    <span class="kw">if</span> (Tunables::kEnableWallPlanarPush && ioState.lastWallQueryHit)
+    {
+        ioState.correctionX = Clamp(ioState.lastWallPushX,
+            Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
+            Tunables::kMaxPlanarCorrectionPerFrame);
+        ioState.correctionZ = Clamp(ioState.lastWallPushZ,
+            Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
+            Tunables::kMaxPlanarCorrectionPerFrame);
+        ioFrameState.debugWallHit = <span class="nb">1</span>u;
+        ioFrameState.debugWallSegmentId = ioState.lastWallQuerySegmentId;
+    }
+    ioFrameState.groundFaceIndex = ioState.lastSurfaceFaceIndex;
+    ioFrameState.groundFamilyId = ioState.lastSurfaceFamilyId;
+    ioFrameState.groundSurfaceType = ioState.lastSurfaceType;
+    <span class="kw">return</span> static_cast&lt;<span class="tp">int32_t</span>&gt;(ioState.lastSurfaceSegmentId);
+}</pre>
+
+    <div class="ok"><strong>Custo:</strong> zero extra queries. Apenas reusa <code>lastWallPushX/Z</code> já calculado. Totalmente seguro para SH2.</div>
+  </div>
+
+  <!-- FIX 2 -->
+  <div class="step p1" data-n="FIX 2 — P1">
+    <h4>Anti-tunneling: clamp de posição pós-passo</h4>
+    <p><span class="pbox p1">P1</span> &nbsp; Arquivo: <code>src/car_physics_v2.hpp</code> — função <code>StepOnce</code></p>
+    <p><strong>Ideia:</strong> após <code>ApplyVerticalAdhesion</code>, se o wall push calculado neste frame é significativo, verificar se a nova posição ainda está no lado correto da parede. Se não, clampar.</p>
+
+    <h4>Abordagem A — Wall query adicional no ponto de deslocamento máximo (simples)</h4>
+    <p>Quando <code>|displacement| > kWallCollisionRadius</code>, fazer uma query extra na metade do caminho (<em>midpoint check</em>). Custo: 1 extra query em alta velocidade.</p>
+
+    <pre><span class="cm">// car_physics_v2.hpp — em StepOnce, após ApplyVerticalAdhesion</span>
+<span class="kw">if</span> (trackQuery && Tunables::kEnableWallPlanarPush)
+{
+    <span class="kw">const</span> Fxp dispX = ioCarWorldPosition.X - preStepPosition.X;
+    <span class="kw">const</span> Fxp dispZ = ioCarWorldPosition.Z - preStepPosition.Z;
+    <span class="kw">const</span> Fxp dispMag = dispX.Abs() + dispZ.Abs();
+    <span class="cm">// Só faz o swept check se o deslocamento exceder o raio de detecção</span>
+    <span class="kw">if</span> (dispMag > Tunables::kWallCollisionRadius)
+    {
+        <span class="kw">const</span> Vector3D midPoint(
+            preStepPosition.X + Fxp::BuildRaw(dispX.RawValue() / <span class="nb">2</span>),
+            ioCarWorldPosition.Y,
+            preStepPosition.Z + Fxp::BuildRaw(dispZ.RawValue() / <span class="nb">2</span>));
+        Vector3D midWallPush{};
+        <span class="kw">int32_t</span> midSegId = -<span class="nb">1</span>;
+        <span class="kw">const</span> Vector3D fwd = Vector3D(stepOutput.sinYaw,
+            Fxp::BuildRaw(<span class="nb">0</span>),
+            Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()));
+        <span class="kw">if</span> (trackQuery->ResolvePlanarWallPush(midPoint, fwd,
+                Tunables::kWallCollisionRadius, midWallPush, &midSegId, sampledSegmentId))
+        {
+            <span class="cm">// Parede detectada no percurso: aplicar push imediatamente na posição final</span>
+            ioCarWorldPosition.X += Clamp(midWallPush.X,
+                Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
+                Tunables::kMaxPlanarCorrectionPerFrame);
+            ioCarWorldPosition.Z += Clamp(midWallPush.Z,
+                Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
+                Tunables::kMaxPlanarCorrectionPerFrame);
+            <span class="cm">// Salvar para o frame de low-dynamics que pode reusar</span>
+            groundState_.lastWallQueryHit = <span class="kw">true</span>;
+            groundState_.lastWallPushX = midWallPush.X;
+            groundState_.lastWallPushZ = midWallPush.Z;
+            <span class="kw">if</span> (midSegId > <span class="nb">0</span>) groundState_.lastWallQuerySegmentId = midSegId;
+        }
+    }
+}</pre>
+
+    <div class="warn"><strong>Custo:</strong> 1 wall query extra apenas quando velocidade &gt; 1.25 u/frame (~53 km/h). A query é local (seed segment ±2), portanto barata. Em alta velocidade o seed é confiável (carro se move progressivamente na pista).</div>
+
+    <h4>Abordagem B — Swept segment test sem query extra (custo zero, recomendada para SH2)</h4>
+    <p>Usar os <code>wallSegments2D</code> já cacheados do segmento atual. Fazer intersecção de segmento-vs-segmento 2D entre o vetor de deslocamento e cada wall do cache. Totalmente em inteiros, sem nova query ao TrackSystem.</p>
+
+    <pre><span class="cm">// Teste de intersecção 2D (pré-computado no cache wallSegments2D)</span>
+<span class="cm">// Custo: 5 segmentos × 4 arestas × ~10 operações = ~200 muls por frame em alta vel.</span>
+<span class="cm">// Implementação: expor método em TrackSystem ou copiar lógica inline.</span>
+
+<span class="cm">// Pseudocódigo:</span>
+<span class="kw">auto</span> <span class="fn">segmentsIntersect</span>(ax,az, bx,bz, cx,cz, dx,dz) -> <span class="kw">bool</span>
+{
+    <span class="cm">// Cross products para verificar se (A,B) e (C,D) se cruzam</span>
+    <span class="tp">int64_t</span> d1 = <span class="fn">cross</span>(dx-cx,dz-cz, ax-cx,az-cz);
+    <span class="tp">int64_t</span> d2 = <span class="fn">cross</span>(dx-cx,dz-cz, bx-cx,bz-cz);
+    <span class="tp">int64_t</span> d3 = <span class="fn">cross</span>(bx-ax,bz-az, cx-ax,cz-az);
+    <span class="tp">int64_t</span> d4 = <span class="fn">cross</span>(bx-ax,bz-az, dx-ax,dz-az);
+    <span class="kw">return</span> ((d1>0&&d2<0)||(d1<0&&d2>0)) && ((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+
+<span class="kw">for</span> (<span class="kw">auto</span>& wall : cachedWalls) {
+    <span class="kw">if</span> (<span class="fn">segmentsIntersect</span>(prevX,prevZ, newX,newZ, wall.ax,wall.az, wall.bx,wall.bz))
+    {
+        <span class="cm">// Traversal detectado: posição = ponto de intersecção + push normal</span>
+    }
+}
+</pre>
+
+    <div class="info"><strong>Recomendação:</strong> Implementar Abordagem A primeiro (mais simples, usa sistema existente). Migrar para B se o custo da query extra for perceptível no profiler.</div>
+  </div>
+
+  <!-- FIX 3 -->
+  <div class="step p1" data-n="FIX 3 — P1">
+    <h4>Cancelar velocidade perpendicular à parede</h4>
+    <p><span class="pbox p1">P1</span> &nbsp; Arquivo: <code>src/car_physics_v2.hpp</code> — função <code>StepOnce</code></p>
+    <p>Quando wall push significativo é detectado (magnitude &gt; threshold), projetar e cancelar a componente de velocidade que aponta para dentro da parede.</p>
+
+    <pre><span class="cm">// Após acumular wallPushX/Z total do frame:</span>
+<span class="kw">const</span> Fxp pushMag = wallPushAccumX.Abs() + wallPushAccumZ.Abs();
+<span class="kw">if</span> (pushMag > Tunables::kWallPushVelocityCancelThreshold) <span class="cm">// ex: 0.10</span>
+{
+    <span class="cm">// Normalizar direção do push (aproximação barata: maior eixo)</span>
+    <span class="kw">const</span> Fxp absX = wallPushAccumX.Abs();
+    <span class="kw">const</span> Fxp absZ = wallPushAccumZ.Abs();
+    <span class="kw">const</span> Fxp nWallX = (absX >= absZ) ? Fxp::BuildRaw(<span class="nb">1</span> &lt;&lt; 16) : Fxp::BuildRaw(<span class="nb">0</span>);
+    <span class="kw">const</span> Fxp nWallZ = (absZ > absX)  ? Fxp::BuildRaw(<span class="nb">1</span> &lt;&lt; 16) : Fxp::BuildRaw(<span class="nb">0</span>);
+    <span class="cm">// Sinal correto da normal</span>
+    <span class="kw">const</span> Fxp nX = (wallPushAccumX >= Fxp::BuildRaw(<span class="nb">0</span>)) ? nWallX : Fxp::BuildRaw(-nWallX.RawValue());
+    <span class="kw">const</span> Fxp nZ = (wallPushAccumZ >= Fxp::BuildRaw(<span class="nb">0</span>)) ? nWallZ : Fxp::BuildRaw(-nWallZ.RawValue());
+
+    <span class="cm">// Velocidade no mundo</span>
+    <span class="kw">const</span> Fxp worldVelX = (stepOutput.sinYaw * dynamicsState_.forwardSpeed)
+                         + (stepOutput.cosYaw * dynamicsState_.lateralSpeed);
+    <span class="kw">const</span> Fxp worldVelZ = (Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()) * dynamicsState_.forwardSpeed)
+                         + (stepOutput.sinYaw * dynamicsState_.lateralSpeed);
+    <span class="cm">// Componente penetrando a parede (negativa = apontando para fora)</span>
+    <span class="kw">const</span> Fxp velDotNormal = (worldVelX * nX) + (worldVelZ * nZ);
+
+    <span class="kw">if</span> (velDotNormal < Fxp::BuildRaw(<span class="nb">0</span>))  <span class="cm">// velocidade aponta para dentro da parede</span>
+    {
+        <span class="cm">// Remover componente perpendicular à parede</span>
+        <span class="kw">const</span> Fxp cancelX = nX * velDotNormal;
+        <span class="kw">const</span> Fxp cancelZ = nZ * velDotNormal;
+        <span class="cm">// Reconverter para espaço local do carro</span>
+        <span class="kw">const</span> Fxp cancelFwd = (cancelX * stepOutput.sinYaw) + (cancelZ * Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()));
+        <span class="kw">const</span> Fxp cancelLat = (cancelX * stepOutput.cosYaw)  + (cancelZ * stepOutput.sinYaw);
+        dynamicsState_.forwardSpeed -= cancelFwd;
+        dynamicsState_.lateralSpeed -= cancelLat;
+    }
+}</pre>
+
+    <div class="ok"><strong>Resultado esperado:</strong> Carro "para" ao tocar a parede em vez de continuar empurrando. Deslizamento ao longo da parede funciona naturalmente (componente paralela não é cancelada).</div>
+
+    <h4>Constante necessária</h4>
+    <p>Adicionar em <code>car_physics_shared.hpp::Tunables</code>:</p>
+    <pre><span class="kw">static constexpr</span> Fxp kWallPushVelocityCancelThreshold = Fxp::BuildRaw(<span class="nb">0x00001999</span>); <span class="cm">// 0.10</span></pre>
+  </div>
+
+  <!-- FIX 4 -->
+  <div class="step p2" data-n="FIX 4 — P2">
+    <h4>Habilitar clips no Saturn — mode wall-only (sem QuerySurface por clip)</h4>
+    <p><span class="pbox p2">P2</span> &nbsp; Arquivos: <code>src/car_physics_shared.hpp</code>, <code>src/car_physics_v2.hpp</code></p>
+
+    <p><strong>Problema:</strong> <code>kEnableBodyClipPlanarReaction = false</code> porque 4 QuerySurface são caras. <strong>Solução:</strong> desacoplar detecção de parede do clip da query de chão. Criar um modo "wall-only" para clips.</p>
+
+    <h4>Mudança em car_physics_shared.hpp</h4>
+    <pre><span class="cm">// Substituir:</span>
+<span class="kw">static constexpr bool</span> kEnableBodyClipPlanarReaction =
+    !kEnableSaturnLowCostPhysics;
+
+<span class="cm">// Por dois flags separados:</span>
+<span class="kw">static constexpr bool</span> kEnableBodyClipPlanarReaction = <span class="kw">true</span>;    <span class="cm">// sempre ligado</span>
+<span class="kw">static constexpr bool</span> kBodyClipQuerySurface =                     <span class="cm">// surface query só em PC</span>
+    !kEnableSaturnLowCostPhysics;</pre>
+
+    <h4>Mudança em car_physics_v2.hpp — ApplyBodyClipPlanarReaction</h4>
+    <pre><span class="kw">for</span> (<span class="kw">const auto</span>& clip : CarPhysics::Tunables::kBodyClips)
+{
+    <span class="cm">// ... calcular clipWorldPosition ...</span>
+
+    <span class="cm">// ANTES: sempre chamava QuerySurface (cara no Saturn)</span>
+    <span class="cm">// DEPOIS: QuerySurface opcional por flag</span>
+    <span class="tp">int32_t</span> clipSeedSegmentId = seedSegmentId;
+    <span class="kw">if constexpr</span> (CarPhysics::Tunables::kBodyClipQuerySurface)
+    {
+        CarPhysics::SurfaceQueryResult surface{};
+        <span class="kw">if</span> (CarPhysics::GroundFollower::QuerySurface(
+                trackQuery, clipWorldPosition, seedSegmentId, surface))
+        {
+            <span class="kw">if</span> (surface.segmentId > <span class="nb">0</span>) clipSeedSegmentId = surface.segmentId;
+        }
+    }
+
+    <span class="cm">// Wall push: sempre executado (barato)</span>
+    <span class="kw">if constexpr</span> (CarPhysics::Tunables::kEnableWallPlanarPush)
+    {
+        Vector3D wallPush{};
+        <span class="tp">int32_t</span> wallSegmentId = -<span class="nb">1</span>;
+        <span class="kw">if</span> (trackQuery->ResolvePlanarWallPush(
+                clipWorldPosition, forwardDirection,
+                CarPhysics::Tunables::kBodyClipWallRadius,
+                wallPush, &wallSegmentId, clipSeedSegmentId))
+        {
+            <span class="cm">// acumular em correctionX/Z como antes</span>
+        }
+    }
+}</pre>
+
+    <div class="warn"><strong>Custo Saturn:</strong> 4 wall queries por frame (locais = seed±2 apenas). Estimativa: ~4 × 5 segmentos × 3-5 faces = ~100 comparações por frame. Viável.</div>
+  </div>
+
+  <!-- FIX 5 -->
+  <div class="step p3 p3" data-n="FIX 5 — P3" style="--red:var(--blue)">
+    <h4>Diagnóstico: expor métricas de wall query no overlay</h4>
+    <p><span class="pbox p3">P3</span> &nbsp; Arquivo: <code>src/game_loop_system.hpp</code></p>
+    <p>O <code>TrackSystem</code> já rastreia <code>wallQueryCallsThisFrame_</code>, <code>wallQueryHitsThisFrame_</code>, <code>wallQuerySegmentsScannedThisFrame_</code>, <code>wallQueryFacesScannedThisFrame_</code>. Expor no overlay de debug.</p>
+
+    <pre><span class="cm">// Adicionar ao overlay de debug existente:</span>
+SRL::Debug::Print(<span class="nb">1</span>, <span class="nb">26</span>, <span class="nb">"WQ c:%d h:%d s:%d f:%d"</span>,
+    trackSystem->WallQueryCallsThisFrame(),
+    trackSystem->WallQueryHitsThisFrame(),
+    trackSystem->WallQuerySegmentsScannedThisFrame(),
+    trackSystem->WallQueryFacesScannedThisFrame());</pre>
+
+    <p>Adicionar getters em <code>track_system.hpp</code>:</p>
+    <pre><span class="kw">uint32_t</span> WallQueryCallsThisFrame() <span class="kw">const</span> { <span class="kw">return</span> wallQueryCallsThisFrame_; }
+<span class="kw">uint32_t</span> WallQueryHitsThisFrame() <span class="kw">const</span> { <span class="kw">return</span> wallQueryHitsThisFrame_; }
+<span class="kw">uint32_t</span> WallQuerySegmentsScannedThisFrame() <span class="kw">const</span> { <span class="kw">return</span> wallQuerySegmentsScannedThisFrame_; }
+<span class="kw">uint32_t</span> WallQueryFacesScannedThisFrame() <span class="kw">const</span> { <span class="kw">return</span> wallQueryFacesScannedThisFrame_; }</pre>
+
+    <div class="info">Com esses valores no overlay é possível confirmar se os fixes 1-4 estão funcionando (hits > 0 durante colisão, custo estável).</div>
+  </div>
+</div>
+
+<!-- ======================== TABELA RESUMO ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">4.</span>Tabela de Mudanças por Arquivo</div>
+
+  <table>
+    <tr>
+      <th>Prioridade</th><th>Arquivo</th><th>Função</th><th>Mudança</th><th>Linhas Afetadas</th>
+    </tr>
+    <tr>
+      <td><span class="pbox p1">P1</span></td>
+      <td><code>car_ground_follower.hpp</code></td>
+      <td><code>UpdateTarget</code></td>
+      <td>Aplicar <code>lastWallPushX/Z</code> no early-exit de canReuseLastSurface</td>
+      <td>~197–208</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p1">P1</span></td>
+      <td><code>car_physics_v2.hpp</code></td>
+      <td><code>StepOnce</code></td>
+      <td>Midpoint swept check quando deslocamento &gt; kWallCollisionRadius</td>
+      <td>após linha ~336</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p1">P1</span></td>
+      <td><code>car_physics_v2.hpp</code></td>
+      <td><code>StepOnce</code></td>
+      <td>Cancelar velocidade perpendicular quando wall push significativo</td>
+      <td>após swept check</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p1">P1</span></td>
+      <td><code>car_physics_shared.hpp</code></td>
+      <td><code>Tunables</code></td>
+      <td>Adicionar <code>kWallPushVelocityCancelThreshold</code></td>
+      <td>~linha 265</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p2">P2</span></td>
+      <td><code>car_physics_shared.hpp</code></td>
+      <td><code>Tunables</code></td>
+      <td>Separar <code>kEnableBodyClipPlanarReaction</code> e <code>kBodyClipQuerySurface</code></td>
+      <td>~linha 251</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p2">P2</span></td>
+      <td><code>car_physics_v2.hpp</code></td>
+      <td><code>ApplyBodyClipPlanarReaction</code></td>
+      <td>Tornar QuerySurface por clip opcional via constexpr flag</td>
+      <td>~linhas 160–165</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p3">P3</span></td>
+      <td><code>track_system.hpp</code></td>
+      <td>—</td>
+      <td>Adicionar getters para métricas de wall query</td>
+      <td>Novos métodos</td>
+    </tr>
+    <tr>
+      <td><span class="pbox p3">P3</span></td>
+      <td><code>game_loop_system.hpp</code></td>
+      <td>overlay debug</td>
+      <td>Exibir <code>WQ c/h/s/f</code> no overlay</td>
+      <td>seção de debug print</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ======================== ORDER DE IMPLEMENTAÇÃO ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">5.</span>Ordem de Implementação Recomendada</div>
+
+  <div class="card green">
+    <h4>Fase 1 — Fix imediato (1 hora de trabalho, baixo risco)</h4>
+    <p><strong>Só FIX 1</strong>: 6 linhas em <code>UpdateTarget</code>. Zero custo extra. Corrige o caso mais comum: carro pressionando parede a baixa velocidade. Compilar e testar cenários A, C, D do checklist.</p>
+  </div>
+
+  <div class="card yellow">
+    <h4>Fase 2 — Anti-tunneling (2-3 horas)</h4>
+    <p><strong>FIX 2 (Abordagem A)</strong> + <strong>FIX 3</strong>: midpoint query + cancelamento de velocidade. Testa cenário B (alta velocidade) e verifica FPS com profiler. Se custo aceitável, manter.</p>
+  </div>
+
+  <div class="card blue">
+    <h4>Fase 3 — Clips no Saturn (2-3 horas)</h4>
+    <p><strong>FIX 4</strong>: Habilitar clips com wall-only mode. Cobre casos de colisão lateral (carro batendo de lado, curvas rasantes). Testa cenário C (raspar parede em curva longa).</p>
+  </div>
+
+  <div class="card purple">
+    <h4>Fase 4 — Diagnóstico (30 min)</h4>
+    <p><strong>FIX 5</strong>: Overlay de métricas. Facilita tuning futuro dos parâmetros.</p>
+  </div>
+</div>
+
+<!-- ======================== CHECKLIST ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">6.</span>Checklist de Validação</div>
+
+  <table>
+    <tr><th>Cenário</th><th>Como Testar</th><th>Critério de Aceite</th><th>Fix Responsável</th></tr>
+    <tr>
+      <td><strong>A. Baixa velocidade lateral</strong></td>
+      <td>Encostar carro na parede lentamente com steer</td>
+      <td>Não traversa. Carro para ou desliza ao longo da parede</td>
+      <td>Fix 1</td>
+    </tr>
+    <tr>
+      <td><strong>B. Alta velocidade frontal</strong></td>
+      <td>Bater na parede a >100 km/h</td>
+      <td>Não traversa. Carro para ou bate e rebate</td>
+      <td>Fix 2 + Fix 3</td>
+    </tr>
+    <tr>
+      <td><strong>C. Raspar em curva</strong></td>
+      <td>Curva longa rente à parede</td>
+      <td>Sem jitter. Carro desliza ao longo sem prender</td>
+      <td>Fix 3 + Fix 4</td>
+    </tr>
+    <tr>
+      <td><strong>D. Ré contra parede</strong></td>
+      <td>Fazer ré até encostar</td>
+      <td>Não traversa. Direção de push correta (não inverte o carro)</td>
+      <td>Fix 1 + Fix 3</td>
+    </tr>
+    <tr>
+      <td><strong>E. Performance</strong></td>
+      <td>Rodar trecho longo com paredes dos dois lados</td>
+      <td>FPS estável. Overlay WQ mostra hits&gt;0 e calls estável</td>
+      <td>Todos</td>
+    </tr>
+    <tr>
+      <td><strong>F. Regressão: física sem parede</strong></td>
+      <td>Testar curvas normais, partida, ré sem paredes</td>
+      <td>Comportamento inalterado (curva, partida, câmera)</td>
+      <td>Todos</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ======================== NÃO MUDAR ======================== -->
+<div class="section">
+  <div class="stitle"><span class="num">7.</span>O Que Não Muda</div>
+  <ul>
+    <li><code>FindPlanarWallPush</code> em <code>track_system.cxx</code> — a lógica de scan/cache de paredes está correta e não precisa de alteração</li>
+    <li>A lógica de seed segment + fallback global em <code>track_collision_query.hpp</code> — funcional</li>
+    <li>O filtro de faces verticais (<code>planarNormalAbs * 2 >= abs(nyRaw)</code>) — correto para 45° de threshold</li>
+    <li>O sistema de física de curvas/ré/câmera — sem toque</li>
+    <li><code>kMaxPlanarCorrectionPerFrame</code> — valor adequado para casos normais (1.20 u/frame)</li>
+  </ul>
+</div>
+
+</main>
+
+<div style="border-top:1px solid var(--border); padding:18px 40px; margin-top:40px; color:var(--dim); font-size:12px;">
+  Interlagos Racing — Plano de Correção: Wall Collision — branch <code>feature/POC_FISICA</code> — 2026-05-31
+</div>
+
+</body>
+</html>

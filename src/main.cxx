@@ -38,7 +38,7 @@ constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 constexpr bool kVerboseFrameLogs = false;
 // Telemetria de runtime (RAM/VDP/slide): desligada por padrão.
-constexpr bool kEnableRuntimeStatsLogs = false;
+constexpr bool kEnableRuntimeStatsLogs = true;
 #ifndef PHYSICS_POC_MODE
 #define PHYSICS_POC_MODE 0
 #endif
@@ -47,6 +47,9 @@ constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 
 static const char* FindExistingPath(const char* const* paths, size_t count);
 static constexpr size_t kCarGouraudOffset = 4096;
+static constexpr int32_t kFixedSpawnX = 5177;
+static constexpr int32_t kFixedSpawnY = 208;
+static constexpr int32_t kFixedSpawnZ = 1054;
 volatile uint32_t g_srlAppVblankCounter = 0;
 
 struct CarAnchorPoints
@@ -1051,7 +1054,9 @@ static int RunPhysicsPocMode()
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     Vector3D trackSegOffset(0.0, 0.0, 0.0);
 
-    Vector3D carWorldPosition(0.0, 0.0, 0.0);
+    Vector3D carWorldPosition(Fxp::BuildRaw(kFixedSpawnX << 16),
+                              Fxp::BuildRaw(kFixedSpawnY << 16),
+                              Fxp::BuildRaw(kFixedSpawnZ << 16));
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
     PocTrackCollisionQuery pocTrackCollision{};
     Game::ITrackCollisionQuery* collisionQuery =
@@ -1060,15 +1065,6 @@ static int RunPhysicsPocMode()
             : static_cast<Game::ITrackCollisionQuery*>(&pocTrackCollision);
     if (trackSystemReady)
     {
-        constexpr int32_t kInitialSpawnSegmentId = 3;
-        Vector3D segCenter(0.0, 0.0, 0.0);
-        if (trackSystem.FindSegmentCenterById(kInitialSpawnSegmentId, trackSegOffset, segCenter))
-        {
-            carWorldPosition.X = segCenter.X;
-            carWorldPosition.Z = segCenter.Z;
-            carWorldPosition.Y = segCenter.Y;
-        }
-
         // Keep camera 2 far enough from the car for track visibility tests.
         cameraSystem.SetChaseNearFollowDistance(320);
     }
@@ -1108,14 +1104,6 @@ static int RunPhysicsPocMode()
             }
         }
     }
-    SRL::Math::Types::Fxp spawnSurfaceY{};
-    int32_t spawnSegmentId = -1;
-    if (collisionQuery &&
-        collisionQuery->SampleSurfaceYByFamilyId(carWorldPosition, 1u, spawnSurfaceY, &spawnSegmentId))
-    {
-        carWorldPosition.Y = spawnSurfaceY + Game::CarPhysics::GetRideHeightOffset();
-    }
-
     std::array<size_t, 5> drawOrder{};
     size_t orderCount = 0;
     BuildCarDrawOrder(meshCount, drawOrder, orderCount);
@@ -1435,7 +1423,9 @@ int GameApp::Run()
     // Center of model from bounds to keep imported cars in camera view.
     Vector3D modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
-    Vector3D carWorldPosition(0.0, 0.0, 0.0);
+    Vector3D carWorldPosition(Fxp::BuildRaw(kFixedSpawnX << 16),
+                              Fxp::BuildRaw(kFixedSpawnY << 16),
+                              Fxp::BuildRaw(kFixedSpawnZ << 16));
 
     AppState::Set(AppState::Stage::TrackInit, 0);
     // Keep TrackSystem out of the main thread stack.
@@ -1468,17 +1458,6 @@ int GameApp::Run()
     }
     if (renderTrack && trackSystemReady)
     {
-        constexpr int32_t kInitialSpawnSegmentId = 3;
-        Vector3D seg01Center(0.0, 0.0, 0.0);
-        if (trackSystem.FindSegmentCenterById(kInitialSpawnSegmentId, trackSegOffset, seg01Center))
-        {
-            // Spawn aligned to segment 3 center.
-            carWorldPosition.X = seg01Center.X;
-            carWorldPosition.Z = seg01Center.Z;
-            carWorldPosition.Y = seg01Center.Y;
-            // Car spawn debug log disabled to keep on-screen diagnostics concise.
-        }
-
         // Keep camera 2 far enough from the car for track visibility tests.
         cameraSystem.SetChaseNearFollowDistance(320);
     }

@@ -232,6 +232,22 @@ private:
 
     struct SegmentRenderEntry
     {
+        struct WallSegment2D
+        {
+            int32_t axRaw = 0;
+            int32_t azRaw = 0;
+            int32_t bxRaw = 0;
+            int32_t bzRaw = 0;
+            int32_t minXRaw = 0;
+            int32_t maxXRaw = 0;
+            int32_t minZRaw = 0;
+            int32_t maxZRaw = 0;
+            int32_t minYRaw = 0;
+            int32_t maxYRaw = 0;
+            int32_t nxRaw = 0;
+            int32_t nzRaw = 0;
+        };
+
         struct SegmentLodState
         {
             bool ready = false;
@@ -256,6 +272,13 @@ private:
         TrackLowWorkUniquePtr<TrackRenderer> renderer;
         SRL::Math::Types::Vector3D center{};
         SegmentLodState lodState{};
+        mutable TrackLowWorkVector<WallSegment2D> wallSegments2D{};
+        mutable uint32_t wallSegmentsCacheVertCount = 0u;
+        mutable uint32_t wallSegmentsCacheFaceCount = 0u;
+        mutable uint32_t wallSegmentsCacheFamilyCount = 0u;
+        mutable int32_t wallSegmentsCacheSegmentId = -1;
+        mutable uint8_t wallSegmentsCacheLodIndex = 0xFF;
+        mutable bool wallSegmentsCacheReady = false;
     };
     struct RawSegmentEntry
     {
@@ -439,6 +462,7 @@ private:
     bool ResolveWindowDropIndexByDirection(int8_t direction, size_t windowCount, size_t& outDropIdx);
     bool ResolveWindowHeadByStartId(size_t fallbackIndex);
     bool AdvanceWindowHeadByDirection(int8_t direction, size_t windowCount);
+    bool EnsureWallSegmentCache(SegmentRenderEntry& entry) const;
     SegmentRenderEntry* FindWindowEntryByIdFast(int32_t segmentId);
     const SegmentRenderEntry* FindWindowEntryByIdFast(int32_t segmentId) const;
     void UpdateDesiredStabilizedWindowLodTargets();
@@ -729,6 +753,8 @@ private:
     uint32_t wallQueryHitsLastFrame_ = 0;
     uint32_t wallQuerySegmentsScannedLastFrame_ = 0;
     uint32_t wallQueryFacesScannedLastFrame_ = 0;
+    mutable SRL::Math::Types::Vector3D wallQueryPrevWorldPosition_{};
+    mutable bool wallQueryPrevWorldPositionValid_ = false;
     mutable int32_t surfaceQueryLastInsideSegmentId_ = -1;
     mutable int16_t surfaceQueryLastInsideFaceIndex_ = -1;
     mutable uint16_t surfaceQueryLastInsideFamilyId_ = 0u;

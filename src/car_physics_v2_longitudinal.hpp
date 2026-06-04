@@ -60,18 +60,8 @@ private:
         {
             outFrame.throttle = 0;
             outFrame.braking = true;
-            if (movingForward)
-            {
-                mode_ = Mode::BrakeToStop;
-            }
-            else if (rawFrame.brakeHoldFrames >= CarPhysics::Tunables::kReverseEngageDelayFrames)
-            {
-                mode_ = Mode::DriveReverse;
-            }
-            else
-            {
-                mode_ = Mode::ReverseEngage;
-            }
+            (void)movingForward;
+            mode_ = Mode::BrakeToStop;
         }
         else if (throttleOn)
         {
@@ -88,7 +78,7 @@ private:
             {
                 const int32_t rawThrottle =
                     (CarPhysics::Tunables::kForwardSteerLaunchAccelPerFrame.RawValue() * 100) /
-                    std::max<int32_t>(1, CarPhysics::Tunables::kGearAccelPerFrame[0].RawValue());
+                    std::max<int32_t>(1, CarPhysics::Tunables::GearAccelFor(1u).RawValue());
                 const int16_t throttleCap = static_cast<int16_t>(std::clamp<int32_t>(rawThrottle, 15, 100));
                 if (outFrame.throttle > throttleCap) outFrame.throttle = throttleCap;
             }

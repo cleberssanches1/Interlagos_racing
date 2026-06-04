@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Diagnóstico de Colisão com Paredes - Interlagos Racing</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; line-height: 1.45; color: #111; }
+    h1, h2, h3 { margin-top: 1.2em; }
+    code { background: #f3f3f3; padding: 1px 4px; border-radius: 4px; }
+    pre { background: #f7f7f7; padding: 10px; border-radius: 6px; overflow: auto; }
+    .ok { color: #0a6f2e; }
+    .warn { color: #9a5a00; }
+    .bad { color: #9d1111; }
+  </style>
+</head>
+<body>
+  <h1>Diagnóstico: Colisão com Paredes (Faces)</h1>
+
+  <h2>Resumo do problema</h2>
+  <p>
+    O carro detecta colisão inicial com parede/muro (face vertical), porém ao manter aceleração contra a face
+    acaba transpassando a geometria. Em muitos casos há empurrão inicial, mas sem retenção contínua.
+  </p>
+  <ul>
+    <li class="ok">Comportamento que já existe: contato inicial e push inicial em parte dos casos.</li>
+    <li class="bad">Comportamento incorreto: sob pressão contínua (acelerador), o carro atravessa a face.</li>
+    <li class="warn">Sintoma observado em log: em frames com carro dentro da parede, <code>wh/wx/wz</code> podem zerar (perda de contato).</li>
+  </ul>
+
+  <h2>Contexto técnico atual</h2>
+  <h3>Pipeline de colisão (alto nível)</h3>
+  <ol>
+    <li><code>CarPhysicsV2::StepOnce</code> (src/car_physics_v2.hpp) executa atualização física do frame.</li>
+    <li><code>GroundFollower::UpdateTarget</code> (src/car_ground_follower.hpp) calcula suporte de solo e correções planares.</li>
+    <li><code>ITrackCollisionQuery::ResolvePlanarWallPush</code> (src/interfaces.hpp / src/track_collision_query.hpp) consulta push de parede.</li>
+    <li><code>TrackSystem::FindPlanarWallPush</code> (src/track_system.cxx) faz detecção e resolve push em faces/segmentos de parede.</li>
+  </ol>
+
+  <h3>Classes/métodos responsáveis diretos</h3>
+  <ul>
+    <li><code>Game::TrackSystem::FindPlanarWallPush(...)</code> - resolvedor principal de parede (plano XZ).</li>
+    <li><code>Game::TrackCollisionQuery::ResolvePlanarWallPush(...)</code> - camada adaptadora com seed/fallback.</li>
+    <li><code>Game::CarPhysics::GroundFollower::ProbeSurfaceTarget(...)</code> - aplica correções e wall query por frame.</li>
+    <li><code>Game::CarPhysics::GroundFollower::UpdateTarget(...)</code> - reaproveitamento de probe + wall refresh.</li>
+    <li><code>Game::CarPhysicsV2::StepOnce(...)</code> - cancelamento de velocidade contra normal da parede e anti-press-through posicional.</li>
+  </ul>
+
+  <h3>Estruturas e estado relevantes</h3>
+  <ul>
+    <li><code>SegmentRenderEntry::WallSegment2D</code> (cache 2D por face/segmento).</li>
+    <li><code>wallQueryPrevWorldPosition_</code> e <code>wallQueryPrevWorldPositionValid_</code> (sweep entre frames).</li>
+    <li><code>GroundState.lastWallQueryHit/lastWallPushX/lastWallPushZ</code> (estado de contato parede por frame).</li>
+    <li>Constantes em <code>src/car_physics_shared.hpp</code>:
+      <code>kWallCollisionRadius</code>,
+      <code>kMaxPlanarCorrectionPerFrame</code>,
+      <code>kWallPushVelocityCancelThreshold</code>.
+    </li>
+  </ul>
+
+  <h2>Possíveis causas raiz</h2>
+  <ol>
+    <li>
+      <strong>Correção por frame limitada</strong>:
+      o push pode ser insuficiente no frame sob aceleração contínua, permitindo reinvasão no frame seguinte.
+    </li>
+    <li>
+      <strong>Perda intermitente de contato (miss de query)</strong>:
+      com seed local e/ou geometria diagonal, alguns frames não retornam hit mesmo com penetração.
+    </li>
+    <li>
+      <strong>Modelo de amostragem insuficiente</strong>:
+      1 ponto central pode não representar o volume do carro em ataque angular da face.
+    </li>
+    <li>
+      <strong>Túnel entre frames</strong>:
+      deslocamento por frame supera faixa robusta de detecção em certas condições.
+    </li>
+    <li>
+      <strong>Competição entre correções</strong>:
+      integração de dinâmica, aderência e correção planar pode reintroduzir componente de avanço contra a parede.
+    </li>
+  </ol>
+
+  <h2>Soluções candidatas (baixo custo SH2)</h2>
+  <ol>
+    <li>
+      <strong>Resolução iterativa curta por frame</strong>:
+      2-3 passes de push no mesmo frame (detectar-&gt;empurrar-&gt;retestar), com limite fixo.
+    </li>
+    <li>
+      <strong>Multi-probe lateral</strong>:
+      consultar parede em centro + lados (equivalente a “cantos” simplificados), escolhendo maior penetração.
+    </li>
+    <li>
+      <strong>Histerese de contato</strong>:
+      se havia contato nos últimos N frames, manter normal/push mínimo por 1-2 frames para evitar “buracos” de detecção.
+    </li>
+    <li>
+      <strong>Clamp de deslocamento normal</strong>:
+      remover componente de deslocamento para dentro da parede após integração, preservando tangencial.
+    </li>
+    <li>
+      <strong>Fallback de busca controlado</strong>:
+      ao miss local, varrer janela de segmentos carregados (não global do mapa inteiro), com cadência.
+    </li>
+    <li>
+      <strong>Depuração orientada a métricas</strong>:
+      imprimir <code>signedDist</code>, <code>penetration</code>, <code>seedSegmentId</code>, hit/miss por frame.
+    </li>
+  </ol>
+
+  <h2>Comparativo com referências analisadas</h2>
+  <p>
+    Em TORCS (simuv2/simuv3), a colisão com barreira usa pontos de contato (cantos), corrige posição imediatamente
+    (<code>toSide</code>), e ajusta velocidade normal/tangencial. A abordagem é robusta sob pressão contínua por manter
+    correção frame-a-frame no contato, e não somente no primeiro toque.
+  </p>
+
+  <h2>Prompt sugerido para outra IA</h2>
+  <pre>
+Projeto: Interlagos_racing (Sega Saturn, SH2, custo baixo obrigatório).
+
+Problema: colisão com faces de parede é detectada no primeiro contato, mas com aceleração contínua o carro atravessa.
+Queremos bloqueio robusto bidirecional da face (sem atravessar), mantendo desempenho.
+
+Arquivos-chave:
+- src/track_system.cxx: TrackSystem::FindPlanarWallPush
+- src/track_collision_query.hpp: ResolvePlanarWallPush
+- src/car_ground_follower.hpp: ProbeSurfaceTarget / UpdateTarget
+- src/car_physics_v2.hpp: StepOnce (correções de velocidade/posição)
+- src/car_physics_shared.hpp: tunables
+
+Tarefas:
+1) Instrumentar log mínimo por frame para colisão de parede:
+   - hit/miss
+   - signedDist/signedDistPrev
+   - penetration
+   - pushX/pushZ
+   - seedSegmentId/segmentId resolved
+2) Implementar resolução iterativa curta (2-3 passes) e multi-probe lateral.
+3) Implementar histerese de contato por 1-2 frames para eliminar miss intermitente.
+4) Garantir que deslocamento normal para dentro da parede seja removido após integração.
+5) Validar com ataques em múltiplos ângulos (frontal/oblíquo/rasante) e aceleração contínua.
+
+Restrições:
+- Evitar uso de float pesado.
+- Priorizar int/fixed-point.
+- Sem varredura global cara por frame.
+- Manter compatível com orçamento SH2.
+  </pre>
+
+  <h2>Critérios de sucesso</h2>
+  <ul>
+    <li>Sem atravessar face de parede mantendo acelerador pressionado.</li>
+    <li>Bloqueio consistente pelos dois lados da face.</li>
+    <li>Sem queda perceptível de FPS/estouro de Work RAM.</li>
+    <li>Logs de colisão estáveis e explicáveis frame a frame.</li>
+  </ul>
+</body>
+</html>

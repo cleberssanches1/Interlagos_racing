@@ -1,0 +1,265 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interlagos Racing - Diagnóstico de Colisão com Paredes</title>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #151b23;
+      --text: #e8eef7;
+      --muted: #a8b3c7;
+      --accent: #5fb3ff;
+      --warn: #ffcc66;
+      --bad: #ff6b6b;
+      --ok: #68d391;
+      --code: #0a0d12;
+      --line: #273041;
+    }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #0b0f15 0%, #101722 100%);
+      color: var(--text);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1, h2, h3 { margin: 0 0 10px; }
+    h1 { font-size: 28px; color: var(--accent); }
+    h2 { font-size: 20px; margin-top: 24px; }
+    h3 { font-size: 16px; margin-top: 18px; color: var(--warn); }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin: 12px 0;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      margin-right: 8px;
+      background: #1f2a3a;
+      border: 1px solid #2f415a;
+      color: #b8d8ff;
+    }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    code { padding: 1px 5px; }
+    pre {
+      padding: 10px 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .bad { color: var(--bad); }
+    .ok { color: var(--ok); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #1a2331; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Interlagos Racing: Problema de Colisão com Paredes</h1>
+    <p class="muted">Documento técnico para análise e correção por agente de IA.</p>
+
+    <div class="card">
+      <span class="tag">Status</span>
+      <span class="bad">Falha persistente</span>
+      <p><strong>Sintoma:</strong> o carro ainda atravessa faces verticais (placas/muros laterais), mesmo com regra de wall push habilitada em build.</p>
+      <p><strong>Impacto:</strong> quebra de jogabilidade e inconsistência física em alta e baixa velocidade.</p>
+    </div>
+
+    <h2>1) Contexto e Restrição de Plataforma</h2>
+    <ul>
+      <li>Plataforma alvo: Sega Saturn (SH2), orçamento de CPU/memória muito limitado.</li>
+      <li>Objetivo: colisão lateral robusta com custo baixo (sem Bullet, sem broadphase pesada).</li>
+      <li>Pipeline atual usa malha da pista com faces de chão + faces verticais de parede.</li>
+    </ul>
+
+    <h2>2) Comportamento Esperado vs Atual</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Esperado</h3>
+        <ul>
+          <li>Ao tocar parede lateral, carro deve receber empurrão plano XZ e não atravessar.</li>
+          <li>Resposta estável em velocidades baixas e altas.</li>
+          <li>Sem custo excessivo de CPU por frame.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Atual</h3>
+        <ul>
+          <li>Carro ainda atravessa paredes em múltiplos cenários.</li>
+          <li>Tentativas de robustez aumentaram custo e deixaram a simulação lenta.</li>
+          <li>Fallback global frequente pode elevar custo sem garantir bloqueio total.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>3) Pontos da Aplicação Onde a Lógica de Colisão é Tratada</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Arquivo</th>
+          <th>Responsabilidade</th>
+          <th>Funções/Métodos-chave</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>src/interfaces.hpp</code></td>
+          <td>Contrato abstrato da query de colisão de pista</td>
+          <td><code>ITrackCollisionQuery::ResolvePlanarWallPush(...)</code></td>
+        </tr>
+        <tr>
+          <td><code>src/track_collision_query.hpp</code></td>
+          <td>Adapter entre física do carro e <code>TrackSystem</code></td>
+          <td><code>ResolvePlanarWallPush(...)</code> com seed segment + fallback global por cadência</td>
+        </tr>
+        <tr>
+          <td><code>src/track_system.cxx</code></td>
+          <td>Núcleo de detecção e cálculo de push da parede</td>
+          <td><code>EnsureWallSegmentCache(...)</code>, <code>FindPlanarWallPush(...)</code></td>
+        </tr>
+        <tr>
+          <td><code>src/car_ground_follower.hpp</code></td>
+          <td>Loop de adesão/chão aplica correção XZ no carro</td>
+          <td><code>ProbeSurfaceTarget(...)</code>, <code>ApplyVerticalAdhesion(...)</code></td>
+        </tr>
+        <tr>
+          <td><code>src/car_physics_v2.hpp</code></td>
+          <td>Orquestra física V2 e reação de body clips (quando ativa)</td>
+          <td><code>ApplyBodyClipPlanarReaction(...)</code>, <code>StepOnce(...)</code></td>
+        </tr>
+        <tr>
+          <td><code>src/car_physics_shared.hpp</code></td>
+          <td>Tunables da física/colisão</td>
+          <td><code>kWallCollisionRadius</code>, <code>kMaxPlanarCorrectionPerFrame</code>, etc.</td>
+        </tr>
+        <tr>
+          <td><code>src/physics_feature_flags.hpp</code> + <code>Makefile</code></td>
+          <td>Feature flags de compile-time</td>
+          <td><code>PHYS_WALL_COLLISION_RUNTIME</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4) Fluxo Atual de Colisão (Resumo)</h2>
+    <ol>
+      <li>Física do carro chama <code>ResolvePlanarWallPush</code> (query adapter).</li>
+      <li>Adapter chama <code>TrackSystem::FindPlanarWallPush</code> com seed segment local e fallback global condicionado.</li>
+      <li>TrackSystem varre faces verticais (ou cache 2D de segmentos de parede) e calcula vetor de empurrão plano XZ.</li>
+      <li><code>GroundFollower</code> acumula <code>correctionX/Z</code> e aplica no <code>worldPosition</code>.</li>
+      <li>Correção é limitada por <code>kMaxPlanarCorrectionPerFrame</code>.</li>
+    </ol>
+
+    <h2>5) Hipóteses Técnicas do Erro</h2>
+    <div class="card">
+      <ul>
+        <li><strong>Tunneling discreto:</strong> deslocamento por frame pode “pular” para além da espessura da parede antes do push ser suficiente.</li>
+        <li><strong>Seed local incorreto:</strong> em alguns frames, consulta local não pega o segmento de parede correto; fallback global é tardio/intermitente.</li>
+        <li><strong>Filtro de faces verticais:</strong> faces válidas podem ser descartadas por critérios de normal/família/surface type.</li>
+        <li><strong>Clamp de correção:</strong> limite por frame pode estar baixo para certos casos de velocidade/penetração.</li>
+        <li><strong>Ordem de integração:</strong> posição pode avançar para dentro da parede e a correção só aplica no frame seguinte.</li>
+      </ul>
+    </div>
+
+    <h2>6) Requisitos de Solução</h2>
+    <ul>
+      <li><strong>Obrigatório:</strong> não atravessar paredes laterais.</li>
+      <li><strong>Obrigatório:</strong> manter custo baixo para SH2 (sem sistemas pesados de colisão 3D geral).</li>
+      <li><strong>Desejável:</strong> preservar dirigibilidade atual (curvas/re) e estabilidade de câmera.</li>
+    </ul>
+
+    <h2>7) Prompt para Agente de IA Resolver</h2>
+    <pre>Você é um agente especialista em física de jogos de corrida em hardware restrito (Sega Saturn SH2).
+
+Contexto:
+- Projeto: Interlagos_racing.
+- Colisão de parede atual usa push planar XZ em TrackSystem::FindPlanarWallPush.
+- Carro ainda atravessa paredes laterais (faces verticais), e tentativas de robustez já deixaram o frame caro.
+
+Objetivo:
+- Corrigir definitivamente o atravessamento de parede com custo baixo.
+- Entregar alteração mínima e estável para SH2.
+
+Arquivos críticos:
+- src/track_system.cxx: EnsureWallSegmentCache, FindPlanarWallPush
+- src/track_collision_query.hpp: ResolvePlanarWallPush adapter
+- src/car_ground_follower.hpp: ProbeSurfaceTarget, ApplyVerticalAdhesion
+- src/car_physics_v2.hpp: StepOnce / ApplyBodyClipPlanarReaction
+- src/car_physics_shared.hpp: tunables de wall collision
+
+Restrições:
+- Evitar broadphase pesada e malha 3D completa por frame.
+- Preferir matemática fixa/inteira e varredura local por segmento.
+- Permitir fallback global com cadência controlada apenas quando necessário.
+
+Tarefas:
+1) Instrumentar de forma barata a detecção de falha (quando posição cruza plano da parede entre frames).
+2) Implementar anti-tunneling de baixo custo:
+   - Swept test segment-vs-capsule/segment-vs-circle no plano XZ usando posição anterior->atual.
+   - Executar apenas em candidatos locais (seed segment +/- vizinhos).
+3) Ajustar ordem de aplicação para resolver penetração no mesmo frame (não só no próximo).
+4) Revisar filtros de parede (normal/família/surface type) para não descartar faces válidas.
+5) Validar com métricas em overlay:
+   - wallQueryCalls, wallQueryHits, wallQuerySegmentsScanned, wallQueryFacesScanned
+   - quantidade de correções por frame e casos de penetração residual.
+
+Critério de aceite:
+- Carro não atravessa placas/muros em múltiplas velocidades.
+- Custos por frame estáveis (sem queda perceptível de FPS).
+- Sem regressão relevante em curva/re/câmera.
+
+Entregue:
+- Patch com mudanças pontuais nos arquivos citados.
+- Resumo técnico curto do porquê da correção funcionar.</pre>
+
+    <h2>8) Checklist de Validação Pós-correção</h2>
+    <ul>
+      <li>Teste A: impacto lateral em baixa velocidade (não atravessa).</li>
+      <li>Teste B: impacto lateral em alta velocidade (não atravessa).</li>
+      <li>Teste C: raspando parede em curva longa (sem jitter excessivo).</li>
+      <li>Teste D: ré contra parede (sem inverter direção de forma errada).</li>
+      <li>Teste E: sem queda forte de FPS e sem travas de carregamento.</li>
+    </ul>
+
+    <div class="card">
+      <p><strong>Arquivo gerado:</strong> <code>wall_collision_issue_report.html</code></p>
+      <p class="muted">Atualizado para orientar análise de agentes especializados em física, geometria e otimização SH2.</p>
+    </div>
+  </div>
+</body>
+</html>

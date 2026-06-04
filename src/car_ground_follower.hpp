@@ -202,6 +202,38 @@ public:
             ioState.edgeRightLost = false;
             ioState.correctionX = Fxp::BuildRaw(0);
             ioState.correctionZ = Fxp::BuildRaw(0);
+            // Low-cost wall refresh even during probe reuse.
+            // Without this, sustained acceleration can cross walls on skipped probe frames.
+            if (Tunables::kEnableWallPlanarPush)
+            {
+                Vector3D wallPush{};
+                ioState.lastWallQueryHit = ResolveWallPushMultiProbe(
+                    trackQuery,
+                    worldPosition,
+                    step.sinYaw,
+                    step.cosYaw,
+                    Tunables::kWallCollisionRadius,
+                    static_cast<int32_t>(ioState.lastSurfaceSegmentId),
+                    wallPush,
+                    &ioState.lastWallQuerySegmentId);
+                ioState.lastWallQueryFrameId = static_cast<int32_t>(ioFrameState.frameId);
+                ioState.lastWallPushX = ioState.lastWallQueryHit ? wallPush.X : Fxp::BuildRaw(0);
+                ioState.lastWallPushZ = ioState.lastWallQueryHit ? wallPush.Z : Fxp::BuildRaw(0);
+
+                if (ioState.lastWallQueryHit)
+                {
+                    ioState.correctionX = Clamp(ioState.lastWallPushX,
+                        Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
+                        Tunables::kMaxPlanarCorrectionPerFrame);
+                    ioState.correctionZ = Clamp(ioState.lastWallPushZ,
+                        Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
+                        Tunables::kMaxPlanarCorrectionPerFrame);
+                    ioFrameState.debugWallHit = 1u;
+                    ioFrameState.debugWallSegmentId = ioState.lastWallQuerySegmentId;
+                    ioFrameState.debugWallPushX = FxpToDebugInt(ioState.lastWallPushX);
+                    ioFrameState.debugWallPushZ = FxpToDebugInt(ioState.lastWallPushZ);
+                }
+            }
             ioFrameState.groundFaceIndex = ioState.lastSurfaceFaceIndex;
             ioFrameState.groundFamilyId = ioState.lastSurfaceFamilyId;
             ioFrameState.groundSurfaceType = ioState.lastSurfaceType;
@@ -256,6 +288,27 @@ public:
             ioState.verticalVelocity = Fxp::BuildRaw(0);
             ioState.surfaceYFilterInitialized = false;
             if (!ioState.hasGroundSupport && ioState.lastStablePlanarInitialized)
+            {
+                ioCarWorldPosition.X = ioState.lastStableX;
+                ioCarWorldPosition.Z = ioState.lastStableZ;
+            }
+            return;
+        }
+
+        if constexpr (Tunables::kEnableSaturnLowCostPhysics)
+        {
+            ioCarWorldPosition.Y = ioState.surfaceYTarget;
+            ioState.surfaceYFiltered = ioState.surfaceYTarget;
+            ioState.verticalVelocity = Fxp::BuildRaw(0);
+            ioState.surfaceYFilterInitialized = true;
+
+            if (ioState.hasGroundSupport)
+            {
+                ioState.lastStableX = ioCarWorldPosition.X;
+                ioState.lastStableZ = ioCarWorldPosition.Z;
+                ioState.lastStablePlanarInitialized = true;
+            }
+            else if (ioState.lastStablePlanarInitialized)
             {
                 ioCarWorldPosition.X = ioState.lastStableX;
                 ioCarWorldPosition.Z = ioState.lastStableZ;
@@ -453,6 +506,119 @@ private:
     static bool HasProbeSupport(const SurfaceProbeSample& a, const SurfaceProbeSample& b)
     {
         return a.valid || b.valid;
+    }
+
+    static bool ResolveWallPushMultiProbe(const ITrackCollisionQuery* trackQuery,
+                                          const Vector3D& basePosition,
+                                          const Fxp& sinYaw,
+                                          const Fxp& cosYaw,
+                                          Fxp wallRadius,
+                                          int32_t seedSegmentId,
+                                          Vector3D& outPush,
+                                          int32_t* outSegmentId)
+    {
+        outPush = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
+        if (!trackQuery)
+        {
+            if (outSegmentId) *outSegmentId = -1;
+            return false;
+        }
+
+        const Vector3D forwardDirection(
+            sinYaw,
+            Fxp::BuildRaw(0),
+            Fxp::BuildRaw(-cosYaw.RawValue()));
+
+        if constexpr (Tunables::kEnableSaturnLowCostPhysics)
+        {
+            return trackQuery->ResolvePlanarWallPush(basePosition,
+                                                     forwardDirection,
+                                                     wallRadius,
+                                                     outPush,
+                                                     outSegmentId,
+                                                     seedSegmentId);
+        }
+
+        const Fxp wallRightX = cosYaw;
+        const Fxp wallRightZ = sinYaw;
+
+        int32_t localSeedSegmentId = seedSegmentId;
+        int32_t lastHitSegmentId = -1;
+        bool anyHit = false;
+        Vector3D workingBase = basePosition;
+
+        constexpr uint8_t kMaxResolvePasses = 3u;
+        const Fxp lateralOffsets[3] = {
+            Fxp::BuildRaw(0),
+            Tunables::kProbeHalfTrack,
+            Fxp::BuildRaw(-Tunables::kProbeHalfTrack.RawValue())
+        };
+
+        for (uint8_t pass = 0; pass < kMaxResolvePasses; ++pass)
+        {
+            bool passHit = false;
+            Vector3D bestPush(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
+            int32_t bestSegmentId = -1;
+            int64_t bestMagRaw = -1;
+
+            for (uint8_t probe = 0; probe < 3u; ++probe)
+            {
+                Vector3D probePosition = workingBase;
+                const Fxp lateralOffset = lateralOffsets[probe];
+                if (lateralOffset.RawValue() != 0)
+                {
+                    probePosition.X += wallRightX * lateralOffset;
+                    probePosition.Z += wallRightZ * lateralOffset;
+                }
+
+                Vector3D probePush{};
+                int32_t probeSegmentId = -1;
+                const bool hit = trackQuery->ResolvePlanarWallPush(
+                    probePosition,
+                    forwardDirection,
+                    wallRadius,
+                    probePush,
+                    &probeSegmentId,
+                    localSeedSegmentId);
+                if (!hit)
+                {
+                    continue;
+                }
+
+                passHit = true;
+                anyHit = true;
+                const int64_t magRaw =
+                    static_cast<int64_t>(probePush.X.Abs().RawValue()) +
+                    static_cast<int64_t>(probePush.Z.Abs().RawValue());
+                if (magRaw > bestMagRaw)
+                {
+                    bestMagRaw = magRaw;
+                    bestPush = probePush;
+                    bestSegmentId = probeSegmentId;
+                }
+            }
+
+            if (!passHit)
+            {
+                break;
+            }
+
+            outPush.X += bestPush.X;
+            outPush.Z += bestPush.Z;
+            workingBase.X += bestPush.X;
+            workingBase.Z += bestPush.Z;
+            if (bestSegmentId > 0)
+            {
+                localSeedSegmentId = bestSegmentId;
+                lastHitSegmentId = bestSegmentId;
+            }
+        }
+
+        if (outSegmentId)
+        {
+            *outSegmentId = lastHitSegmentId;
+        }
+        return anyHit;
     }
 
     static Fxp AveragePairY(const SurfaceProbeSample& a,
@@ -689,18 +855,28 @@ private:
                     : (frameId - ioState.lastWallQueryFrameId);
             const bool shouldRefreshWallQuery =
                 (ioState.lastWallQueryFrameId < 0) ||
-                (ioState.lastWallQueryHit ? (wallFrameDelta >= 1) : (wallFrameDelta >= 3));
+                (wallFrameDelta >= 1);
             if (shouldRefreshWallQuery)
             {
                 Vector3D wallPush{};
-                const Vector3D forwardDirection =
-                    Vector3D(sinYaw, Fxp::BuildRaw(0), Fxp::BuildRaw(-cosYaw.RawValue()));
-                ioState.lastWallQueryHit = trackQuery->ResolvePlanarWallPush(worldPosition,
-                                                                              forwardDirection,
-                                                                              Tunables::kWallCollisionRadius,
-                                                                              wallPush,
-                                                                              &ioState.lastWallQuerySegmentId,
-                                                                              targetSegmentId);
+                Fxp wallRadius = Tunables::kWallCollisionRadius;
+                if (ioFrameState.speedProxy > 0)
+                {
+                    const int32_t speedProxyClamped =
+                        std::clamp<int32_t>(ioFrameState.speedProxy, 0, Tunables::kTargetTopSpeedKmh);
+                    // Extra lookahead radius: up to +0.75 at top speed.
+                    const Fxp dynamicExtra =
+                        Fxp::BuildRaw((speedProxyClamped << 16) / 400);
+                    wallRadius += dynamicExtra;
+                }
+                ioState.lastWallQueryHit = ResolveWallPushMultiProbe(trackQuery,
+                                                                     worldPosition,
+                                                                     sinYaw,
+                                                                     cosYaw,
+                                                                     wallRadius,
+                                                                     targetSegmentId,
+                                                                     wallPush,
+                                                                     &ioState.lastWallQuerySegmentId);
                 ioState.lastWallQueryFrameId = frameId;
                 ioState.lastWallPushX = ioState.lastWallQueryHit ? wallPush.X : Fxp::BuildRaw(0);
                 ioState.lastWallPushZ = ioState.lastWallQueryHit ? wallPush.Z : Fxp::BuildRaw(0);

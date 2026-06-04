@@ -4596,7 +4596,8 @@ static bool ReorderQuadVerticesFromUv(const SegmentComponent::GeoFace& face, uin
 }
 
 // Build a stable face normal from the first three corners of the polygon.
-static Vector3D BuildFaceNormalFromVerts(const std::vector<SRL::Math::Types::Vector3D>& verts,
+template <typename VecT>
+static Vector3D BuildFaceNormalFromVerts(const VecT& verts,
                                          const uint16_t indices[4])
 {
     if (verts.empty()) return Vector3D(0.0, 0.0, 0.0);
@@ -7324,6 +7325,227 @@ TrackSystem::SegmentRenderEntry* TrackSystem::FindWindowEntryByIdFast(int32_t se
 const TrackSystem::SegmentRenderEntry* TrackSystem::FindWindowEntryByIdFast(int32_t segmentId) const
 {
     return const_cast<TrackSystem*>(this)->FindWindowEntryByIdFast(segmentId);
+}
+
+bool TrackSystem::EnsureWallSegmentCache(SegmentRenderEntry& entry) const
+{
+    const Vector3D* verts = nullptr;
+    const SRL::Types::Polygon* faces = nullptr;
+    size_t vertCount = 0u;
+    size_t faceCount = 0u;
+
+    if (!entry.renderer ||
+        !entry.renderer->GetComponentGeometry(verts, vertCount, faces, faceCount) ||
+        !verts || !faces || vertCount == 0u || faceCount == 0u)
+    {
+        entry.wallSegments2D.clear();
+        entry.wallSegmentsCacheVertCount = static_cast<uint32_t>(vertCount);
+        entry.wallSegmentsCacheFaceCount = static_cast<uint32_t>(faceCount);
+        entry.wallSegmentsCacheFamilyCount = 0u;
+        entry.wallSegmentsCacheSegmentId = entry.id;
+        entry.wallSegmentsCacheLodIndex = entry.lodState.currentLodIndex;
+        entry.wallSegmentsCacheReady = true;
+        return false;
+    }
+
+    const size_t familyCount = entry.lodState.faceFamilyIds.size();
+    const uint32_t vertCountU32 = static_cast<uint32_t>(vertCount);
+    const uint32_t faceCountU32 = static_cast<uint32_t>(faceCount);
+    const uint32_t familyCountU32 = static_cast<uint32_t>(familyCount);
+
+    if (entry.wallSegmentsCacheReady &&
+        entry.wallSegmentsCacheSegmentId == entry.id &&
+        entry.wallSegmentsCacheLodIndex == entry.lodState.currentLodIndex &&
+        entry.wallSegmentsCacheVertCount == vertCountU32 &&
+        entry.wallSegmentsCacheFaceCount == faceCountU32 &&
+        entry.wallSegmentsCacheFamilyCount == familyCountU32)
+    {
+        return !entry.wallSegments2D.empty();
+    }
+
+    entry.wallSegments2D.clear();
+    entry.wallSegmentsCacheVertCount = vertCountU32;
+    entry.wallSegmentsCacheFaceCount = faceCountU32;
+    entry.wallSegmentsCacheFamilyCount = familyCountU32;
+    entry.wallSegmentsCacheSegmentId = entry.id;
+    entry.wallSegmentsCacheLodIndex = entry.lodState.currentLodIndex;
+    entry.wallSegmentsCacheReady = true;
+
+    const size_t scanFaceCount =
+        (familyCount > 0u) ? std::min(faceCount, familyCount) : faceCount;
+    if (scanFaceCount == 0u)
+    {
+        return false;
+    }
+
+    entry.wallSegments2D.reserve(scanFaceCount);
+
+    auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
+    auto normalizePlanar = [&](int64_t nxRaw, int64_t nzRaw, int32_t& outNxRaw, int32_t& outNzRaw) -> bool
+    {
+        const int64_t maxAxis = std::max(abs64(nxRaw), abs64(nzRaw));
+        if (maxAxis <= 0) return false;
+        outNxRaw = static_cast<int32_t>((nxRaw << 16) / maxAxis);
+        outNzRaw = static_cast<int32_t>((nzRaw << 16) / maxAxis);
+        return true;
+    };
+
+    auto endpointLess = [](int32_t ax, int32_t az, int32_t bx, int32_t bz) -> bool
+    {
+        if (ax != bx) return ax < bx;
+        return az < bz;
+    };
+
+    auto isDuplicateSegment = [&](int32_t ax, int32_t az, int32_t bx, int32_t bz) -> bool
+    {
+        int32_t cax = ax;
+        int32_t caz = az;
+        int32_t cbx = bx;
+        int32_t cbz = bz;
+        if (endpointLess(cbx, cbz, cax, caz))
+        {
+            std::swap(cax, cbx);
+            std::swap(caz, cbz);
+        }
+
+        for (size_t i = 0; i < entry.wallSegments2D.size(); ++i)
+        {
+            const auto& existing = entry.wallSegments2D[i];
+            int32_t eax = existing.axRaw;
+            int32_t eaz = existing.azRaw;
+            int32_t ebx = existing.bxRaw;
+            int32_t ebz = existing.bzRaw;
+            if (endpointLess(ebx, ebz, eax, eaz))
+            {
+                std::swap(eax, ebx);
+                std::swap(eaz, ebz);
+            }
+            if (eax == cax && eaz == caz && ebx == cbx && ebz == cbz)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (size_t fi = 0; fi < scanFaceCount; ++fi)
+    {
+        const bool hasFamilyId = (fi < familyCount);
+        const uint16_t faceFamilyId = hasFamilyId ? entry.lodState.faceFamilyIds[fi] : 0u;
+        // Include all faces with mostly-vertical normals regardless of surface type.
+        // The planar-normal filter below is what distinguishes walls from floor.
+        (void)faceFamilyId;
+        (void)hasFamilyId;
+
+        const SRL::Types::Polygon& face = faces[fi];
+
+        const uint16_t i0 = face.Vertices[0];
+        const uint16_t i1 = face.Vertices[1];
+        const uint16_t i2 = face.Vertices[2];
+        const uint16_t i3 = face.Vertices[3];
+        if (i0 >= vertCount || i1 >= vertCount || i2 >= vertCount || i3 >= vertCount) continue;
+
+        const uint16_t faceIndices[4] = { i0, i1, i2, i3 };
+        int32_t px[4] = { 0, 0, 0, 0 };
+        int32_t pz[4] = { 0, 0, 0, 0 };
+        int32_t py[4] = { 0, 0, 0, 0 };
+        for (size_t k = 0; k < 4; ++k)
+        {
+            const Vector3D& v = verts[faceIndices[k]];
+            px[k] = v.X.RawValue();
+            pz[k] = v.Z.RawValue();
+            py[k] = v.Y.RawValue();
+        }
+
+        // Use stored face normal; fall back to vertex cross-product for GEO faces (normal == 0).
+        int64_t nxRaw = static_cast<int64_t>(face.Normal.X.RawValue());
+        int64_t nyRaw = static_cast<int64_t>(face.Normal.Y.RawValue());
+        int64_t nzRaw = static_cast<int64_t>(face.Normal.Z.RawValue());
+        if (nxRaw == 0 && nyRaw == 0 && nzRaw == 0)
+        {
+            const int64_t abx = static_cast<int64_t>(px[1]) - static_cast<int64_t>(px[0]);
+            const int64_t aby = static_cast<int64_t>(py[1]) - static_cast<int64_t>(py[0]);
+            const int64_t abz = static_cast<int64_t>(pz[1]) - static_cast<int64_t>(pz[0]);
+            const int64_t acx = static_cast<int64_t>(px[2]) - static_cast<int64_t>(px[0]);
+            const int64_t acy = static_cast<int64_t>(py[2]) - static_cast<int64_t>(py[0]);
+            const int64_t acz = static_cast<int64_t>(pz[2]) - static_cast<int64_t>(pz[0]);
+            nxRaw = ((aby * acz) - (abz * acy)) >> 16;
+            nyRaw = ((abz * acx) - (abx * acz)) >> 16;
+            nzRaw = ((abx * acy) - (aby * acx)) >> 16;
+        }
+        const int64_t planarNormalAbs = std::max(abs64(nxRaw), abs64(nzRaw));
+        if (planarNormalAbs <= 0) continue;
+        if ((planarNormalAbs * 2) < abs64(nyRaw)) continue;
+
+        int32_t minXRaw = px[0];
+        int32_t maxXRaw = px[0];
+        int32_t minZRaw = pz[0];
+        int32_t maxZRaw = pz[0];
+        int32_t minYRaw = py[0];
+        int32_t maxYRaw = py[0];
+        for (size_t k = 1; k < 4; ++k)
+        {
+            if (px[k] < minXRaw) minXRaw = px[k];
+            if (px[k] > maxXRaw) maxXRaw = px[k];
+            if (pz[k] < minZRaw) minZRaw = pz[k];
+            if (pz[k] > maxZRaw) maxZRaw = pz[k];
+            if (py[k] < minYRaw) minYRaw = py[k];
+            if (py[k] > maxYRaw) maxYRaw = py[k];
+        }
+
+        int bestA = 0;
+        int bestB = 1;
+        int64_t bestLenSq = 0;
+        for (int a = 0; a < 4; ++a)
+        {
+            for (int b = a + 1; b < 4; ++b)
+            {
+                const int64_t dx = static_cast<int64_t>(px[b]) - static_cast<int64_t>(px[a]);
+                const int64_t dz = static_cast<int64_t>(pz[b]) - static_cast<int64_t>(pz[a]);
+                const int64_t lenSq = (dx * dx) + (dz * dz);
+                if (lenSq > bestLenSq)
+                {
+                    bestLenSq = lenSq;
+                    bestA = a;
+                    bestB = b;
+                }
+            }
+        }
+        if (bestLenSq <= 0) continue;
+
+        const int32_t axRaw = px[bestA];
+        const int32_t azRaw = pz[bestA];
+        const int32_t bxRaw = px[bestB];
+        const int32_t bzRaw = pz[bestB];
+        if (isDuplicateSegment(axRaw, azRaw, bxRaw, bzRaw))
+        {
+            continue;
+        }
+
+        int32_t normalizedNxRaw = 0;
+        int32_t normalizedNzRaw = 0;
+        if (!normalizePlanar(nxRaw, nzRaw, normalizedNxRaw, normalizedNzRaw))
+        {
+            continue;
+        }
+
+        SegmentRenderEntry::WallSegment2D segment2D{};
+        segment2D.axRaw = axRaw;
+        segment2D.azRaw = azRaw;
+        segment2D.bxRaw = bxRaw;
+        segment2D.bzRaw = bzRaw;
+        segment2D.minXRaw = minXRaw;
+        segment2D.maxXRaw = maxXRaw;
+        segment2D.minZRaw = minZRaw;
+        segment2D.maxZRaw = maxZRaw;
+        segment2D.minYRaw = minYRaw;
+        segment2D.maxYRaw = maxYRaw;
+        segment2D.nxRaw = normalizedNxRaw;
+        segment2D.nzRaw = normalizedNzRaw;
+        entry.wallSegments2D.push_back(segment2D);
+    }
+
+    return !entry.wallSegments2D.empty();
 }
 
 void TrackSystem::UpdateDesiredStabilizedWindowLodTargets()
@@ -12732,6 +12954,8 @@ void TrackSystem::ResetInitializationState()
     wallQueryHitsLastFrame_ = 0u;
     wallQuerySegmentsScannedLastFrame_ = 0u;
     wallQueryFacesScannedLastFrame_ = 0u;
+    wallQueryPrevWorldPosition_ = Vector3D(0.0, 0.0, 0.0);
+    wallQueryPrevWorldPositionValid_ = false;
     surfaceQueryLastInsideSegmentId_ = -1;
     surfaceQueryLastInsideFaceIndex_ = -1;
     surfaceQueryLastInsideFamilyId_ = 0u;
@@ -13788,7 +14012,6 @@ bool TrackSystem::Initialize(const Config& config)
                         break;
                     }
                     SRL::Types::Polygon p{};
-                    p.Normal = Vector3D(0.0, 0.0, 0.0);
                     for (size_t c = 0; c < 4; ++c)
                     {
                         p.Vertices[c] = gf.vertex[c];
@@ -13797,6 +14020,7 @@ bool TrackSystem::Initialize(const Config& config)
                     {
                         p.Vertices[3] = p.Vertices[2];
                     }
+                    p.Normal = BuildFaceNormalFromVerts(seg1ComponentVerts_, p.Vertices);
                     seg1ComponentFaces_.push_back(p);
 
                     uint16_t texIndex = No_Texture;
@@ -18107,7 +18331,23 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
     const int64_t pzRaw = static_cast<int64_t>(worldPosition.Z.RawValue());
+    const bool prevValid = wallQueryPrevWorldPositionValid_;
+    const int64_t prevPxRaw = prevValid ? static_cast<int64_t>(wallQueryPrevWorldPosition_.X.RawValue()) : pxRaw;
+    const int64_t prevPyRaw = prevValid ? static_cast<int64_t>(wallQueryPrevWorldPosition_.Y.RawValue()) : pyRaw;
+    const int64_t prevPzRaw = prevValid ? static_cast<int64_t>(wallQueryPrevWorldPosition_.Z.RawValue()) : pzRaw;
     const int64_t yMarginRaw = static_cast<int64_t>(12 << 16);
+
+    struct WallQueryPrevPosCommit
+    {
+        const TrackSystem* self = nullptr;
+        Vector3D pos{};
+        ~WallQueryPrevPosCommit()
+        {
+            if (!self) return;
+            self->wallQueryPrevWorldPosition_ = pos;
+            self->wallQueryPrevWorldPositionValid_ = true;
+        }
+    } prevPosCommit{ this, worldPosition };
 
     auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
     auto clamp64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t
@@ -18206,14 +18446,28 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         const int64_t signedDistRaw =
             ((dx * nxRaw) + (dy * nyRaw) + (dz * nzRaw)) >> 16;
         const int64_t absDistRaw = abs64(signedDistRaw);
-        if (absDistRaw >= radiusRaw) return;
+        const int64_t prevDx = prevPxRaw - ax;
+        const int64_t prevDy = prevPyRaw - ay;
+        const int64_t prevDz = prevPzRaw - az;
+        const int64_t prevSignedDistRaw =
+            ((prevDx * nxRaw) + (prevDy * nyRaw) + (prevDz * nzRaw)) >> 16;
+        const bool overlapNow = (absDistRaw < radiusRaw);
+        const bool crossedPlane =
+            prevValid &&
+            ((signedDistRaw > 0 && prevSignedDistRaw < 0) ||
+             (signedDistRaw < 0 && prevSignedDistRaw > 0));
+        if (!overlapNow && !crossedPlane) return;
 
-        const int64_t penetrationRaw = radiusRaw - absDistRaw;
+        const int64_t penetrationRaw = overlapNow
+            ? (radiusRaw - absDistRaw)
+            : (absDistRaw + radiusRaw);
         if (penetrationRaw <= 0) return;
 
         const int64_t planarNxRaw = (nxRaw << 16) / maxPlanarAxis;
         const int64_t planarNzRaw = (nzRaw << 16) / maxPlanarAxis;
-        const int64_t dirSign = (signedDistRaw >= 0) ? 1 : -1;
+        const int64_t dirSign = crossedPlane
+            ? ((prevSignedDistRaw >= 0) ? 1 : -1)
+            : ((signedDistRaw >= 0) ? 1 : -1);
         const int64_t pushXRaw = ((planarNxRaw * penetrationRaw) >> 16) * dirSign;
         const int64_t pushZRaw = ((planarNzRaw * penetrationRaw) >> 16) * dirSign;
 
@@ -18295,6 +18549,132 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                            bool respectScmapHint)
     {
         if (respectScmapHint && !segmentHasWallCandidates(segment.id)) return;
+
+        {
+            SegmentRenderEntry* mutableSegment = const_cast<SegmentRenderEntry*>(&segment);
+            if (mutableSegment && EnsureWallSegmentCache(*mutableSegment))
+            {
+                ++wallQuerySegmentsScannedThisFrame_;
+                wallQueryFacesScannedThisFrame_ = static_cast<uint32_t>(
+                    std::min<uint64_t>(
+                        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                        static_cast<uint64_t>(wallQueryFacesScannedThisFrame_) +
+                            static_cast<uint64_t>(mutableSegment->wallSegments2D.size())));
+
+                // Fast int32 scan via stored outward normal projection.
+                // Replaces closest-point-on-segment (had 2-4 int64 divisions per wall)
+                // with a signed-distance dot product (0 divisions, all int32).
+                // Safe for tracks within ±5000 coordinate units (SH2 assumption).
+                const int32_t pXR  = static_cast<int32_t>(pxRaw);
+                const int32_t pZR  = static_cast<int32_t>(pzRaw);
+                const int32_t pYR  = static_cast<int32_t>(pyRaw);
+                const int32_t pPrevXR = static_cast<int32_t>(prevPxRaw);
+                const int32_t pPrevZR = static_cast<int32_t>(prevPzRaw);
+                const int32_t pPrevYR = static_cast<int32_t>(prevPyRaw);
+                const int32_t radI = static_cast<int32_t>(radiusRaw);
+                const int32_t oXR  = trackOffset.X.RawValue();
+                const int32_t oZR  = trackOffset.Z.RawValue();
+                const int32_t oYR  = trackOffset.Y.RawValue();
+                const int32_t yMgn = 12 << 16;
+                const int32_t rad3 = radI * 3;
+
+                for (size_t wi = 0; wi < mutableSegment->wallSegments2D.size(); ++wi)
+                {
+                    const auto& wall = mutableSegment->wallSegments2D[wi];
+
+                    const int32_t sweepMinY = prevValid ? std::min(pYR, pPrevYR) : pYR;
+                    const int32_t sweepMaxY = prevValid ? std::max(pYR, pPrevYR) : pYR;
+                    // Y height filter (swept)
+                    if (sweepMinY < (wall.minYRaw + oYR - yMgn) &&
+                        sweepMaxY < (wall.minYRaw + oYR - yMgn)) continue;
+                    if (sweepMinY > (wall.maxYRaw + oYR + yMgn) &&
+                        sweepMaxY > (wall.maxYRaw + oYR + yMgn)) continue;
+
+                    // Planar AABB with 3× radius margin — catches cars up to ~3.75u inside wall.
+                    const int32_t sweepMinX = prevValid ? std::min(pXR, pPrevXR) : pXR;
+                    const int32_t sweepMaxX = prevValid ? std::max(pXR, pPrevXR) : pXR;
+                    const int32_t sweepMinZ = prevValid ? std::min(pZR, pPrevZR) : pZR;
+                    const int32_t sweepMaxZ = prevValid ? std::max(pZR, pPrevZR) : pZR;
+                    if (sweepMaxX < (wall.minXRaw + oXR - rad3) || sweepMinX > (wall.maxXRaw + oXR + rad3)) continue;
+                    if (sweepMaxZ < (wall.minZRaw + oZR - rad3) || sweepMinZ > (wall.maxZRaw + oZR + rad3)) continue;
+
+                    // Signed distance from car to wall plane using stored outward normal.
+                    // >>8 on both sides keeps products in int32 (safe for coords ≤ ±5000u).
+                    // Positive = car on correct side, negative = car tunneled through.
+                    const int32_t dxR = (pXR - wall.axRaw - oXR) >> 8;
+                    const int32_t dzR = (pZR - wall.azRaw - oZR) >> 8;
+                    const int32_t signedDist = (dxR * (wall.nxRaw >> 8)) + (dzR * (wall.nzRaw >> 8));
+                    const int32_t dxPrevR = (pPrevXR - wall.axRaw - oXR) >> 8;
+                    const int32_t dzPrevR = (pPrevZR - wall.azRaw - oZR) >> 8;
+                    const int32_t signedDistPrev = (dxPrevR * (wall.nxRaw >> 8)) + (dzPrevR * (wall.nzRaw >> 8));
+
+                    const int32_t absDist = (signedDist < 0) ? -signedDist : signedDist;
+                    const bool overlapNow = (absDist < radI);
+                    const bool crossedPlane =
+                        prevValid &&
+                        ((signedDist > 0 && signedDistPrev < 0) ||
+                         (signedDist < 0 && signedDistPrev > 0));
+
+                    if (!overlapNow && !crossedPlane) continue;
+
+                    // Penetration depth: approach uses (radius - dist), tunnel uses (dist + radius).
+                    const int32_t pen = overlapNow
+                        ? (radI - absDist)
+                        : (absDist + radI);
+
+                    // Push direction: derived geometrically from segment [A,B] perpendicular,
+                    // oriented toward the side where the car was (prevPos when valid, else curPos).
+                    // This is correct regardless of stored normal sign (inward vs outward).
+                    const int32_t wax = wall.axRaw + oXR;
+                    const int32_t waz = wall.azRaw + oZR;
+                    const int32_t wEdgeX = wall.bxRaw - wall.axRaw;
+                    const int32_t wEdgeZ = wall.bzRaw - wall.azRaw;
+                    int32_t perpX = wEdgeZ;
+                    int32_t perpZ = -wEdgeX;
+                    const int32_t refX = prevValid ? pPrevXR : pXR;
+                    const int32_t refZ = prevValid ? pPrevZR : pZR;
+                    const int64_t oriDot = (int64_t)perpX * (refX - wax)
+                                         + (int64_t)perpZ * (refZ - waz);
+                    if (oriDot < 0) { perpX = -perpX; perpZ = -perpZ; }
+                    const int32_t apX = (perpX < 0) ? -perpX : perpX;
+                    const int32_t apZ = (perpZ < 0) ? -perpZ : perpZ;
+                    const int32_t maxP = (apX > apZ) ? apX : apZ;
+                    int32_t pushX;
+                    int32_t pushZ;
+                    if (maxP > 0)
+                    {
+                        const int32_t npX = static_cast<int32_t>(
+                            ((int64_t)perpX << 16) / maxP);
+                        const int32_t npZ = static_cast<int32_t>(
+                            ((int64_t)perpZ << 16) / maxP);
+                        pushX = static_cast<int32_t>(((int64_t)npX * pen) >> 16);
+                        pushZ = static_cast<int32_t>(((int64_t)npZ * pen) >> 16);
+                    }
+                    else
+                    {
+                        // Degenerate segment: fall back to stored normal.
+                        const int32_t dirSign = crossedPlane
+                            ? ((signedDistPrev >= 0) ? 1 : -1)
+                            : ((signedDist >= 0) ? 1 : -1);
+                        pushX = static_cast<int32_t>(
+                            ((static_cast<int64_t>(wall.nxRaw) * pen) >> 16) * dirSign);
+                        pushZ = static_cast<int32_t>(
+                            ((static_cast<int64_t>(wall.nzRaw) * pen) >> 16) * dirSign);
+                    }
+
+                    if (pen > bestPenRaw)
+                    {
+                        bestPenRaw   = pen;
+                        bestPushXRaw = pushX;
+                        bestPushZRaw = pushZ;
+                        bestSegmentId = segment.id;
+                    }
+                }
+                // Cache is authoritative: skip the face-by-face scan for this segment.
+                return;
+            }
+        }
+
         if (!segment.renderer) return;
 
         const Vector3D* verts = nullptr;
@@ -18333,14 +18713,6 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             }
 
             const SRL::Types::Polygon& face = faces[fi];
-            const int64_t fallbackNxRaw = static_cast<int64_t>(face.Normal.X.RawValue());
-            const int64_t fallbackNyRaw = static_cast<int64_t>(face.Normal.Y.RawValue());
-            const int64_t fallbackNzRaw = static_cast<int64_t>(face.Normal.Z.RawValue());
-            const int64_t planarNormalAbs =
-                std::max(abs64(fallbackNxRaw), abs64(fallbackNzRaw));
-            // Keep mostly-vertical faces as walls and reject floor-like faces.
-            if (planarNormalAbs <= 0) continue;
-            if ((planarNormalAbs * 2) < abs64(fallbackNyRaw)) continue;
 
             const uint16_t i0 = face.Vertices[0];
             const uint16_t i1 = face.Vertices[1];
@@ -18352,6 +18724,28 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             const Vector3D b = verts[i1] + trackOffset;
             const Vector3D c = verts[i2] + trackOffset;
             const Vector3D d = verts[i3] + trackOffset;
+
+            int64_t fallbackNxRaw = static_cast<int64_t>(face.Normal.X.RawValue());
+            int64_t fallbackNyRaw = static_cast<int64_t>(face.Normal.Y.RawValue());
+            int64_t fallbackNzRaw = static_cast<int64_t>(face.Normal.Z.RawValue());
+            if (fallbackNxRaw == 0 && fallbackNyRaw == 0 && fallbackNzRaw == 0)
+            {
+                // GEO format: compute normal from vertices so tryFacePlane/tryEdge can run.
+                const int64_t abx = static_cast<int64_t>(b.X.RawValue()) - static_cast<int64_t>(a.X.RawValue());
+                const int64_t aby = static_cast<int64_t>(b.Y.RawValue()) - static_cast<int64_t>(a.Y.RawValue());
+                const int64_t abz = static_cast<int64_t>(b.Z.RawValue()) - static_cast<int64_t>(a.Z.RawValue());
+                const int64_t acx = static_cast<int64_t>(c.X.RawValue()) - static_cast<int64_t>(a.X.RawValue());
+                const int64_t acy = static_cast<int64_t>(c.Y.RawValue()) - static_cast<int64_t>(a.Y.RawValue());
+                const int64_t acz = static_cast<int64_t>(c.Z.RawValue()) - static_cast<int64_t>(a.Z.RawValue());
+                fallbackNxRaw = ((aby * acz) - (abz * acy)) >> 16;
+                fallbackNyRaw = ((abz * acx) - (abx * acz)) >> 16;
+                fallbackNzRaw = ((abx * acy) - (aby * acx)) >> 16;
+            }
+            const int64_t planarNormalAbs =
+                std::max(abs64(fallbackNxRaw), abs64(fallbackNzRaw));
+            // Keep mostly-vertical faces as walls and reject floor-like faces.
+            if (planarNormalAbs <= 0) continue;
+            if ((planarNormalAbs * 2) < abs64(fallbackNyRaw)) continue;
 
             const int64_t ay = static_cast<int64_t>(a.Y.RawValue());
             const int64_t by = static_cast<int64_t>(b.Y.RawValue());
@@ -18390,8 +18784,13 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             if (cz > maxZ) maxZ = cz;
             if (dz > maxZ) maxZ = dz;
             if (pyRaw < (minY - yMarginRaw) || pyRaw > (maxY + yMarginRaw)) continue;
-            if (pxRaw < (minX - radiusRaw) || pxRaw > (maxX + radiusRaw)) continue;
-            if (pzRaw < (minZ - radiusRaw) || pzRaw > (maxZ + radiusRaw)) continue;
+            // Use swept bounds so tunneling (car skips past face in one frame) is caught.
+            const int64_t fbSwMinX = prevValid ? std::min(pxRaw, prevPxRaw) : pxRaw;
+            const int64_t fbSwMaxX = prevValid ? std::max(pxRaw, prevPxRaw) : pxRaw;
+            const int64_t fbSwMinZ = prevValid ? std::min(pzRaw, prevPzRaw) : pzRaw;
+            const int64_t fbSwMaxZ = prevValid ? std::max(pzRaw, prevPzRaw) : pzRaw;
+            if (fbSwMaxX < (minX - radiusRaw) || fbSwMinX > (maxX + radiusRaw)) continue;
+            if (fbSwMaxZ < (minZ - radiusRaw) || fbSwMinZ > (maxZ + radiusRaw)) continue;
 
             tryFacePlane(a, b, c, d, fallbackNxRaw, fallbackNyRaw, fallbackNzRaw, segment.id);
             tryEdge(a, b, segment.id, fallbackNxRaw, fallbackNzRaw);
@@ -18409,7 +18808,7 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         {
             std::array<int32_t, 12> localIds{};
             size_t localCount = 0u;
-            static constexpr std::array<int32_t, 5> kNeighborDelta = { 0, 1, -1, 2, -2 };
+            static constexpr std::array<int32_t, 9> kNeighborDelta = { 0, 1, -1, 2, -2, 3, -3, 4, -4 };
             for (size_t di = 0; di < kNeighborDelta.size(); ++di)
             {
                 const int32_t candidateId =
@@ -18434,6 +18833,9 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             }
         }
 
+        // Global fallback: when local seed misses, scan loaded window segments.
+        // On Saturn low-cost mode this still stays affordable because the hot path
+        // uses cached 2D wall segments (int32), and this branch only runs on cadence/miss.
         if (allowGlobalFallback && (!scannedLocal || bestPenRaw <= 0))
         {
             for (const auto& segment : segmentRenderers_)
@@ -18445,19 +18847,20 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     };
 
     bool foundWall = runWallScan(true, true);
-    if (!foundWall)
+    if (!Game::PhysicsFeatureFlags::kEnableSaturnLowCostPhysics && !foundWall)
     {
         foundWall = runWallScan(false, false);
     }
 
     if (!foundWall || bestPenRaw <= 0) return false;
 
-    const int64_t maxPushRaw = radiusRaw;
-    const int64_t clampedPushX = clamp64(bestPushXRaw, -maxPushRaw, maxPushRaw);
-    const int64_t clampedPushZ = clamp64(bestPushZRaw, -maxPushRaw, maxPushRaw);
-    outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(clampedPushX)),
+    // Push is the exact distance needed to reach collision radius from the wall surface.
+    // No cap: clamping less than needed leaves the car inside the wall and stalls convergence.
+    outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(
+                           clamp64(bestPushXRaw, -0x7FFFFFFF, 0x7FFFFFFF))),
                        SRL::Math::Types::Fxp::BuildRaw(0),
-                       SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(clampedPushZ)));
+                       SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(
+                           clamp64(bestPushZRaw, -0x7FFFFFFF, 0x7FFFFFFF))));
     if (outSegmentId) *outSegmentId = bestSegmentId;
     ++wallQueryHitsThisFrame_;
     return true;

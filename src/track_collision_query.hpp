@@ -241,14 +241,48 @@ public:
             trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
         const int32_t resolvedSeedSegmentId =
             (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
-        return trackSystem_->FindPlanarWallPush(worldPosition,
-                                                offset,
-                                                forwardDirection,
-                                                collisionRadius,
-                                                outPush,
-                                                outSegmentId,
-                                                resolvedSeedSegmentId,
-                                                false);
+        constexpr uint8_t kWallGlobalFallbackCadenceFrames = 8u;
+        constexpr uint8_t kWallMissStreakForceFallback = 2u;
+        bool allowGlobalFallback = false;
+        if (resolvedSeedSegmentId <= 0)
+        {
+            allowGlobalFallback = true;
+        }
+        else if (wallMissStreak_ >= kWallMissStreakForceFallback)
+        {
+            allowGlobalFallback = true;
+        }
+        else if (wallGlobalFallbackCountdown_ == 0u)
+        {
+            allowGlobalFallback = true;
+        }
+        if (wallGlobalFallbackCountdown_ > 0u)
+        {
+            --wallGlobalFallbackCountdown_;
+        }
+
+        const bool found = trackSystem_->FindPlanarWallPush(worldPosition,
+                                                            offset,
+                                                            forwardDirection,
+                                                            collisionRadius,
+                                                            outPush,
+                                                            outSegmentId,
+                                                            resolvedSeedSegmentId,
+                                                            allowGlobalFallback);
+        if (found)
+        {
+            if (outSegmentId && *outSegmentId > 0)
+            {
+                lastSegmentId_ = static_cast<int16_t>(*outSegmentId);
+            }
+            wallMissStreak_ = 0u;
+            wallGlobalFallbackCountdown_ = kWallGlobalFallbackCadenceFrames;
+        }
+        else
+        {
+            if (wallMissStreak_ < 0xFFu) ++wallMissStreak_;
+        }
+        return found;
     }
 
     bool SampleSurfaceContact(const SRL::Math::Types::Vector3D& worldPosition,
@@ -422,4 +456,6 @@ private:
     mutable int16_t lastSegmentId_ = -1;
     mutable uint8_t contactGlobalFallbackCountdown_ = 0u;
     mutable uint8_t contactMissStreak_ = 0u;
+    mutable uint8_t wallGlobalFallbackCountdown_ = 0u;
+    mutable uint8_t wallMissStreak_ = 0u;
 };

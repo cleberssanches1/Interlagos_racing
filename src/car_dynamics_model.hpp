@@ -19,71 +19,147 @@ public:
                                     Tunables::kGripScaleFallback,
                                     Tunables::kGripScaleAsphalt);
         const bool hasSteerCommand = (ioFrameState.steering != 0);
-        const bool hasForwardDriveIntent =
+        const bool hasThrottleDriveIntent =
             (ioFrameState.throttle > 0) &&
             !ioFrameState.braking;
+        const int16_t steerAbsPercent =
+            static_cast<int16_t>((ioFrameState.steering < 0) ? -ioFrameState.steering : ioFrameState.steering);
 
-        // Estimate speed in km/h from forward speed proxy units.
-        const Fxp speedToKmh = Fxp::BuildRaw(
-            ((static_cast<int32_t>(Tunables::kTargetTopSpeedKmh) << 16) /
-             std::max<int32_t>(1, Tunables::kMaxForwardSpeed.RawValue() >> 16)));
-        const int16_t speedKmhSigned = (ioState.forwardSpeed * speedToKmh).As<int16_t>();
+        // Convert runtime world-units/frame to real km/h using the PATH-calibrated scale.
+        const int16_t speedKmhSigned = BuildSignedSpeedKmh(ioState.forwardSpeed);
         const int16_t speedKmhAbs = static_cast<int16_t>((speedKmhSigned < 0) ? -speedKmhSigned : speedKmhSigned);
 
-        if (ioState.gear < 1u) ioState.gear = 1u;
-        if (ioState.gear > 6u) ioState.gear = 6u;
-        const int16_t gearTopKmh =
-            Tunables::kGearTopSpeedKmh[static_cast<size_t>(ioState.gear - 1u)];
-        int32_t rpm = Tunables::kEngineIdleRpm;
-        if (gearTopKmh > 0)
+        const auto computeRpmForGear = [&](uint8_t gear) -> int16_t
         {
-            rpm = (static_cast<int32_t>(speedKmhAbs) * Tunables::kEngineMaxRpm) / gearTopKmh;
-            if (rpm < Tunables::kEngineIdleRpm) rpm = Tunables::kEngineIdleRpm;
-            if (rpm > Tunables::kEngineMaxRpm) rpm = Tunables::kEngineMaxRpm;
-        }
-        ioState.engineRpm = static_cast<int16_t>(rpm);
+            const int16_t gearTopKmh =
+                (gear == Tunables::kReverseGear)
+                    ? Tunables::kReverseTopSpeedKmh
+                    : Tunables::GearTopSpeedKmhFor(gear);
+            int32_t rpm = Tunables::kEngineIdleRpm;
+            if (gearTopKmh > 0)
+            {
+                rpm = (static_cast<int32_t>(speedKmhAbs) * Tunables::kEngineMaxRpm) / gearTopKmh;
+                if (rpm < Tunables::kEngineIdleRpm) rpm = Tunables::kEngineIdleRpm;
+                if (rpm > Tunables::kEngineMaxRpm) rpm = Tunables::kEngineMaxRpm;
+            }
+            return static_cast<int16_t>(rpm);
+        };
 
-        if (!ioFrameState.braking && ioFrameState.throttle > 0)
+        ioState.gear = Tunables::ClampSelectableGear(ioState.gear);
+        if (ioFrameState.shiftDownRequested)
         {
-            // Automatic 6-speed shift logic with hysteresis.
-            if (ioState.engineRpm >= Tunables::kEngineUpShiftRpm && ioState.gear < 6u)
+            const uint8_t nextGear =
+                (ioState.gear > Tunables::kReverseGear)
+                    ? static_cast<uint8_t>(ioState.gear - 1u)
+                    : Tunables::kReverseGear;
+            const bool reverseRequest = (nextGear == Tunables::kReverseGear);
+            const bool allowShift =
+                reverseRequest
+                    ? (speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
+                    : (computeRpmForGear(nextGear) <= Tunables::kEngineMaxRpm);
+            if (allowShift)
+            {
+                ioState.gear = nextGear;
+            }
+        }
+        if (ioFrameState.shiftUpRequested)
+        {
+            const bool leavingReverse = (ioState.gear == Tunables::kReverseGear);
+            const bool allowShift =
+                leavingReverse
+                    ? (speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
+                    : (ioState.gear < Tunables::kForwardGearCount);
+            if (allowShift && ioState.gear < Tunables::kForwardGearCount)
             {
                 ++ioState.gear;
             }
-            else if (ioState.engineRpm <= Tunables::kEngineDownShiftRpm && ioState.gear > 1u)
+        }
+        ioState.gear = Tunables::ClampSelectableGear(ioState.gear);
+        const bool isReverseGearSelected = (ioState.gear == Tunables::kReverseGear);
+        const bool hasForwardDriveIntent = hasThrottleDriveIntent && !isReverseGearSelected;
+        const bool hasReverseDriveIntent = hasThrottleDriveIntent && isReverseGearSelected;
+        const bool reverseMotionActive =
+            isReverseGearSelected &&
+            (ioState.forwardSpeed < Fxp::BuildRaw(0));
+        const bool isIntentionalReverse =
+            isReverseGearSelected &&
+            (reverseMotionActive || hasReverseDriveIntent);
+        const bool brakeDriftEntry =
+            Tunables::kEnableSaturnLowCostPhysics &&
+            ioFrameState.braking &&
+            !isReverseGearSelected &&
+            !ioState.wasBraking &&
+            (ioState.forwardSpeed > Fxp::BuildRaw(0)) &&
+            (ioState.forwardSpeed.Abs() >= Tunables::kBrakeSkidStartSpeed) &&
+            (steerAbsPercent >= Tunables::kBrakeDriftMinSteerPercent);
+
+        if (brakeDriftEntry)
+        {
+            ioState.brakeDriftFrames = Tunables::kBrakeDriftEntryFrames;
+        }
+
+        ioState.engineRpm = computeRpmForGear(ioState.gear);
+
+        if (Tunables::kAutomaticGearboxEnabled &&
+            !ioFrameState.braking &&
+            ioFrameState.throttle > 0 &&
+            !isReverseGearSelected)
+        {
+            // Automatic F1-style progression:
+            // quick short lower gears, then progressively longer upper gears.
+            if (ioState.engineRpm >= Tunables::kEngineUpShiftRpm &&
+                ioState.gear < Tunables::kForwardGearCount)
             {
-                --ioState.gear;
+                ++ioState.gear;
+                ioState.engineRpm = computeRpmForGear(ioState.gear);
             }
         }
 
         if (ioFrameState.braking)
         {
+            Fxp brakeDecel = Tunables::kBrakeDecelPerFrame;
+            if constexpr (Tunables::kEnableSaturnLowCostPhysics)
+            {
+                if (ioState.brakeDriftFrames > 0u)
+                {
+                    brakeDecel = brakeDecel * Tunables::kBrakeDriftDecelScale;
+                }
+            }
             if (ioState.forwardSpeed > Fxp::BuildRaw(0))
             {
-                ioState.forwardSpeed -= Tunables::kBrakeDecelPerFrame;
+                ioState.forwardSpeed -= brakeDecel;
+            }
+            else if (ioState.forwardSpeed < Fxp::BuildRaw(0))
+            {
+                ioState.forwardSpeed += brakeDecel;
             }
             else
             {
-                // Brake deadzone: engage reverse only after a short hold at stop.
-                if (ioFrameState.brakeHoldFrames >= Tunables::kReverseEngageDelayFrames)
-                {
-                    ioState.forwardSpeed -= Tunables::kReverseAccelPerFrame;
-                }
-                else
-                {
-                    ioState.forwardSpeed = Fxp::BuildRaw(0);
-                }
+                ioState.forwardSpeed = Fxp::BuildRaw(0);
             }
         }
         else if (throttleNorm > Fxp::BuildRaw(0))
         {
             const bool wasReversing = (ioState.forwardSpeed < Fxp::BuildRaw(0));
-            const Fxp gearAccel =
-                Tunables::kGearAccelPerFrame[static_cast<size_t>(ioState.gear - 1u)];
-            ioState.forwardSpeed += throttleNorm * gearAccel;
-            if (ioState.forwardSpeed < Fxp::BuildRaw(0))
+            if (hasReverseDriveIntent)
             {
-                ioState.forwardSpeed += Tunables::kBrakeDecelPerFrame;
+                if (ioState.forwardSpeed > Fxp::BuildRaw(0))
+                {
+                    ioState.forwardSpeed -= Tunables::kBrakeDecelPerFrame;
+                }
+                else
+                {
+                    ioState.forwardSpeed -= throttleNorm * Tunables::kReverseAccelPerFrame;
+                }
+            }
+            else
+            {
+                const Fxp gearAccel = Tunables::GearAccelFor(ioState.gear);
+                ioState.forwardSpeed += throttleNorm * gearAccel;
+                if (ioState.forwardSpeed < Fxp::BuildRaw(0))
+                {
+                    ioState.forwardSpeed += Tunables::kBrakeDecelPerFrame;
+                }
             }
             // Transition from reverse to forward:
             // remove sideways/yaw residue to prevent a lateral slide before moving ahead.
@@ -161,6 +237,22 @@ public:
             Clamp(outStep.speedAbs / Tunables::kMaxForwardSpeed,
                   Fxp::BuildRaw(0),
                   Fxp::BuildRaw(1 << 16));
+        const Fxp steerAbsNorm = steerNorm.Abs();
+        const Fxp gripLoss =
+            Clamp(Fxp::BuildRaw(1 << 16) - gripScale, Fxp::BuildRaw(0), Fxp::BuildRaw(1 << 16));
+        Fxp brakeSlip = Fxp::BuildRaw(0);
+        if (ioFrameState.braking && !isIntentionalReverse)
+        {
+            const Fxp brakeSpeedFactor =
+                Clamp((outStep.speedAbs - Tunables::kBrakeSkidStartSpeed) /
+                          (Tunables::kBrakeSkidFullSpeed - Tunables::kBrakeSkidStartSpeed),
+                      Fxp::BuildRaw(0),
+                      Fxp::BuildRaw(1 << 16));
+            const Fxp brakeGripFactor =
+                Tunables::kBrakeSkidBase + (gripLoss * Tunables::kBrakeSkidGripGain);
+            brakeSlip = (brakeSpeedFactor * steerAbsNorm) * brakeGripFactor;
+            brakeSlip = Clamp(brakeSlip, Fxp::BuildRaw(0), Fxp::BuildRaw(1 << 16));
+        }
         // No in-place rotation: steering authority fades out near zero speed.
         const Fxp steerSpeedGate =
             Clamp((outStep.speedAbs - Fxp::BuildRaw(0x00004000)) / Fxp::BuildRaw(0x0000C000),
@@ -179,7 +271,17 @@ public:
             const Fxp kCommandSteerMinGate = Fxp::BuildRaw(0x0000599A); // ~0.35
             if (steerGate < kCommandSteerMinGate) steerGate = kCommandSteerMinGate;
         }
+        if (isIntentionalReverse)
+        {
+            steerGate = Fxp::BuildRaw(1 << 16);
+        }
         steerAuthority = steerAuthority * steerGate;
+        if (ioFrameState.braking && !isIntentionalReverse)
+        {
+            const Fxp brakeSteerFactor =
+                Fxp::BuildRaw(1 << 16) - (brakeSlip * Tunables::kBrakeSteerLoss);
+            steerAuthority = steerAuthority * brakeSteerFactor;
+        }
 
         // Match gameplay convention directly:
         // negative steering => left turn, positive steering => right turn.
@@ -187,7 +289,7 @@ public:
         // Only invert during intentional reverse (braking held) — not during reverse→forward
         // transition where forwardSpeed is briefly negative but throttle is pressed.
         Fxp steerEffDeg = ioState.steerDeg * steerAuthority;
-        if (ioState.forwardSpeed < Fxp::BuildRaw(0) && ioFrameState.braking)
+        if (reverseMotionActive)
         {
             steerEffDeg = Fxp::BuildRaw(-steerEffDeg.RawValue());
         }
@@ -205,26 +307,62 @@ public:
             hasSteerCommand &&
             (outStep.speedAbs < Tunables::kLaunchKinematicSpeedThreshold);
 
-        if (useLowSpeedKinematic)
+        if (useLowSpeedKinematic || Tunables::kEnableSaturnLowCostPhysics)
         {
             // Arcade kinematic: yaw rate = steer x maxYaw, lateralSpeed = 0.
             // Direct mapping means the sign is always correct from frame 1 — no guards needed.
             ioState.lateralSpeed = Fxp::BuildRaw(0);
             ioState.wasKinematic = true;
             outStep.wasKinematicMode = true;
-            const Fxp kKinematicYawSpeedLoss = Fxp::BuildRaw(0x00010000); // 1.0
-            const Fxp kKinematicYawMinScale = Fxp::BuildRaw(0x00008000); // 0.5
-            Fxp kinematicYawScale = Fxp::BuildRaw(1 << 16) - (speedRatio * kKinematicYawSpeedLoss);
-            if (kinematicYawScale < kKinematicYawMinScale)
+            if constexpr (Tunables::kEnableSaturnLowCostPhysics)
             {
-                kinematicYawScale = kKinematicYawMinScale;
+                Fxp steerArcadeNorm = ioState.steerDeg * Tunables::kInvMaxSteerDeg;
+                if (reverseMotionActive)
+                {
+                    steerArcadeNorm = Fxp::BuildRaw(-steerArcadeNorm.RawValue());
+                }
+                Fxp arcadeSteerAuthority =
+                    Fxp::BuildRaw(1 << 16) - (speedRatio * Tunables::kArcadeHighSpeedSteerLoss);
+                if (arcadeSteerAuthority < Tunables::kArcadeSteerAuthorityMin)
+                {
+                    arcadeSteerAuthority = Tunables::kArcadeSteerAuthorityMin;
+                }
+                if (isIntentionalReverse)
+                {
+                    arcadeSteerAuthority = Fxp::BuildRaw(1 << 16);
+                }
+                else if (ioFrameState.braking)
+                {
+                    const Fxp brakeSteerFactor =
+                        Fxp::BuildRaw(1 << 16) - (brakeSlip * Tunables::kBrakeSteerLoss);
+                    arcadeSteerAuthority = arcadeSteerAuthority * brakeSteerFactor;
+                }
+                const Fxp arcadeYawRate =
+                    isIntentionalReverse
+                        ? Tunables::kReverseArcadeYawRateDegPerFrame
+                        : Tunables::kArcadeYawRateDegPerFrame;
+                const Fxp yawTarget =
+                    (steerArcadeNorm * arcadeYawRate) * arcadeSteerAuthority;
+                ioState.yawRateDegPerFrame +=
+                    (Fxp::BuildRaw(-yawTarget.RawValue()) - ioState.yawRateDegPerFrame) *
+                    Tunables::kYawRateResponse;
             }
+            else
+            {
+                const Fxp kKinematicYawSpeedLoss = Fxp::BuildRaw(0x00010000); // 1.0
+                const Fxp kKinematicYawMinScale = Fxp::BuildRaw(0x00008000); // 0.5
+                Fxp kinematicYawScale = Fxp::BuildRaw(1 << 16) - (speedRatio * kKinematicYawSpeedLoss);
+                if (kinematicYawScale < kKinematicYawMinScale)
+                {
+                    kinematicYawScale = kKinematicYawMinScale;
+                }
 
-            const Fxp yawKinematic =
-                (steerNorm * Tunables::kMaxYawRateDegPerFrame) * kinematicYawScale;
-            // Sign convention preserved:
-            // steering < 0 (left) -> positive yaw rate.
-            ioState.yawRateDegPerFrame = Fxp::BuildRaw(-yawKinematic.RawValue());
+                const Fxp yawKinematic =
+                    (steerNorm * Tunables::kMaxYawRateDegPerFrame) * kinematicYawScale;
+                // Sign convention preserved:
+                // steering < 0 (left) -> positive yaw rate.
+                ioState.yawRateDegPerFrame = Fxp::BuildRaw(-yawKinematic.RawValue());
+            }
         }
         else
         {
@@ -415,8 +553,17 @@ public:
 
         if (ioFrameState.braking)
         {
-            ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kBrakeLateralDampingCoeff;
-            ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kBrakeYawDampingCoeff;
+            Fxp brakeLateralDamping =
+                Tunables::kBrakeLateralDampingCoeff -
+                (brakeSlip * Tunables::kBrakeSkidLateralDampingRelease);
+            Fxp brakeYawDamping =
+                Tunables::kBrakeYawDampingCoeff -
+                (brakeSlip * Tunables::kBrakeSkidYawDampingRelease);
+            const Fxp kMinBrakeDamping = Fxp::BuildRaw(0x00004000); // 0.25
+            if (brakeLateralDamping < kMinBrakeDamping) brakeLateralDamping = kMinBrakeDamping;
+            if (brakeYawDamping < kMinBrakeDamping) brakeYawDamping = kMinBrakeDamping;
+            ioState.lateralSpeed -= ioState.lateralSpeed * brakeLateralDamping;
+            ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * brakeYawDamping;
             if (ioState.forwardSpeed == Fxp::BuildRaw(0) &&
                 ioState.lateralSpeed.Abs() < Tunables::kBrakeResidualLateralCutoff &&
                 ioState.yawRateDegPerFrame.Abs() < Tunables::kBrakeResidualYawCutoff)
@@ -424,6 +571,52 @@ public:
                 ioState.lateralSpeed = Fxp::BuildRaw(0);
                 ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
                 ioState.yawAccumulatorDegRaw = 0;
+            }
+        }
+
+        if constexpr (Tunables::kEnableSaturnLowCostPhysics)
+        {
+            if (ioFrameState.braking)
+            {
+                Fxp targetBrakeLateral = Fxp::BuildRaw(0);
+                if (ioFrameState.steering != 0)
+                {
+                    const Fxp skidLateralMagnitude =
+                        (outStep.speedAbs * brakeSlip) * Tunables::kBrakeSkidLateralSpeedRatio;
+                    // Slide goes to the outside of the turn:
+                    // left steer -> positive local-right drift, right steer -> negative.
+                    if (ioFrameState.steering < 0)
+                    {
+                        targetBrakeLateral = skidLateralMagnitude;
+                    }
+                    else
+                    {
+                        targetBrakeLateral = Fxp::BuildRaw(-skidLateralMagnitude.RawValue());
+                    }
+                }
+                if (brakeDriftEntry)
+                {
+                    if (ioFrameState.steering < 0)
+                    {
+                        ioState.yawRateDegPerFrame += Tunables::kBrakeDriftYawKick;
+                    }
+                    else if (ioFrameState.steering > 0)
+                    {
+                        ioState.yawRateDegPerFrame -= Tunables::kBrakeDriftYawKick;
+                    }
+                }
+                ioState.lateralSpeed +=
+                    (targetBrakeLateral - ioState.lateralSpeed) *
+                    Tunables::kBrakeSkidLateralResponse;
+            }
+            else
+            {
+                ioState.lateralSpeed -=
+                    ioState.lateralSpeed * Tunables::kBrakeSkidLateralDecay;
+                if (ioState.lateralSpeed.Abs() < Tunables::kBrakeSkidLateralCutoff)
+                {
+                    ioState.lateralSpeed = Fxp::BuildRaw(0);
+                }
             }
         }
 
@@ -502,12 +695,20 @@ public:
         {
             --ioState.launchStraightFrames;
         }
+        if (ioState.brakeDriftFrames > 0u)
+        {
+            --ioState.brakeDriftFrames;
+        }
+        ioState.wasBraking = ioFrameState.braking;
 
         ioFrameState.debugSteerDeg = FxpToDebugInt(ioState.steerDeg);
         ioFrameState.debugYawRateDeg = FxpToDebugInt(ioState.yawRateDegPerFrame);
         ioFrameState.debugYawStepDeg = static_cast<int16_t>(outStep.yawStepDeg);
         ioFrameState.debugEngineRpm = ioState.engineRpm;
-        ioFrameState.debugGear = static_cast<int16_t>(ioState.gear);
+        ioFrameState.debugGear =
+            (ioState.gear == Tunables::kReverseGear)
+                ? static_cast<int16_t>(-1)
+                : static_cast<int16_t>(ioState.gear);
         ioFrameState.debugSpeedKmh = speedKmhAbs;
         ioFrameState.debugPlanarDx = FxpToDebugInt(outStep.planarDx);
         ioFrameState.debugPlanarDz = FxpToDebugInt(outStep.planarDz);
@@ -542,8 +743,10 @@ public:
         ioState.engineRpm = Tunables::kEngineIdleRpm;
         ioState.launchStraightFrames = 0u;
         ioState.forwardLaunchLateralLockFrames = 0u;
+        ioState.brakeDriftFrames = 0u;
         ioState.steerLaunchArmed = true;
         ioState.wasKinematic = false;
+        ioState.wasBraking = false;
     }
 
 private:

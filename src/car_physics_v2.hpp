@@ -30,10 +30,17 @@ public:
             return;
         }
 
-        const auto plan = scheduler_.BeginFrame();
-        for (int32_t i = 0; i < plan.steps; ++i)
+        if constexpr (CarPhysics::Tunables::kEnableSaturnLowCostPhysics)
         {
             StepOnce(ioFrameState, trackQuery, ioCarWorldPosition, ioCarYawDeg);
+        }
+        else
+        {
+            const auto plan = scheduler_.BeginFrame();
+            for (int32_t i = 0; i < plan.steps; ++i)
+            {
+                StepOnce(ioFrameState, trackQuery, ioCarWorldPosition, ioCarYawDeg);
+            }
         }
         // Keep frame state authoritative for downstream systems.
         ioFrameState.carWorldPosition = ioCarWorldPosition;
@@ -157,17 +164,20 @@ private:
             clipWorldPosition.Z +=
                 (forwardZ * clip.localForward) + (rightZ * clip.localRight);
 
+            // Surface query is optional: on Saturn (kBodyClipQuerySurface=false) skip the
+            // expensive per-clip probe and only run the wall push query.
             CarPhysics::SurfaceQueryResult surface{};
-            if (!CarPhysics::GroundFollower::QuerySurface(trackQuery,
-                                                          clipWorldPosition,
-                                                          seedSegmentId,
-                                                          surface))
+            bool surfaceFound = false;
+            if constexpr (CarPhysics::Tunables::kBodyClipQuerySurface)
             {
-                continue;
-            }
-            if (surface.segmentId > 0)
-            {
-                seedSegmentId = surface.segmentId;
+                surfaceFound = CarPhysics::GroundFollower::QuerySurface(trackQuery,
+                                                                         clipWorldPosition,
+                                                                         seedSegmentId,
+                                                                         surface);
+                if (surfaceFound && surface.segmentId > 0)
+                {
+                    seedSegmentId = surface.segmentId;
+                }
             }
 
             if constexpr (CarPhysics::Tunables::kEnableWallPlanarPush)
@@ -200,6 +210,12 @@ private:
                         ioFrameState.debugWallPushZ = CarPhysics::FxpToDebugInt(wallPushZ);
                     }
                 }
+            }
+
+            // Penetration depth response requires surface data; skip in wall-only mode.
+            if (!surfaceFound)
+            {
+                continue;
             }
 
             const CarPhysics::Fxp penetrationDepth =
@@ -334,6 +350,96 @@ private:
                                         ioCarYawDeg);
         }
         CarPhysics::GroundFollower::ApplyVerticalAdhesion(groundState_, ioCarWorldPosition);
+
+        if (trackQuery && CarPhysics::Tunables::kEnableWallPlanarPush &&
+            groundState_.lastWallQueryHit)
+        {
+            const CarPhysics::Fxp absX = groundState_.lastWallPushX.Abs();
+            const CarPhysics::Fxp absZ = groundState_.lastWallPushZ.Abs();
+            const CarPhysics::Fxp maxAxis = (absX >= absZ) ? absX : absZ;
+            if constexpr (CarPhysics::Tunables::kEnableSaturnLowCostPhysics)
+            {
+                if (maxAxis > CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+                {
+                    dynamicsState_.forwardSpeed -=
+                        dynamicsState_.forwardSpeed *
+                        CarPhysics::Tunables::kWallImpactForwardDamping;
+                    dynamicsState_.lateralSpeed = CarPhysics::Fxp::BuildRaw(0);
+                    dynamicsState_.yawRateDegPerFrame -=
+                        dynamicsState_.yawRateDegPerFrame *
+                        CarPhysics::Tunables::kWallImpactYawDamping;
+                    ioCarWorldPosition.X = preStepPosition.X + groundState_.lastWallPushX;
+                    ioCarWorldPosition.Z = preStepPosition.Z + groundState_.lastWallPushZ;
+                    if (dynamicsState_.forwardSpeed.Abs() <
+                        CarPhysics::Tunables::kWallImpactStopCutoff)
+                    {
+                        dynamicsState_.forwardSpeed = CarPhysics::Fxp::BuildRaw(0);
+                    }
+                }
+            }
+            else
+            {
+                // Cancel velocity directed into the wall so the car doesn't re-tunnel next frame.
+                // Uses lastWallPushX/Z from the current frame's ground follower query (~10 muls).
+                if (maxAxis > CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+                {
+                    const CarPhysics::Fxp nX = CarPhysics::Fxp::BuildRaw(
+                        static_cast<int32_t>(
+                            (static_cast<int64_t>(groundState_.lastWallPushX.RawValue()) << 16) /
+                            maxAxis.RawValue()));
+                    const CarPhysics::Fxp nZ = CarPhysics::Fxp::BuildRaw(
+                        static_cast<int32_t>(
+                            (static_cast<int64_t>(groundState_.lastWallPushZ.RawValue()) << 16) /
+                            maxAxis.RawValue()));
+                    const CarPhysics::Fxp worldVelX =
+                        (stepOutput.sinYaw * dynamicsState_.forwardSpeed) +
+                        (stepOutput.cosYaw * dynamicsState_.lateralSpeed);
+                    const CarPhysics::Fxp worldVelZ =
+                        (CarPhysics::Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()) *
+                         dynamicsState_.forwardSpeed) +
+                        (stepOutput.sinYaw * dynamicsState_.lateralSpeed);
+                    const CarPhysics::Fxp velDotNormal =
+                        (worldVelX * nX) + (worldVelZ * nZ);
+                    if (velDotNormal < CarPhysics::Fxp::BuildRaw(0))
+                    {
+                        const CarPhysics::Fxp cancelX =
+                            CarPhysics::Fxp::BuildRaw(-((nX * velDotNormal).RawValue()));
+                        const CarPhysics::Fxp cancelZ =
+                            CarPhysics::Fxp::BuildRaw(-((nZ * velDotNormal).RawValue()));
+                        dynamicsState_.forwardSpeed +=
+                            (cancelX * stepOutput.sinYaw) +
+                            (cancelZ * CarPhysics::Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()));
+                        dynamicsState_.lateralSpeed +=
+                            (cancelX * stepOutput.cosYaw) +
+                            (cancelZ * stepOutput.sinYaw);
+                    }
+                }
+
+                // Hard positional anti-press-through: remove only the displacement component
+                // directed into the wall normal, keeping tangential slide.
+                if (maxAxis > CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+                {
+                    const CarPhysics::Fxp nX = CarPhysics::Fxp::BuildRaw(
+                        static_cast<int32_t>(
+                            (static_cast<int64_t>(groundState_.lastWallPushX.RawValue()) << 16) /
+                            maxAxis.RawValue()));
+                    const CarPhysics::Fxp nZ = CarPhysics::Fxp::BuildRaw(
+                        static_cast<int32_t>(
+                            (static_cast<int64_t>(groundState_.lastWallPushZ.RawValue()) << 16) /
+                            maxAxis.RawValue()));
+                    const CarPhysics::Fxp deltaX = ioCarWorldPosition.X - preStepPosition.X;
+                    const CarPhysics::Fxp deltaZ = ioCarWorldPosition.Z - preStepPosition.Z;
+                    const CarPhysics::Fxp deltaDotNormal = (deltaX * nX) + (deltaZ * nZ);
+                    if (deltaDotNormal < CarPhysics::Fxp::BuildRaw(0))
+                    {
+                        ioCarWorldPosition.X =
+                            ioCarWorldPosition.X - (nX * deltaDotNormal);
+                        ioCarWorldPosition.Z =
+                            ioCarWorldPosition.Z - (nZ * deltaDotNormal);
+                    }
+                }
+            }
+        }
 
         const int32_t netDxRaw =
             ioCarWorldPosition.X.RawValue() - preStepPosition.X.RawValue();

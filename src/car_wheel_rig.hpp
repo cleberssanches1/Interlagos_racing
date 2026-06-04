@@ -43,7 +43,7 @@ private:
         bool front = false;
     };
 
-    static constexpr int32_t kMaxSteerDegX16 = 22 << 16;
+    static constexpr int32_t kMaxSteerDegX16 = 12 << 16;
     static constexpr int32_t kMaxPitchDegX16 = 18 << 16;
     static constexpr int32_t kMaxRollDegX16 = 8 << 16;
     static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00002000); // ~0.125 short travel

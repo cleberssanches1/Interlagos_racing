@@ -1051,18 +1051,23 @@ private:
         Game::CarSystem* car = ActiveCarSystem();
         if (car)
         {
-            // Manual mode: C/B/L/R control the car physics inputs.
+            // Manual/semi-auto mode:
+            // B accelerate, C brake, arrows steer, L downshift, R upshift.
             if (!autoLapTestEnabled_)
             {
-                const bool steerLeftRequested = input.leftHeld || input.lHeld;
-                const bool steerRightRequested = input.rightHeld || input.rHeld;
+                const bool steerLeftRequested = input.leftHeld;
+                const bool steerRightRequested = input.rightHeld;
                 const bool leftJustPressed = input.leftHeld && !leftHeldPrev_;
                 const bool rightJustPressed = input.rightHeld && !rightHeldPrev_;
+                const bool lJustPressed = input.lHeld && !lHeldPrev_;
+                const bool rJustPressed = input.rHeld && !rHeldPrev_;
                 if (leftJustPressed) lastLeftPressFrame_ = frameCounter_;
                 if (rightJustPressed) lastRightPressFrame_ = frameCounter_;
                 // Input mapping:
                 // B = accelerate
-                // C = brake / reverse when stopped
+                // C = brake only
+                // L = downshift (1 -> reverse)
+                // R = upshift
                 if (input.bHeld) car->Command()->Accelerate();
                 int8_t desiredSteerDir = 0;
                 if (steerLeftRequested && !steerRightRequested)
@@ -1121,6 +1126,12 @@ private:
                     if (input.cHeld) car->Command()->Brake();
                 }
                 car->UpdateWheels(input.bHeld, input.cHeld);
+
+                if (!input.xHeld)
+                {
+                    frameState.shiftDownRequested = lJustPressed;
+                    frameState.shiftUpRequested = rJustPressed;
+                }
             }
             else
             {
@@ -1139,6 +1150,7 @@ private:
                 frameState.throttle = commands.throttle;
                 frameState.steering = commands.steering;
                 frameState.braking = commands.braking;
+                // Shift requests are edge-triggered and come directly from the pad.
                 frameState.wheelsSpinning = commands.wheelsSpinning;
                 frameState.brakeHoldFrames = commands.brakeHoldFrames;
             }
@@ -1147,6 +1159,8 @@ private:
                 frameState.throttle = 0;
                 frameState.steering = 0;
                 frameState.braking = false;
+                frameState.shiftUpRequested = false;
+                frameState.shiftDownRequested = false;
                 frameState.wheelsSpinning = false;
                 frameState.brakeHoldFrames = 0;
             }
@@ -1155,6 +1169,8 @@ private:
         // frame input, so just-pressed detection remains valid.
         leftHeldPrev_ = input.leftHeld;
         rightHeldPrev_ = input.rightHeld;
+        lHeldPrev_ = input.lHeld;
+        rHeldPrev_ = input.rHeld;
         return frameState;
     }
 
@@ -2055,19 +2071,53 @@ private:
                               static_cast<unsigned>(qWallHits),
                               static_cast<unsigned>(qWallCalls));
         }
-        SRL::Debug::Print(1, 30, "OVR dyn st:%d yr:%d ys:%d cx:%d cz:%d",
-                          static_cast<int>(context_.carSystem && context_.carSystem->get()
-                                               ? context_.carSystem->get()->Commands().steering
-                                               : 0),
-                          static_cast<int>(lastRuntimeFrameState_.debugYawRateDeg),
-                          static_cast<int>(lastRuntimeFrameState_.debugYawStepDeg),
-                          static_cast<int>(lastRuntimeFrameState_.debugCorrX),
-                          static_cast<int>(lastRuntimeFrameState_.debugCorrZ));
-        SRL::Debug::Print(1, 31, "OVR mov pdx:%d pdz:%d ndx:%d ndz:%d",
-                          static_cast<int>(lastRuntimeFrameState_.debugPlanarDx),
-                          static_cast<int>(lastRuntimeFrameState_.debugPlanarDz),
-                          static_cast<int>(lastRuntimeFrameState_.debugNetDx),
-                          static_cast<int>(lastRuntimeFrameState_.debugNetDz));
+        constexpr bool kEnableExtendedDrivetrainOverlay = false;
+        if constexpr (kEnableExtendedDrivetrainOverlay)
+        {
+            const int gearDebugValue = static_cast<int>(lastRuntimeFrameState_.debugGear);
+            const char gearDebugChar =
+                (gearDebugValue < 0)
+                    ? 'R'
+                    : static_cast<char>('0' + std::clamp<int>(gearDebugValue, 0, 9));
+            SRL::Debug::Print(0, 13, "GEAR:%c RPM:%d KM:%d    ",
+                              gearDebugChar,
+                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm),
+                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh));
+            SRL::Debug::Print(1, 17, "OVR gear:%c rpm:%d km:%d   ",
+                              gearDebugChar,
+                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm),
+                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh));
+            SRL::Debug::Print(1, 30, "OVR drv th:%d br:%u sp:%d km:%d g:%c rp:%d",
+                              static_cast<int>(lastRuntimeFrameState_.throttle),
+                              static_cast<unsigned>(lastRuntimeFrameState_.braking ? 1u : 0u),
+                              static_cast<int>(lastRuntimeFrameState_.speedProxy),
+                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh),
+                              gearDebugChar,
+                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm));
+            SRL::Debug::Print(0, 14, "DRV th:%d br:%u sp:%d km:%d g:%c rp:%d",
+                              static_cast<int>(lastRuntimeFrameState_.throttle),
+                              static_cast<unsigned>(lastRuntimeFrameState_.braking ? 1u : 0u),
+                              static_cast<int>(lastRuntimeFrameState_.speedProxy),
+                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh),
+                              gearDebugChar,
+                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm));
+            SRL::Debug::Print(1, 31, "OVR dyn st:%d yr:%d ys:%d pdx:%d ndz:%d",
+                              static_cast<int>(context_.carSystem && context_.carSystem->get()
+                                                   ? context_.carSystem->get()->Commands().steering
+                                                   : 0),
+                              static_cast<int>(lastRuntimeFrameState_.debugYawRateDeg),
+                              static_cast<int>(lastRuntimeFrameState_.debugYawStepDeg),
+                              static_cast<int>(lastRuntimeFrameState_.debugPlanarDx),
+                              static_cast<int>(lastRuntimeFrameState_.debugNetDz));
+            SRL::Debug::Print(0, 31, "DYN st:%d yr:%d ys:%d pdx:%d ndz:%d",
+                              static_cast<int>(context_.carSystem && context_.carSystem->get()
+                                                   ? context_.carSystem->get()->Commands().steering
+                                                   : 0),
+                              static_cast<int>(lastRuntimeFrameState_.debugYawRateDeg),
+                              static_cast<int>(lastRuntimeFrameState_.debugYawStepDeg),
+                              static_cast<int>(lastRuntimeFrameState_.debugPlanarDx),
+                              static_cast<int>(lastRuntimeFrameState_.debugNetDz));
+        }
         SRL::Debug::Print(1, 28, "OVR inp dL:%u dR:%u L:%u R:%u C:%u B:%u",
                           static_cast<unsigned>(lastInput_.leftHeld ? 1u : 0u),
                           static_cast<unsigned>(lastInput_.rightHeld ? 1u : 0u),
@@ -2217,7 +2267,7 @@ private:
         }
 
         constexpr uint32_t kSampleWindowFrames = 60u;
-        if (fpsSampleFrames_ < kSampleWindowFrames || fpsSampleVblanks_ == 0u)
+        if (fpsSampleVblanks_ == 0u)
         {
             return;
         }
@@ -2259,10 +2309,13 @@ private:
                           static_cast<unsigned>(drop30Pct),
                           static_cast<unsigned>(drop60Pct));
 
-        fpsSampleFrames_ = 0u;
-        fpsSampleVblanks_ = 0u;
-        fpsFramesOver30Budget_ = 0u;
-        fpsFramesOver60Budget_ = 0u;
+        if (fpsSampleFrames_ >= kSampleWindowFrames)
+        {
+            fpsSampleFrames_ = 0u;
+            fpsSampleVblanks_ = 0u;
+            fpsFramesOver30Budget_ = 0u;
+            fpsFramesOver60Budget_ = 0u;
+        }
     }
 
     static int32_t NormalizeYawDeg360(int32_t yawDeg)
@@ -3427,6 +3480,8 @@ private:
     bool yHeldPrev_ = false;
     bool leftHeldPrev_ = false;
     bool rightHeldPrev_ = false;
+    bool lHeldPrev_ = false;
+    bool rHeldPrev_ = false;
     uint32_t lastLeftPressFrame_ = 0;
     uint32_t lastRightPressFrame_ = 0;
     int8_t reverseSteerDirWhileHeld_ = 0;

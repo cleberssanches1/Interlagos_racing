@@ -22,6 +22,8 @@ struct GameplayFrameState
     int16_t throttle = 0;
     int16_t steering = 0;
     bool braking = false;
+    bool shiftUpRequested = false;
+    bool shiftDownRequested = false;
     bool wheelsSpinning = false;
     uint8_t brakeHoldFrames = 0;
     int16_t speedProxy = 0;

@@ -1,0 +1,98 @@
+version: 1
+session: interlagos_racing
+sample_clock: frame
+
+watches:
+  - id: 100
+    name: car_pos_x
+    addr: 0x060F1000
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: on_change
+    tolerance: 0.0005
+
+  - id: 101
+    name: car_pos_z
+    addr: 0x060F1004
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: on_change
+    tolerance: 0.0005
+
+  - id: 102
+    name: car_vel_forward
+    addr: 0x060F1018
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: every_frame
+
+  - id: 103
+    name: car_vel_lateral
+    addr: 0x060F101C
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: every_frame
+
+  - id: 104
+    name: car_yaw_rad
+    addr: 0x060F1028
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: every_frame
+
+  - id: 105
+    name: steering_input
+    addr: 0x060F1100
+    width: 2
+    type: int16
+    cpu_mask: [MSH2]
+    sample_mode: every_frame
+
+  - id: 106
+    name: throttle_input
+    addr: 0x060F1102
+    width: 2
+    type: int16
+    cpu_mask: [MSH2]
+    sample_mode: every_frame
+
+  - id: 107
+    name: brake_input
+    addr: 0x060F1104
+    width: 2
+    type: int16
+    cpu_mask: [MSH2]
+    sample_mode: every_frame
+
+  - id: 108
+    name: wheel_slip_rear
+    addr: 0x060F1208
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: trigger_window
+    trigger_window:
+      pre_frames: 120
+      post_frames: 120
+
+  - id: 109
+    name: surface_grip_coeff
+    addr: 0x060F1210
+    width: 4
+    type: float32
+    cpu_mask: [MSH2]
+    sample_mode: on_change
+
+triggers:
+  - name: high_slip_alert
+    watch: wheel_slip_rear
+    condition: abs(value) > 0.35
+
+  - name: yaw_spike_alert
+    watch: car_yaw_rad
+    condition: abs(delta_per_frame) > 0.12
