@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interlagos Racing - Colisão de Paredes e Estabilidade de Runtime</title>
+  <style>
+    :root {
+      --bg: #0c1015;
+      --panel: #141b24;
+      --text: #e7edf6;
+      --muted: #a8b3c2;
+      --line: #273140;
+      --accent: #66b3ff;
+      --ok: #6fd39c;
+      --warn: #ffcf6b;
+      --bad: #ff7272;
+      --code: #0a0f15;
+    }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #0a0e13 0%, #101722 100%);
+      color: var(--text);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 28px 22px 42px;
+    }
+    h1, h2, h3 { margin: 0 0 10px; }
+    h1 { color: var(--accent); font-size: 29px; }
+    h2 { margin-top: 28px; font-size: 21px; }
+    h3 { margin-top: 18px; font-size: 17px; color: var(--warn); }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-top: 14px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    code {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+    pre {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #192230; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #101722;
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Colisão de Paredes e Estabilidade de Runtime</h1>
+    <p class="muted">
+      Projeto: <code>Interlagos_racing</code><br />
+      Foco: colisão com muros/faces verticais no Sega Saturn, com prioridade para estabilidade de runtime no caminho <code>PHYS_SATURN_LOW_COST</code>.
+    </p>
+
+    <div class="card">
+      <h2>Resumo Executivo</h2>
+      <ul>
+        <li><span class="ok">Estável:</span> query única de parede por frame no <code>GroundFollower</code>.</li>
+        <li><span class="bad">Instável:</span> aumentar probes, passes ou estados auxiliares no hot path de colisão.</li>
+        <li><span class="warn">Conclusão:</span> a colisão precisa ser melhorada por pré-processamento e tuning, não por multiplicação de contatos em runtime.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>O que já tentamos</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Tentativa</th>
+            <th>Objetivo</th>
+            <th>Resultado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Query única planar de parede</td>
+            <td>Bloquear muro com baixo custo</td>
+            <td class="ok">Sobe no emulador. Colisão parcial: contato inicial funciona, mas ainda há transpasso sob pressão contínua.</td>
+          </tr>
+          <tr>
+            <td>Multi-probe no <code>GroundFollower</code></td>
+            <td>Simular carro como retângulo/caixa invisível com vários pontos</td>
+            <td class="bad">Builda, mas a aplicação deixa de subir no emulador.</td>
+          </tr>
+          <tr>
+            <td>Histerese / wall latch</td>
+            <td>Segurar push de parede por 2 frames após miss</td>
+            <td class="bad">A aplicação voltou a não abrir.</td>
+          </tr>
+          <tr>
+            <td>Critério mais complexo em <code>FindPlanarWallPush</code></td>
+            <td>Priorizar <code>crossedPlane</code> e adicionar bias de expulsão</td>
+            <td class="bad">A aplicação voltou a crashar na abertura.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>O que derruba o runtime</h2>
+      <ul>
+        <li>Mais de uma query de parede relevante por frame no caminho low-cost.</li>
+        <li>Estados adicionais de retenção/histerese no <code>GroundFollower</code>.</li>
+        <li>Mais lógica local dentro de <code>FindPlanarWallPush(...)</code> no <code>track_system.cxx</code>.</li>
+        <li>Expansão do hot path com múltiplos ramos, mais código inline e mais stack temporário.</li>
+      </ul>
+      <p>
+        Isso indica que o problema não é apenas <em>Work RAM bruta</em>. O runtime atual está sensível a:
+      </p>
+      <ul>
+        <li>código gerado no hot path,</li>
+        <li>uso de stack por frame,</li>
+        <li>custo de CPU acumulado no SH2.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>O que permanece estável</h2>
+      <ul>
+        <li><code>GroundFollower::ResolveWallPushMultiProbe()</code> no low-cost fazendo apenas <strong>1 query central</strong>.</li>
+        <li><code>TrackSystem::FindPlanarWallPush(...)</code> na forma estrutural anterior, sem critérios extras.</li>
+        <li>Reação pós-impacto já existente em <code>car_physics_v2.hpp</code>.</li>
+        <li>Cache compacto <code>WallSegment2D</code> por segmento, já existente em <code>track_system.hpp</code>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Sobre a caixa retangular invisível</h2>
+      <p>
+        <strong>Sim, ela ajuda em teoria.</strong> Um carro representado por um retângulo orientado no plano XZ tem mais chance de detectar quinas e faces do que um ponto central.
+      </p>
+      <p>
+        <strong>Mas no estado atual do projeto, isso não é viável no hot path.</strong> O problema não é a ideia geométrica; é o custo de aplicar essa ideia por múltiplos contatos em runtime dentro do caminho crítico do Saturn.
+      </p>
+      <h3>Pergunta: colocar o carro em uma caixa com menos pontos de contato ajuda?</h3>
+      <p>
+        Ajuda <strong>se</strong> o número de pontos for mínimo e a consulta não multiplicar o custo da física. Exemplo:
+      </p>
+      <ul>
+        <li><span class="ok">Talvez viável:</span> 2 ou 3 pontos em contexto offline, debug ou path alternativo de teste.</li>
+        <li><span class="bad">Já demonstrado como instável:</span> expandir isso dentro do <code>GroundFollower</code> do modo Saturn low-cost.</li>
+      </ul>
+      <p>
+        Então a resposta prática é:
+      </p>
+      <ul>
+        <li><strong>Geometricamente melhor:</strong> sim.</li>
+        <li><strong>Arquiteturalmente seguro hoje:</strong> não, se for implementado como mais queries/passes por frame no runtime atual.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Caminhos futuros ainda viáveis</h2>
+      <ul>
+        <li><span class="tag">Seguro</span> Ajustar apenas constantes já existentes.</li>
+        <li><span class="tag">Seguro</span> Melhorar dados offline / export da pista / seleção de faces de muro.</li>
+        <li><span class="tag">Seguro</span> Instrumentação mínima temporária, sem expandir hot path.</li>
+        <li><span class="tag">Arriscado</span> Mais queries, mais probes, mais passes, mais latches.</li>
+        <li><span class="tag">Arriscado</span> Nova topologia de algoritmo dentro de <code>GroundFollower</code> ou <code>FindPlanarWallPush</code>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Plano seguro de próximas tentativas</h2>
+      <h3>1. Ajuste de radius</h3>
+      <p>
+        Arquivo: <code>src/car_physics_shared.hpp</code><br />
+        Tunável: <code>kWallCollisionRadius</code>
+      </p>
+      <ul>
+        <li>Aumentar em passos pequenos: por exemplo, de <code>1.25</code> para <code>1.35</code> e depois <code>1.45</code>.</li>
+        <li>Objetivo: detectar a face antes do centro do carro entrar demais na parede.</li>
+        <li>Risco: bloquear cedo demais em trechos estreitos.</li>
+      </ul>
+
+      <h3>2. Ajuste de max planar correction</h3>
+      <p>
+        Arquivo: <code>src/car_physics_shared.hpp</code><br />
+        Tunável: <code>kMaxPlanarCorrectionPerFrame</code>
+      </p>
+      <ul>
+        <li>Aumentar gradualmente para permitir expulsão mais forte no mesmo frame.</li>
+        <li>Objetivo: impedir que o carro permaneça semi-embutido na face.</li>
+        <li>Risco: gerar empurrões visuais fortes ou jitter.</li>
+      </ul>
+
+      <h3>3. Ajuste de damping pós-impacto</h3>
+      <p>
+        Arquivo: <code>src/car_physics_shared.hpp</code> e reação em <code>src/car_physics_v2.hpp</code>
+      </p>
+      <ul>
+        <li><code>kWallImpactForwardDamping</code></li>
+        <li><code>kWallImpactYawDamping</code></li>
+        <li><code>kWallImpactStopCutoff</code></li>
+      </ul>
+      <p>
+        Objetivo: quando a colisão ocorrer, o carro não deve manter energia suficiente para insistir contra a face.
+      </p>
+
+      <h3>4. Não alterar a topologia do algoritmo</h3>
+      <ul>
+        <li>Sem novos passes.</li>
+        <li>Sem múltiplas sondas.</li>
+        <li>Sem estados de latch/histerese.</li>
+        <li>Sem nova seleção complexa de candidatos.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Ordem recomendada</h2>
+      <ol>
+        <li>Ajustar <code>kWallCollisionRadius</code>.</li>
+        <li>Ajustar <code>kMaxPlanarCorrectionPerFrame</code>.</li>
+        <li>Ajustar damping pós-impacto.</li>
+        <li>Testar face frontal, ataque oblíquo e raspada lateral.</li>
+        <li>Se ainda falhar, reavaliar o export/cache offline das faces de muro, não o runtime.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Conclusão</h2>
+      <p>
+        A caixa retangular invisível é uma boa ideia geométrica, mas não no formato que foi tentado até agora dentro do runtime do Saturn.
+      </p>
+      <p>
+        O caminho tecnicamente defensável neste projeto é:
+      </p>
+      <ul>
+        <li>manter a estrutura atual estável,</li>
+        <li>melhorar a colisão por tuning fino,</li>
+        <li>e, se necessário, mover sofisticação para o pré-processamento offline da pista.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

@@ -26,6 +26,44 @@ function Get-SegmentIdFromFile([string]$BaseName) {
     return $null
 }
 
+function Test-ObjSupportedFaces {
+    param(
+        [string]$ObjPath
+    )
+
+    $lineNo = 0
+    foreach ($rawLine in Get-Content -LiteralPath $ObjPath) {
+        $lineNo++
+        $line = $rawLine.Trim()
+        if (-not $line.StartsWith("f ")) { continue }
+        $parts = @($line.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+        if ($parts.Count -lt 4) {
+            return [pscustomobject]@{
+                Supported = $false
+                Line = $lineNo
+                VertexCount = [Math]::Max(0, $parts.Count - 1)
+                Reason = "face com menos de 3 vertices"
+            }
+        }
+        $vertexCount = $parts.Count - 1
+        if ($vertexCount -gt 4) {
+            return [pscustomobject]@{
+                Supported = $false
+                Line = $lineNo
+                VertexCount = $vertexCount
+                Reason = "face com mais de 4 vertices"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Supported = $true
+        Line = 0
+        VertexCount = 0
+        Reason = ""
+    }
+}
+
 function Normalize-Token([string]$Token) {
     if ([string]::IsNullOrWhiteSpace($Token)) { return "" }
     $t = $Token.Trim()
@@ -108,6 +146,12 @@ try {
 
         $outName = ("SEG_{0:D3}.NYA" -f $id)
         $out = Join-Path $ResultDir $outName
+        $faceCheck = Test-ObjSupportedFaces -ObjPath $obj.FullName
+        if (-not $faceCheck.Supported) {
+            $fail.Add(("{0} ({1} na linha {2}, vertices={3})" -f $obj.Name, $faceCheck.Reason, $faceCheck.Line, $faceCheck.VertexCount)) | Out-Null
+            Write-Host ("Falha de precheck em {0}: {1} na linha {2} (vertices={3})" -f $obj.Name, $faceCheck.Reason, $faceCheck.Line, $faceCheck.VertexCount)
+            continue
+        }
         Write-Host "Convertendo $($obj.Name) -> $outName"
 
         dotnet .\ModelConverter.dll `

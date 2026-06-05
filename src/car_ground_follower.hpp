@@ -531,6 +531,9 @@ private:
 
         if constexpr (Tunables::kEnableSaturnLowCostPhysics)
         {
+            // Saturn safety path:
+            // keep a single wall query only. Multi-probe expansion increased
+            // runtime cost/code size enough to destabilize startup on emulator.
             return trackQuery->ResolvePlanarWallPush(basePosition,
                                                      forwardDirection,
                                                      wallRadius,

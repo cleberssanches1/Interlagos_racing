@@ -1,0 +1,153 @@
+OBJ: C:\Models\png\sectors\result\obj_64\seg_001.obj
+vertices=44 faces=20
+vertical_candidates=6 wall_segments=5
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=13 non_driveable_faces=7
+family_mismatch=False
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_002.obj
+vertices=77 faces=33
+vertical_candidates=17 wall_segments=16
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=13 non_driveable_faces=20
+family_mismatch=True
+suspicious_top10:
+{"face": 23, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_003.obj
+vertices=70 faces=28
+vertical_candidates=12 wall_segments=11
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=13 non_driveable_faces=15
+family_mismatch=True
+suspicious_top10:
+{"face": 18, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_004.obj
+vertices=76 faces=30
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=18
+family_mismatch=True
+suspicious_top10:
+{"face": 19, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_005.obj
+vertices=68 faces=27
+vertical_candidates=12 wall_segments=11
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=15
+family_mismatch=True
+suspicious_top10:
+{"face": 19, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_006.obj
+vertices=69 faces=27
+vertical_candidates=12 wall_segments=11
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=15
+family_mismatch=True
+suspicious_top10:
+{"face": 21, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_007.obj
+vertices=68 faces=27
+vertical_candidates=12 wall_segments=11
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=15
+family_mismatch=True
+suspicious_top10:
+{"face": 21, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_008.obj
+vertices=71 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=11 non_driveable_faces=18
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_009.obj
+vertices=84 faces=41
+vertical_candidates=23 wall_segments=22
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=11 non_driveable_faces=30
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_010.obj
+vertices=70 faces=28
+vertical_candidates=12 wall_segments=11
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=16
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_011.obj
+vertices=75 faces=31
+vertical_candidates=16 wall_segments=15
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=19
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_013.obj
+vertices=86 faces=35
+vertical_candidates=19 wall_segments=17
+duplicates=2 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=9 non_driveable_faces=26
+family_mismatch=True
+suspicious_top10:
+{"face": 12, "reason": "segmento duplicado", "family": 34}
+{"face": 21, "reason": "segmento duplicado", "family": 62}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_014.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=11 non_driveable_faces=18
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_015.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=11 non_driveable_faces=18
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_016.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=17
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_017.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=17
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_018.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=17
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_019.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=17
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}
+OBJ: C:\Models\png\sectors\result\obj_64\seg_020.obj
+vertices=72 faces=29
+vertical_candidates=14 wall_segments=13
+duplicates=1 deg_faces=0 deg_segments=0 zero_normals=0
+driveable_faces=12 non_driveable_faces=17
+family_mismatch=True
+suspicious_top10:
+{"face": 16, "reason": "segmento duplicado", "family": 5}

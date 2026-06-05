@@ -292,7 +292,7 @@ struct Tunables
         kEnableSaturnLowCostPhysics;
     static constexpr Fxp kProbeHalfWheelBase = Fxp::BuildRaw(0x0000D999);      // ~0.85
     static constexpr Fxp kProbeHalfTrack = Fxp::BuildRaw(0x00008CCC);          // ~0.55
-    static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x00014000);     // 1.25
+    static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x0001599A);     // ~1.35
     static constexpr bool kEnableWallPlanarPush =
         Game::PhysicsFeatureFlags::kEnableWallCollisionRuntime;
     // Disabled on Saturn: 4 extra FindPlanarWallPush calls/frame (one per clip) exceed
@@ -302,9 +302,9 @@ struct Tunables
     static constexpr bool kBodyClipQuerySurface = !kEnableSaturnLowCostPhysics;
     // Minimum wall push magnitude to trigger velocity cancellation (avoids noise on graze).
     static constexpr Fxp kWallPushVelocityCancelThreshold = Fxp::BuildRaw(0x00001999); // ~0.10
-    static constexpr Fxp kWallImpactForwardDamping = Fxp::BuildRaw(0x00008000); // 0.50
-    static constexpr Fxp kWallImpactYawDamping = Fxp::BuildRaw(0x0000C000);     // 0.75
-    static constexpr Fxp kWallImpactStopCutoff = Fxp::BuildRaw(0x0001D1DF);     // ~1.8198
+    static constexpr Fxp kWallImpactForwardDamping = Fxp::BuildRaw(0x0000A000); // 0.625
+    static constexpr Fxp kWallImpactYawDamping = Fxp::BuildRaw(0x0000D000);     // 0.8125
+    static constexpr Fxp kWallImpactStopCutoff = Fxp::BuildRaw(0x00026666);     // ~2.40
     static constexpr Fxp kBodyClipPenetrationBias = Fxp::BuildRaw(0x00000800);  // 0.03125
     static constexpr Fxp kBodyClipMaxDepth = Fxp::BuildRaw(0x00018000);         // 1.5
     static constexpr Fxp kBodyClipMinPlanarNormalAbs = Fxp::BuildRaw(0x00002000); // 0.125
@@ -318,7 +318,7 @@ struct Tunables
         { Fxp::BuildRaw(-kProbeHalfWheelBase.RawValue()), kProbeHalfTrack,    Fxp::BuildRaw(0x0000999A), Fxp::BuildRaw(0x00002000) }
     }};
     static constexpr Fxp kEdgeRecoverPush = Fxp::BuildRaw(0);                  // disabled (bias fix)
-    static constexpr Fxp kMaxPlanarCorrectionPerFrame = Fxp::BuildRaw(0x00028000); // 2.5 — enough for ejection without jitter
+    static constexpr Fxp kMaxPlanarCorrectionPerFrame = Fxp::BuildRaw(0x00030000); // 3.0 — stronger ejection, still conservative
     static constexpr Fxp kNoSupportSpeedDamping = Fxp::BuildRaw(0x0007477D);   // ~7.2793
     static constexpr Fxp kEdgeForwardDamping = Fxp::BuildRaw(0x0000A000);      // 0.625
     static constexpr Fxp kEdgeLateralDamping = Fxp::BuildRaw(0x0000E000);      // 0.875

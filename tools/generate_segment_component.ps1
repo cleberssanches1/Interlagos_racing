@@ -48,6 +48,16 @@ function Normalize-MaterialFamilyName([string]$Name) {
     return $n
 }
 
+function Resolve-KnownMaterialFamilyOverride([string]$MaterialKey) {
+    if ([string]::IsNullOrWhiteSpace($MaterialKey)) { return "" }
+    switch ($MaterialKey.ToLowerInvariant()) {
+        # seg_009.mtl: material sem map_Kd; no conjunto atual ele pertence ao mesmo grupo
+        # branco/teto já mapeado para a family "teto".
+        "branco.017" { return "teto" }
+        default { return "" }
+    }
+}
+
 function Get-TextureStem([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
     return [System.IO.Path]::GetFileNameWithoutExtension($Path).ToLowerInvariant()
@@ -274,7 +284,14 @@ foreach ($line in $lines) {
             $currentMaterialFamilyId = [uint32]$familyIdByName[$key]
         }
         else {
-            $currentMaterialFamilyId = [uint32]0
+            $overrideFamily = Resolve-KnownMaterialFamilyOverride $key
+            if (-not [string]::IsNullOrWhiteSpace($overrideFamily) -and
+                $familyIdByName.ContainsKey($overrideFamily.ToLowerInvariant())) {
+                $currentMaterialFamilyId = [uint32]$familyIdByName[$overrideFamily.ToLowerInvariant()]
+            }
+            else {
+                $currentMaterialFamilyId = [uint32]0
+            }
         }
         continue
     }

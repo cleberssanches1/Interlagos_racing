@@ -1,0 +1,75 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Guia da Auditoria Offline de WallSegment2D</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; line-height: 1.45; color: #111; }
+    h1, h2 { color: #0f2d52; }
+    code, pre { font-family: Consolas, monospace; background: #f4f6f8; }
+    pre { padding: 12px; border: 1px solid #d9dee3; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #cfd6dd; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #eef3f8; }
+  </style>
+</head>
+<body>
+  <h1>Guia da Auditoria Offline de WallSegment2D</h1>
+
+  <h2>Objetivo</h2>
+  <p>
+    Auditar offline a geometria-fonte de um segmento e reconstruir a mesma lógica de <code>EnsureWallSegmentCache(...)</code>,
+    sem tocar no runtime do Saturn.
+  </p>
+
+  <h2>Ferramenta</h2>
+  <p>
+    Script: <code>tools/audit_wall_segments_offline.py</code>
+  </p>
+
+  <h2>Entradas</h2>
+  <table>
+    <tr><th>Entrada</th><th>Obrigatória</th><th>Uso</th></tr>
+    <tr><td><code>--obj</code></td><td>Sim</td><td>OBJ-fonte do segmento, por exemplo <code>seg_001.obj</code></td></tr>
+    <tr><td><code>--segment-id</code></td><td>Se usar segments_map</td><td>ID do segmento</td></tr>
+    <tr><td><code>--segments-map</code></td><td>Não</td><td>Mapeia faces para <code>familyId</code></td></tr>
+    <tr><td><code>--sfmap</code></td><td>Não</td><td>Mapeia <code>familyId -&gt; surfaceType</code> para filtrar faces dirigíveis</td></tr>
+    <tr><td><code>--report-html</code></td><td>Não</td><td>Gera relatório HTML</td></tr>
+  </table>
+
+  <h2>Comando recomendado</h2>
+  <pre>python tools/audit_wall_segments_offline.py \
+  --obj "C:\Models\png\sectors\source\seg_001.obj" \
+  --segment-id 1 \
+  --segments-map ".tmp_segments_map_test.json" \
+  --sfmap "cd\data\SFMAP.BIN" \
+  --report-html "wall_segment_audit_seg001.html"</pre>
+
+  <h2>Saídas</h2>
+  <ul>
+    <li>Resumo no terminal</li>
+    <li>Relatório HTML com:</li>
+    <li>contagem de faces/segmentos</li>
+    <li>duplicados removidos</li>
+    <li>faces degeneradas</li>
+    <li>normais zero</li>
+    <li>segmentos muito curtos</li>
+    <li>20 menores segmentos gerados</li>
+  </ul>
+
+  <h2>Leitura do resultado</h2>
+  <ul>
+    <li>Muitos <code>segmento duplicado</code>: a geometria-fonte está redundante e o cache perde qualidade</li>
+    <li>Muitos <code>segmento muito curto</code>: o solver tende a ficar instável em ataque oblíquo</li>
+    <li><code>normal zero</code>: a face já entra problemática na reconstrução</li>
+    <li><code>family_mismatch=true</code>: a ordem de faces do OBJ não bate com o mapa de famílias exportado</li>
+  </ul>
+
+  <h2>Próxima ação após a auditoria</h2>
+  <ol>
+    <li>Rodar o script em 3 a 5 segmentos problemáticos.</li>
+    <li>Identificar se o problema principal é duplicata, aresta curta ou normal degenerada.</li>
+    <li>Corrigir a geometria-fonte ou o pipeline offline antes de mexer no runtime.</li>
+  </ol>
+</body>
+</html>

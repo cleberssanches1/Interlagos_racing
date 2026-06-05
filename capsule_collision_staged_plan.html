@@ -1,0 +1,200 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Plano de Cápsula 2D - Colisão Saturn Safe</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; line-height: 1.45; color: #111; }
+    h1, h2, h3 { color: #0f2d52; }
+    code, pre { font-family: Consolas, monospace; background: #f4f6f8; }
+    pre { padding: 12px; overflow-x: auto; border: 1px solid #d9dee3; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #cfd6dd; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #eef3f8; }
+    .ok { color: #146c2e; font-weight: 600; }
+    .bad { color: #9d1c1c; font-weight: 600; }
+    .warn { color: #8a5a00; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Plano de Cápsula 2D para Colisão de Carro no Saturn</h1>
+
+  <h2>Objetivo</h2>
+  <p>
+    Evoluir a colisão do carro para um volume proxy mais correto do que um ponto central, usando uma
+    <strong>cápsula 2D no plano XZ</strong>, mas sem repetir o erro das tentativas anteriores que deixaram a aplicação
+    pesada o suficiente para não subir no emulador.
+  </p>
+
+  <h2>Diagnóstico consolidado</h2>
+  <table>
+    <tr><th>Item</th><th>Resultado</th><th>Conclusão</th></tr>
+    <tr>
+      <td>Multi-probe no <code>GroundFollower</code></td>
+      <td class="bad">Quebra o runtime</td>
+      <td>Não podemos aumentar o número de queries por frame no caminho low-cost.</td>
+    </tr>
+    <tr>
+      <td>Histerese / wall latch no <code>GroundFollower</code></td>
+      <td class="bad">Quebra o runtime</td>
+      <td>Também não podemos adicionar estado e lógica extra nesse hot path.</td>
+    </tr>
+    <tr>
+      <td>Solver mais sofisticado dentro de <code>FindPlanarWallPush</code></td>
+      <td class="bad">Quebra o runtime</td>
+      <td>O solver atual está no limite estrutural aceitável.</td>
+    </tr>
+    <tr>
+      <td>Colisão atual com 1 query e cache <code>WallSegment2D</code></td>
+      <td class="ok">Sobe no emulador</td>
+      <td>Este é o baseline seguro.</td>
+    </tr>
+    <tr>
+      <td>Tuning de constantes</td>
+      <td class="ok">Seguro</td>
+      <td>É o único tipo de mudança runtime que hoje temos evidência de estabilidade.</td>
+    </tr>
+  </table>
+
+  <h2>Conclusão técnica</h2>
+  <p>
+    A cápsula 2D continua sendo a melhor forma geométrica para representar o carro no plano XZ. O problema não é a
+    forma; o problema é o custo de resolver essa forma dentro do runtime atual do Saturn. Portanto, a implantação deve
+    ser feita em fases. Primeiro consolidamos dados e preparação offline. Só depois tentamos um runtime mínimo.
+  </p>
+
+  <h2>Modelo geométrico alvo</h2>
+  <p>Representação do carro:</p>
+  <pre>capsule = segment(frontCenter, rearCenter) + radius</pre>
+  <p>Representação da parede:</p>
+  <pre>wall = 1 segmento 2D orientado no XZ, vindo do cache WallSegment2D</pre>
+  <p>Solver ideal:</p>
+  <pre>distance(capsuleSegment, wallSegment) -> if distance &lt; radius, compute push vector</pre>
+
+  <h2>Por que a cápsula é melhor que a caixa</h2>
+  <table>
+    <tr><th>Forma</th><th>Vantagem</th><th>Desvantagem</th></tr>
+    <tr>
+      <td>Caixa 2D</td>
+      <td>Mais simples de imaginar</td>
+      <td>Quinas artificiais, contato seco, sensação visual ruim</td>
+    </tr>
+    <tr>
+      <td>Cápsula 2D</td>
+      <td>Melhor aproximação de para-choque/laterais, entrada oblíqua mais natural</td>
+      <td>Solver mais caro se implementado sem cuidado</td>
+    </tr>
+  </table>
+
+  <h2>Classes e pontos de código impactados</h2>
+  <ul>
+    <li><code>src/track_system.hpp</code>: cache <code>WallSegment2D</code></li>
+    <li><code>src/track_system.cxx</code>: <code>EnsureWallSegmentCache(...)</code> e <code>FindPlanarWallPush(...)</code></li>
+    <li><code>src/car_ground_follower.hpp</code>: chamada única para <code>ResolvePlanarWallPush(...)</code></li>
+    <li><code>src/car_physics_shared.hpp</code>: constantes de raio, correção planar e damping pós-impacto</li>
+  </ul>
+
+  <h2>Plano em fases</h2>
+
+  <h3>Fase 0 - Baseline estável</h3>
+  <p>
+    Não alterar a topologia do runtime. Manter:
+  </p>
+  <ul>
+    <li>1 query de parede por frame</li>
+    <li>solver atual no cache <code>WallSegment2D</code></li>
+    <li>sem multi-probe</li>
+    <li>sem wall latch</li>
+    <li>sem solver novo dentro do hot path</li>
+  </ul>
+
+  <h3>Fase 1 - Preparação offline</h3>
+  <p>
+    Objetivo: melhorar a qualidade dos dados sem custo de runtime.
+  </p>
+  <ul>
+    <li>validar se cada <code>WallSegment2D</code> representa a melhor aresta vertical da face</li>
+    <li>remover duplicatas e segmentos degenerados</li>
+    <li>registrar largura/comprimento médio dos muros problemáticos</li>
+    <li>classificar paredes problemáticas por segmento da pista</li>
+  </ul>
+  <p class="ok">Seguro: não mexe no loop de física.</p>
+
+  <h3>Fase 2 - Especificação da cápsula fora do runtime</h3>
+  <p>
+    Objetivo: fechar as dimensões do proxy do carro sem alterar o jogo.
+  </p>
+  <ul>
+    <li>definir <code>capsuleHalfLength</code></li>
+    <li>definir <code>capsuleRadius</code></li>
+    <li>desenhar o alinhamento com o carro visual</li>
+    <li>calcular margens aceitáveis entre mesh visual e proxy invisível</li>
+  </ul>
+  <p>Saída esperada:</p>
+  <pre>
+frontCenter = carPos + forward * halfLength
+rearCenter  = carPos - forward * halfLength
+radius      = tuned constant
+  </pre>
+
+  <h3>Fase 3 - Shadow mode</h3>
+  <p>
+    Objetivo: calcular a cápsula 2D em modo sombra, sem aplicá-la na física do jogo.
+  </p>
+  <ul>
+    <li>rodar solver de cápsula apenas como diagnóstico</li>
+    <li>não alterar <code>outPush</code> real</li>
+    <li>comparar o resultado do solver sombra com o solver atual</li>
+    <li>fazer isso sob flag de compilação, desativada por padrão</li>
+  </ul>
+  <p class="warn">Só vale tentar se a instrumentação for mínima e comprovadamente não derrubar o runtime.</p>
+
+  <h3>Fase 4 - Runtime mínimo experimental</h3>
+  <p>
+    Se a fase 3 for segura, substituir o solver atual por uma versão mínima da cápsula, com as seguintes restrições:
+  </p>
+  <ul>
+    <li>1 query por frame continua obrigatório</li>
+    <li>usar apenas o cache <code>WallSegment2D</code></li>
+    <li>sem fallback extra além do já existente</li>
+    <li>sem passes adicionais</li>
+    <li>sem latches</li>
+  </ul>
+  <p class="warn">Se a aplicação voltar a não subir, abortar e retornar ao baseline imediatamente.</p>
+
+  <h2>O que não fazer</h2>
+  <ul>
+    <li>não adicionar múltiplos pontos de contato no <code>GroundFollower</code></li>
+    <li>não criar mais queries por frame</li>
+    <li>não adicionar estados temporais na colisão do carro</li>
+    <li>não introduzir solver com várias divisões/int64 extras no hot path sem shadow mode antes</li>
+  </ul>
+
+  <h2>Estratégia segura de curto prazo</h2>
+  <p>
+    Enquanto a cápsula 2D não é viável em runtime, a melhoria segura continua sendo:
+  </p>
+  <ul>
+    <li>tuning de <code>kWallCollisionRadius</code></li>
+    <li>tuning de <code>kMaxPlanarCorrectionPerFrame</code></li>
+    <li>tuning de <code>kWallImpactForwardDamping</code></li>
+    <li>tuning de <code>kWallImpactYawDamping</code></li>
+    <li>melhoria offline do cache de segmentos de parede</li>
+  </ul>
+
+  <h2>Critério de sucesso</h2>
+  <ul>
+    <li>o jogo continua abrindo no emulador</li>
+    <li>o carro não atravessa faces em contato frontal contínuo</li>
+    <li>ataques oblíquos passam a ser mais estáveis</li>
+    <li>o custo por frame não aumenta a ponto de derrubar o runtime</li>
+  </ul>
+
+  <h2>Recomendação final</h2>
+  <p>
+    A cápsula 2D continua sendo o destino técnico correto. Mas o próximo passo certo não é implementar mais runtime
+    agora. O próximo passo certo é preparar a cápsula como modelo de referência e atacar primeiro os dados offline e o
+    tuning do solver atual. Só depois disso vale uma nova tentativa controlada no hot path.
+  </p>
+</body>
+</html>

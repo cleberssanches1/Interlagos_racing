@@ -14,7 +14,10 @@
     [switch]$UseLodSubfolders = $false,
     [switch]$RebuildSegmentsMap = $false,
     [bool]$ExportSurfaceFamilyMap = $true,
-    [bool]$EnableSeamFaceDedup = $true
+    [bool]$EnableSeamFaceDedup = $true,
+    [switch]$AuditWalls = $false,
+    [switch]$AuditWallsStrict = $false,
+    [string]$AuditWallsReportDir = ""
 )
 
 Set-StrictMode -Version Latest
@@ -57,10 +60,243 @@ function Get-SegmentIdFromFile([string]$BaseName) {
     return $null
 }
 
+function ConvertTo-BoolValue([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    return $Value.Trim().ToLowerInvariant() -eq "true"
+}
+
+function Get-KeyValueTokens {
+    param(
+        [string]$Line
+    )
+
+    $map = @{}
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $map }
+    foreach ($token in ($Line -split '\s+')) {
+        if ([string]::IsNullOrWhiteSpace($token)) { continue }
+        $eq = $token.IndexOf('=')
+        if ($eq -le 0) { continue }
+        $key = $token.Substring(0, $eq)
+        $value = $token.Substring($eq + 1)
+        if (-not [string]::IsNullOrWhiteSpace($key)) {
+            $map[$key] = $value
+        }
+    }
+    return $map
+}
+
+function New-WallAuditSummaryHtml {
+    param(
+        [string]$OutPath,
+        [string]$AuditedSourceDir,
+        [object[]]$Rows
+    )
+
+    $html = New-Object System.Collections.Generic.List[string]
+    $null = $html.Add("<!DOCTYPE html>")
+    $null = $html.Add('<html lang="pt-BR">')
+    $null = $html.Add("<head>")
+    $null = $html.Add('  <meta charset="UTF-8" />')
+    $null = $html.Add("  <title>Resumo da Auditoria Offline de WallSegment2D</title>")
+    $null = $html.Add("  <style>")
+    $null = $html.Add("body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; line-height: 1.45; color: #111; }")
+    $null = $html.Add("table { border-collapse: collapse; width: 100%; margin: 16px 0; }")
+    $null = $html.Add("th, td { border: 1px solid #cfd6dd; padding: 8px; text-align: left; vertical-align: top; }")
+    $null = $html.Add("th { background: #eef3f8; }")
+    $null = $html.Add(".warn { background: #fff4db; }")
+    $null = $html.Add(".fail { background: #ffe3e3; }")
+    $null = $html.Add("a { color: #0b5cab; text-decoration: none; }")
+    $null = $html.Add("  </style>")
+    $null = $html.Add("</head>")
+    $null = $html.Add("<body>")
+    $null = $html.Add("<h1>Resumo da Auditoria Offline de WallSegment2D</h1>")
+    $null = $html.Add(("<p><strong>Fonte auditada:</strong> {0}</p>" -f [System.Net.WebUtility]::HtmlEncode($AuditedSourceDir)))
+    $null = $html.Add("<table>")
+    $null = $html.Add("<tr><th>Segmento</th><th>OBJ</th><th>Faces verticais</th><th>Walls</th><th>Duplicados</th><th>Deg faces</th><th>Deg segs</th><th>Normals zero</th><th>Driveable</th><th>Mismatch</th><th>Relatório</th></tr>")
+    foreach ($row in $Rows) {
+        $cls = ""
+        if ($row.FamilyMismatch -or $row.DegFaces -gt 0 -or $row.DegSegments -gt 0) {
+            $cls = ' class="fail"'
+        }
+        elseif ($row.Duplicates -gt 0 -or $row.ZeroNormals -gt 0) {
+            $cls = ' class="warn"'
+        }
+
+        $reportCell = ""
+        if (-not [string]::IsNullOrWhiteSpace($row.ReportFileName)) {
+            $reportHref = [System.Net.WebUtility]::HtmlEncode($row.ReportFileName)
+            $reportCell = ('<a href="{0}">abrir</a>' -f $reportHref)
+        }
+
+        $null = $html.Add((
+            "<tr{0}><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td><td>{6}</td><td>{7}</td><td>{8}</td><td>{9}</td><td>{10}</td><td>{11}</td></tr>" -f
+            $cls,
+            $row.SegmentId,
+            [System.Net.WebUtility]::HtmlEncode($row.ObjName),
+            $row.VerticalCandidates,
+            $row.WallSegments,
+            $row.Duplicates,
+            $row.DegFaces,
+            $row.DegSegments,
+            $row.ZeroNormals,
+            $row.DriveableFaces,
+            $row.FamilyMismatch,
+            $reportCell
+        ))
+    }
+    $null = $html.Add("</table>")
+    $null = $html.Add("</body></html>")
+    [System.IO.File]::WriteAllLines($OutPath, $html)
+}
+
+function Invoke-WallAuditBatch {
+    param(
+        [string]$ObjRootDir,
+        [string]$SegmentsMapPath,
+        [string]$SfMapPath,
+        [string]$Pattern,
+        [string]$ReportDir,
+        [switch]$Strict
+    )
+
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($null -eq $pythonCmd) {
+        throw "Python nao encontrado no PATH; auditoria offline nao pode ser executada."
+    }
+
+    $auditScriptPath = Join-Path $scriptDir "audit_wall_segments_offline.py"
+    if (-not (Test-Path -LiteralPath $auditScriptPath)) {
+        throw "Script de auditoria nao encontrado: $auditScriptPath"
+    }
+
+    if (-not (Test-Path -LiteralPath $ReportDir)) {
+        New-Item -Path $ReportDir -ItemType Directory -Force | Out-Null
+    }
+
+    $segmentsMapJson = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    $mappedSegmentIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($seg in @($segmentsMapJson.segments)) {
+        if ($null -eq $seg) { continue }
+        if (-not ($seg.PSObject.Properties.Name -contains "id")) { continue }
+        [void]$mappedSegmentIds.Add([int]$seg.id)
+    }
+
+    $objs = @(Get-ChildItem -LiteralPath $ObjRootDir -Recurse -File -Filter $Pattern | Sort-Object FullName)
+    if ($objs.Count -le 0) {
+        throw ("Nenhum OBJ encontrado para auditoria em {0} com Pattern={1}" -f $ObjRootDir, $Pattern)
+    }
+
+    $rows = New-Object System.Collections.Generic.List[object]
+    $strictFailures = New-Object System.Collections.Generic.List[string]
+    $skippedObjs = New-Object System.Collections.Generic.List[string]
+    $summaryJsonPath = Join-Path $ReportDir "wall_audit_summary.json"
+    $summaryHtmlPath = Join-Path $ReportDir "wall_audit_summary.html"
+
+    foreach ($obj in $objs) {
+        $segmentId = Get-SegmentIdFromFile $obj.BaseName
+        if ($null -eq $segmentId) { continue }
+        if (-not $mappedSegmentIds.Contains([int]$segmentId)) {
+            $skippedObjs.Add($obj.Name) | Out-Null
+            continue
+        }
+
+        $reportFileName = ("wall_audit_seg_{0:D3}.html" -f $segmentId)
+        $reportHtmlPath = Join-Path $ReportDir $reportFileName
+        $args = @(
+            $auditScriptPath,
+            "--obj", $obj.FullName,
+            "--segment-id", $segmentId,
+            "--segments-map", $SegmentsMapPath,
+            "--report-html", $reportHtmlPath
+        )
+        if (-not [string]::IsNullOrWhiteSpace($SfMapPath) -and (Test-Path -LiteralPath $SfMapPath)) {
+            $args += @("--sfmap", $SfMapPath)
+        }
+
+        $outputLines = @(& $pythonCmd.Source @args 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw ("Falha na auditoria offline do segmento {0:D3}: {1}" -f $segmentId, ($outputLines -join [Environment]::NewLine))
+        }
+
+        $metrics = @{
+            vertical_candidates = 0
+            wall_segments = 0
+            duplicates = 0
+            deg_faces = 0
+            deg_segments = 0
+            zero_normals = 0
+            driveable_faces = 0
+            non_driveable_faces = 0
+            family_mismatch = $false
+        }
+        foreach ($line in $outputLines) {
+            $text = [string]$line
+            $kv = Get-KeyValueTokens -Line $text
+            foreach ($key in @("vertical_candidates","wall_segments","duplicates","deg_faces","deg_segments","zero_normals","driveable_faces","non_driveable_faces")) {
+                if ($kv.ContainsKey($key) -and ($kv[$key] -match '^\d+$')) {
+                    $metrics[$key] = [int]$kv[$key]
+                }
+            }
+            if ($kv.ContainsKey("family_mismatch")) {
+                $metrics.family_mismatch = ConvertTo-BoolValue ([string]$kv["family_mismatch"])
+            }
+        }
+
+        $row = [pscustomobject]@{
+            SegmentId = $segmentId
+            ObjName = $obj.Name
+            ObjPath = $obj.FullName
+            VerticalCandidates = [int]$metrics.vertical_candidates
+            WallSegments = [int]$metrics.wall_segments
+            Duplicates = [int]$metrics.duplicates
+            DegFaces = [int]$metrics.deg_faces
+            DegSegments = [int]$metrics.deg_segments
+            ZeroNormals = [int]$metrics.zero_normals
+            DriveableFaces = [int]$metrics.driveable_faces
+            NonDriveableFaces = [int]$metrics.non_driveable_faces
+            FamilyMismatch = [bool]$metrics.family_mismatch
+            ReportPath = $reportHtmlPath
+            ReportFileName = $reportFileName
+        }
+        $rows.Add($row) | Out-Null
+
+        if ($Strict -and ($row.FamilyMismatch -or $row.DegFaces -gt 0 -or $row.DegSegments -gt 0)) {
+            $strictFailures.Add(("seg_{0:D3}: mismatch={1} deg_faces={2} deg_segments={3}" -f $row.SegmentId, $row.FamilyMismatch, $row.DegFaces, $row.DegSegments)) | Out-Null
+        }
+    }
+
+    $rowsArray = @($rows.ToArray() | Sort-Object SegmentId)
+    $rowsArray | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $summaryJsonPath -Encoding UTF8
+    New-WallAuditSummaryHtml -OutPath $summaryHtmlPath -AuditedSourceDir $ObjRootDir -Rows $rowsArray
+
+    $dupTotal = ($rowsArray | Measure-Object -Property Duplicates -Sum).Sum
+    $degFaceTotal = ($rowsArray | Measure-Object -Property DegFaces -Sum).Sum
+    $degSegTotal = ($rowsArray | Measure-Object -Property DegSegments -Sum).Sum
+    $mismatchCount = @($rowsArray | Where-Object { $_.FamilyMismatch }).Count
+
+    Write-Host ("Wall audit concluida: segs={0} dup={1} deg_faces={2} deg_segments={3} mismatch={4}" -f
+        $rowsArray.Count, $dupTotal, $degFaceTotal, $degSegTotal, $mismatchCount)
+    if ($skippedObjs.Count -gt 0) {
+        Write-Warning ("Wall audit ignorou {0} OBJ(s) sem entrada no segments_map: {1}" -f
+            $skippedObjs.Count,
+            (($skippedObjs | Select-Object -First 12) -join ", "))
+    }
+    Write-Host ("Wall audit reports: {0}" -f $summaryHtmlPath)
+
+    if ($Strict -and $strictFailures.Count -gt 0) {
+        $strictFailures | ForEach-Object { Write-Host (" - " + $_) }
+        throw "Wall audit strict encontrou problemas estruturais."
+    }
+}
+
 $SourceObjDir = Resolve-DefaultSourceObjDir -RequestedSourceObjDir $SourceObjDir -ResultRootDir $ResultDir
 if (-not (Test-Path -LiteralPath $SourceObjDir)) { throw "SourceObjDir nao encontrado: $SourceObjDir" }
 if (-not (Test-Path -LiteralPath $PackageDir)) { New-Item -Path $PackageDir -ItemType Directory -Force | Out-Null }
 if (-not (Test-Path -LiteralPath $CdDataDir)) { New-Item -Path $CdDataDir -ItemType Directory -Force | Out-Null }
+if ($AuditWallsStrict) { $AuditWalls = $true }
+if ($AuditWalls -and [string]::IsNullOrWhiteSpace($AuditWallsReportDir)) {
+    $AuditWallsReportDir = Join-Path $PackageDir "wall_audit"
+}
 
 $sourceObjCount = @(Get-ChildItem -LiteralPath $SourceObjDir -Recurse -File -Filter $Pattern -ErrorAction SilentlyContinue).Count
 if ($sourceObjCount -le 0) {
@@ -630,6 +866,21 @@ if ($ExportSurfaceFamilyMap) {
     $segmentCollisionMapPath = Join-Path $PackageDir "SCMAP.BIN"
     Write-SegmentCollisionMapBinary -SegmentsMapPath $jsonPath -OutBinPath $segmentCollisionMapPath
     Copy-Item -LiteralPath $segmentCollisionMapPath -Destination (Join-Path $CdDataDir "SCMAP.BIN") -Force
+}
+if ($AuditWalls) {
+    Write-Host "=== Etapa 2.975/7: Auditoria offline de WallSegment2D ==="
+    $surfaceMapForAudit = Join-Path $CdDataDir "SFMAP.BIN"
+    if (-not (Test-Path -LiteralPath $surfaceMapForAudit)) {
+        Write-Warning ("SFMAP.BIN nao encontrado em {0}; auditoria rodara sem filtro de solo." -f $surfaceMapForAudit)
+        $surfaceMapForAudit = ""
+    }
+    Invoke-WallAuditBatch `
+        -ObjRootDir $SourceObjDir `
+        -SegmentsMapPath $jsonPath `
+        -SfMapPath $surfaceMapForAudit `
+        -Pattern $Pattern `
+        -ReportDir $AuditWallsReportDir `
+        -Strict:$AuditWallsStrict
 }
 
 Write-Host "=== Etapa 3/7: Gerar GEO/MAT para cada LOD ==="
