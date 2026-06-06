@@ -91,18 +91,22 @@ public:
 
     struct CommandSnapshot
     {
+        struct InputLatchState
+        {
+            bool throttleHeld = false;
+            bool brakeHeld = false;
+            bool steerHeld = false;
+            uint8_t accelHoldFrames = 0;
+            uint8_t brakeHoldFrames = 0;
+        };
+
         int16_t throttle = 0;
         int16_t steering = 0;
         int8_t steerDirection = 0; // -1 left, +1 right, 0 neutral
         bool braking = false;
         bool wheelsSpinning = false;
         uint32_t wheelSpinTicks = 0;
-        // Transient input latches for per-frame decay control.
-        bool throttleInputHeld = false;
-        bool brakeInputHeld = false;
-        bool steerInputHeld = false;
-        uint8_t accelHoldFrames = 0;
-        uint8_t brakeHoldFrames = 0;
+        InputLatchState latches{};
     };
 
     const CommandSnapshot& Commands() const { return commandState_; }
@@ -170,6 +174,17 @@ private:
     // This mirrors reverse behavior and avoids launch side-slip from steer lag.
     static constexpr int16_t kLaunchSteerSnapSpeedKmh = 8;
 
+    struct InputHistoryState
+    {
+        bool leftHeldPrev = false;
+        bool rightHeldPrev = false;
+        bool shiftDownHeldPrev = false;
+        bool shiftUpHeldPrev = false;
+        uint32_t lastLeftPressFrame = 0;
+        uint32_t lastRightPressFrame = 0;
+        int8_t brakeSteerDirWhileHeld = 0;
+    };
+
     CommandSnapshot commandState_{};
     CarCommandAdapter command_{&worldPosition_, &commandState_};
     std::unique_ptr<MeshRenderer> renderer_;
@@ -182,13 +197,7 @@ private:
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};
     int32_t visualYawOffsetDeg_{0};
-    bool leftHeldPrev_ = false;
-    bool rightHeldPrev_ = false;
-    bool lHeldPrev_ = false;
-    bool rHeldPrev_ = false;
-    uint32_t lastLeftPressFrame_ = 0;
-    uint32_t lastRightPressFrame_ = 0;
-    int8_t brakeSteerDirWhileHeld_ = 0;
+    InputHistoryState inputHistory_{};
     char name_[32]{};
 };
 } // namespace Game

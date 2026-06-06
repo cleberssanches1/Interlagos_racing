@@ -10,14 +10,14 @@ namespace Game
 void CarSystem::CarCommandAdapter::Accelerate()
 {
     if (!state) return;
-    state->throttleInputHeld = true;
+    state->latches.throttleHeld = true;
     state->braking = false;
-    if (state->accelHoldFrames < 255u) ++state->accelHoldFrames;
+    if (state->latches.accelHoldFrames < 255u) ++state->latches.accelHoldFrames;
     // Digital button pressure simulation:
     // longer hold increases acceleration step progressively.
     const int16_t boost = static_cast<int16_t>(
         std::min<int32_t>(CarSystem::kThrottleStepBoostMax,
-                          static_cast<int32_t>(state->accelHoldFrames / 6u)));
+                          static_cast<int32_t>(state->latches.accelHoldFrames / 6u)));
     const int16_t step = static_cast<int16_t>(CarSystem::kThrottleStep + boost);
     int16_t next = static_cast<int16_t>(state->throttle + step);
     state->throttle = std::min<int16_t>(next, CarSystem::kThrottleMax);
@@ -26,10 +26,10 @@ void CarSystem::CarCommandAdapter::Accelerate()
 void CarSystem::CarCommandAdapter::Brake()
 {
     if (!state) return;
-    state->brakeInputHeld = true;
+    state->latches.brakeHeld = true;
     state->braking = true;
-    if (state->brakeHoldFrames < 255u) ++state->brakeHoldFrames;
-    state->accelHoldFrames = 0u;
+    if (state->latches.brakeHoldFrames < 255u) ++state->latches.brakeHoldFrames;
+    state->latches.accelHoldFrames = 0u;
     int16_t next = static_cast<int16_t>(state->throttle - (CarSystem::kThrottleStep * 2));
     state->throttle = std::max<int16_t>(next, 0);
 }
@@ -37,14 +37,14 @@ void CarSystem::CarCommandAdapter::Brake()
 void CarSystem::CarCommandAdapter::SteerLeft()
 {
     if (!state) return;
-    state->steerInputHeld = true;
+    state->latches.steerHeld = true;
     state->steerDirection = -1;
 }
 
 void CarSystem::CarCommandAdapter::SteerRight()
 {
     if (!state) return;
-    state->steerInputHeld = true;
+    state->latches.steerHeld = true;
     state->steerDirection = 1;
 }
 
@@ -132,7 +132,7 @@ void CarSystem::TickCommandState()
     // Steering model:
     // - while held: move toward full lock in requested direction
     // - released: return smoothly to center
-    if (commandState_.steerInputHeld && commandState_.steerDirection != 0)
+    if (commandState_.latches.steerHeld && commandState_.steerDirection != 0)
     {
         const int16_t target =
             (commandState_.steerDirection > 0)
@@ -146,7 +146,7 @@ void CarSystem::TickCommandState()
             (commandState_.steerDirection > 0 && commandState_.steering < 0);
         const bool launchSteerSnap =
             !commandState_.braking &&
-            commandState_.throttleInputHeld &&
+            commandState_.latches.throttleHeld &&
             ((wheelInput_.speedKmh <= CarSystem::kLaunchSteerSnapSpeedKmh) ||
              (std::abs(commandState_.steering) <= CarSystem::kSteeringStep) ||
              steeringCrossing);
@@ -207,21 +207,21 @@ void CarSystem::TickCommandState()
     }
 
     // Idle throttle decay only when accelerator is not held this frame.
-    if (!commandState_.throttleInputHeld &&
+    if (!commandState_.latches.throttleHeld &&
         !commandState_.braking &&
         commandState_.throttle > 0)
     {
         commandState_.throttle = static_cast<int16_t>(std::max<int16_t>(0, commandState_.throttle - CarSystem::kThrottleDecay));
     }
-    if (!commandState_.throttleInputHeld)
+    if (!commandState_.latches.throttleHeld)
     {
-        commandState_.accelHoldFrames = 0u;
+        commandState_.latches.accelHoldFrames = 0u;
     }
 
     // Brake decays when button is released, allowing natural transition to reverse.
     if (commandState_.braking)
     {
-        if (!commandState_.brakeInputHeld)
+        if (!commandState_.latches.brakeHeld)
         {
             commandState_.throttle = static_cast<int16_t>(
                 std::max<int16_t>(0, commandState_.throttle - CarSystem::kBrakeReleaseDecay));
@@ -229,18 +229,18 @@ void CarSystem::TickCommandState()
             {
                 commandState_.braking = false;
             }
-            commandState_.brakeHoldFrames = 0u;
+            commandState_.latches.brakeHoldFrames = 0u;
         }
     }
     else
     {
-        commandState_.brakeHoldFrames = 0u;
+        commandState_.latches.brakeHoldFrames = 0u;
     }
 
     // Reset per-frame latches.
-    commandState_.throttleInputHeld = false;
-    commandState_.brakeInputHeld = false;
-    commandState_.steerInputHeld = false;
+    commandState_.latches.throttleHeld = false;
+    commandState_.latches.brakeHeld = false;
+    commandState_.latches.steerHeld = false;
     commandState_.steerDirection = 0;
 }
 
@@ -260,12 +260,12 @@ void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,
                                    uint32_t frameCounter,
                                    GameplayFrameState& ioFrameState)
 {
-    const bool leftJustPressed = input.steerLeftHeld && !leftHeldPrev_;
-    const bool rightJustPressed = input.steerRightHeld && !rightHeldPrev_;
-    const bool lJustPressed = input.shiftDownHeld && !lHeldPrev_;
-    const bool rJustPressed = input.shiftUpHeld && !rHeldPrev_;
-    if (leftJustPressed) lastLeftPressFrame_ = frameCounter;
-    if (rightJustPressed) lastRightPressFrame_ = frameCounter;
+    const bool leftJustPressed = input.steerLeftHeld && !inputHistory_.leftHeldPrev;
+    const bool rightJustPressed = input.steerRightHeld && !inputHistory_.rightHeldPrev;
+    const bool lJustPressed = input.shiftDownHeld && !inputHistory_.shiftDownHeldPrev;
+    const bool rJustPressed = input.shiftUpHeld && !inputHistory_.shiftUpHeldPrev;
+    if (leftJustPressed) inputHistory_.lastLeftPressFrame = frameCounter;
+    if (rightJustPressed) inputHistory_.lastRightPressFrame = frameCounter;
 
     if (input.accelerateHeld) command_.Accelerate();
 
@@ -283,8 +283,8 @@ void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,
         const int16_t currentSteer = commandState_.steering;
         if (currentSteer < 0) desiredSteerDir = -1;
         else if (currentSteer > 0) desiredSteerDir = 1;
-        else if (lastLeftPressFrame_ > lastRightPressFrame_) desiredSteerDir = -1;
-        else if (lastRightPressFrame_ > lastLeftPressFrame_) desiredSteerDir = 1;
+        else if (inputHistory_.lastLeftPressFrame > inputHistory_.lastRightPressFrame) desiredSteerDir = -1;
+        else if (inputHistory_.lastRightPressFrame > inputHistory_.lastLeftPressFrame) desiredSteerDir = 1;
     }
 
     if (desiredSteerDir < 0) command_.SteerLeft();
@@ -294,19 +294,19 @@ void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,
     if (input.brakeHeld)
     {
         if (desiredSteerDir != 0 &&
-            brakeSteerDirWhileHeld_ != 0 &&
-            desiredSteerDir != brakeSteerDirWhileHeld_)
+            inputHistory_.brakeSteerDirWhileHeld != 0 &&
+            desiredSteerDir != inputHistory_.brakeSteerDirWhileHeld)
         {
             suppressBrakeThisFrame = true;
         }
         if (desiredSteerDir != 0)
         {
-            brakeSteerDirWhileHeld_ = desiredSteerDir;
+            inputHistory_.brakeSteerDirWhileHeld = desiredSteerDir;
         }
     }
     else
     {
-        brakeSteerDirWhileHeld_ = 0;
+        inputHistory_.brakeSteerDirWhileHeld = 0;
     }
 
     if (!suppressBrakeThisFrame && input.brakeHeld)
@@ -326,10 +326,10 @@ void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,
         ioFrameState.shiftUpRequested = false;
     }
 
-    leftHeldPrev_ = input.steerLeftHeld;
-    rightHeldPrev_ = input.steerRightHeld;
-    lHeldPrev_ = input.shiftDownHeld;
-    rHeldPrev_ = input.shiftUpHeld;
+    inputHistory_.leftHeldPrev = input.steerLeftHeld;
+    inputHistory_.rightHeldPrev = input.steerRightHeld;
+    inputHistory_.shiftDownHeldPrev = input.shiftDownHeld;
+    inputHistory_.shiftUpHeldPrev = input.shiftUpHeld;
 }
 
 void CarSystem::PrepareGameplayFrameState(const GameplayInputSnapshot* input,
@@ -412,7 +412,7 @@ void CarSystem::WriteCommandsToFrameState(GameplayFrameState& ioFrameState, bool
     ioFrameState.steering = commandState_.steering;
     ioFrameState.braking = commandState_.braking;
     ioFrameState.wheelsSpinning = commandState_.wheelsSpinning;
-    ioFrameState.brakeHoldFrames = commandState_.brakeHoldFrames;
+    ioFrameState.brakeHoldFrames = commandState_.latches.brakeHoldFrames;
 }
 
 void CarSystem::SubmitRender(RenderPipeline& pipeline, bool logStats)
