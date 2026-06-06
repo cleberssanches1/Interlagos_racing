@@ -16638,6 +16638,94 @@ void TrackSystem::RunDrawStage(const std::vector<SegmentHandle>& orderedHandles,
         Sh2FrtProfiler::Elapsed(drawTicksStart, Sh2FrtProfiler::Now());
 }
 
+bool TrackSystem::ShouldRunFramePlanThisFrame(bool slidThisFrame)
+{
+    bool runFramePlan = true;
+    static uint8_t sFramePlanDecimator = 0u;
+    if (kEnableTrackRuntimeStabilization &&
+        !slidThisFrame &&
+        memoryPressureLevelThisFrame_ == static_cast<uint8_t>(MemoryPressureLevel::Normal) &&
+        !pendingLodWorkExists_)
+    {
+        const bool prefetchResident =
+            slidePrefetchSegmentId_ > 0 &&
+            !slidePrefetchFamilyIds_.empty();
+        const uint8_t steadyPlanSkipFrames =
+            kEnableTrackLeakIsolationFixed64Pipeline
+                ? (prefetchResident ? 20u : 12u)
+                : (prefetchResident ? 8u : 4u);
+        if (sFramePlanDecimator > 0u)
+        {
+            --sFramePlanDecimator;
+            runFramePlan = false;
+        }
+        else
+        {
+            sFramePlanDecimator = steadyPlanSkipFrames;
+        }
+    }
+    else
+    {
+        sFramePlanDecimator = 0u;
+    }
+    return runFramePlan;
+}
+
+void TrackSystem::RunFramePlanStage(const Vector3D& trackOffset,
+                                    const Vector3D& cameraLocation,
+                                    const Vector3D& carWorldPosition,
+                                    bool slidThisFrame)
+{
+    if (ShouldRunFramePlanThisFrame(slidThisFrame))
+    {
+        BuildAndApplyFramePlanStage(trackOffset, cameraLocation, carWorldPosition);
+        return;
+    }
+
+    PromoteLastValidFramePlanForCurrentFrame(true);
+    if (framePlanCurrent_.valid)
+    {
+        ApplyFramePlanLodTargets(framePlanCurrent_);
+        sh2SlavePlanTicksThisFrame_ = framePlanCurrent_.plannerTicksSlave;
+    }
+    else
+    {
+        UpdateDesiredStabilizedWindowLodTargets();
+        sh2SlavePlanTicksThisFrame_ = 0u;
+    }
+    sh2MasterPlanTicksThisFrame_ = 0u;
+}
+
+void TrackSystem::FinalizeDrawStage(
+    uint16_t frameTicksStart,
+    const std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
+    const std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById)
+{
+    sh2MasterFrameTicksThisFrame_ =
+        Sh2FrtProfiler::Elapsed(frameTicksStart, Sh2FrtProfiler::Now());
+    for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
+    {
+        if (runtimeStatsLogsEnabled_ && preparedCountById[id] > 1)
+        {
+            SRL::Debug::Print(1, 25, "WARN prep dup seg:%u count:%u",
+                              (unsigned)id, (unsigned)preparedCountById[id]);
+        }
+        if (runtimeStatsLogsEnabled_ && renderedCountById[id] > 1)
+        {
+            SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u",
+                              (unsigned)id, (unsigned)renderedCountById[id]);
+        }
+    }
+
+    if constexpr (kEnableTrackPhaseRamTelemetry)
+    {
+        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        phaseHwrAfterDraw_ = static_cast<uint32_t>(hwr.FreeSize);
+        phaseLwrAfterDraw_ = static_cast<uint32_t>(lwr.FreeSize);
+    }
+}
+
 void TrackSystem::RenderFrame(bool renderTrack,
                               const Vector3D& trackOffset,
                               const Vector3D& lightDirection,
@@ -16730,58 +16818,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
     {
         captureLowWorkStage(lowWorkDeltaMaintenance1);
     }
-    bool runFramePlan = true;
-    static uint8_t sFramePlanDecimator = 0u;
-    if (kEnableTrackRuntimeStabilization &&
-        !slidThisFrame &&
-        memoryPressureLevelThisFrame_ == static_cast<uint8_t>(MemoryPressureLevel::Normal) &&
-        !pendingLodWorkExists_)
-    {
-        // In long stable runs, planning every frame (or every other frame) adds
-        // avoidable CPU cost. Keep responsiveness by running periodically, with
-        // a slightly lower cadence when prefetch is already resident.
-        const bool prefetchResident =
-            slidePrefetchSegmentId_ > 0 &&
-            !slidePrefetchFamilyIds_.empty();
-        // Planner is one of the dominant steady-state costs in long sessions.
-        // Run it less frequently when window/preload are stable.
-        const uint8_t steadyPlanSkipFrames =
-            kEnableTrackLeakIsolationFixed64Pipeline
-                ? (prefetchResident ? 20u : 12u)
-                : (prefetchResident ? 8u : 4u);
-        if (sFramePlanDecimator > 0u)
-        {
-            --sFramePlanDecimator;
-            runFramePlan = false;
-        }
-        else
-        {
-            sFramePlanDecimator = steadyPlanSkipFrames;
-        }
-    }
-    else
-    {
-        sFramePlanDecimator = 0u;
-    }
-    if (runFramePlan)
-    {
-        BuildAndApplyFramePlanStage(trackOffset, cameraLocation, carWorldPosition);
-    }
-    else
-    {
-        PromoteLastValidFramePlanForCurrentFrame(true);
-        if (framePlanCurrent_.valid)
-        {
-            ApplyFramePlanLodTargets(framePlanCurrent_);
-            sh2SlavePlanTicksThisFrame_ = framePlanCurrent_.plannerTicksSlave;
-        }
-        else
-        {
-            UpdateDesiredStabilizedWindowLodTargets();
-            sh2SlavePlanTicksThisFrame_ = 0u;
-        }
-        sh2MasterPlanTicksThisFrame_ = 0u;
-    }
+    RunFramePlanStage(trackOffset, cameraLocation, carWorldPosition, slidThisFrame);
     if (TrackPipeline::TrackLodStage::RunRecovery(*this, slidThisFrame))
     {
         captureLowWorkStage(lowWorkDeltaLod);
@@ -16855,159 +16892,382 @@ void TrackSystem::RenderFrame(bool renderTrack,
                      segment01Prepared);
         LWR_PROBE_END(g_lwrStageAccum.drawStage);
     }
-    sh2MasterFrameTicksThisFrame_ =
-        Sh2FrtProfiler::Elapsed(frameTicksStart, Sh2FrtProfiler::Now());
-    for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
-    {
-        if (runtimeStatsLogsEnabled_ && preparedCountById[id] > 1)
-        {
-            SRL::Debug::Print(1, 25, "WARN prep dup seg:%u count:%u", (unsigned)id, (unsigned)preparedCountById[id]);
-        }
-        if (runtimeStatsLogsEnabled_ && renderedCountById[id] > 1)
-        {
-            SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u", (unsigned)id, (unsigned)renderedCountById[id]);
-        }
-    }
-
-    if constexpr (kEnableTrackPhaseRamTelemetry)
-    {
-        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
-        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
-        phaseHwrAfterDraw_ = static_cast<uint32_t>(hwr.FreeSize);
-        phaseLwrAfterDraw_ = static_cast<uint32_t>(lwr.FreeSize);
-    }
+    FinalizeDrawStage(frameTicksStart, preparedCountById, renderedCountById);
 
     (void)segment01Prepared;
 }
 
-void TrackSystem::EndFrame()
+void TrackSystem::PresentVdp1FpsTelemetry()
 {
-    // Keep slot liveness tied to what the renderer actually references in the
-    // current frame. This avoids stale working-set references pinning old slots
-    // and causing long-run TrackTexture growth.
-    RebuildUsedTextureSlotFlagsFromCurrentFaces();
+    if (!runtimeStatsLogsEnabled_) return;
 
-    coordinator_.PresentTelemetry();
-    soakMonitor_.Update(ready_, coordinator_.Telemetry());
-    soakMonitor_.Present();
-    if constexpr (kEnableSh2UsageOverlay)
+    constexpr uint32_t kVdp1FaceCostBytes = 64u;
+    constexpr uint32_t kVdp1FrameBudgetBytes = 512u * 1024u;
+#ifdef SRL_MODE_NTSC
+    constexpr uint16_t kDisplayRefreshHz = 60u;
+#else
+    constexpr uint16_t kDisplayRefreshHz = 50u;
+#endif
+    static uint64_t sCmdPctAccum = 0u;
+    static uint64_t sHeapPctAccum = 0u;
+    static uint64_t sTrackFacesAccum = 0u;
+    static uint8_t sSamples = 0u;
+    static uint8_t sPeakCmdPct = 0u;
+    static uint8_t sPeakHeapPct = 0u;
+    static uint32_t sPeakTrackFaces = 0u;
+    static uint16_t sPeakTexCount = 0u;
+    static bool sFpsVblankValid = false;
+    static uint32_t sFpsLastVblank = 0u;
+    static uint8_t sFpsSampleFrames = 0u;
+    static uint16_t sFpsSampleVblanks = 0u;
+    static uint8_t sFpsFramesOver30Budget = 0u;
+    static uint8_t sFpsFramesOver60Budget = 0u;
+    static uint16_t sFpsX10 = 0u;
+    static uint16_t sFrameMsX10 = 0u;
+    static uint8_t sDrop30Pct = 0u;
+    static uint8_t sDrop60Pct = 0u;
+
+    const auto& telemetry = coordinator_.Telemetry();
+    const uint32_t trackFaces = telemetry.submittedTrackFaces;
+    const uint32_t trackSegments = telemetry.submittedTrackSegments;
+    const uint32_t cmdBytesRaw = trackFaces * kVdp1FaceCostBytes;
+    const uint32_t cmdBytes = (cmdBytesRaw > kVdp1FrameBudgetBytes) ? kVdp1FrameBudgetBytes : cmdBytesRaw;
+    const uint8_t cmdPct = (kVdp1FrameBudgetBytes > 0u)
+        ? static_cast<uint8_t>((cmdBytes * 100u) / kVdp1FrameBudgetBytes)
+        : 0u;
+
+    const size_t heapUsed = SRL::VDP1::GetUsedMemory();
+    const size_t heapFree = SRL::VDP1::GetAvailableMemory();
+    const size_t heapTotal = heapUsed + heapFree;
+    const uint8_t heapPct = (heapTotal > 0u)
+        ? static_cast<uint8_t>((heapUsed * 100u) / heapTotal)
+        : 0u;
+    const uint16_t texCount = SRL::VDP1::GetTextureCount();
+
+    sCmdPctAccum += static_cast<uint64_t>(cmdPct);
+    sHeapPctAccum += static_cast<uint64_t>(heapPct);
+    sTrackFacesAccum += static_cast<uint64_t>(trackFaces);
+    if (sSamples < std::numeric_limits<uint8_t>::max()) ++sSamples;
+    if (cmdPct > sPeakCmdPct) sPeakCmdPct = cmdPct;
+    if (heapPct > sPeakHeapPct) sPeakHeapPct = heapPct;
+    if (trackFaces > sPeakTrackFaces) sPeakTrackFaces = trackFaces;
+    if (texCount > sPeakTexCount) sPeakTexCount = texCount;
+
+    const uint32_t sampleCount = (sSamples > 0u) ? static_cast<uint32_t>(sSamples) : 1u;
+    const uint32_t avgCmdPct = static_cast<uint32_t>(sCmdPctAccum / sampleCount);
+    const uint32_t avgHeapPct = static_cast<uint32_t>(sHeapPctAccum / sampleCount);
+    const uint32_t avgTrackFaces = static_cast<uint32_t>(sTrackFacesAccum / sampleCount);
+
+    const uint32_t vblankNow = SRL_AppGetVblankCounter();
+    if (!sFpsVblankValid)
     {
-        const auto& prod = coordinator_.Telemetry().producer;
-        const auto& sort = stabilizedDepthStats_;
-        auto accumulatePerf = [&](Sh2PerfBucket& bucket)
+        sFpsVblankValid = true;
+        sFpsLastVblank = vblankNow;
+    }
+    else
+    {
+        uint32_t vblankDelta = vblankNow - sFpsLastVblank;
+        sFpsLastVblank = vblankNow;
+        if (vblankDelta == 0u) vblankDelta = 1u;
+
+        if (sFpsSampleFrames < std::numeric_limits<uint8_t>::max()) ++sFpsSampleFrames;
+        sFpsSampleVblanks = static_cast<uint16_t>(std::min<uint32_t>(
+            static_cast<uint32_t>(sFpsSampleVblanks) + vblankDelta,
+            static_cast<uint32_t>(std::numeric_limits<uint16_t>::max())));
+        const uint32_t frameTimeX100 = static_cast<uint32_t>(
+            (static_cast<uint64_t>(vblankDelta) * 100000u + (kDisplayRefreshHz / 2u)) /
+            static_cast<uint64_t>(kDisplayRefreshHz));
+        constexpr uint32_t kTarget30FrameTimeX100 = 100000u / 30u;
+        constexpr uint32_t kTarget60FrameTimeX100 = 100000u / 60u;
+        if (frameTimeX100 > kTarget30FrameTimeX100 && sFpsFramesOver30Budget < std::numeric_limits<uint8_t>::max())
         {
-            bucket.sampleFrames = static_cast<uint16_t>(bucket.sampleFrames + 1u);
-            bucket.sumMasterFrameTicks += static_cast<uint32_t>(sh2MasterFrameTicksThisFrame_);
-            bucket.sumMasterDrawTicks += static_cast<uint32_t>(sh2MasterDrawTicksThisFrame_);
-            bucket.sumProducerTicks += static_cast<uint32_t>(prod.slaveLastJobTicks);
-            bucket.sumSortTicks += static_cast<uint32_t>(sh2SlaveSortTicksThisFrame_);
-            bucket.sumProducerFallbacks += static_cast<uint32_t>(sh2ProducerListFallbacksThisFrame_);
-            bucket.sumProducerListUsed += static_cast<uint32_t>(sh2ProducerListUsedThisFrame_);
-            bucket.sumProducerListFallbacks += static_cast<uint32_t>(sh2ProducerListFallbacksThisFrame_);
-            if (bucket.sampleFrames < kSh2PerfSampleWindowFrames)
+            ++sFpsFramesOver30Budget;
+        }
+        if (frameTimeX100 > kTarget60FrameTimeX100 && sFpsFramesOver60Budget < std::numeric_limits<uint8_t>::max())
+        {
+            ++sFpsFramesOver60Budget;
+        }
+
+        constexpr uint8_t kSampleWindowFrames = 60u;
+        if (sFpsSampleFrames >= kSampleWindowFrames && sFpsSampleVblanks > 0u)
+        {
+            const uint64_t fpsNum = static_cast<uint64_t>(kDisplayRefreshHz) *
+                                    static_cast<uint64_t>(10u) *
+                                    static_cast<uint64_t>(sFpsSampleFrames);
+            sFpsX10 = static_cast<uint16_t>(
+                (fpsNum + static_cast<uint64_t>(sFpsSampleVblanks / 2u)) /
+                static_cast<uint64_t>(sFpsSampleVblanks));
+
+            const uint64_t frameMsNum = static_cast<uint64_t>(10000u) *
+                                        static_cast<uint64_t>(sFpsSampleVblanks);
+            const uint64_t frameMsDen = static_cast<uint64_t>(kDisplayRefreshHz) *
+                                        static_cast<uint64_t>(sFpsSampleFrames);
+            sFrameMsX10 = static_cast<uint16_t>(
+                (frameMsNum + (frameMsDen / 2u)) / std::max<uint64_t>(1u, frameMsDen));
+
+            sDrop30Pct = static_cast<uint8_t>(
+                (static_cast<uint64_t>(sFpsFramesOver30Budget) * 100u) /
+                static_cast<uint64_t>(sFpsSampleFrames));
+            sDrop60Pct = static_cast<uint8_t>(
+                (static_cast<uint64_t>(sFpsFramesOver60Budget) * 100u) /
+                static_cast<uint64_t>(sFpsSampleFrames));
+
+            sFpsSampleFrames = 0u;
+            sFpsSampleVblanks = 0u;
+            sFpsFramesOver30Budget = 0u;
+            sFpsFramesOver60Budget = 0u;
+        }
+    }
+
+    SRL::Debug::Print(1, 14, "VDP1 trk s:%u f:%u cmd:%u%%",
+                      static_cast<unsigned>(trackSegments),
+                      static_cast<unsigned>(trackFaces),
+                      static_cast<unsigned>(cmdPct));
+    SRL::Debug::Print(1, 15, "VDP1 hp u:%u f:%u %u%% tx:%u",
+                      static_cast<unsigned>(heapUsed),
+                      static_cast<unsigned>(heapFree),
+                      static_cast<unsigned>(heapPct),
+                      static_cast<unsigned>(texCount));
+    SRL::Debug::Print(1, 16, "VDP1 pk f:%u c:%u h:%u tx:%u",
+                      static_cast<unsigned>(sPeakTrackFaces),
+                      static_cast<unsigned>(sPeakCmdPct),
+                      static_cast<unsigned>(sPeakHeapPct),
+                      static_cast<unsigned>(sPeakTexCount));
+    SRL::Debug::Print(1, 17, "VDP1 av f:%u c:%u h:%u n:%u FPS:%u.%u ms:%u.%u d30:%u d60:%u",
+                      static_cast<unsigned>(avgTrackFaces),
+                      static_cast<unsigned>(avgCmdPct),
+                      static_cast<unsigned>(avgHeapPct),
+                      static_cast<unsigned>(sSamples),
+                      static_cast<unsigned>(sFpsX10 / 10u),
+                      static_cast<unsigned>(sFpsX10 % 10u),
+                      static_cast<unsigned>(sFrameMsX10 / 10u),
+                      static_cast<unsigned>(sFrameMsX10 % 10u),
+                      static_cast<unsigned>(sDrop30Pct),
+                      static_cast<unsigned>(sDrop60Pct));
+    SRL::Debug::Print(1, 18, "                                   ");
+    SRL::Debug::Print(1, 19, "                                   ");
+    SRL::Debug::Print(1, 20, "                                   ");
+
+    if ((frameIdThisFrame_ & 0x3Fu) == 0u)
+    {
+        sCmdPctAccum = 0u;
+        sHeapPctAccum = 0u;
+        sTrackFacesAccum = 0u;
+        sSamples = 0u;
+        sPeakCmdPct = 0u;
+        sPeakHeapPct = 0u;
+        sPeakTrackFaces = 0u;
+        sPeakTexCount = 0u;
+    }
+}
+
+void TrackSystem::PresentPerFrameDebugOverlay()
+{
+    constexpr bool kEnablePerFrameDebugPrints = false;
+    if (!kEnablePerFrameDebugPrints) return;
+
+    const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+    const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+    if (hwr.TotalSize == 0 || hwr.FreeSize > hwr.TotalSize)
+    {
+        SRL::Debug::Print(1, 30, "WR H CORRUPT free:%lu tot:%lu",
+                          static_cast<unsigned long>(hwr.FreeSize),
+                          static_cast<unsigned long>(hwr.TotalSize));
+        return;
+    }
+    const unsigned long hwrUsed = static_cast<unsigned long>(hwr.TotalSize - hwr.FreeSize);
+    const unsigned long hwrTotal = static_cast<unsigned long>(hwr.TotalSize);
+    const unsigned long lwrUsed = static_cast<unsigned long>(lwr.TotalSize - lwr.FreeSize);
+    const unsigned long lwrTotal = static_cast<unsigned long>(lwr.TotalSize);
+    SRL::Debug::Print(1, 30, "WR H:%lu/%lu L:%lu/%lu", hwrUsed, hwrTotal, lwrUsed, lwrTotal);
+    SRL::Debug::Print(1, 4, "TGA c:%u a:%u f:%u j:%u                    ",
+                      (unsigned)seg1TgaPreloadCount_,
+                      (unsigned)seg1TgaAttemptCount_,
+                      (unsigned)seg1TgaFailCount_,
+                      (unsigned)seg1TgaJsonOk_);
+    SRL::Debug::Print(1, 24, "SMAP b:%u sig:%s                         ", (unsigned)g_smapBytes, g_smapSig);
+    SRL::Debug::Print(1, 25, "TGA last name:%s                         ", g_tgaLastName);
+    SRL::Debug::Print(1, 26, "TGA last try:%s                          ", g_tgaLastTry);
+    SRL::Debug::Print(1, 27, "TGA last res:%s                          ", g_tgaLastResult);
+    if (!seg1FamilySlots_.empty())
+    {
+        const Seg1FamilySlotEntry* fam1 = nullptr;
+        for (const auto& e : seg1FamilySlots_)
+        {
+            if (e.familyId == 1)
             {
-                return;
+                fam1 = &e;
+                break;
             }
-            const uint32_t denom = static_cast<uint32_t>(bucket.sampleFrames);
-            auto toU16 = [](uint32_t value) -> uint16_t
-            {
-                return static_cast<uint16_t>(std::min<uint32_t>(value, 0xFFFFu));
-            };
-            bucket.avgMasterFrameTicks = toU16(bucket.sumMasterFrameTicks / denom);
-            bucket.avgMasterDrawTicks = toU16(bucket.sumMasterDrawTicks / denom);
-            bucket.avgProducerTicks = toU16(bucket.sumProducerTicks / denom);
-            bucket.avgSortTicks = toU16(bucket.sumSortTicks / denom);
-            bucket.avgProducerFallbacks = toU16(bucket.sumProducerFallbacks / denom);
-            bucket.avgProducerListUsed = toU16(bucket.sumProducerListUsed / denom);
-            bucket.avgProducerListFallbacks = toU16(bucket.sumProducerListFallbacks / denom);
-            ++bucket.samplesAccum;
-            bucket.sampleFrames = 0;
-            bucket.sumMasterFrameTicks = 0;
-            bucket.sumMasterDrawTicks = 0;
-            bucket.sumProducerTicks = 0;
-            bucket.sumSortTicks = 0;
-            bucket.sumProducerFallbacks = 0;
-            bucket.sumProducerListUsed = 0;
-            bucket.sumProducerListFallbacks = 0;
-        };
-        if (trackSlaveModeRequested_)
+        }
+        if (fam1)
         {
-            accumulatePerf(sh2PerfDual_);
+            SRL::Debug::Print(1, 28, "F1 s32:%u s64:%u                         ",
+                              (unsigned)fam1->lodSlots[2],
+                              (unsigned)fam1->lodSlots[3]);
+            auto texDim = [&](uint16_t slot, char* out, size_t outSize)
+            {
+                if (!out || outSize == 0) return;
+                out[0] = '\0';
+                if (slot == No_Texture || slot >= SRL_MAX_TEXTURES || SRL::VDP1::Metadata[slot].Texture == nullptr)
+                {
+                    std::snprintf(out, outSize, "--");
+                    return;
+                }
+                auto* t = SRL::VDP1::Metadata[slot].Texture;
+                std::snprintf(out, outSize, "%ux%u", (unsigned)t->Width, (unsigned)t->Height);
+            };
+            char d32[12]{}, d64[12]{};
+            texDim(fam1->lodSlots[2], d32, sizeof(d32));
+            texDim(fam1->lodSlots[3], d64, sizeof(d64));
+            SRL::Debug::Print(1, 29, "F1 d32:%s d64:%s                       ", d32, d64);
         }
         else
         {
-            accumulatePerf(sh2PerfSingle_);
+            SRL::Debug::Print(1, 28, "F1 slots:none                           ");
+            SRL::Debug::Print(1, 29, "F1 dims:none                            ");
         }
-        auto avgOrLive = [](const Sh2PerfBucket& bucket,
-                            uint32_t sum,
-                            uint16_t frozenAvg) -> uint16_t
-        {
-            if (bucket.sampleFrames > 0u)
-            {
-                const uint32_t value = sum / static_cast<uint32_t>(bucket.sampleFrames);
-                return static_cast<uint16_t>(std::min<uint32_t>(value, 0xFFFFu));
-            }
-            return frozenAvg;
-        };
-        const uint16_t s1MasterAvg =
-            avgOrLive(sh2PerfSingle_, sh2PerfSingle_.sumMasterFrameTicks, sh2PerfSingle_.avgMasterFrameTicks);
-        const uint16_t s1ProducerAvg =
-            avgOrLive(sh2PerfSingle_, sh2PerfSingle_.sumProducerTicks, sh2PerfSingle_.avgProducerTicks);
-        const uint16_t s1SortAvg =
-            avgOrLive(sh2PerfSingle_, sh2PerfSingle_.sumSortTicks, sh2PerfSingle_.avgSortTicks);
-        const uint16_t s2MasterAvg =
-            avgOrLive(sh2PerfDual_, sh2PerfDual_.sumMasterFrameTicks, sh2PerfDual_.avgMasterFrameTicks);
-        const uint16_t s2ProducerAvg =
-            avgOrLive(sh2PerfDual_, sh2PerfDual_.sumProducerTicks, sh2PerfDual_.avgProducerTicks);
-        const uint16_t s2SortAvg =
-            avgOrLive(sh2PerfDual_, sh2PerfDual_.sumSortTicks, sh2PerfDual_.avgSortTicks);
-        const bool producerSlaveActive =
-            trackSlaveProducerRequested_ &&
-            !prod.slaveDisabledByTimeout &&
-            !prod.safeModeActive;
-        const bool sortSlaveActive =
-            trackSlaveDepthSortRequested_ &&
-            !sort.slaveDisabledByTimeout &&
-            !sort.safeModeActive;
-        SRL::Debug::Print(0, 17, "SH2 cfg:%s p:%u s:%u lk:%u ac:%u/%u      ",
-                          trackSlaveModeRequested_ ? "DUAL" : "SINGLE",
-                          trackSlaveProducerRequested_ ? 1u : 0u,
-                          trackSlaveDepthSortRequested_ ? 1u : 0u,
-                          trackSlaveBarrierLockstep_ ? 1u : 0u,
-                          producerSlaveActive ? 1u : 0u,
-                          sortSlaveActive ? 1u : 0u);
-        SRL::Debug::Print(0, 18, "SH2 avg 1S m:%u p:%u s:%u | 2S m:%u p:%u s:%u      ",
-                          static_cast<unsigned>(s1MasterAvg),
-                          static_cast<unsigned>(s1ProducerAvg),
-                          static_cast<unsigned>(s1SortAvg),
-                          static_cast<unsigned>(s2MasterAvg),
-                          static_cast<unsigned>(s2ProducerAvg),
-                          static_cast<unsigned>(s2SortAvg));
-        SRL::Debug::Print(0, 19, "SH2M s:%u d:%u f:%u      ",
-                          static_cast<unsigned>(sh2MasterStreamTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterDrawTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterFrameTicksThisFrame_));
-        SRL::Debug::Print(0, 20, "SH2M m:%u w:%u p:%u pl:%u l:%u ws:%u      ",
-                          static_cast<unsigned>(sh2MasterMaintenanceTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterWindowTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterPrefetchTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterPlanTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterLodTicksThisFrame_),
-                          static_cast<unsigned>(sh2MasterWorkingSetTicksThisFrame_));
-        SRL::Debug::Print(0, 21, "SH2P t:%u jf:%u l:%u to:%u u:%u fb:%u      ",
-                          static_cast<unsigned>(prod.slaveLastJobTicks),
-                          prod.jobInFlight ? 1u : 0u,
-                          static_cast<unsigned>(prod.lastLatencyFrames),
-                          static_cast<unsigned>(prod.timeoutFallbacks),
-                          static_cast<unsigned>(sh2ProducerListUsedThisFrame_),
-                          static_cast<unsigned>(sh2ProducerListFallbacksThisFrame_));
-        SRL::Debug::Print(0, 22, "SH2S t:%u pl:%u jf:%u l:%u to:%u      ",
-                          static_cast<unsigned>(sh2SlaveSortTicksThisFrame_),
-                          static_cast<unsigned>(sh2SlavePlanTicksThisFrame_),
-                          sort.jobInFlight ? 1u : 0u,
-                          static_cast<unsigned>(sort.lastLatencyFrames),
-                          static_cast<unsigned>(sort.timeoutFallbacks));
     }
+    else
+    {
+        SRL::Debug::Print(1, 28, "F1 slots:empty                          ");
+        SRL::Debug::Print(1, 29, "F1 dims:empty                           ");
+    }
+}
+
+void TrackSystem::PresentCoordinatorTelemetryAndSoak()
+{
+    coordinator_.PresentTelemetry();
+    soakMonitor_.Update(ready_, coordinator_.Telemetry());
+    soakMonitor_.Present();
+}
+
+void TrackSystem::PresentSh2UsageOverlay()
+{
+    if constexpr (!kEnableSh2UsageOverlay)
+    {
+        return;
+    }
+
+    const auto& prod = coordinator_.Telemetry().producer;
+    const auto& sort = stabilizedDepthStats_;
+    auto accumulatePerf = [&](Sh2PerfBucket& bucket)
+    {
+        bucket.sampleFrames = static_cast<uint16_t>(bucket.sampleFrames + 1u);
+        bucket.sumMasterFrameTicks += static_cast<uint32_t>(sh2MasterFrameTicksThisFrame_);
+        bucket.sumMasterDrawTicks += static_cast<uint32_t>(sh2MasterDrawTicksThisFrame_);
+        bucket.sumProducerTicks += static_cast<uint32_t>(prod.slaveLastJobTicks);
+        bucket.sumSortTicks += static_cast<uint32_t>(sh2SlaveSortTicksThisFrame_);
+        bucket.sumProducerFallbacks += static_cast<uint32_t>(sh2ProducerListFallbacksThisFrame_);
+        bucket.sumProducerListUsed += static_cast<uint32_t>(sh2ProducerListUsedThisFrame_);
+        bucket.sumProducerListFallbacks += static_cast<uint32_t>(sh2ProducerListFallbacksThisFrame_);
+        if (bucket.sampleFrames < kSh2PerfSampleWindowFrames)
+        {
+            return;
+        }
+        const uint32_t denom = static_cast<uint32_t>(bucket.sampleFrames);
+        auto toU16 = [](uint32_t value) -> uint16_t
+        {
+            return static_cast<uint16_t>(std::min<uint32_t>(value, 0xFFFFu));
+        };
+        bucket.avgMasterFrameTicks = toU16(bucket.sumMasterFrameTicks / denom);
+        bucket.avgMasterDrawTicks = toU16(bucket.sumMasterDrawTicks / denom);
+        bucket.avgProducerTicks = toU16(bucket.sumProducerTicks / denom);
+        bucket.avgSortTicks = toU16(bucket.sumSortTicks / denom);
+        bucket.avgProducerFallbacks = toU16(bucket.sumProducerFallbacks / denom);
+        bucket.avgProducerListUsed = toU16(bucket.sumProducerListUsed / denom);
+        bucket.avgProducerListFallbacks = toU16(bucket.sumProducerListFallbacks / denom);
+        ++bucket.samplesAccum;
+        bucket.sampleFrames = 0;
+        bucket.sumMasterFrameTicks = 0;
+        bucket.sumMasterDrawTicks = 0;
+        bucket.sumProducerTicks = 0;
+        bucket.sumSortTicks = 0;
+        bucket.sumProducerFallbacks = 0;
+        bucket.sumProducerListUsed = 0;
+        bucket.sumProducerListFallbacks = 0;
+    };
+    if (trackSlaveModeRequested_)
+    {
+        accumulatePerf(sh2PerfDual_);
+    }
+    else
+    {
+        accumulatePerf(sh2PerfSingle_);
+    }
+    auto avgOrLive = [](const Sh2PerfBucket& bucket,
+                        uint32_t sum,
+                        uint16_t frozenAvg) -> uint16_t
+    {
+        if (bucket.sampleFrames > 0u)
+        {
+            const uint32_t value = sum / static_cast<uint32_t>(bucket.sampleFrames);
+            return static_cast<uint16_t>(std::min<uint32_t>(value, 0xFFFFu));
+        }
+        return frozenAvg;
+    };
+    const uint16_t s1MasterAvg =
+        avgOrLive(sh2PerfSingle_, sh2PerfSingle_.sumMasterFrameTicks, sh2PerfSingle_.avgMasterFrameTicks);
+    const uint16_t s1ProducerAvg =
+        avgOrLive(sh2PerfSingle_, sh2PerfSingle_.sumProducerTicks, sh2PerfSingle_.avgProducerTicks);
+    const uint16_t s1SortAvg =
+        avgOrLive(sh2PerfSingle_, sh2PerfSingle_.sumSortTicks, sh2PerfSingle_.avgSortTicks);
+    const uint16_t s2MasterAvg =
+        avgOrLive(sh2PerfDual_, sh2PerfDual_.sumMasterFrameTicks, sh2PerfDual_.avgMasterFrameTicks);
+    const uint16_t s2ProducerAvg =
+        avgOrLive(sh2PerfDual_, sh2PerfDual_.sumProducerTicks, sh2PerfDual_.avgProducerTicks);
+    const uint16_t s2SortAvg =
+        avgOrLive(sh2PerfDual_, sh2PerfDual_.sumSortTicks, sh2PerfDual_.avgSortTicks);
+    const bool producerSlaveActive =
+        trackSlaveProducerRequested_ &&
+        !prod.slaveDisabledByTimeout &&
+        !prod.safeModeActive;
+    const bool sortSlaveActive =
+        trackSlaveDepthSortRequested_ &&
+        !sort.slaveDisabledByTimeout &&
+        !sort.safeModeActive;
+    SRL::Debug::Print(0, 17, "SH2 cfg:%s p:%u s:%u lk:%u ac:%u/%u      ",
+                      trackSlaveModeRequested_ ? "DUAL" : "SINGLE",
+                      trackSlaveProducerRequested_ ? 1u : 0u,
+                      trackSlaveDepthSortRequested_ ? 1u : 0u,
+                      trackSlaveBarrierLockstep_ ? 1u : 0u,
+                      producerSlaveActive ? 1u : 0u,
+                      sortSlaveActive ? 1u : 0u);
+    SRL::Debug::Print(0, 18, "SH2 avg 1S m:%u p:%u s:%u | 2S m:%u p:%u s:%u      ",
+                      static_cast<unsigned>(s1MasterAvg),
+                      static_cast<unsigned>(s1ProducerAvg),
+                      static_cast<unsigned>(s1SortAvg),
+                      static_cast<unsigned>(s2MasterAvg),
+                      static_cast<unsigned>(s2ProducerAvg),
+                      static_cast<unsigned>(s2SortAvg));
+    SRL::Debug::Print(0, 19, "SH2M s:%u d:%u f:%u      ",
+                      static_cast<unsigned>(sh2MasterStreamTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterDrawTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterFrameTicksThisFrame_));
+    SRL::Debug::Print(0, 20, "SH2M m:%u w:%u p:%u pl:%u l:%u ws:%u      ",
+                      static_cast<unsigned>(sh2MasterMaintenanceTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterWindowTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterPrefetchTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterPlanTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterLodTicksThisFrame_),
+                      static_cast<unsigned>(sh2MasterWorkingSetTicksThisFrame_));
+    SRL::Debug::Print(0, 21, "SH2P t:%u jf:%u l:%u to:%u u:%u fb:%u      ",
+                      static_cast<unsigned>(prod.slaveLastJobTicks),
+                      prod.jobInFlight ? 1u : 0u,
+                      static_cast<unsigned>(prod.lastLatencyFrames),
+                      static_cast<unsigned>(prod.timeoutFallbacks),
+                      static_cast<unsigned>(sh2ProducerListUsedThisFrame_),
+                      static_cast<unsigned>(sh2ProducerListFallbacksThisFrame_));
+    SRL::Debug::Print(0, 22, "SH2S t:%u pl:%u jf:%u l:%u to:%u      ",
+                      static_cast<unsigned>(sh2SlaveSortTicksThisFrame_),
+                      static_cast<unsigned>(sh2SlavePlanTicksThisFrame_),
+                      sort.jobInFlight ? 1u : 0u,
+                      static_cast<unsigned>(sort.lastLatencyFrames),
+                      static_cast<unsigned>(sort.timeoutFallbacks));
+}
+
+void TrackSystem::RunEndFrameResourceMaintenance()
+{
     if constexpr (kEnableTrackPhaseRamTelemetry)
     {
         const auto hwr = SRL::Memory::HighWorkRam::GetReport();
@@ -17101,8 +17361,6 @@ void TrackSystem::EndFrame()
         ReleaseUnusedFamilyResourcesEndFrame();
         LWR_PROBE_END(g_lwrStageAccum.releaseEndFrame);
     }
-    // Slots aposentados no fim do frame precisam entrar imediatamente na fila
-    // de reuso; esperar o proximo frame aumenta churn/alocacao nova no slide.
     {
         LWR_PROBE_BEGIN();
         releasedEndFrameSlotsThisFrame_ = static_cast<uint16_t>(
@@ -17117,11 +17375,8 @@ void TrackSystem::EndFrame()
         LWR_PROBE_END(g_lwrStageAccum.flushRetiredSlots);
     }
     EmitFamilyWorkingSetTelemetry();
-    // ValidateStabilizedWindowInvariants + breakdown sampling probed together.
     {
         LWR_PROBE_BEGIN();
-        // Breakdown sampling is expensive (renderer retained-bytes walk + vector
-        // capacity accounting). Sample at cadence and reuse last snapshot.
         {
             static uint8_t sBreakdownSampleCooldown = 0u;
             const uint8_t sampleCadence = runtimeStatsLogsEnabled_ ? 3u : 8u;
@@ -17308,237 +17563,34 @@ void TrackSystem::EndFrame()
         sLeakBreakdownPrev = leakBreakdownNow;
         sLeakBreakdownPrevValid = true;
     }
-    if (runtimeStatsLogsEnabled_)
+}
+
+void TrackSystem::UpdateAdaptiveBudgetAfterFrame()
+{
+    const bool enableAdaptiveBudget = false;
+    if (!enableAdaptiveBudget)
     {
-        constexpr uint32_t kVdp1FaceCostBytes = 64u;
-        constexpr uint32_t kVdp1FrameBudgetBytes = 512u * 1024u;
-#ifdef SRL_MODE_NTSC
-        constexpr uint32_t kDisplayRefreshHz = 60u;
-#else
-        constexpr uint32_t kDisplayRefreshHz = 50u;
-#endif
-        static uint64_t sCmdPctAccum = 0u;
-        static uint64_t sHeapPctAccum = 0u;
-        static uint64_t sTrackFacesAccum = 0u;
-        static uint32_t sSamples = 0u;
-        static uint32_t sPeakCmdPct = 0u;
-        static uint32_t sPeakHeapPct = 0u;
-        static uint32_t sPeakTrackFaces = 0u;
-        static uint16_t sPeakTexCount = 0u;
-        static bool sFpsVblankValid = false;
-        static uint32_t sFpsLastVblank = 0u;
-        static uint32_t sFpsSampleFrames = 0u;
-        static uint32_t sFpsSampleVblanks = 0u;
-        static uint32_t sFpsFramesOver30Budget = 0u;
-        static uint32_t sFpsFramesOver60Budget = 0u;
-        static uint32_t sFpsX10 = 0u;
-        static uint32_t sFrameMsX10 = 0u;
-        static uint32_t sDrop30Pct = 0u;
-        static uint32_t sDrop60Pct = 0u;
-
-        const auto& telemetry = coordinator_.Telemetry();
-        const uint32_t trackFaces = telemetry.submittedTrackFaces;
-        const uint32_t trackSegments = telemetry.submittedTrackSegments;
-        const uint32_t cmdBytesRaw = trackFaces * kVdp1FaceCostBytes;
-        const uint32_t cmdBytes = (cmdBytesRaw > kVdp1FrameBudgetBytes) ? kVdp1FrameBudgetBytes : cmdBytesRaw;
-        const uint32_t cmdPct = (kVdp1FrameBudgetBytes > 0u)
-            ? static_cast<uint32_t>((cmdBytes * 100u) / kVdp1FrameBudgetBytes)
-            : 0u;
-
-        const size_t heapUsed = SRL::VDP1::GetUsedMemory();
-        const size_t heapFree = SRL::VDP1::GetAvailableMemory();
-        const size_t heapTotal = heapUsed + heapFree;
-        const uint32_t heapPct = (heapTotal > 0u)
-            ? static_cast<uint32_t>((heapUsed * 100u) / heapTotal)
-            : 0u;
-        const uint16_t texCount = SRL::VDP1::GetTextureCount();
-
-        sCmdPctAccum += static_cast<uint64_t>(cmdPct);
-        sHeapPctAccum += static_cast<uint64_t>(heapPct);
-        sTrackFacesAccum += static_cast<uint64_t>(trackFaces);
-        sSamples += 1u;
-        if (cmdPct > sPeakCmdPct) sPeakCmdPct = cmdPct;
-        if (heapPct > sPeakHeapPct) sPeakHeapPct = heapPct;
-        if (trackFaces > sPeakTrackFaces) sPeakTrackFaces = trackFaces;
-        if (texCount > sPeakTexCount) sPeakTexCount = texCount;
-
-        const uint32_t avgCmdPct = (sSamples > 0u) ? static_cast<uint32_t>(sCmdPctAccum / sSamples) : 0u;
-        const uint32_t avgHeapPct = (sSamples > 0u) ? static_cast<uint32_t>(sHeapPctAccum / sSamples) : 0u;
-        const uint32_t avgTrackFaces = (sSamples > 0u) ? static_cast<uint32_t>(sTrackFacesAccum / sSamples) : 0u;
-
-        const uint32_t vblankNow = SRL_AppGetVblankCounter();
-        if (!sFpsVblankValid)
-        {
-            sFpsVblankValid = true;
-            sFpsLastVblank = vblankNow;
-        }
-        else
-        {
-            uint32_t vblankDelta = vblankNow - sFpsLastVblank;
-            sFpsLastVblank = vblankNow;
-            if (vblankDelta == 0u) vblankDelta = 1u;
-
-            ++sFpsSampleFrames;
-            sFpsSampleVblanks += vblankDelta;
-            const uint32_t frameTimeX100 = static_cast<uint32_t>(
-                (static_cast<uint64_t>(vblankDelta) * 100000u + (kDisplayRefreshHz / 2u)) /
-                static_cast<uint64_t>(kDisplayRefreshHz));
-            constexpr uint32_t kTarget30FrameTimeX100 = 100000u / 30u;
-            constexpr uint32_t kTarget60FrameTimeX100 = 100000u / 60u;
-            if (frameTimeX100 > kTarget30FrameTimeX100) ++sFpsFramesOver30Budget;
-            if (frameTimeX100 > kTarget60FrameTimeX100) ++sFpsFramesOver60Budget;
-
-            constexpr uint32_t kSampleWindowFrames = 60u;
-            if (sFpsSampleFrames >= kSampleWindowFrames && sFpsSampleVblanks > 0u)
-            {
-                const uint64_t fpsNum = static_cast<uint64_t>(kDisplayRefreshHz) *
-                                        static_cast<uint64_t>(10u) *
-                                        static_cast<uint64_t>(sFpsSampleFrames);
-                sFpsX10 = static_cast<uint32_t>(
-                    (fpsNum + static_cast<uint64_t>(sFpsSampleVblanks / 2u)) /
-                    static_cast<uint64_t>(sFpsSampleVblanks));
-
-                const uint64_t frameMsNum = static_cast<uint64_t>(10000u) *
-                                            static_cast<uint64_t>(sFpsSampleVblanks);
-                const uint64_t frameMsDen = static_cast<uint64_t>(kDisplayRefreshHz) *
-                                            static_cast<uint64_t>(sFpsSampleFrames);
-                sFrameMsX10 = static_cast<uint32_t>(
-                    (frameMsNum + (frameMsDen / 2u)) / std::max<uint64_t>(1u, frameMsDen));
-
-                sDrop30Pct = static_cast<uint32_t>(
-                    (static_cast<uint64_t>(sFpsFramesOver30Budget) * 100u) /
-                    static_cast<uint64_t>(sFpsSampleFrames));
-                sDrop60Pct = static_cast<uint32_t>(
-                    (static_cast<uint64_t>(sFpsFramesOver60Budget) * 100u) /
-                    static_cast<uint64_t>(sFpsSampleFrames));
-
-                sFpsSampleFrames = 0u;
-                sFpsSampleVblanks = 0u;
-                sFpsFramesOver30Budget = 0u;
-                sFpsFramesOver60Budget = 0u;
-            }
-        }
-
-        // Keep rows fixed and refreshed every frame so old diagnostics do not linger.
-        SRL::Debug::Print(1, 14, "VDP1 trk s:%u f:%u cmd:%u%%",
-                          static_cast<unsigned>(trackSegments),
-                          static_cast<unsigned>(trackFaces),
-                          static_cast<unsigned>(cmdPct));
-        SRL::Debug::Print(1, 15, "VDP1 hp u:%u f:%u %u%% tx:%u",
-                          static_cast<unsigned>(heapUsed),
-                          static_cast<unsigned>(heapFree),
-                          static_cast<unsigned>(heapPct),
-                          static_cast<unsigned>(texCount));
-        SRL::Debug::Print(1, 16, "VDP1 pk f:%u c:%u h:%u tx:%u",
-                          static_cast<unsigned>(sPeakTrackFaces),
-                          static_cast<unsigned>(sPeakCmdPct),
-                          static_cast<unsigned>(sPeakHeapPct),
-                          static_cast<unsigned>(sPeakTexCount));
-        SRL::Debug::Print(1, 17, "VDP1 av f:%u c:%u h:%u n:%u FPS:%u.%u ms:%u.%u d30:%u d60:%u",
-                          static_cast<unsigned>(avgTrackFaces),
-                          static_cast<unsigned>(avgCmdPct),
-                          static_cast<unsigned>(avgHeapPct),
-                          static_cast<unsigned>(sSamples),
-                          static_cast<unsigned>(sFpsX10 / 10u),
-                          static_cast<unsigned>(sFpsX10 % 10u),
-                          static_cast<unsigned>(sFrameMsX10 / 10u),
-                          static_cast<unsigned>(sFrameMsX10 % 10u),
-                          static_cast<unsigned>(sDrop30Pct),
-                          static_cast<unsigned>(sDrop60Pct));
-        SRL::Debug::Print(1, 18, "                                   ");
-        SRL::Debug::Print(1, 19, "                                   ");
-        SRL::Debug::Print(1, 20, "                                   ");
-
-        if ((frameIdThisFrame_ & 0x3Fu) == 0u)
-        {
-            sCmdPctAccum = 0u;
-            sHeapPctAccum = 0u;
-            sTrackFacesAccum = 0u;
-            sSamples = 0u;
-            sPeakCmdPct = 0u;
-            sPeakHeapPct = 0u;
-            sPeakTrackFaces = 0u;
-            sPeakTexCount = 0u;
-        }
-    }
-    constexpr bool kEnablePerFrameDebugPrints = false;
-    if (!kEnablePerFrameDebugPrints) return;
-    // Work RAM monitor for runtime stability tuning.
-    const auto hwr = SRL::Memory::HighWorkRam::GetReport();
-    const auto lwr = SRL::Memory::LowWorkRam::GetReport();
-    if (hwr.TotalSize == 0 || hwr.FreeSize > hwr.TotalSize)
-    {
-        SRL::Debug::Print(1, 30, "WR H CORRUPT free:%lu tot:%lu",
-                          static_cast<unsigned long>(hwr.FreeSize),
-                          static_cast<unsigned long>(hwr.TotalSize));
         return;
     }
-    const unsigned long hwrUsed = static_cast<unsigned long>(hwr.TotalSize - hwr.FreeSize);
-    const unsigned long hwrTotal = static_cast<unsigned long>(hwr.TotalSize);
-    const unsigned long lwrUsed = static_cast<unsigned long>(lwr.TotalSize - lwr.FreeSize);
-    const unsigned long lwrTotal = static_cast<unsigned long>(lwr.TotalSize);
-    SRL::Debug::Print(1, 30, "WR H:%lu/%lu L:%lu/%lu", hwrUsed, hwrTotal, lwrUsed, lwrTotal);
-    SRL::Debug::Print(1, 4, "TGA c:%u a:%u f:%u j:%u                    ",
-                      (unsigned)seg1TgaPreloadCount_,
-                      (unsigned)seg1TgaAttemptCount_,
-                      (unsigned)seg1TgaFailCount_,
-                      (unsigned)seg1TgaJsonOk_);
-    SRL::Debug::Print(1, 24, "SMAP b:%u sig:%s                         ", (unsigned)g_smapBytes, g_smapSig);
-    SRL::Debug::Print(1, 25, "TGA last name:%s                         ", g_tgaLastName);
-    SRL::Debug::Print(1, 26, "TGA last try:%s                          ", g_tgaLastTry);
-    SRL::Debug::Print(1, 27, "TGA last res:%s                          ", g_tgaLastResult);
-    if (!seg1FamilySlots_.empty())
-    {
-        const Seg1FamilySlotEntry* fam1 = nullptr;
-        for (const auto& e : seg1FamilySlots_)
-        {
-            if (e.familyId == 1)
-            {
-                fam1 = &e;
-                break;
-            }
-        }
-        if (fam1)
-        {
-            SRL::Debug::Print(1, 28, "F1 s32:%u s64:%u                         ",
-                              (unsigned)fam1->lodSlots[2],
-                              (unsigned)fam1->lodSlots[3]);
-            auto texDim = [&](uint16_t slot, char* out, size_t outSize)
-            {
-                if (!out || outSize == 0) return;
-                out[0] = '\0';
-                if (slot == No_Texture || slot >= SRL_MAX_TEXTURES || SRL::VDP1::Metadata[slot].Texture == nullptr)
-                {
-                    std::snprintf(out, outSize, "--");
-                    return;
-                }
-                auto* t = SRL::VDP1::Metadata[slot].Texture;
-                std::snprintf(out, outSize, "%ux%u", (unsigned)t->Width, (unsigned)t->Height);
-            };
-            char d32[12]{}, d64[12]{};
-            texDim(fam1->lodSlots[2], d32, sizeof(d32));
-            texDim(fam1->lodSlots[3], d64, sizeof(d64));
-            SRL::Debug::Print(1, 29, "F1 d32:%s d64:%s                       ", d32, d64);
-        }
-        else
-        {
-            SRL::Debug::Print(1, 28, "F1 slots:none                           ");
-            SRL::Debug::Print(1, 29, "F1 dims:none                            ");
-        }
-    }
-    else
-    {
-        SRL::Debug::Print(1, 28, "F1 slots:empty                          ");
-        SRL::Debug::Print(1, 29, "F1 dims:empty                           ");
-    }
 
-    // Stability mode: keep a fixed budget to avoid frame-to-frame visibility oscillation.
-    const bool enableAdaptiveBudget = false;
-    if (enableAdaptiveBudget)
-    {
-        const FrameBudget nextBudget = budgetController_.Update(coordinator_.Budget(), coordinator_.Telemetry());
-        coordinator_.SetBudget(nextBudget);
-    }
+    const FrameBudget nextBudget =
+        budgetController_.Update(coordinator_.Budget(), coordinator_.Telemetry());
+    coordinator_.SetBudget(nextBudget);
+}
+
+void TrackSystem::EndFrame()
+{
+    // Keep slot liveness tied to what the renderer actually references in the
+    // current frame. This avoids stale working-set references pinning old slots
+    // and causing long-run TrackTexture growth.
+    RebuildUsedTextureSlotFlagsFromCurrentFaces();
+
+    PresentCoordinatorTelemetryAndSoak();
+    PresentSh2UsageOverlay();
+    RunEndFrameResourceMaintenance();
+    PresentVdp1FpsTelemetry();
+    PresentPerFrameDebugOverlay();
+    UpdateAdaptiveBudgetAfterFrame();
 }
 
 bool TrackSystem::FindNearestSegment(const Vector3D& worldPosition,

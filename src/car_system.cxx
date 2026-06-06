@@ -244,11 +244,6 @@ void CarSystem::TickCommandState()
     commandState_.steerDirection = 0;
 }
 
-void CarSystem::Render(int32_t yawDeg)
-{
-    yawDeg_ = NormalizeYawDeg(yawDeg);
-}
-
 void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
 {
     wheelInput_.speedKmh = frameState.speedProxy;
@@ -259,6 +254,165 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     wheelInput_.groundRearYRaw = frameState.debugGroundYRearRaw;
     wheelInput_.groundFrontYRaw = frameState.debugGroundYFrontRaw;
     wheelInput_.groundMask = frameState.debugGroundMask;
+}
+
+void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,
+                                   uint32_t frameCounter,
+                                   GameplayFrameState& ioFrameState)
+{
+    const bool leftJustPressed = input.steerLeftHeld && !leftHeldPrev_;
+    const bool rightJustPressed = input.steerRightHeld && !rightHeldPrev_;
+    const bool lJustPressed = input.shiftDownHeld && !lHeldPrev_;
+    const bool rJustPressed = input.shiftUpHeld && !rHeldPrev_;
+    if (leftJustPressed) lastLeftPressFrame_ = frameCounter;
+    if (rightJustPressed) lastRightPressFrame_ = frameCounter;
+
+    if (input.accelerateHeld) command_.Accelerate();
+
+    int8_t desiredSteerDir = 0;
+    if (input.steerLeftHeld && !input.steerRightHeld)
+    {
+        desiredSteerDir = -1;
+    }
+    else if (input.steerRightHeld && !input.steerLeftHeld)
+    {
+        desiredSteerDir = 1;
+    }
+    else if (input.steerLeftHeld && input.steerRightHeld)
+    {
+        const int16_t currentSteer = commandState_.steering;
+        if (currentSteer < 0) desiredSteerDir = -1;
+        else if (currentSteer > 0) desiredSteerDir = 1;
+        else if (lastLeftPressFrame_ > lastRightPressFrame_) desiredSteerDir = -1;
+        else if (lastRightPressFrame_ > lastLeftPressFrame_) desiredSteerDir = 1;
+    }
+
+    if (desiredSteerDir < 0) command_.SteerLeft();
+    else if (desiredSteerDir > 0) command_.SteerRight();
+
+    bool suppressBrakeThisFrame = false;
+    if (input.brakeHeld)
+    {
+        if (desiredSteerDir != 0 &&
+            brakeSteerDirWhileHeld_ != 0 &&
+            desiredSteerDir != brakeSteerDirWhileHeld_)
+        {
+            suppressBrakeThisFrame = true;
+        }
+        if (desiredSteerDir != 0)
+        {
+            brakeSteerDirWhileHeld_ = desiredSteerDir;
+        }
+    }
+    else
+    {
+        brakeSteerDirWhileHeld_ = 0;
+    }
+
+    if (!suppressBrakeThisFrame && input.brakeHeld)
+    {
+        command_.Brake();
+    }
+
+    UpdateWheels(input.accelerateHeld, input.brakeHeld);
+    if (!input.shiftLockHeld)
+    {
+        ioFrameState.shiftDownRequested = lJustPressed;
+        ioFrameState.shiftUpRequested = rJustPressed;
+    }
+    else
+    {
+        ioFrameState.shiftDownRequested = false;
+        ioFrameState.shiftUpRequested = false;
+    }
+
+    leftHeldPrev_ = input.steerLeftHeld;
+    rightHeldPrev_ = input.steerRightHeld;
+    lHeldPrev_ = input.shiftDownHeld;
+    rHeldPrev_ = input.shiftUpHeld;
+}
+
+void CarSystem::PrepareGameplayFrameState(const GameplayInputSnapshot* input,
+                                          uint32_t frameCounter,
+                                          const Vector3D& worldPosition,
+                                          int32_t yawDeg,
+                                          bool autoLapEnabled,
+                                          GameplayFrameState& ioFrameState)
+{
+    ioFrameState.frameId = frameCounter;
+    ioFrameState.carWorldPosition = worldPosition;
+    ioFrameState.carYawDeg = yawDeg;
+
+    if (!autoLapEnabled)
+    {
+        if (input)
+        {
+            ApplyGameplayInput(*input, frameCounter, ioFrameState);
+        }
+    }
+    else
+    {
+        UpdateWheels(false, false);
+    }
+
+    TickCommandState();
+    WriteCommandsToFrameState(ioFrameState, !autoLapEnabled);
+}
+
+void CarSystem::ApplySimulationFrameState(const GameplayFrameState& frameState)
+{
+    SetWorldPosition(frameState.carWorldPosition);
+    SetYawDegrees(frameState.carYawDeg);
+    SetRuntimeFrameState(frameState);
+}
+
+void CarSystem::SyncRenderState(const Vector3D& renderPosition, int32_t gameplayYawDeg)
+{
+    SetWorldPosition(renderPosition);
+    SetYawDegrees(gameplayYawDeg);
+}
+
+CarSystem::DrivetrainDebugSnapshot CarSystem::BuildDrivetrainDebugSnapshot(
+    const GameplayFrameState& frameState) const
+{
+    DrivetrainDebugSnapshot snapshot{};
+    const int gearDebugValue = static_cast<int>(frameState.debugGear);
+    snapshot.gearChar =
+        (gearDebugValue < 0)
+            ? 'R'
+            : static_cast<char>('0' + std::clamp<int>(gearDebugValue, 0, 9));
+    snapshot.throttle = frameState.throttle;
+    snapshot.braking = frameState.braking;
+    snapshot.speedProxy = frameState.speedProxy;
+    snapshot.speedKmh = frameState.debugSpeedKmh;
+    snapshot.engineRpm = frameState.debugEngineRpm;
+    snapshot.steeringCommand = commandState_.steering;
+    snapshot.yawRateDeg = frameState.debugYawRateDeg;
+    snapshot.yawStepDeg = frameState.debugYawStepDeg;
+    snapshot.planarDx = frameState.debugPlanarDx;
+    snapshot.netDz = frameState.debugNetDz;
+    return snapshot;
+}
+
+void CarSystem::WriteCommandsToFrameState(GameplayFrameState& ioFrameState, bool enabled) const
+{
+    if (!enabled)
+    {
+        ioFrameState.throttle = 0;
+        ioFrameState.steering = 0;
+        ioFrameState.braking = false;
+        ioFrameState.shiftUpRequested = false;
+        ioFrameState.shiftDownRequested = false;
+        ioFrameState.wheelsSpinning = false;
+        ioFrameState.brakeHoldFrames = 0;
+        return;
+    }
+
+    ioFrameState.throttle = commandState_.throttle;
+    ioFrameState.steering = commandState_.steering;
+    ioFrameState.braking = commandState_.braking;
+    ioFrameState.wheelsSpinning = commandState_.wheelsSpinning;
+    ioFrameState.brakeHoldFrames = commandState_.brakeHoldFrames;
 }
 
 void CarSystem::SubmitRender(RenderPipeline& pipeline, bool logStats)

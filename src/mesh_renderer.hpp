@@ -11,14 +11,18 @@
 class MeshRenderer
 {
 public:
+    static constexpr SRL::Math::Types::Angle kAngleZero = SRL::Math::Types::Angle::Zero();
+    static constexpr SRL::Math::Types::Angle kAngleHalfTurn = SRL::Math::Types::Angle::Straight();
+    static constexpr SRL::Math::Types::Fxp kScaleOne = SRL::Math::Types::Fxp::BuildRaw(1 << 16);
+
     struct LocalTransform
     {
         bool enabled{false};
         SRL::Math::Types::Vector3D pivot{0.0, 0.0, 0.0};
         SRL::Math::Types::Vector3D translation{0.0, 0.0, 0.0};
-        SRL::Math::Types::Angle rotateX{SRL::Math::Types::Angle::FromDegrees(0.0f)};
-        SRL::Math::Types::Angle rotateY{SRL::Math::Types::Angle::FromDegrees(0.0f)};
-        SRL::Math::Types::Angle rotateZ{SRL::Math::Types::Angle::FromDegrees(0.0f)};
+        SRL::Math::Types::Angle rotateX{kAngleZero};
+        SRL::Math::Types::Angle rotateY{kAngleZero};
+        SRL::Math::Types::Angle rotateZ{kAngleZero};
     };
 
     struct Config
@@ -61,8 +65,8 @@ private:
     ModelObject& model_;
     bool isSmooth_;
     Config config_;
-    SRL::Math::Types::Angle rotation_{SRL::Math::Types::Angle::FromDegrees(0)};
-    SRL::Math::Types::Fxp scale_{SRL::Math::Types::Fxp::Convert(1.0f)};
+    SRL::Math::Types::Angle rotation_{kAngleZero};
+    SRL::Math::Types::Fxp scale_{kScaleOne};
     SRL::Math::Types::Vector3D offset_{0.0, 0.0, 0.0};
     size_t skipMeshId_{SIZE_MAX};
     size_t lastMeshId_{SIZE_MAX};
@@ -70,6 +74,6 @@ private:
     uint32_t lastRenderMeshCount_{0};
     std::vector<SRL::Math::Types::Vector3D> meshCenters_;
     std::vector<LocalTransform> meshLocalTransforms_;
-    SRL::Math::Types::Angle bodyPitch_{SRL::Math::Types::Angle::FromDegrees(0.0f)};
-    SRL::Math::Types::Angle bodyRoll_{SRL::Math::Types::Angle::FromDegrees(0.0f)};
+    SRL::Math::Types::Angle bodyPitch_{kAngleZero};
+    SRL::Math::Types::Angle bodyRoll_{kAngleZero};
 };

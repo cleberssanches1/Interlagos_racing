@@ -604,6 +604,20 @@ private:
                                    std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
                                    bool& segment01Logged,
                                    bool& segment01Prepared);
+    bool ShouldRunFramePlanThisFrame(bool slidThisFrame);
+    void RunFramePlanStage(const SRL::Math::Types::Vector3D& trackOffset,
+                           const SRL::Math::Types::Vector3D& cameraLocation,
+                           const SRL::Math::Types::Vector3D& carWorldPosition,
+                           bool slidThisFrame);
+    void FinalizeDrawStage(uint16_t frameTicksStart,
+                           const std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
+                           const std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById);
+    void PresentCoordinatorTelemetryAndSoak();
+    void PresentSh2UsageOverlay();
+    void RunEndFrameResourceMaintenance();
+    void UpdateAdaptiveBudgetAfterFrame();
+    void PresentVdp1FpsTelemetry();
+    void PresentPerFrameDebugOverlay();
     const TrackSegmentCopy* FindRawSegmentCopyById(int id) const;
     const char* FindExistingPath(const char* const* paths, size_t count);
     const char* ResolveSegmentPath(size_t id);

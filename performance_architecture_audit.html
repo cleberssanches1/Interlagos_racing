@@ -1,0 +1,250 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Interlagos Racing - Auditoria de Performance e Arquitetura</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #1b1b1b; background: #f7f7f5; }
+    h1, h2, h3 { color: #10243e; }
+    h1 { margin-bottom: 8px; }
+    .meta { color: #555; margin-bottom: 24px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px 18px; margin: 16px 0; }
+    code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #d7d7d7; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #edf3fb; }
+    .risk-low { color: #0a6; font-weight: 600; }
+    .risk-med { color: #b7791f; font-weight: 600; }
+    .risk-high { color: #c53030; font-weight: 600; }
+    ul { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Auditoria de Performance, Memória e Arquitetura</h1>
+  <div class="meta">Projeto: <code>Interlagos_racing</code> | Escopo: leitura de assets, alocação em RAM/cartucho, criação de objetos, loop de frame, física, colisão, pista e renderização | Data: 2026-06-05</div>
+
+  <div class="card">
+    <h2>Resumo Executivo</h2>
+    <p>O principal problema estrutural do projeto não é um único método lento. O problema é a concentração de responsabilidades em poucas classes grandes, com muita lógica de carga, gerenciamento de memória, colisão, planejamento de janela de segmentos, draw e telemetria misturados no mesmo lugar. Isso aumenta custo por frame, dificulta isolar regressões e amplia retenção de memória.</p>
+    <p>As classes mais críticas hoje são <code>TrackSystem</code>, <code>GameLoopSystem</code>, <code>TrackRenderer</code> e o pipeline de carga em <code>resource_loader.hpp</code>/<code>main.cxx</code>. A prioridade correta é refatoração orientada a dados e separação de responsabilidades, mantendo comportamento idêntico e introduzindo medições por fase.</p>
+  </div>
+
+  <div class="card">
+    <h2>Pipeline Runtime Atual</h2>
+    <h3>Boot / Carga</h3>
+    <ul>
+      <li><code>RunPhysicsPocMode()</code> em <code>src/main.cxx:883+</code> configura câmera, fundo, carro, pista, queries e loop.</li>
+      <li><code>LoadCarPipeline()</code> em <code>src/main.cxx:384+</code> tenta carga WRAM-first e pode cair em fluxos redundantes.</li>
+      <li><code>TrackSystem::Initialize()</code> em <code>src/track_system.cxx:13357+</code> executa catálogo, mapas de colisão, janela inicial, scratch capacities, coordinator, slots e diagnósticos.</li>
+      <li><code>BuildSegmentCenterCatalog()</code> em <code>src/track_system.cxx:8184+</code> varre ids em sequência até o primeiro segmento ausente.</li>
+    </ul>
+    <h3>Loop de Frame</h3>
+    <ul>
+      <li><code>GameLoopSystem::RunForever()</code> em <code>src/game_loop_system.hpp:74+</code> executa input, gameplay, autolap, background, HUD, track, carro e sync.</li>
+      <li><code>GameLoopSystem::RenderFrame()</code> em <code>src/game_loop_system.hpp:1728+</code> chama <code>TrackSystem::BeginFrame()</code>, <code>RenderFrame()</code> e <code>EndFrame()</code>, depois renderiza o carro.</li>
+      <li><code>TrackSystem::RenderFrame()</code> em <code>src/track_system.cxx:16641+</code> executa <code>UpdatePrefetchSpeedProxy</code>, direção da janela, manutenção, slide/window, prefetch, LOD, working set, planejamento e draw.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Hotspots de Performance</h2>
+    <table>
+      <thead>
+        <tr><th>Área</th><th>Arquivo</th><th>Problema</th><th>Impacto</th><th>Prioridade</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Track runtime</td>
+          <td><code>src/track_system.cxx</code></td>
+          <td><code>TrackSystem::RenderFrame()</code> concentra streaming, manutenção, prefetch, slide, LOD, working set e draw no mesmo fluxo.</td>
+          <td>CPU por frame alta, difícil isolar gargalo.</td>
+          <td class="risk-high">Alta</td>
+        </tr>
+        <tr>
+          <td>Catálogo de segmentos</td>
+          <td><code>src/track_system.cxx:8184+</code></td>
+          <td><code>BuildSegmentCenterCatalog()</code> varre até <code>4096</code> ids e depende de tentativa sucessiva de cabeçalhos.</td>
+          <td>Custo de boot e forte acoplamento a probing de arquivos.</td>
+          <td class="risk-med">Média</td>
+        </tr>
+        <tr>
+          <td>Carga do carro</td>
+          <td><code>src/resource_loader.hpp</code>, <code>src/main.cxx:384+</code></td>
+          <td>Fluxo WRAM-first/cart fallback pode reconstruir <code>ModelObject</code> mais de uma vez e revarrer caminhos.</td>
+          <td>Tempo de carga, churn de memória e complexidade.</td>
+          <td class="risk-med">Média</td>
+        </tr>
+        <tr>
+          <td>Renderer de pista</td>
+          <td><code>src/track_renderer.hpp</code></td>
+          <td>Uma única classe faz load, cache, conversão de buffers, 3 backends de render, debug de textura e métricas.</td>
+          <td>Baixa coesão, custo de manutenção alto.</td>
+          <td class="risk-high">Alta</td>
+        </tr>
+        <tr>
+          <td>Gameplay loop</td>
+          <td><code>src/game_loop_system.hpp</code></td>
+          <td><code>GameLoopSystem</code> mistura orquestração, câmera, sync, HUD, telemetria, autolap, jobs SH2 e render.</td>
+          <td>SRP violado, testes difíceis, custo cognitivo alto.</td>
+          <td class="risk-high">Alta</td>
+        </tr>
+        <tr>
+          <td>Colisão/ground</td>
+          <td><code>src/car_ground_follower.hpp</code></td>
+          <td>Varia modo barato vs caro por thresholds de velocidade e steering, com forte dependência de query de pista.</td>
+          <td>Pressão por frame em alta velocidade.</td>
+          <td class="risk-med">Média</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Problemas de Memória e Retenção</h2>
+    <ul>
+      <li><code>TrackSystem</code> retém muito estado permanente: slot pool, scratch de slide, prefetch renderer, vectors de famílias, caches por face, snapshots, frame plans, telemetria, working set e índices (<code>src/track_system.hpp:680+</code>).</li>
+      <li><code>TrackFrameSnapshot</code> e <code>TrackFramePlan</code> existem sempre em memória mesmo quando usados apenas para estabilização/debug. Eles carregam arrays de tamanho <code>kTrackSegmentLimit</code> com centros, ids, LODs e ranks.</li>
+      <li><code>surfaceTypeByFamilyId_[4096]</code>, <code>familySlotIndex_[4096]</code> e vetores auxiliares coexistem ao mesmo tempo. Parte disso é defensável, mas deveria ser empacotada em um subsistema de lookup/cache em vez de ficar dentro do objeto central.</li>
+      <li><code>TrackRenderer</code> pode duplicar buffers em modo componente: recebe vetores, move/copia para <code>componentVerts_</code>, <code>componentFaces_</code>, <code>componentAttrs_</code> e ainda mantém caches separados por tipo (<code>smoothCache_</code>/<code>flatCache_</code>).</li>
+      <li><code>resource_loader.hpp</code> usa <code>std::vector&lt;uint8_t&gt;</code> temporário em fallback de leitura bruta, o que adiciona churn fora do sistema de arenas do track.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Candidatos Fortes a Redução de Tipos</h2>
+    <p>Itens abaixo devem ser alterados apenas com validação de serialização, ranges e sentinelas. O comportamento funcional não deve mudar.</p>
+    <table>
+      <thead>
+        <tr><th>Local</th><th>Atual</th><th>Proposta</th><th>Justificativa</th><th>Risco</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>TrackFramePlan::sortedSegmentIds</code> em <code>src/track_system.hpp:377</code></td>
+          <td><code>std::array&lt;int32_t, 48&gt;</code></td>
+          <td><code>std::array&lt;int16_t, 48&gt;</code></td>
+          <td>Ids de segmento ativos hoje cabem em <code>-1..4096</code>. Para janela de runtime, <code>int16_t</code> é suficiente.</td>
+          <td class="risk-low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>TrackFrameSnapshot::SegmentMeta::id</code> em <code>src/track_system.hpp:358</code></td>
+          <td><code>int32_t</code></td>
+          <td><code>int16_t</code></td>
+          <td>Mesmo domínio de segmento com sentinela <code>-1</code>.</td>
+          <td class="risk-low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>windowEntryIndexBySegmentId_</code>, <code>windowLogicalRankBySegmentId_</code> em <code>src/track_system.hpp:868-869</code></td>
+          <td><code>std::array&lt;int16_t, 512&gt;</code></td>
+          <td><code>std::array&lt;int8_t, 512&gt;</code></td>
+          <td>Valores armazenados são <code>-1..47</code> com <code>kTrackSegmentLimit=48</code>.</td>
+          <td class="risk-low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>lastSortRank_</code> em <code>src/track_system.hpp:920</code></td>
+          <td><code>std::array&lt;uint16_t, 49&gt;</code></td>
+          <td><code>std::array&lt;uint8_t, 49&gt;</code></td>
+          <td>Rank máximo é o tamanho da janela.</td>
+          <td class="risk-low">Baixo</td>
+        </tr>
+        <tr>
+          <td>Contadores de telemetria por frame em <code>src/track_system.hpp:730-751</code></td>
+          <td><code>uint32_t</code></td>
+          <td><code>uint16_t</code> ou build-flag retail sem contagem</td>
+          <td>São telemetria, não estado crítico. Valores por frame tendem a ficar muito abaixo de 65535.</td>
+          <td class="risk-med">Médio</td>
+        </tr>
+        <tr>
+          <td><code>TrackSystem</code> segment ids diversos (<code>activeWindowStartId_</code>, <code>targetWindowStartId_</code>, <code>trackedCarSegmentId_</code>, <code>observedCarSegmentId_</code>)</td>
+          <td><code>int32_t</code></td>
+          <td><code>int16_t</code></td>
+          <td>Domínio real bem menor com sentinela <code>-1</code>.</td>
+          <td class="risk-med">Médio</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Problemas de SOLID / Orientação a Objetos</h2>
+    <h3>1. <code>TrackSystem</code> viola SRP e ISP</h3>
+    <ul>
+      <li>Responsabilidades misturadas: streaming, memória, colisão, família de textura, janela de segmentos, prefetch, draw, telemetria, SH2 split e diagnóstico.</li>
+      <li>Interfaces amplas e estado interno excessivo dificultam teste e mudança local.</li>
+      <li>Recomendação: separar em componentes explícitos: <code>TrackCatalog</code>, <code>TrackWindowController</code>, <code>TrackResidencyManager</code>, <code>TrackCollisionQuery</code>, <code>TrackTelemetry</code>.</li>
+    </ul>
+    <h3>2. <code>GameLoopSystem</code> viola SRP</h3>
+    <ul>
+      <li>Input, gameplay, jobs SH2, câmera, HUD, track, carro, sync, autolap e overlays no mesmo tipo.</li>
+      <li>Recomendação: transformar em orquestrador fino e empurrar lógica para subsistemas pequenos.</li>
+    </ul>
+    <h3>3. <code>TrackRenderer</code> viola SRP e OCP</h3>
+    <ul>
+      <li>Carrega dados, converte buffers, mantém cache, gerencia 3 backends de render e diagnósticos específicos.</li>
+      <li>Recomendação: extrair <code>TrackMeshCache</code>, <code>TrackComponentMesh</code> e backends por interface.</li>
+    </ul>
+    <h3>4. <code>resource_loader.hpp</code> e <code>main.cxx</code> têm forte acoplamento procedural</h3>
+    <ul>
+      <li>Fluxos de fallback e probing de caminhos estão distribuídos e repetidos.</li>
+      <li>Recomendação: centralizar resolução de asset e política de memória em um <code>AssetLoadService</code>.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Plano de Ação Faseado</h2>
+    <h3>Fase 0 - Linha de Base e Segurança</h3>
+    <ul>
+      <li>Congelar regressões: manter comportamento runtime atual e evitar novas mudanças em colisão/slide sem medição.</li>
+      <li>Criar benchmark repetível: boot, idle, aceleração, velocidade máxima, curva, colisão.</li>
+      <li>Persistir métricas por fase: <code>track begin/window/prefetch/lod/ws/draw/end</code>, <code>car prepare/render</code>, <code>sync</code>.</li>
+    </ul>
+    <h3>Fase 1 - Ganhos sem alterar comportamento</h3>
+    <ul>
+      <li>Reduzir tipos de ids/ranks/counters onde o domínio já cabe em 8/16 bits.</li>
+      <li>Encapsular telemetria pesada atrás de flags de build retail/debug.</li>
+      <li>Eliminar <code>std::vector</code> temporário do fallback de loader em favor de scratch/arena.</li>
+      <li>Normalizar resolução de path em um serviço único para carro, SBA e segmentos.</li>
+    </ul>
+    <h3>Fase 2 - Boot / I/O / Catálogo</h3>
+    <ul>
+      <li>Substituir o probing <code>1..4096</code> em <code>BuildSegmentCenterCatalog()</code> por leitura direta do manifesto/pacote runtime.</li>
+      <li>Separar construção do catálogo de centros da construção da janela ativa.</li>
+      <li>Evitar reconstrução redundante de <code>ModelObject</code> no pipeline do carro.</li>
+    </ul>
+    <h3>Fase 3 - Refatoração de Responsabilidades</h3>
+    <ul>
+      <li>Extrair de <code>TrackSystem</code> os módulos: catálogo, janela, prefetch/residência, colisão e telemetria.</li>
+      <li>Transformar <code>GameLoopSystem</code> em um coordinator leve, com serviços explícitos.</li>
+      <li>Extrair de <code>TrackRenderer</code> os backends e o cache de malha.</li>
+    </ul>
+    <h3>Fase 4 - Otimização por Frame</h3>
+    <ul>
+      <li>Substituir vetores temporários de frame por scratch persistente pré-reservado.</li>
+      <li>Executar planejamento de janela/prefetch apenas quando a direção, posição ou backlog realmente exigirem.</li>
+      <li>Gating agressivo de diagnósticos e <code>Debug::Print</code> do hot path.</li>
+      <li>Separar contadores de gameplay/physics de contadores exclusivamente diagnósticos.</li>
+    </ul>
+    <h3>Fase 5 - Render e Dados</h3>
+    <ul>
+      <li>Rever custo de depth ordering e working set por frame com cache de resultados estáveis.</li>
+      <li>Medir duplicação de dados entre <code>GEO/MAT/RDR/SDR</code> e runtime objects.</li>
+      <li>Reavaliar se parte das estruturas por face precisa ficar residente o tempo todo.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Quick Wins Recomendados</h2>
+    <ol>
+      <li>Trocar ids/ranks internos de janela para <code>int16_t</code>/<code>int8_t</code> onde o domínio já é conhecido.</li>
+      <li>Encapsular contadores de telemetria por frame em build debug.</li>
+      <li>Extrair um resolvedor único de caminhos/asset para eliminar probing duplicado.</li>
+      <li>Ler o catálogo de segmentos do pacote/manifesto em vez de fazer probing progressivo no boot.</li>
+      <li>Separar colisão de pista de <code>TrackSystem</code> para um serviço de query dedicado, sem tocar no comportamento primeiro.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Conclusão</h2>
+    <p>O projeto já tem bons sinais: uso de buffers persistentes, pool fixo para segmentos, separação parcial por stages e loaders binários dedicados. O problema é que esses avanços convivem com classes centrais grandes demais e responsabilidades cruzadas. A melhor rota para FPS, previsibilidade e economia de memória é reduzir acoplamento, compactar tipos, remover probing e telemetria do hot path e dividir o <code>TrackSystem</code> em módulos menores sem mudar a semântica do jogo.</p>
+  </div>
+</body>
+</html>

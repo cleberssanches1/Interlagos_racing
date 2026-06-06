@@ -37,8 +37,12 @@ using namespace SRL::Math::Types;
 constexpr bool kLog = true;
 constexpr bool kCarLogs = false;
 constexpr bool kVerboseFrameLogs = false;
-// Telemetria de runtime (RAM/VDP/slide): desligada por padrão.
-constexpr bool kEnableRuntimeStatsLogs = true;
+// Perfil de benchmark:
+// - telemetria pesada desligada
+// - manter apenas o overlay minimo de FPS
+constexpr bool kEnableBenchmarkProfile = true;
+constexpr bool kEnableRuntimeStatsLogs = !kEnableBenchmarkProfile;
+constexpr bool kEnableMinimalFpsOverlay = true;
 #ifndef PHYSICS_POC_MODE
 #define PHYSICS_POC_MODE 0
 #endif
@@ -632,6 +636,7 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     bool logTrack,
                                                     bool logCar,
                                                     bool enableRuntimeStatsLogs,
+                                                    bool enableMinimalFpsOverlay,
                                                     bool enableSlaveSimulation,
                                                     bool slaveSimulationLockstep,
                                                     bool enableSlaveForCarPrepare,
@@ -672,6 +677,7 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.logTrack = logTrack;
     loopContext.logCar = (logCar && kCarLogs);
     loopContext.enableRuntimeStatsLogs = enableRuntimeStatsLogs;
+    loopContext.enableMinimalFpsOverlay = enableMinimalFpsOverlay;
     // Simulation and lockstep policy are independent toggles.
     loopContext.enableSlaveForCarPrepare = enableRuntimeSimulation && enableSlaveForCarPrepare;
     loopContext.enableSlaveForSimulation = enableRuntimeSimulation && enableSlaveSimulation;
@@ -1153,6 +1159,7 @@ static int RunPhysicsPocMode()
                                                                logTrack,
                                                                logCar,
                                                                false,
+                                                               kEnableMinimalFpsOverlay,
                                                                kPocEnableSlaveSimulation,
                                                                kPocSlaveSimulationLockstep,
                                                                kPocEnableCarPrepareSlave,
@@ -1651,6 +1658,7 @@ int GameApp::Run()
                                                                logTrack,
                                                                logCar,
                                                                kEnableRuntimeStatsLogs,
+                                                               kEnableMinimalFpsOverlay,
                                                                enableSlaveSimulation,
                                                                slaveSimulationLockstep,
                                                                enableSlaveForCarPrepare,
@@ -1691,6 +1699,7 @@ int main()
     GameApp app;
     return app.Run();
 }
+
 
 
 

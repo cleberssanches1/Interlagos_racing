@@ -10,6 +10,8 @@
 
 struct SkyPanorama
 {
+    static constexpr SRL::Math::Types::Fxp kFxpZero = SRL::Math::Types::Fxp::BuildRaw(0);
+    static constexpr SRL::Math::Types::Fxp kFxpOne = SRL::Math::Types::Fxp::BuildRaw(1 << 16);
     static constexpr int kExpectedWidthPx = 512;
     static constexpr int kExpectedHeightPx = 64;
     static constexpr int kTargetSkyHeightPx = 120;
@@ -23,11 +25,11 @@ struct SkyPanorama
     int32_t scrollWrapWidthPx = kExpectedWidthPx;
     int32_t startOffsetPx = (kExpectedWidthPx - kScreenWidthPx) / 2;
     int16_t scrollY = 0;
-    SRL::Math::Types::Fxp scaleX = SRL::Math::Types::Fxp(1.0f);
-    SRL::Math::Types::Fxp scaleY = SRL::Math::Types::Fxp(1.0f);
+    SRL::Math::Types::Fxp scaleX = kFxpOne;
+    SRL::Math::Types::Fxp scaleY = kFxpOne;
     SRL::Math::Types::Vector2D scroll = SRL::Math::Types::Vector2D(
-        SRL::Math::Types::Fxp::Convert(0),
-        SRL::Math::Types::Fxp::Convert(0));
+        kFxpZero,
+        kFxpZero);
 
     ~SkyPanorama()
     {
@@ -125,8 +127,8 @@ struct SkyPanorama
         }
 
         // Scale the 64px panorama vertically to fill the visible sky area.
-        scaleY = SRL::Math::Types::Fxp(
-            static_cast<float>(kTargetSkyHeightPx) / static_cast<float>(kExpectedHeightPx));
+        scaleY = SRL::Math::Types::Fxp::BuildRaw(
+            static_cast<int32_t>((kTargetSkyHeightPx << 16) / kExpectedHeightPx));
 
         tile = new SRL::Tilemap::Interfaces::Bmp2Tile(*tga, 1, SRL::Memory::Zone::LWRam);
         delete tga;
@@ -251,7 +253,7 @@ struct SkyPanorama
             x = 0;
         }
 
-        scroll.X = SRL::Math::Types::Fxp::Convert(x);
+        scroll.X = SRL::Math::Types::Fxp::Convert(static_cast<int16_t>(x));
         scroll.Y = SRL::Math::Types::Fxp::Convert(scrollY);
         SRL::VDP2::NBG0::SetPriority(SRL::VDP2::Priority::Layer6);
         SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(scaleX, scaleY);

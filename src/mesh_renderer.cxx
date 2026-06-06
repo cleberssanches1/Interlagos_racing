@@ -52,9 +52,9 @@ void MeshRenderer::ClearMeshLocalTransforms()
     {
         meshLocalTransforms_[i].enabled = false;
         meshLocalTransforms_[i].translation = SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
-        meshLocalTransforms_[i].rotateX = SRL::Math::Types::Angle::FromDegrees(0.0f);
-        meshLocalTransforms_[i].rotateY = SRL::Math::Types::Angle::FromDegrees(0.0f);
-        meshLocalTransforms_[i].rotateZ = SRL::Math::Types::Angle::FromDegrees(0.0f);
+        meshLocalTransforms_[i].rotateX = kAngleZero;
+        meshLocalTransforms_[i].rotateY = kAngleZero;
+        meshLocalTransforms_[i].rotateZ = kAngleZero;
     }
 }
 
@@ -78,14 +78,14 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
     SRL::Scene3D::Translate(position + offset_);
     if (config_.rotateModelX180)
     {
-        SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
+        SRL::Scene3D::RotateX(kAngleHalfTurn);
     }
     SRL::Scene3D::RotateY(yaw);
     SRL::Scene3D::RotateX(bodyPitch_);
     SRL::Scene3D::RotateZ(bodyRoll_);
     if (config_.rotateModelZ180)
     {
-        SRL::Scene3D::RotateZ(SRL::Math::Types::Angle::FromDegrees(180.0f));
+        SRL::Scene3D::RotateZ(kAngleHalfTurn);
     }
     SRL::Scene3D::Scale(scale_);
     SRL::Scene3D::Translate(-config_.modelCenter);
@@ -194,12 +194,12 @@ void MeshRenderer::ApplyTransform(const SRL::Math::Types::Vector3D& position,
     SRL::Scene3D::Translate(position + offset_);
     if (config_.rotateModelX180)
     {
-        SRL::Scene3D::RotateX(SRL::Math::Types::Angle::FromDegrees(180.0f));
+        SRL::Scene3D::RotateX(kAngleHalfTurn);
     }
     SRL::Scene3D::RotateY(yaw);
     if (config_.rotateModelZ180)
     {
-        SRL::Scene3D::RotateZ(SRL::Math::Types::Angle::FromDegrees(180.0f));
+        SRL::Scene3D::RotateZ(kAngleHalfTurn);
     }
 }
 

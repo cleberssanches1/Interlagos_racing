@@ -43,9 +43,45 @@ public:
     // Advance one frame of command state smoothing.
     void TickCommandState();
 
-    void Render(int32_t yawDeg);
     void SubmitRender(class RenderPipeline& pipeline, bool logStats = false);
     void SetRuntimeFrameState(const GameplayFrameState& frameState);
+    struct GameplayInputSnapshot
+    {
+        bool accelerateHeld = false;
+        bool brakeHeld = false;
+        bool steerLeftHeld = false;
+        bool steerRightHeld = false;
+        bool shiftDownHeld = false;
+        bool shiftUpHeld = false;
+        bool shiftLockHeld = false;
+    };
+    void ApplyGameplayInput(const GameplayInputSnapshot& input,
+                            uint32_t frameCounter,
+                            GameplayFrameState& ioFrameState);
+    void PrepareGameplayFrameState(const GameplayInputSnapshot* input,
+                                   uint32_t frameCounter,
+                                   const Vector3D& worldPosition,
+                                   int32_t yawDeg,
+                                   bool autoLapEnabled,
+                                   GameplayFrameState& ioFrameState);
+    void ApplySimulationFrameState(const GameplayFrameState& frameState);
+    void SyncRenderState(const Vector3D& renderPosition, int32_t gameplayYawDeg);
+    struct DrivetrainDebugSnapshot
+    {
+        char gearChar = '1';
+        int16_t throttle = 0;
+        bool braking = false;
+        int16_t speedProxy = 0;
+        int16_t speedKmh = 0;
+        int16_t engineRpm = 0;
+        int16_t steeringCommand = 0;
+        int16_t yawRateDeg = 0;
+        int16_t yawStepDeg = 0;
+        int16_t planarDx = 0;
+        int16_t netDz = 0;
+    };
+    DrivetrainDebugSnapshot BuildDrivetrainDebugSnapshot(const GameplayFrameState& frameState) const;
+    void WriteCommandsToFrameState(GameplayFrameState& ioFrameState, bool enabled = true) const;
 
     void SetWorldPosition(const Vector3D& pos) { worldPosition_ = pos; }
 
@@ -70,6 +106,7 @@ public:
     };
 
     const CommandSnapshot& Commands() const { return commandState_; }
+    int16_t SteeringCommand() const { return commandState_.steering; }
 
     // IRenderInstance
     MeshRenderer* Renderer() override { return renderer_.get(); }
@@ -145,6 +182,13 @@ private:
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};
     int32_t visualYawOffsetDeg_{0};
+    bool leftHeldPrev_ = false;
+    bool rightHeldPrev_ = false;
+    bool lHeldPrev_ = false;
+    bool rHeldPrev_ = false;
+    uint32_t lastLeftPressFrame_ = 0;
+    uint32_t lastRightPressFrame_ = 0;
+    int8_t brakeSteerDirWhileHeld_ = 0;
     char name_[32]{};
 };
 } // namespace Game

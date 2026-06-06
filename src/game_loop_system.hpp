@@ -40,6 +40,7 @@ public:
         bool logTrack = true;
         bool logCar = false;
         bool enableRuntimeStatsLogs = true;
+        bool enableMinimalFpsOverlay = true;
         bool enableSlaveForCarPrepare = false;
         bool enableSlaveForSimulation = false;
         bool slaveSimulationLockstep = true;
@@ -91,8 +92,8 @@ public:
             if (!ValidateFramePreconditions()) continue;
             hwrStageTrace_ = {};
             lwrStageTrace_ = {};
-            simMasterWaitTicksThisFrame_ = 0u;
-            simSlaveLastJobTicksThisFrame_ = 0u;
+            simState_.masterWaitTicksThisFrame = 0u;
+            simState_.slaveLastJobTicksThisFrame = 0u;
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
             hwrStageTrace_.begin = MaybeCaptureHighWorkRamSnapshot();
             lwrStageTrace_.begin = MaybeCaptureLowWorkRamSnapshot(true);
@@ -163,6 +164,8 @@ private:
     static constexpr uint32_t kSimDrainSoftSpinLimit = 512u * 1024u;
     static constexpr uint32_t kSimDrainHardSpinLimit = 8u * 1024u * 1024u;
     static constexpr uint8_t kSimSlaveBackoffFrames = 6u;
+
+    struct SegmentOverlaySnapshot;
 
     struct HwrStageTrace
     {
@@ -399,11 +402,11 @@ private:
             highFreeBytes = static_cast<uint32_t>(hwr.FreeSize);
         }
 
-        const int32_t freeDelta = lowWorkFreeOverlayValid_
-            ? (static_cast<int32_t>(freeBytes) - static_cast<int32_t>(lastLowWorkFreeOverlayBytes_))
+        const int32_t freeDelta = lowWorkOverlay_.freeValid
+            ? (static_cast<int32_t>(freeBytes) - static_cast<int32_t>(lowWorkOverlay_.lastFreeBytes))
             : 0;
-        lastLowWorkFreeOverlayBytes_ = freeBytes;
-        lowWorkFreeOverlayValid_ = true;
+        lowWorkOverlay_.lastFreeBytes = freeBytes;
+        lowWorkOverlay_.freeValid = true;
 
         SRL::Debug::Print(2, 15, "WLWR free:%u df:%d sl:%u id:%d    ",
                           static_cast<unsigned>(freeBytes),
@@ -442,8 +445,8 @@ private:
                           static_cast<unsigned>(highFinishSync),
                           static_cast<unsigned>(highFreeBytes));
 
-        lastLowWorkBreakdownOverlay_ = breakdown;
-        lowWorkBreakdownOverlayValid_ = true;
+        lowWorkOverlay_.lastBreakdown = breakdown;
+        lowWorkOverlay_.breakdownValid = true;
 
 #ifdef TRACK_LWR_STAGE_TRACE
         TrackSystem::PrintLwrStageProbes();
@@ -517,8 +520,8 @@ private:
             static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Finish)) +
             static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Sync));
 
-        lastLowWorkTagGroupOverlay_ = tagGroups;
-        lowWorkTagGroupOverlayValid_ = true;
+        lowWorkOverlay_.lastTagGroup = tagGroups;
+        lowWorkOverlay_.tagGroupValid = true;
 
         SRL::Debug::Print(2, 20, "LTX1 iu:%u ga:%u ui:%u    ",
                           static_cast<unsigned>(tagGroups.initUnknown),
@@ -546,10 +549,10 @@ private:
         const uint32_t invalidTaggedBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesWithInvalidTag());
         const uint32_t invalidTaggedBlocks = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBlockCountWithInvalidTag());
 
-        lastLowWorkPayloadOverlayBytes_ = payloadBytes;
-        lastLowWorkOverheadOverlayBytes_ = overheadBytes;
-        lastLowWorkFreeBlocksOverlay_ = freeBlocks;
-        lowWorkAllocatorOverlayValid_ = true;
+        lowWorkOverlay_.lastPayloadBytes = payloadBytes;
+        lowWorkOverlay_.lastOverheadBytes = overheadBytes;
+        lowWorkOverlay_.lastFreeBlocks = freeBlocks;
+        lowWorkOverlay_.allocatorValid = true;
 
         SRL::Debug::Print(2, 22, "LFO1 py:%u ov:%u fb:%u    ",
                           static_cast<unsigned>(payloadBytes),
@@ -943,14 +946,14 @@ private:
         carYawDeg_ = simOut.outYawDeg;
         SyncCameraHeadingFromCar();
         latestActiveSegmentId_ = simOut.frameState.activeSegmentId;
-        lastGroundProbeRearY_ = simOut.frameState.debugGroundYRear;
-        lastGroundProbeFrontY_ = simOut.frameState.debugGroundYFront;
-        lastGroundProbeTargetY_ = simOut.frameState.debugGroundYTarget;
-        lastGroundProbeMask_ = simOut.frameState.debugGroundMask;
+        groundProbeDebug_.rearY = simOut.frameState.debugGroundYRear;
+        groundProbeDebug_.frontY = simOut.frameState.debugGroundYFront;
+        groundProbeDebug_.targetY = simOut.frameState.debugGroundYTarget;
+        groundProbeDebug_.mask = simOut.frameState.debugGroundMask;
         lastRuntimeFrameState_ = simOut.frameState;
         if (Game::CarSystem* car = ActiveCarSystem())
         {
-            car->SetRuntimeFrameState(simOut.frameState);
+            car->ApplySimulationFrameState(simOut.frameState);
         }
     }
 
@@ -965,22 +968,22 @@ private:
 
     void BackoffSimulationSlaveDispatch()
     {
-        simSlaveBackoffFrames_ = std::max<uint8_t>(simSlaveBackoffFrames_, kSimSlaveBackoffFrames);
+        simState_.slaveBackoffFrames = std::max<uint8_t>(simState_.slaveBackoffFrames, kSimSlaveBackoffFrames);
     }
 
     // Ensure SimulationTask is fully drained before entering the track render
     // window that may submit SlaveTrackDrawProducer jobs.
     bool DrainSimulationJobIfInFlight(bool mandatoryWait)
     {
-        if (!simJobInFlight_) return true;
+        if (!simState_.jobInFlight) return true;
 
         if (simulationTask_.IsDone())
         {
-            simJobInFlight_ = false;
-            simHasCompleted_ = true;
-            simCompletedIdx_ = simInFlightIdx_;
-            simSlaveLastJobTicksThisFrame_ = simulationTask_.LastTicks();
-            ApplySimulationOutput(simOutput_[simCompletedIdx_]);
+            simState_.jobInFlight = false;
+            simState_.hasCompleted = true;
+            simState_.completedIdx = simState_.inFlightIdx;
+            simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
+            ApplySimulationOutput(simState_.output[simState_.completedIdx]);
             return true;
         }
 
@@ -996,7 +999,7 @@ private:
 
         if (!simulationTask_.IsDone())
         {
-            ++simDrainSoftTimeouts_;
+            ++simState_.drainSoftTimeouts;
             BackoffSimulationSlaveDispatch();
             while (!simulationTask_.IsDone() && spins < kSimDrainHardSpinLimit)
             {
@@ -1004,173 +1007,74 @@ private:
             }
             if (!simulationTask_.IsDone())
             {
-                ++simDrainHardWaits_;
+                ++simState_.drainHardWaits;
                 while (!simulationTask_.IsDone()) {}
             }
         }
 
-        simMasterWaitTicksThisFrame_ = static_cast<uint16_t>(
-            simMasterWaitTicksThisFrame_ +
+        simState_.masterWaitTicksThisFrame = static_cast<uint16_t>(
+            simState_.masterWaitTicksThisFrame +
             Sh2FrtProfiler::Elapsed(waitStartTicks, Sh2FrtProfiler::Now()));
-        simJobInFlight_ = false;
-        simHasCompleted_ = true;
-        simCompletedIdx_ = simInFlightIdx_;
-        simSlaveLastJobTicksThisFrame_ = simulationTask_.LastTicks();
-        ApplySimulationOutput(simOutput_[simCompletedIdx_]);
+        simState_.jobInFlight = false;
+        simState_.hasCompleted = true;
+        simState_.completedIdx = simState_.inFlightIdx;
+        simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
+        ApplySimulationOutput(simState_.output[simState_.completedIdx]);
         return true;
     }
 
     void ConsumeCompletedJobs()
     {
-        if (simJobInFlight_ && simulationTask_.IsDone())
+        if (simState_.jobInFlight && simulationTask_.IsDone())
         {
-            simJobInFlight_ = false;
-            simHasCompleted_ = true;
-            simCompletedIdx_ = simInFlightIdx_;
-            simSlaveLastJobTicksThisFrame_ = simulationTask_.LastTicks();
+            simState_.jobInFlight = false;
+            simState_.hasCompleted = true;
+            simState_.completedIdx = simState_.inFlightIdx;
+            simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
         }
-        if (simHasCompleted_)
+        if (simState_.hasCompleted)
         {
-            ApplySimulationOutput(simOutput_[simCompletedIdx_]);
+            ApplySimulationOutput(simState_.output[simState_.completedIdx]);
         }
-        if (carPrepareJobInFlight_ && carPrepareTask_.IsDone())
+        if (carPrepareState_.jobInFlight && carPrepareTask_.IsDone())
         {
-            carPrepareJobInFlight_ = false;
-            carPrepareHasCompleted_ = true;
-            carPrepareCompletedIdx_ = carPrepareInFlightIdx_;
+            carPrepareState_.jobInFlight = false;
+            carPrepareState_.hasCompleted = true;
+            carPrepareState_.completedIdx = carPrepareState_.inFlightIdx;
         }
     }
 
     Game::GameplayFrameState BuildGameplayFrameState(const FrameInputState& input)
     {
         Game::GameplayFrameState frameState{};
-        frameState.frameId = frameCounter_;
-        frameState.carWorldPosition = context_.carWorldPosition;
-        frameState.carYawDeg = carYawDeg_;
 
         Game::CarSystem* car = ActiveCarSystem();
         if (car)
         {
-            // Manual/semi-auto mode:
-            // B accelerate, C brake, arrows steer, L downshift, R upshift.
+            Game::CarSystem::GameplayInputSnapshot gameplayInput{};
             if (!autoLapTestEnabled_)
             {
-                const bool steerLeftRequested = input.leftHeld;
-                const bool steerRightRequested = input.rightHeld;
-                const bool leftJustPressed = input.leftHeld && !leftHeldPrev_;
-                const bool rightJustPressed = input.rightHeld && !rightHeldPrev_;
-                const bool lJustPressed = input.lHeld && !lHeldPrev_;
-                const bool rJustPressed = input.rHeld && !rHeldPrev_;
-                if (leftJustPressed) lastLeftPressFrame_ = frameCounter_;
-                if (rightJustPressed) lastRightPressFrame_ = frameCounter_;
-                // Input mapping:
-                // B = accelerate
-                // C = brake only
-                // L = downshift (1 -> reverse)
-                // R = upshift
-                if (input.bHeld) car->Command()->Accelerate();
-                int8_t desiredSteerDir = 0;
-                if (steerLeftRequested && !steerRightRequested)
-                {
-                    desiredSteerDir = -1;
-                }
-                else if (steerRightRequested && !steerLeftRequested)
-                {
-                    desiredSteerDir = 1;
-                }
-                else if (steerLeftRequested && steerRightRequested)
-                {
-                    // When both sides are seen as pressed (controller noise/ghosting),
-                    // keep the current steering sign first to avoid one-frame opposite
-                    // corrections during launch turns.
-                    const int16_t currentSteer = car->Commands().steering;
-                    if (currentSteer < 0) desiredSteerDir = -1;
-                    else if (currentSteer > 0) desiredSteerDir = 1;
-                    else if (lastLeftPressFrame_ > lastRightPressFrame_) desiredSteerDir = -1;
-                    else if (lastRightPressFrame_ > lastLeftPressFrame_) desiredSteerDir = 1;
-                    else desiredSteerDir = 0;
-                }
-
-                if (desiredSteerDir < 0) car->Command()->SteerLeft();
-                else if (desiredSteerDir > 0) car->Command()->SteerRight();
-
-                // Reverse direction swap assist:
-                // when holding reverse and switching steering side, cut reverse
-                // acceleration for one frame so the chassis can change yaw side cleanly.
-                bool suppressReverseThisFrame = false;
-                if (input.cHeld)
-                {
-                    if (desiredSteerDir != 0 &&
-                        reverseSteerDirWhileHeld_ != 0 &&
-                        desiredSteerDir != reverseSteerDirWhileHeld_)
-                    {
-                        suppressReverseThisFrame = true;
-                    }
-                    if (desiredSteerDir != 0)
-                    {
-                        reverseSteerDirWhileHeld_ = desiredSteerDir;
-                    }
-                }
-                else
-                {
-                    reverseSteerDirWhileHeld_ = 0;
-                }
-
-                if (suppressReverseThisFrame)
-                {
-                    // Do not submit Brake() this frame.
-                    // A one-frame release is enough to allow quick side swap in reverse.
-                }
-                else
-                {
-                    if (input.cHeld) car->Command()->Brake();
-                }
-                car->UpdateWheels(input.bHeld, input.cHeld);
-
-                if (!input.xHeld)
-                {
-                    frameState.shiftDownRequested = lJustPressed;
-                    frameState.shiftUpRequested = rJustPressed;
-                }
+                gameplayInput.accelerateHeld = input.bHeld;
+                gameplayInput.brakeHeld = input.cHeld;
+                gameplayInput.steerLeftHeld = input.leftHeld;
+                gameplayInput.steerRightHeld = input.rightHeld;
+                gameplayInput.shiftDownHeld = input.lHeld;
+                gameplayInput.shiftUpHeld = input.rHeld;
+                gameplayInput.shiftLockHeld = input.xHeld;
             }
-            else
-            {
-                // Auto-lap follows PATH and does not consume manual throttle.
-                car->UpdateWheels(false, false);
-            }
-
-            // Apply command smoothing/decay before consuming snapshot so
-            // steering return-to-center and throttle decay affect physics in
-            // the same frame (not one frame later during render).
-            car->TickCommandState();
-
-            const auto& commands = car->Commands();
-            if (!autoLapTestEnabled_)
-            {
-                frameState.throttle = commands.throttle;
-                frameState.steering = commands.steering;
-                frameState.braking = commands.braking;
-                // Shift requests are edge-triggered and come directly from the pad.
-                frameState.wheelsSpinning = commands.wheelsSpinning;
-                frameState.brakeHoldFrames = commands.brakeHoldFrames;
-            }
-            else
-            {
-                frameState.throttle = 0;
-                frameState.steering = 0;
-                frameState.braking = false;
-                frameState.shiftUpRequested = false;
-                frameState.shiftDownRequested = false;
-                frameState.wheelsSpinning = false;
-                frameState.brakeHoldFrames = 0;
-            }
+            car->PrepareGameplayFrameState(autoLapTestEnabled_ ? nullptr : &gameplayInput,
+                                           frameCounter_,
+                                           context_.carWorldPosition,
+                                           carYawDeg_,
+                                           autoLapTestEnabled_,
+                                           frameState);
         }
-        // Update previous directional held-state only after consuming current
-        // frame input, so just-pressed detection remains valid.
-        leftHeldPrev_ = input.leftHeld;
-        rightHeldPrev_ = input.rightHeld;
-        lHeldPrev_ = input.lHeld;
-        rHeldPrev_ = input.rHeld;
+        else
+        {
+            frameState.frameId = frameCounter_;
+            frameState.carWorldPosition = context_.carWorldPosition;
+            frameState.carYawDeg = carYawDeg_;
+        }
         return frameState;
     }
 
@@ -1200,32 +1104,32 @@ private:
         context_.carWorldPosition = frameState.carWorldPosition;
         carYawDeg_ = frameState.carYawDeg;
         latestActiveSegmentId_ = frameState.activeSegmentId;
-        lastGroundProbeRearY_ = frameState.debugGroundYRear;
-        lastGroundProbeFrontY_ = frameState.debugGroundYFront;
-        lastGroundProbeTargetY_ = frameState.debugGroundYTarget;
-        lastGroundProbeMask_ = frameState.debugGroundMask;
+        groundProbeDebug_.rearY = frameState.debugGroundYRear;
+        groundProbeDebug_.frontY = frameState.debugGroundYFront;
+        groundProbeDebug_.targetY = frameState.debugGroundYTarget;
+        groundProbeDebug_.mask = frameState.debugGroundMask;
         lastRuntimeFrameState_ = frameState;
         if (Game::CarSystem* car = ActiveCarSystem())
         {
-            car->SetRuntimeFrameState(frameState);
+            car->ApplySimulationFrameState(frameState);
         }
     }
 
     bool TryDispatchSimulationOnSlave(const Game::GameplayFrameState& frameState)
     {
-        if (simSlaveBackoffFrames_ > 0)
+        if (simState_.slaveBackoffFrames > 0)
         {
-            --simSlaveBackoffFrames_;
-            ++simSlaveDispatchSkipsBackoff_;
+            --simState_.slaveBackoffFrames;
+            ++simState_.slaveDispatchSkipsBackoff;
             return false;
         }
-        if (simJobInFlight_ || carPrepareJobInFlight_)
+        if (simState_.jobInFlight || carPrepareState_.jobInFlight)
         {
             return false;
         }
         if (IsTrackProducerJobInFlightHint())
         {
-            ++simSlaveDispatchSkipsTrackBusy_;
+            ++simState_.slaveDispatchSkipsTrackBusy;
             BackoffSimulationSlaveDispatch();
             return false;
         }
@@ -1239,14 +1143,14 @@ private:
         simPayload.outWorldPosition = frameState.carWorldPosition;
         simPayload.outYawDeg = frameState.carYawDeg;
 
-        const uint8_t slot = simWriteIdx_;
-        simInput_[slot] = simPayload;
-        simulationTask_.Configure(&simInput_[slot], &simOutput_[slot]);
+        const uint8_t slot = simState_.writeIdx;
+        simState_.input[slot] = simPayload;
+        simulationTask_.Configure(&simState_.input[slot], &simState_.output[slot]);
         SRL::Slave::ExecuteOnSlave(simulationTask_);
-        simJobInFlight_ = true;
-        simInFlightIdx_ = slot;
-        simWriteIdx_ ^= 1u;
-        ++simSlaveDispatchCount_;
+        simState_.jobInFlight = true;
+        simState_.inFlightIdx = slot;
+        simState_.writeIdx ^= 1u;
+        ++simState_.slaveDispatchCount;
         return true;
     }
 
@@ -1262,12 +1166,12 @@ private:
             {
                 // True lockstep: camera/render must consume the same frame state
                 // produced by simulation to avoid chase drift.
-                if (simJobInFlight_)
+                if (simState_.jobInFlight)
                 {
                     (void)DrainSimulationJobIfInFlight(true);
-                    if (simHasCompleted_)
+                    if (simState_.hasCompleted)
                     {
-                        simHasCompleted_ = false;
+                        simState_.hasCompleted = false;
                         return;
                     }
                 }
@@ -1275,9 +1179,9 @@ private:
                 if (TryDispatchSimulationOnSlave(frameState))
                 {
                     (void)DrainSimulationJobIfInFlight(true);
-                    if (simHasCompleted_)
+                    if (simState_.hasCompleted)
                     {
-                        simHasCompleted_ = false;
+                        simState_.hasCompleted = false;
                         return;
                     }
                 }
@@ -1291,7 +1195,7 @@ private:
             // Consume completion opportunistically and keep rendering with last
             // committed state while a new sim job is in-flight.
             (void)DrainSimulationJobIfInFlight(false);
-            if (simJobInFlight_)
+            if (simState_.jobInFlight)
             {
                 return;
             }
@@ -1308,16 +1212,16 @@ private:
     void ScheduleCarPrepareIfEnabled()
     {
         if (!CanRenderCar() || !context_.enableSlaveForCarPrepare) return;
-        if (carPrepareJobInFlight_) return;
+        if (carPrepareState_.jobInFlight) return;
         if (IsTrackProducerJobInFlightHint()) return;
 
-        const uint8_t slot = carPrepareWriteIdx_;
-        carPrepareInputYaw_[slot] = carYawDeg_;
-        carPrepareTask_.Configure(&carPrepareInputYaw_[slot], &carPrepareOutputYaw_[slot]);
+        const uint8_t slot = carPrepareState_.writeIdx;
+        carPrepareState_.inputYaw[slot] = carYawDeg_;
+        carPrepareTask_.Configure(&carPrepareState_.inputYaw[slot], &carPrepareState_.outputYaw[slot]);
         SRL::Slave::ExecuteOnSlave(carPrepareTask_);
-        carPrepareJobInFlight_ = true;
-        carPrepareInFlightIdx_ = slot;
-        carPrepareWriteIdx_ ^= 1u;
+        carPrepareState_.jobInFlight = true;
+        carPrepareState_.inFlightIdx = slot;
+        carPrepareState_.writeIdx ^= 1u;
     }
 
     void UpdateBackground()
@@ -1415,8 +1319,8 @@ private:
         // Follow track slope by lifting camera on uphill and relaxing on level ground.
         // Ground probes are already in world Y units used by telemetry.
         {
-            const int32_t slopeDelta = static_cast<int32_t>(lastGroundProbeFrontY_) -
-                                       static_cast<int32_t>(lastGroundProbeRearY_);
+            const int32_t slopeDelta = static_cast<int32_t>(groundProbeDebug_.frontY) -
+                                       static_cast<int32_t>(groundProbeDebug_.rearY);
             const int32_t uphillDelta = std::max<int32_t>(0, slopeDelta);
             enum class SlopeCamProfile : int32_t { Suave = 0, Medio = 1, Forte = 2 };
             constexpr SlopeCamProfile kSlopeCamProfile = SlopeCamProfile::Medio;
@@ -1508,6 +1412,22 @@ private:
                                    context_.carWorldPosition);
     }
 
+    int32_t ResolveCarRenderYawDegrees() const
+    {
+        if (Game::CarSystem* car = ActiveCarSystem())
+        {
+            return car->RenderYawDegrees();
+        }
+        return carYawDeg_;
+    }
+
+    void StoreShadowDebugState(const SRL::Math::Types::Vector3D& shadowWorldPosition,
+                               int32_t shadowYawDeg)
+    {
+        shadowDebug_.worldPos = shadowWorldPosition;
+        shadowDebug_.yawDeg = shadowYawDeg;
+    }
+
     void DrawCarShadowBlob(const SRL::Math::Types::Vector3D& carRenderPos)
     {
         using SRL::Math::Types::Angle;
@@ -1524,19 +1444,14 @@ private:
 
         Vector3D center = carRenderPos;
         // Anchor shadow to sampled ground to keep it detached from car body.
-        if (lastGroundProbeMask_ != 0u)
+        if (groundProbeDebug_.mask != 0u)
         {
-            center.Y = Fxp::BuildRaw(static_cast<int32_t>(lastGroundProbeTargetY_) << 16);
+            center.Y = Fxp::BuildRaw(static_cast<int32_t>(groundProbeDebug_.targetY) << 16);
         }
         center.Y += kShadowGroundBias;
 
-        int32_t shadowYawDeg = carYawDeg_;
-        if (Game::CarSystem* car = ActiveCarSystem())
-        {
-            shadowYawDeg = car->RenderYawDegrees();
-        }
-        lastShadowWorldPos_ = center;
-        lastShadowYawDeg_ = shadowYawDeg;
+        const int32_t shadowYawDeg = ResolveCarRenderYawDegrees();
+        StoreShadowDebugState(center, shadowYawDeg);
         const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
         const Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
         const Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
@@ -1626,22 +1541,16 @@ private:
         if (!context_.carShadowRenderer) return;
 
         Vector3D shadowPos = carRenderPos;
-        if (lastGroundProbeMask_ != 0u)
+        if (groundProbeDebug_.mask != 0u)
         {
-            shadowPos.Y = Fxp::BuildRaw(static_cast<int32_t>(lastGroundProbeTargetY_) << 16);
+            shadowPos.Y = Fxp::BuildRaw(static_cast<int32_t>(groundProbeDebug_.targetY) << 16);
         }
         // Keep SBA close to asphalt. Large positive offsets can bury the model.
         // In this project, positive Y is down.
         shadowPos.Y += Fxp::BuildRaw(1 << 16); // 1 world unit down from sampled asphalt
 
-        int32_t shadowYawDeg = carYawDeg_;
-        if (Game::CarSystem* car = ActiveCarSystem())
-        {
-            // Match the exact visual yaw used by the car mesh.
-            shadowYawDeg = car->RenderYawDegrees();
-        }
-        lastShadowWorldPos_ = shadowPos;
-        lastShadowYawDeg_ = shadowYawDeg;
+        const int32_t shadowYawDeg = ResolveCarRenderYawDegrees();
+        StoreShadowDebugState(shadowPos, shadowYawDeg);
         const Angle yaw =
             Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
         context_.carShadowRenderer->Render(shadowPos, yaw, false);
@@ -1653,7 +1562,16 @@ private:
 
         AppState::Set(AppState::Stage::LoopCar, frameCounter_);
         Game::CarSystem* car = ActiveCarSystem();
+        if (!car) return;
 
+        SRL::Math::Types::Vector3D carRenderPos = ResolveCarRenderPosition(camera);
+        RenderCarShadowIfEnabled(carRenderPos);
+        car->SyncRenderState(carRenderPos, carYawDeg_);
+        SubmitCarRender(*car);
+    }
+
+    SRL::Math::Types::Vector3D ResolveCarRenderPosition(const CameraFrameState& camera)
+    {
         SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
         if (!IsFiniteCarPos(lastValidCarRenderPos_))
         {
@@ -1668,57 +1586,63 @@ private:
             lastValidCarRenderPos_ = carRenderPos;
         }
 
+        ApplyCarCameraDepthBias(camera, carRenderPos);
+        ApplyCarVisualLift(carRenderPos);
+        return carRenderPos;
+    }
+
+    void ApplyCarCameraDepthBias(const CameraFrameState& camera,
+                                 SRL::Math::Types::Vector3D& ioCarRenderPos) const
+    {
         // Small camera depth bias to reduce seam overdraw on car body.
         // Disable at very low speed to avoid visual side-slip impression at launch.
-        if (lastRuntimeFrameState_.speedProxy > 20)
-        {
-            const int32_t dxRaw = camera.location.X.RawValue() - carRenderPos.X.RawValue();
-            const int32_t dzRaw = camera.location.Z.RawValue() - carRenderPos.Z.RawValue();
-            const int32_t adx = (dxRaw < 0) ? -dxRaw : dxRaw;
-            const int32_t adz = (dzRaw < 0) ? -dzRaw : dzRaw;
-            const int32_t maxAxis = (adx > adz) ? adx : adz;
-            if (maxAxis > 0)
-            {
-                constexpr int32_t kCarDepthBiasUnits = 3;
-                const int32_t biasRaw = (kCarDepthBiasUnits << 16);
-                const int32_t offXRaw = static_cast<int32_t>((static_cast<int64_t>(dxRaw) * biasRaw) / maxAxis);
-                const int32_t offZRaw = static_cast<int32_t>((static_cast<int64_t>(dzRaw) * biasRaw) / maxAxis);
-                carRenderPos.X += SRL::Math::Types::Fxp::BuildRaw(offXRaw);
-                carRenderPos.Z += SRL::Math::Types::Fxp::BuildRaw(offZRaw);
-            }
-        }
+        if (lastRuntimeFrameState_.speedProxy <= 20) return;
 
+        const int32_t dxRaw = camera.location.X.RawValue() - ioCarRenderPos.X.RawValue();
+        const int32_t dzRaw = camera.location.Z.RawValue() - ioCarRenderPos.Z.RawValue();
+        const int32_t adx = (dxRaw < 0) ? -dxRaw : dxRaw;
+        const int32_t adz = (dzRaw < 0) ? -dzRaw : dzRaw;
+        const int32_t maxAxis = (adx > adz) ? adx : adz;
+        if (maxAxis <= 0) return;
+
+        constexpr int32_t kCarDepthBiasUnits = 3;
+        const int32_t biasRaw = (kCarDepthBiasUnits << 16);
+        const int32_t offXRaw = static_cast<int32_t>((static_cast<int64_t>(dxRaw) * biasRaw) / maxAxis);
+        const int32_t offZRaw = static_cast<int32_t>((static_cast<int64_t>(dzRaw) * biasRaw) / maxAxis);
+        ioCarRenderPos.X += SRL::Math::Types::Fxp::BuildRaw(offXRaw);
+        ioCarRenderPos.Z += SRL::Math::Types::Fxp::BuildRaw(offZRaw);
+    }
+
+    void ApplyCarVisualLift(SRL::Math::Types::Vector3D& ioCarRenderPos) const
+    {
         // Visual lift for seam overlap testing.
         // This does not change gameplay physics state.
-        {
-            constexpr int32_t kCarVisualLiftUnits = 0;
-            carRenderPos.Y -= SRL::Math::Types::Fxp::BuildRaw(kCarVisualLiftUnits << 16);
-        }
+        constexpr int32_t kCarVisualLiftUnits = 0;
+        ioCarRenderPos.Y -= SRL::Math::Types::Fxp::BuildRaw(kCarVisualLiftUnits << 16);
+    }
 
-        // Shadow path selection for runtime tests.
+    void RenderCarShadowIfEnabled(const SRL::Math::Types::Vector3D& carRenderPos)
+    {
         constexpr bool kEnableCarShadowRendering = true;
         constexpr bool kUseBlobShadow = false;
-        if constexpr (kEnableCarShadowRendering)
+        if constexpr (!kEnableCarShadowRendering) return;
+
+        if constexpr (kUseBlobShadow)
         {
-            if constexpr (kUseBlobShadow)
-            {
-                DrawCarShadowBlob(carRenderPos);
-            }
-            if (context_.renderCarShadowModel && context_.carShadowRenderer)
-            {
-                DrawCarShadowModel(carRenderPos);
-            }
+            DrawCarShadowBlob(carRenderPos);
         }
+        if (context_.renderCarShadowModel && context_.carShadowRenderer)
+        {
+            DrawCarShadowModel(carRenderPos);
+        }
+    }
 
-        car->SetWorldPosition(carRenderPos);
-        // Keep render yaw authoritative from gameplay state to avoid
-        // camera/car divergence caused by asynchronous prepare paths.
-        car->Render(carYawDeg_);
-
+    void SubmitCarRender(Game::CarSystem& car)
+    {
         context_.renderPipeline->Reset();
-        car->SubmitRender(*context_.renderPipeline);
+        car.SubmitRender(*context_.renderPipeline);
         context_.renderPipeline->Flush();
-        if (MeshRenderer* renderer = car->Renderer())
+        if (MeshRenderer* renderer = car.Renderer())
         {
             lastRenderedCarFacesThisFrame_ = renderer->LastRenderFaceCount();
             lastRenderedCarMeshesThisFrame_ = renderer->LastRenderMeshCount();
@@ -1736,56 +1660,13 @@ private:
             {
                 SRL::Debug::Print(1, 23, "CAM wait snapshot");
             }
-            hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
-            lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
-            hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
-            lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
-            hwrStageTrace_.track = MaybeCaptureHighWorkRamSnapshot();
-            lwrStageTrace_.track = MaybeCaptureLowWorkRamSnapshot();
-            hwrStageTrace_.car = hwrStageTrace_.track;
-            lwrStageTrace_.car = lwrStageTrace_.track;
+            CaptureIdleRenderTraces();
             return;
         }
 
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
-
-        const bool trackFrameEnabled =
-            context_.trackSystem &&
-            context_.trackSystemReady &&
-            context_.renderTrack;
-        if (trackFrameEnabled)
-        {
-            context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
-        }
-        if (trackFrameEnabled)
-        {
-            SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
-            context_.trackSystem->BeginFrame(frameCounter_);
-            AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
-            SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
-            context_.trackSystem->RenderFrame(true,
-                                             context_.trackSegOffset,
-                                             context_.lightDirection,
-                                             camera.location,
-                                             camera.lookTarget,
-                                             context_.carWorldPosition);
-            hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
-            lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
-            SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
-            context_.trackSystem->EndFrame();
-            hwrStageTrace_.trackEnd = MaybeCaptureHighWorkRamSnapshot();
-            lwrStageTrace_.trackEnd = MaybeCaptureLowWorkRamSnapshot();
-        }
-        else
-        {
-            hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
-            lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
-            hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
-            lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
-        }
-        hwrStageTrace_.track = hwrStageTrace_.trackEnd;
-        lwrStageTrace_.track = lwrStageTrace_.trackEnd;
+        RenderTrackFrame(camera);
 
         SRL::Scene3D::LoadIdentity();
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
@@ -1794,6 +1675,64 @@ private:
         hwrStageTrace_.car = MaybeCaptureHighWorkRamSnapshot();
         lwrStageTrace_.car = MaybeCaptureLowWorkRamSnapshot();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
+    }
+
+    void CaptureIdleRenderTraces()
+    {
+        hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
+        hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
+        lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
+        hwrStageTrace_.track = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.track = MaybeCaptureLowWorkRamSnapshot();
+        hwrStageTrace_.car = hwrStageTrace_.track;
+        lwrStageTrace_.car = lwrStageTrace_.track;
+    }
+
+    bool IsTrackFrameEnabled() const
+    {
+        return context_.trackSystem &&
+               context_.trackSystemReady &&
+               context_.renderTrack;
+    }
+
+    void RenderTrackFrame(const CameraFrameState& camera)
+    {
+        if (!IsTrackFrameEnabled())
+        {
+            CaptureTrackRenderDisabledTraces();
+            return;
+        }
+
+        context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
+        context_.trackSystem->BeginFrame(frameCounter_);
+        AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
+        context_.trackSystem->RenderFrame(true,
+                                          context_.trackSegOffset,
+                                          context_.lightDirection,
+                                          camera.location,
+                                          camera.lookTarget,
+                                          context_.carWorldPosition);
+        hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
+        SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
+        context_.trackSystem->EndFrame();
+        hwrStageTrace_.trackEnd = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.trackEnd = MaybeCaptureLowWorkRamSnapshot();
+        hwrStageTrace_.track = hwrStageTrace_.trackEnd;
+        lwrStageTrace_.track = lwrStageTrace_.trackEnd;
+    }
+
+    void CaptureTrackRenderDisabledTraces()
+    {
+        hwrStageTrace_.trackDraw = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
+        hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
+        lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
+        hwrStageTrace_.track = hwrStageTrace_.trackEnd;
+        lwrStageTrace_.track = lwrStageTrace_.trackEnd;
     }
 
     void RenderAxes()
@@ -1816,18 +1755,35 @@ private:
 
     void FinishFrame()
     {
-        uint32_t submittedTrackFaces = 0;
-        if (context_.trackSystemReady && context_.renderTrack && context_.trackSystem)
-        {
-            submittedTrackFaces = context_.trackSystem->Telemetry().submittedTrackFaces;
-        }
-        const uint32_t submittedCarFaces =
-            CanRenderCar() ? lastRenderedCarFacesThisFrame_ : 0u;
-
         // Async sim mode: do not block frame completion on Slave sim.
         (void)DrainSimulationJobIfInFlight(false);
 
         ++frameCounter_;
+        const uint32_t submittedTrackFaces = GetSubmittedTrackFacesThisFrame();
+        const uint32_t submittedCarFaces = GetSubmittedCarFacesThisFrame();
+
+        PresentFrameHudAndTelemetry(submittedTrackFaces, submittedCarFaces);
+        SynchronizeFrameCore();
+        UpdateFrameEndOverlays();
+    }
+
+    uint32_t GetSubmittedTrackFacesThisFrame() const
+    {
+        if (context_.trackSystemReady && context_.renderTrack && context_.trackSystem)
+        {
+            return context_.trackSystem->Telemetry().submittedTrackFaces;
+        }
+        return 0u;
+    }
+
+    uint32_t GetSubmittedCarFacesThisFrame() const
+    {
+        return CanRenderCar() ? lastRenderedCarFacesThisFrame_ : 0u;
+    }
+
+    void PresentFrameHudAndTelemetry(uint32_t submittedTrackFaces,
+                                     uint32_t submittedCarFaces)
+    {
         hwrStageTrace_.preFinish = MaybeCaptureHighWorkRamSnapshot();
         lwrStageTrace_.preFinish = MaybeCaptureLowWorkRamSnapshot();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Finish);
@@ -1839,11 +1795,14 @@ private:
                                                       context_.vertexCount,
                                                       submittedTrackFaces,
                                                       submittedCarFaces);
+        if (!context_.enableRuntimeStatsLogs) return;
+
         PrintSegmentOverlapDiagnostics(submittedTrackFaces, submittedCarFaces);
-        if (context_.enableRuntimeStatsLogs)
-        {
-            PrintSh2SplitTelemetry();
-        }
+        PrintSh2SplitTelemetry();
+    }
+
+    void SynchronizeFrameCore()
+    {
         if (context_.enableManualGouraudCopy)
         {
             SRL::Scene3D::LightCopyGouraudTable();
@@ -1860,10 +1819,15 @@ private:
         hwrStageTrace_.postSync = MaybeCaptureHighWorkRamSnapshot();
         lwrStageTrace_.postSync = MaybeCaptureLowWorkRamSnapshot(true);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
-        if (context_.enableRuntimeStatsLogs)
+    }
+
+    void UpdateFrameEndOverlays()
+    {
+        if (context_.enableRuntimeStatsLogs || context_.enableMinimalFpsOverlay)
         {
             UpdateRealtimeFpsOverlay();
         }
+
         constexpr bool kEnableWorkRamOverlayTelemetry = kEnableDetailedWorkRamTelemetry;
         constexpr uint16_t kWorkRamOverlayCadenceFrames = 10u;
         bool workRamOverlayDue = false;
@@ -1891,134 +1855,116 @@ private:
     void PrintSegmentOverlapDiagnostics(uint32_t submittedTrackFaces,
                                         uint32_t submittedCarFaces)
     {
-        if (!context_.trackSystemReady || !context_.trackSystem) return;
-
-        auto fxpToInt = [](const SRL::Math::Types::Fxp& v) -> int32_t
-        {
-            return v.RawValue() >> 16;
-        };
-
-        int32_t windowStartId = -1;
-        int8_t windowDir = 1;
-        uint16_t windowCount = 0;
-        const bool windowValid =
-            context_.trackSystem->GetRenderWindowDebugSnapshot(windowStartId, windowDir, windowCount);
-
-        const int32_t carSegmentId = static_cast<int32_t>(latestActiveSegmentId_);
-        int32_t nearestSegmentId = -1;
-        SRL::Math::Types::Vector3D nearestCenter{};
-        (void)context_.trackSystem->FindNearestSegment(
-            context_.carWorldPosition,
-            context_.trackSegOffset,
-            nearestSegmentId,
-            nearestCenter);
-
-        SRL::Math::Types::Vector3D carSegmentCenter{};
-        const bool carCenterValid =
-            (carSegmentId > 0) &&
-            context_.trackSystem->FindSegmentCenterById(
-                carSegmentId,
-                context_.trackSegOffset,
-                carSegmentCenter);
-
-        const int32_t carY = fxpToInt(context_.carWorldPosition.Y);
-        const int32_t carX = fxpToInt(context_.carWorldPosition.X);
-        const int32_t carZ = fxpToInt(context_.carWorldPosition.Z);
-        const int32_t camX = fxpToInt(lastValidCameraLocation_.X);
-        const int32_t camY = fxpToInt(lastValidCameraLocation_.Y);
-        const int32_t camZ = fxpToInt(lastValidCameraLocation_.Z);
-        const int32_t segY = carCenterValid ? fxpToInt(carSegmentCenter.Y) : 0;
-        const int32_t deltaY = carCenterValid
-            ? fxpToInt(context_.carWorldPosition.Y - carSegmentCenter.Y)
-            : 0;
-        const int32_t deltaX = carCenterValid
-            ? fxpToInt(context_.carWorldPosition.X - carSegmentCenter.X)
-            : 0;
-        const int32_t deltaZ = carCenterValid
-            ? fxpToInt(context_.carWorldPosition.Z - carSegmentCenter.Z)
-            : 0;
-        const int32_t camDirX = fxpToInt(lastValidLookTarget_.X - lastValidCameraLocation_.X);
-        const int32_t camDirZ = fxpToInt(lastValidLookTarget_.Z - lastValidCameraLocation_.Z);
-        const char carXSgn = (carX >= 0) ? '+' : '-';
-        const char carYSgn = (carY >= 0) ? '+' : '-';
-        const char carZSgn = (carZ >= 0) ? '+' : '-';
-        const char camXSgn = (camX >= 0) ? '+' : '-';
-        const char camYSgn = (camY >= 0) ? '+' : '-';
-        const char camZSgn = (camZ >= 0) ? '+' : '-';
-        const auto yawAngle =
-            SRL::Math::Types::Angle::FromDegrees(
-                SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(carYawDeg_) << 16));
-        const int32_t fwdX = fxpToInt(SRL::Math::Trigonometry::Sin(yawAngle));
-        const int32_t fwdZ = fxpToInt(
-            SRL::Math::Types::Fxp::BuildRaw(-SRL::Math::Trigonometry::Cos(yawAngle).RawValue()));
-
-        int32_t seq[5] = { -1, -1, -1, -1, -1 };
-        if (windowValid)
-        {
-            for (size_t i = 0; i < 5; ++i)
-            {
-                int32_t id = -1;
-                if (context_.trackSystem->GetRenderWindowSegmentIdAt(i, id))
-                {
-                    seq[i] = id;
-                }
-            }
-        }
+        SegmentOverlaySnapshot overlay{};
+        if (!BuildSegmentOverlaySnapshot(overlay)) return;
 
         const uint32_t submittedFacesTotal = submittedTrackFaces + submittedCarFaces;
+        PrintSegmentWindowOverlay(overlay);
+        PrintSegmentSpatialOverlay(overlay);
+        PrintShadowSpatialOverlay();
+        PrintFaceAndShadowOverlay(submittedTrackFaces, submittedCarFaces, submittedFacesTotal);
+        PrintGroundProbeOverlay(overlay);
+        PrintPhysicsQueryOverlay();
+        constexpr bool kEnableExtendedDrivetrainOverlay = false;
+        if constexpr (kEnableExtendedDrivetrainOverlay)
+        {
+            const Game::CarSystem::DrivetrainDebugSnapshot drivetrain =
+                (context_.carSystem && context_.carSystem->get())
+                    ? context_.carSystem->get()->BuildDrivetrainDebugSnapshot(lastRuntimeFrameState_)
+                    : Game::CarSystem::DrivetrainDebugSnapshot{};
+            SRL::Debug::Print(0, 13, "GEAR:%c RPM:%d KM:%d    ",
+                              drivetrain.gearChar,
+                              static_cast<int>(drivetrain.engineRpm),
+                              static_cast<int>(drivetrain.speedKmh));
+            SRL::Debug::Print(1, 17, "OVR gear:%c rpm:%d km:%d   ",
+                              drivetrain.gearChar,
+                              static_cast<int>(drivetrain.engineRpm),
+                              static_cast<int>(drivetrain.speedKmh));
+            SRL::Debug::Print(1, 30, "OVR drv th:%d br:%u sp:%d km:%d g:%c rp:%d",
+                              static_cast<int>(drivetrain.throttle),
+                              static_cast<unsigned>(drivetrain.braking ? 1u : 0u),
+                              static_cast<int>(drivetrain.speedProxy),
+                              static_cast<int>(drivetrain.speedKmh),
+                              drivetrain.gearChar,
+                              static_cast<int>(drivetrain.engineRpm));
+            SRL::Debug::Print(0, 14, "DRV th:%d br:%u sp:%d km:%d g:%c rp:%d",
+                              static_cast<int>(drivetrain.throttle),
+                              static_cast<unsigned>(drivetrain.braking ? 1u : 0u),
+                              static_cast<int>(drivetrain.speedProxy),
+                              static_cast<int>(drivetrain.speedKmh),
+                              drivetrain.gearChar,
+                              static_cast<int>(drivetrain.engineRpm));
+            SRL::Debug::Print(1, 31, "OVR dyn st:%d yr:%d ys:%d pdx:%d ndz:%d",
+                              static_cast<int>(drivetrain.steeringCommand),
+                              static_cast<int>(drivetrain.yawRateDeg),
+                              static_cast<int>(drivetrain.yawStepDeg),
+                              static_cast<int>(drivetrain.planarDx),
+                              static_cast<int>(drivetrain.netDz));
+            SRL::Debug::Print(0, 31, "DYN st:%d yr:%d ys:%d pdx:%d ndz:%d",
+                              static_cast<int>(drivetrain.steeringCommand),
+                              static_cast<int>(drivetrain.yawRateDeg),
+                              static_cast<int>(drivetrain.yawStepDeg),
+                              static_cast<int>(drivetrain.planarDx),
+                              static_cast<int>(drivetrain.netDz));
+        }
+        PrintInputOverlay();
+        PrintSegmentEventOverlay(overlay);
+    }
+
+    void PrintSegmentWindowOverlay(const SegmentOverlaySnapshot& overlay) const
+    {
         SRL::Debug::Print(1, 18, "OVR car:%d near:%d ws:%d d:%d n:%u",
-                          static_cast<int>(carSegmentId),
-                          static_cast<int>(nearestSegmentId),
-                          static_cast<int>(windowStartId),
-                          static_cast<int>(windowDir),
-                          static_cast<unsigned>(windowCount));
+                          static_cast<int>(overlay.carSegmentId),
+                          static_cast<int>(overlay.nearestSegmentId),
+                          static_cast<int>(overlay.windowStartId),
+                          static_cast<int>(overlay.windowDir),
+                          static_cast<unsigned>(overlay.windowCount));
         SRL::Debug::Print(1, 19, "OVR seq:%d,%d,%d,%d,%d",
-                          static_cast<int>(seq[0]),
-                          static_cast<int>(seq[1]),
-                          static_cast<int>(seq[2]),
-                          static_cast<int>(seq[3]),
-                          static_cast<int>(seq[4]));
+                          static_cast<int>(overlay.seq[0]),
+                          static_cast<int>(overlay.seq[1]),
+                          static_cast<int>(overlay.seq[2]),
+                          static_cast<int>(overlay.seq[3]),
+                          static_cast<int>(overlay.seq[4]));
         SRL::Debug::Print(1, 20, "OVR car X:%c%d Y:%c%d Z:%c%d",
-                          carXSgn,
-                          static_cast<int>(std::abs(carX)),
-                          carYSgn,
-                          static_cast<int>(std::abs(carY)),
-                          carZSgn,
-                          static_cast<int>(std::abs(carZ)));
+                          overlay.carXSgn,
+                          static_cast<int>(std::abs(overlay.carX)),
+                          overlay.carYSgn,
+                          static_cast<int>(std::abs(overlay.carY)),
+                          overlay.carZSgn,
+                          static_cast<int>(std::abs(overlay.carZ)));
         SRL::Debug::Print(1, 22, "OVR cam X:%c%d Y:%c%d Z:%c%d",
-                          camXSgn,
-                          static_cast<int>(std::abs(camX)),
-                          camYSgn,
-                          static_cast<int>(std::abs(camY)),
-                          camZSgn,
-                          static_cast<int>(std::abs(camZ)));
+                          overlay.camXSgn,
+                          static_cast<int>(std::abs(overlay.camX)),
+                          overlay.camYSgn,
+                          static_cast<int>(std::abs(overlay.camY)),
+                          overlay.camZSgn,
+                          static_cast<int>(std::abs(overlay.camZ)));
+    }
+
+    void PrintSegmentSpatialOverlay(const SegmentOverlaySnapshot& overlay) const
+    {
         SRL::Debug::Print(1, 26, "OVR dir y:%d fx:%d fz:%d cx:%d cz:%d",
                           static_cast<int>(carYawDeg_),
-                          static_cast<int>(fwdX),
-                          static_cast<int>(fwdZ),
-                          static_cast<int>(camDirX),
-                          static_cast<int>(camDirZ));
+                          static_cast<int>(overlay.fwdX),
+                          static_cast<int>(overlay.fwdZ),
+                          static_cast<int>(overlay.camDirX),
+                          static_cast<int>(overlay.camDirZ));
         SRL::Debug::Print(1, 27, "OVR y seg:%d dy:%d gr:%d gf:%d gt:%d sf:%u fm:%u fc:%d",
-                          static_cast<int>(segY),
-                          static_cast<int>(deltaY),
-                          static_cast<int>(lastGroundProbeRearY_),
-                          static_cast<int>(lastGroundProbeFrontY_),
-                          static_cast<int>(lastGroundProbeTargetY_),
+                          static_cast<int>(overlay.segY),
+                          static_cast<int>(overlay.deltaY),
+                          static_cast<int>(groundProbeDebug_.rearY),
+                          static_cast<int>(groundProbeDebug_.frontY),
+                          static_cast<int>(groundProbeDebug_.targetY),
                           static_cast<unsigned>(lastRuntimeFrameState_.groundSurfaceType),
                           static_cast<unsigned>(lastRuntimeFrameState_.groundFamilyId),
                           static_cast<int>(lastRuntimeFrameState_.groundFaceIndex));
-        SRL::Debug::Print(1, 21, "OVR face tr:%u ca:%u tt:%u",
-                          static_cast<unsigned>(submittedTrackFaces),
-                          static_cast<unsigned>(submittedCarFaces),
-                          static_cast<unsigned>(submittedFacesTotal));
-        SRL::Debug::Print(1, 24, "OVR sba ld:%u rd:%u m:%u f:%u",
-                          static_cast<unsigned>(context_.sbaLoaded ? 1u : 0u),
-                          static_cast<unsigned>((context_.renderCarShadowModel && context_.carShadowRenderer) ? 1u : 0u),
-                          static_cast<unsigned>(context_.sbaMeshCount),
-                          static_cast<unsigned>(context_.sbaFaceCount));
-        const int32_t shX = fxpToInt(lastShadowWorldPos_.X);
-        const int32_t shY = fxpToInt(lastShadowWorldPos_.Y);
-        const int32_t shZ = fxpToInt(lastShadowWorldPos_.Z);
+    }
+
+    void PrintShadowSpatialOverlay() const
+    {
+        const int32_t shX = FxpToIntDebug(shadowDebug_.worldPos.X);
+        const int32_t shY = FxpToIntDebug(shadowDebug_.worldPos.Y);
+        const int32_t shZ = FxpToIntDebug(shadowDebug_.worldPos.Z);
         const char shXSgn = (shX < 0) ? '-' : '+';
         const char shYSgn = (shY < 0) ? '-' : '+';
         const char shZSgn = (shZ < 0) ? '-' : '+';
@@ -2029,95 +1975,71 @@ private:
                           static_cast<int>(std::abs(shY)),
                           shZSgn,
                           static_cast<int>(std::abs(shZ)),
-                          static_cast<int>(lastShadowYawDeg_));
+                          static_cast<int>(shadowDebug_.yawDeg));
+    }
+
+    void PrintFaceAndShadowOverlay(uint32_t submittedTrackFaces,
+                                   uint32_t submittedCarFaces,
+                                   uint32_t submittedFacesTotal) const
+    {
+        SRL::Debug::Print(1, 21, "OVR face tr:%u ca:%u tt:%u",
+                          static_cast<unsigned>(submittedTrackFaces),
+                          static_cast<unsigned>(submittedCarFaces),
+                          static_cast<unsigned>(submittedFacesTotal));
+        SRL::Debug::Print(1, 24, "OVR sba ld:%u rd:%u m:%u f:%u",
+                          static_cast<unsigned>(context_.sbaLoaded ? 1u : 0u),
+                          static_cast<unsigned>((context_.renderCarShadowModel && context_.carShadowRenderer) ? 1u : 0u),
+                          static_cast<unsigned>(context_.sbaMeshCount),
+                          static_cast<unsigned>(context_.sbaFaceCount));
+    }
+
+    void PrintGroundProbeOverlay(const SegmentOverlaySnapshot& overlay) const
+    {
         SRL::Debug::Print(1, 29, "OVR gp m:%u dx:%d dz:%d wh:%u wx:%d wz:%d",
-                          static_cast<unsigned>(lastGroundProbeMask_),
-                          static_cast<int>(deltaX),
-                          static_cast<int>(deltaZ),
+                          static_cast<unsigned>(groundProbeDebug_.mask),
+                          static_cast<int>(overlay.deltaX),
+                          static_cast<int>(overlay.deltaZ),
                           static_cast<unsigned>(lastRuntimeFrameState_.debugWallHit),
                           static_cast<int>(lastRuntimeFrameState_.debugWallPushX),
                           static_cast<int>(lastRuntimeFrameState_.debugWallPushZ));
-        uint32_t qCalls = 0u;
-        uint32_t qGlobal = 0u;
-        uint32_t qCacheHits = 0u;
-        uint32_t qCacheMisses = 0u;
-        uint32_t qWallCalls = 0u;
-        uint32_t qWallHits = 0u;
-        if constexpr (kEnablePhysicsSafeTelemetry)
+    }
+
+    void PrintPhysicsQueryOverlay() const
+    {
+        if constexpr (!kEnablePhysicsSafeTelemetry)
         {
-            qCalls = context_.trackSystem
-                ? context_.trackSystem->SurfaceQueryCallsThisFrame()
-                : 0u;
-            qGlobal = context_.trackSystem
-                ? context_.trackSystem->SurfaceQueryGlobalPassesThisFrame()
-                : 0u;
-            qCacheHits = context_.trackSystem
-                ? context_.trackSystem->SurfaceQueryCacheHitsThisFrame()
-                : 0u;
-            qCacheMisses = context_.trackSystem
-                ? context_.trackSystem->SurfaceQueryCacheMissesThisFrame()
-                : 0u;
-            qWallCalls = context_.trackSystem
-                ? context_.trackSystem->WallQueryCallsThisFrame()
-                : 0u;
-            qWallHits = context_.trackSystem
-                ? context_.trackSystem->WallQueryHitsThisFrame()
-                : 0u;
-            SRL::Debug::Print(1, 23, "OVR q q:%u g:%u ch:%u cm:%u w:%u/%u",
-                              static_cast<unsigned>(qCalls),
-                              static_cast<unsigned>(qGlobal),
-                              static_cast<unsigned>(qCacheHits),
-                              static_cast<unsigned>(qCacheMisses),
-                              static_cast<unsigned>(qWallHits),
-                              static_cast<unsigned>(qWallCalls));
+            return;
         }
-        constexpr bool kEnableExtendedDrivetrainOverlay = false;
-        if constexpr (kEnableExtendedDrivetrainOverlay)
-        {
-            const int gearDebugValue = static_cast<int>(lastRuntimeFrameState_.debugGear);
-            const char gearDebugChar =
-                (gearDebugValue < 0)
-                    ? 'R'
-                    : static_cast<char>('0' + std::clamp<int>(gearDebugValue, 0, 9));
-            SRL::Debug::Print(0, 13, "GEAR:%c RPM:%d KM:%d    ",
-                              gearDebugChar,
-                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm),
-                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh));
-            SRL::Debug::Print(1, 17, "OVR gear:%c rpm:%d km:%d   ",
-                              gearDebugChar,
-                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm),
-                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh));
-            SRL::Debug::Print(1, 30, "OVR drv th:%d br:%u sp:%d km:%d g:%c rp:%d",
-                              static_cast<int>(lastRuntimeFrameState_.throttle),
-                              static_cast<unsigned>(lastRuntimeFrameState_.braking ? 1u : 0u),
-                              static_cast<int>(lastRuntimeFrameState_.speedProxy),
-                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh),
-                              gearDebugChar,
-                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm));
-            SRL::Debug::Print(0, 14, "DRV th:%d br:%u sp:%d km:%d g:%c rp:%d",
-                              static_cast<int>(lastRuntimeFrameState_.throttle),
-                              static_cast<unsigned>(lastRuntimeFrameState_.braking ? 1u : 0u),
-                              static_cast<int>(lastRuntimeFrameState_.speedProxy),
-                              static_cast<int>(lastRuntimeFrameState_.debugSpeedKmh),
-                              gearDebugChar,
-                              static_cast<int>(lastRuntimeFrameState_.debugEngineRpm));
-            SRL::Debug::Print(1, 31, "OVR dyn st:%d yr:%d ys:%d pdx:%d ndz:%d",
-                              static_cast<int>(context_.carSystem && context_.carSystem->get()
-                                                   ? context_.carSystem->get()->Commands().steering
-                                                   : 0),
-                              static_cast<int>(lastRuntimeFrameState_.debugYawRateDeg),
-                              static_cast<int>(lastRuntimeFrameState_.debugYawStepDeg),
-                              static_cast<int>(lastRuntimeFrameState_.debugPlanarDx),
-                              static_cast<int>(lastRuntimeFrameState_.debugNetDz));
-            SRL::Debug::Print(0, 31, "DYN st:%d yr:%d ys:%d pdx:%d ndz:%d",
-                              static_cast<int>(context_.carSystem && context_.carSystem->get()
-                                                   ? context_.carSystem->get()->Commands().steering
-                                                   : 0),
-                              static_cast<int>(lastRuntimeFrameState_.debugYawRateDeg),
-                              static_cast<int>(lastRuntimeFrameState_.debugYawStepDeg),
-                              static_cast<int>(lastRuntimeFrameState_.debugPlanarDx),
-                              static_cast<int>(lastRuntimeFrameState_.debugNetDz));
-        }
+
+        const uint32_t qCalls = context_.trackSystem
+            ? context_.trackSystem->SurfaceQueryCallsThisFrame()
+            : 0u;
+        const uint32_t qGlobal = context_.trackSystem
+            ? context_.trackSystem->SurfaceQueryGlobalPassesThisFrame()
+            : 0u;
+        const uint32_t qCacheHits = context_.trackSystem
+            ? context_.trackSystem->SurfaceQueryCacheHitsThisFrame()
+            : 0u;
+        const uint32_t qCacheMisses = context_.trackSystem
+            ? context_.trackSystem->SurfaceQueryCacheMissesThisFrame()
+            : 0u;
+        const uint32_t qWallCalls = context_.trackSystem
+            ? context_.trackSystem->WallQueryCallsThisFrame()
+            : 0u;
+        const uint32_t qWallHits = context_.trackSystem
+            ? context_.trackSystem->WallQueryHitsThisFrame()
+            : 0u;
+        SRL::Debug::Print(1, 23, "OVR q q:%u g:%u ch:%u cm:%u w:%u/%u",
+                          static_cast<unsigned>(qCalls),
+                          static_cast<unsigned>(qGlobal),
+                          static_cast<unsigned>(qCacheHits),
+                          static_cast<unsigned>(qCacheMisses),
+                          static_cast<unsigned>(qWallHits),
+                          static_cast<unsigned>(qWallCalls));
+    }
+
+    void PrintInputOverlay() const
+    {
         SRL::Debug::Print(1, 28, "OVR inp dL:%u dR:%u L:%u R:%u C:%u B:%u",
                           static_cast<unsigned>(lastInput_.leftHeld ? 1u : 0u),
                           static_cast<unsigned>(lastInput_.rightHeld ? 1u : 0u),
@@ -2125,24 +2047,27 @@ private:
                           static_cast<unsigned>(lastInput_.rHeld ? 1u : 0u),
                           static_cast<unsigned>(lastInput_.cHeld ? 1u : 0u),
                           static_cast<unsigned>(lastInput_.bHeld ? 1u : 0u));
+    }
 
+    void PrintSegmentEventOverlay(const SegmentOverlaySnapshot& overlay)
+    {
         const bool carSegChanged =
-            (carSegmentId > 0) &&
+            (overlay.carSegmentId > 0) &&
             (diagPrevCarSegmentId_ > 0) &&
-            (carSegmentId != diagPrevCarSegmentId_);
+            (overlay.carSegmentId != diagPrevCarSegmentId_);
         const bool startChanged =
-            (windowStartId > 0) &&
+            (overlay.windowStartId > 0) &&
             (diagPrevWindowStartId_ > 0) &&
-            (windowStartId != diagPrevWindowStartId_);
+            (overlay.windowStartId != diagPrevWindowStartId_);
         if constexpr (!kEnablePhysicsSafeTelemetry)
         {
             if (carSegChanged || startChanged)
             {
                 SRL::Debug::Print(1, 23, "OVR evt car:%d>%d ws:%d>%d",
                                   static_cast<int>(diagPrevCarSegmentId_),
-                                  static_cast<int>(carSegmentId),
+                                  static_cast<int>(overlay.carSegmentId),
                                   static_cast<int>(diagPrevWindowStartId_),
-                                  static_cast<int>(windowStartId));
+                                  static_cast<int>(overlay.windowStartId));
             }
             else
             {
@@ -2150,8 +2075,115 @@ private:
             }
         }
 
-        if (carSegmentId > 0) diagPrevCarSegmentId_ = static_cast<int16_t>(carSegmentId);
-        if (windowStartId > 0) diagPrevWindowStartId_ = static_cast<int16_t>(windowStartId);
+        if (overlay.carSegmentId > 0) diagPrevCarSegmentId_ = static_cast<int16_t>(overlay.carSegmentId);
+        if (overlay.windowStartId > 0) diagPrevWindowStartId_ = static_cast<int16_t>(overlay.windowStartId);
+    }
+
+    struct SegmentOverlaySnapshot
+    {
+        int32_t windowStartId = -1;
+        int8_t windowDir = 1;
+        uint16_t windowCount = 0;
+        int32_t carSegmentId = -1;
+        int32_t nearestSegmentId = -1;
+        int32_t carX = 0;
+        int32_t carY = 0;
+        int32_t carZ = 0;
+        int32_t camX = 0;
+        int32_t camY = 0;
+        int32_t camZ = 0;
+        int32_t segY = 0;
+        int32_t deltaY = 0;
+        int32_t deltaX = 0;
+        int32_t deltaZ = 0;
+        int32_t camDirX = 0;
+        int32_t camDirZ = 0;
+        int32_t fwdX = 0;
+        int32_t fwdZ = 0;
+        char carXSgn = '+';
+        char carYSgn = '+';
+        char carZSgn = '+';
+        char camXSgn = '+';
+        char camYSgn = '+';
+        char camZSgn = '+';
+        std::array<int32_t, 5> seq{{-1, -1, -1, -1, -1}};
+    };
+
+    static int32_t FxpToIntDebug(const SRL::Math::Types::Fxp& v)
+    {
+        return v.RawValue() >> 16;
+    }
+
+    bool BuildSegmentOverlaySnapshot(SegmentOverlaySnapshot& out) const
+    {
+        if (!context_.trackSystemReady || !context_.trackSystem) return false;
+
+        const bool windowValid =
+            context_.trackSystem->GetRenderWindowDebugSnapshot(out.windowStartId,
+                                                               out.windowDir,
+                                                               out.windowCount);
+
+        out.carSegmentId = static_cast<int32_t>(latestActiveSegmentId_);
+        int32_t nearestSegmentId = -1;
+        SRL::Math::Types::Vector3D nearestCenter{};
+        (void)context_.trackSystem->FindNearestSegment(context_.carWorldPosition,
+                                                       context_.trackSegOffset,
+                                                       nearestSegmentId,
+                                                       nearestCenter);
+        out.nearestSegmentId = nearestSegmentId;
+
+        SRL::Math::Types::Vector3D carSegmentCenter{};
+        const bool carCenterValid =
+            (out.carSegmentId > 0) &&
+            context_.trackSystem->FindSegmentCenterById(out.carSegmentId,
+                                                        context_.trackSegOffset,
+                                                        carSegmentCenter);
+
+        out.carY = FxpToIntDebug(context_.carWorldPosition.Y);
+        out.carX = FxpToIntDebug(context_.carWorldPosition.X);
+        out.carZ = FxpToIntDebug(context_.carWorldPosition.Z);
+        out.camX = FxpToIntDebug(lastValidCameraLocation_.X);
+        out.camY = FxpToIntDebug(lastValidCameraLocation_.Y);
+        out.camZ = FxpToIntDebug(lastValidCameraLocation_.Z);
+        out.segY = carCenterValid ? FxpToIntDebug(carSegmentCenter.Y) : 0;
+        out.deltaY = carCenterValid
+            ? FxpToIntDebug(context_.carWorldPosition.Y - carSegmentCenter.Y)
+            : 0;
+        out.deltaX = carCenterValid
+            ? FxpToIntDebug(context_.carWorldPosition.X - carSegmentCenter.X)
+            : 0;
+        out.deltaZ = carCenterValid
+            ? FxpToIntDebug(context_.carWorldPosition.Z - carSegmentCenter.Z)
+            : 0;
+        out.camDirX = FxpToIntDebug(lastValidLookTarget_.X - lastValidCameraLocation_.X);
+        out.camDirZ = FxpToIntDebug(lastValidLookTarget_.Z - lastValidCameraLocation_.Z);
+        out.carXSgn = (out.carX >= 0) ? '+' : '-';
+        out.carYSgn = (out.carY >= 0) ? '+' : '-';
+        out.carZSgn = (out.carZ >= 0) ? '+' : '-';
+        out.camXSgn = (out.camX >= 0) ? '+' : '-';
+        out.camYSgn = (out.camY >= 0) ? '+' : '-';
+        out.camZSgn = (out.camZ >= 0) ? '+' : '-';
+
+        const auto yawAngle =
+            SRL::Math::Types::Angle::FromDegrees(
+                SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(carYawDeg_) << 16));
+        out.fwdX = FxpToIntDebug(SRL::Math::Trigonometry::Sin(yawAngle));
+        out.fwdZ = FxpToIntDebug(
+            SRL::Math::Types::Fxp::BuildRaw(-SRL::Math::Trigonometry::Cos(yawAngle).RawValue()));
+
+        if (windowValid)
+        {
+            for (size_t i = 0; i < out.seq.size(); ++i)
+            {
+                int32_t id = -1;
+                if (context_.trackSystem->GetRenderWindowSegmentIdAt(i, id))
+                {
+                    out.seq[i] = id;
+                }
+            }
+        }
+
+        return true;
     }
 
     void PrintSh2SplitTelemetry()
@@ -2162,8 +2194,8 @@ private:
         const uint16_t trackSlaveProducerTicks = context_.trackSystem->Telemetry().producer.slaveLastJobTicks;
         const uint16_t trackSlaveSortTicks = context_.trackSystem->SlaveSortTicksThisFrame();
         const uint16_t trackSlavePlanTicks = context_.trackSystem->SlavePlanTicksThisFrame();
-        const uint16_t simSlaveTicks = simSlaveLastJobTicksThisFrame_;
-        const uint16_t simMasterWaitTicks = simMasterWaitTicksThisFrame_;
+        const uint16_t simSlaveTicks = simState_.slaveLastJobTicksThisFrame;
+        const uint16_t simMasterWaitTicks = simState_.masterWaitTicksThisFrame;
 
         const uint32_t masterBusyTicks = static_cast<uint32_t>(trackMasterTicks);
         const uint32_t masterWaitTicks = static_cast<uint32_t>(simMasterWaitTicks);
@@ -2215,8 +2247,8 @@ private:
                               static_cast<unsigned>(simSlaveTicks),
                               static_cast<unsigned>(masterWaitTicks),
                               static_cast<unsigned>(masterWaitPctOfSim),
-                              static_cast<unsigned>(simSlaveDispatchCount_),
-                              static_cast<unsigned>(simSlaveDispatchSkipsTrackBusy_));
+                              static_cast<unsigned>(simState_.slaveDispatchCount),
+                              static_cast<unsigned>(simState_.slaveDispatchSkipsTrackBusy));
         }
     }
 
@@ -2235,23 +2267,23 @@ private:
 #endif
 
         const uint32_t vblankNow = SRL_AppGetVblankCounter();
-        if (!fpsVblankValid_)
+        if (!fpsState_.vblankValid)
         {
-            fpsVblankValid_ = true;
-            fpsLastVblank_ = vblankNow;
+            fpsState_.vblankValid = true;
+            fpsState_.lastVblank = vblankNow;
             return;
         }
 
-        uint32_t vblankDelta = vblankNow - fpsLastVblank_;
-        fpsLastVblank_ = vblankNow;
+        uint32_t vblankDelta = vblankNow - fpsState_.lastVblank;
+        fpsState_.lastVblank = vblankNow;
         if (vblankDelta == 0u)
         {
             // Should not happen in steady state, but keep the metric stable.
             vblankDelta = 1u;
         }
 
-        ++fpsSampleFrames_;
-        fpsSampleVblanks_ += vblankDelta;
+        ++fpsState_.sampleFrames;
+        fpsState_.sampleVblanks += vblankDelta;
         const uint32_t frameTimeX100 = static_cast<uint32_t>(
             (static_cast<uint64_t>(vblankDelta) * 100000u + (kDisplayRefreshHz / 2u)) /
             static_cast<uint64_t>(kDisplayRefreshHz));
@@ -2259,44 +2291,44 @@ private:
         constexpr uint32_t kTarget60FrameTimeX100 = 100000u / 60u; // 16.67 ms
         if (frameTimeX100 > kTarget30FrameTimeX100)
         {
-            ++fpsFramesOver30Budget_;
+            ++fpsState_.framesOver30Budget;
         }
         if (frameTimeX100 > kTarget60FrameTimeX100)
         {
-            ++fpsFramesOver60Budget_;
+            ++fpsState_.framesOver60Budget;
         }
 
         constexpr uint32_t kSampleWindowFrames = 60u;
-        if (fpsSampleVblanks_ == 0u)
+        if (fpsState_.sampleVblanks == 0u)
         {
             return;
         }
 
         const uint64_t fpsNum = static_cast<uint64_t>(kDisplayRefreshHz) *
                                 static_cast<uint64_t>(10u) *
-                                static_cast<uint64_t>(fpsSampleFrames_);
+                                static_cast<uint64_t>(fpsState_.sampleFrames);
         const uint32_t fpsX10 = static_cast<uint32_t>(
-            (fpsNum + static_cast<uint64_t>(fpsSampleVblanks_ / 2u)) /
-            static_cast<uint64_t>(fpsSampleVblanks_));
+            (fpsNum + static_cast<uint64_t>(fpsState_.sampleVblanks / 2u)) /
+            static_cast<uint64_t>(fpsState_.sampleVblanks));
 
-        const uint64_t frameMsNum = static_cast<uint64_t>(10000u) * static_cast<uint64_t>(fpsSampleVblanks_);
+        const uint64_t frameMsNum = static_cast<uint64_t>(10000u) * static_cast<uint64_t>(fpsState_.sampleVblanks);
         const uint64_t frameMsDen = static_cast<uint64_t>(kDisplayRefreshHz) *
-                                    static_cast<uint64_t>(fpsSampleFrames_);
+                                    static_cast<uint64_t>(fpsState_.sampleFrames);
         const uint32_t frameMsX10 = static_cast<uint32_t>(
             (frameMsNum + (frameMsDen / 2u)) / std::max<uint64_t>(1u, frameMsDen));
 
-        const uint64_t vbNum = static_cast<uint64_t>(fpsSampleVblanks_) * static_cast<uint64_t>(100u);
+        const uint64_t vbNum = static_cast<uint64_t>(fpsState_.sampleVblanks) * static_cast<uint64_t>(100u);
         const uint32_t vbX100 = static_cast<uint32_t>(
-            (vbNum + static_cast<uint64_t>(fpsSampleFrames_ / 2u)) /
-            static_cast<uint64_t>(fpsSampleFrames_));
+            (vbNum + static_cast<uint64_t>(fpsState_.sampleFrames / 2u)) /
+            static_cast<uint64_t>(fpsState_.sampleFrames));
 
-        const uint32_t drop30Pct = (fpsSampleFrames_ > 0u)
-            ? static_cast<uint32_t>((static_cast<uint64_t>(fpsFramesOver30Budget_) * 100u) /
-                                    static_cast<uint64_t>(fpsSampleFrames_))
+        const uint32_t drop30Pct = (fpsState_.sampleFrames > 0u)
+            ? static_cast<uint32_t>((static_cast<uint64_t>(fpsState_.framesOver30Budget) * 100u) /
+                                    static_cast<uint64_t>(fpsState_.sampleFrames))
             : 0u;
-        const uint32_t drop60Pct = (fpsSampleFrames_ > 0u)
-            ? static_cast<uint32_t>((static_cast<uint64_t>(fpsFramesOver60Budget_) * 100u) /
-                                    static_cast<uint64_t>(fpsSampleFrames_))
+        const uint32_t drop60Pct = (fpsState_.sampleFrames > 0u)
+            ? static_cast<uint32_t>((static_cast<uint64_t>(fpsState_.framesOver60Budget) * 100u) /
+                                    static_cast<uint64_t>(fpsState_.sampleFrames))
             : 0u;
 
         SRL::Debug::Print(0, 16, "FPS:%u.%u ms:%u.%u vb:%u.%02u d30:%u%% d60:%u%%",
@@ -2309,12 +2341,12 @@ private:
                           static_cast<unsigned>(drop30Pct),
                           static_cast<unsigned>(drop60Pct));
 
-        if (fpsSampleFrames_ >= kSampleWindowFrames)
+        if (fpsState_.sampleFrames >= kSampleWindowFrames)
         {
-            fpsSampleFrames_ = 0u;
-            fpsSampleVblanks_ = 0u;
-            fpsFramesOver30Budget_ = 0u;
-            fpsFramesOver60Budget_ = 0u;
+            fpsState_.sampleFrames = 0u;
+            fpsState_.sampleVblanks = 0u;
+            fpsState_.framesOver30Budget = 0u;
+            fpsState_.framesOver60Budget = 0u;
         }
     }
 
@@ -3380,48 +3412,87 @@ private:
         int32_t* outputYawDeg_ = nullptr;
     };
 
+    struct RealtimeFpsState
+    {
+        bool vblankValid = false;
+        uint32_t lastVblank = 0u;
+        uint8_t sampleFrames = 0u;
+        uint16_t sampleVblanks = 0u;
+        uint8_t framesOver30Budget = 0u;
+        uint8_t framesOver60Budget = 0u;
+    };
+
+    struct SimulationRuntimeState
+    {
+        SimulationPayload input[2]{};
+        SimulationPayload output[2]{};
+        bool jobInFlight = false;
+        bool hasCompleted = false;
+        uint8_t writeIdx = 0;
+        uint8_t inFlightIdx = 0;
+        uint8_t completedIdx = 0;
+        uint8_t slaveBackoffFrames = 0;
+        uint32_t slaveDispatchCount = 0;
+        uint32_t slaveDispatchSkipsTrackBusy = 0;
+        uint32_t slaveDispatchSkipsBackoff = 0;
+        uint32_t drainSoftTimeouts = 0;
+        uint32_t drainHardWaits = 0;
+        uint16_t masterWaitTicksThisFrame = 0;
+        uint16_t slaveLastJobTicksThisFrame = 0;
+    };
+
+    struct CarPrepareRuntimeState
+    {
+        int32_t inputYaw[2]{};
+        int32_t outputYaw[2]{};
+        bool jobInFlight = false;
+        bool hasCompleted = false;
+        uint8_t writeIdx = 0;
+        uint8_t inFlightIdx = 0;
+        uint8_t completedIdx = 0;
+    };
+
+    struct GroundProbeDebugState
+    {
+        int16_t rearY = 0;
+        int16_t frontY = 0;
+        int16_t targetY = 0;
+        uint8_t mask = 0;
+    };
+
+    struct ShadowDebugState
+    {
+        SRL::Math::Types::Vector3D worldPos{0.0, 0.0, 0.0};
+        int32_t yawDeg = 0;
+    };
+
+    struct LowWorkOverlayState
+    {
+        uint32_t lastFreeBytes = 0;
+        bool freeValid = false;
+        TrackSystem::LowWorkCategoryBreakdown lastBreakdown{};
+        bool breakdownValid = false;
+        LowWorkTagGroupOverlay lastTagGroup{};
+        bool tagGroupValid = false;
+        uint32_t lastPayloadBytes = 0;
+        uint32_t lastOverheadBytes = 0;
+        uint32_t lastFreeBlocks = 0;
+        bool allocatorValid = false;
+    };
+
     Context context_{};
     SRL::Input::Digital pad_{0};
-    CameraRig::OrbitState orbitState_{};
+    CameraRig::OrbitState orbitState_{};    
     int32_t carYawDeg_ = 0;
     uint32_t frameCounter_ = 0;
-    bool fpsVblankValid_ = false;
-    uint32_t fpsLastVblank_ = 0u;
-    uint32_t fpsSampleFrames_ = 0u;
-    uint32_t fpsSampleVblanks_ = 0u;
-    uint32_t fpsFramesOver30Budget_ = 0u;
-    uint32_t fpsFramesOver60Budget_ = 0u;
+    RealtimeFpsState fpsState_{};
     SimulationTask simulationTask_{};
-    SimulationPayload simInput_[2]{};
-    SimulationPayload simOutput_[2]{};
-    bool simJobInFlight_ = false;
-    bool simHasCompleted_ = false;
-    uint8_t simWriteIdx_ = 0;
-    uint8_t simInFlightIdx_ = 0;
-    uint8_t simCompletedIdx_ = 0;
-    uint8_t simSlaveBackoffFrames_ = 0;
-    uint32_t simSlaveDispatchCount_ = 0;
-    uint32_t simSlaveDispatchSkipsTrackBusy_ = 0;
-    uint32_t simSlaveDispatchSkipsBackoff_ = 0;
-    uint32_t simDrainSoftTimeouts_ = 0;
-    uint32_t simDrainHardWaits_ = 0;
-    uint16_t simMasterWaitTicksThisFrame_ = 0;
-    uint16_t simSlaveLastJobTicksThisFrame_ = 0;
+    SimulationRuntimeState simState_{};
     CarRenderPrepareTask carPrepareTask_{};
-    int32_t carPrepareInputYaw_[2]{};
-    int32_t carPrepareOutputYaw_[2]{};
-    bool carPrepareJobInFlight_ = false;
-    bool carPrepareHasCompleted_ = false;
-    uint8_t carPrepareWriteIdx_ = 0;
-    uint8_t carPrepareInFlightIdx_ = 0;
-    uint8_t carPrepareCompletedIdx_ = 0;
+    CarPrepareRuntimeState carPrepareState_{};
     int16_t latestActiveSegmentId_ = -1;
-    int16_t lastGroundProbeRearY_ = 0;
-    int16_t lastGroundProbeFrontY_ = 0;
-    int16_t lastGroundProbeTargetY_ = 0;
-    uint8_t lastGroundProbeMask_ = 0;
-    SRL::Math::Types::Vector3D lastShadowWorldPos_{0.0, 0.0, 0.0};
-    int32_t lastShadowYawDeg_ = 0;
+    GroundProbeDebugState groundProbeDebug_{};
+    ShadowDebugState shadowDebug_{};
     int32_t cameraSlopeLiftRaw_ = 0;
     Game::GameplayFrameState lastRuntimeFrameState_{};
     int16_t diagPrevCarSegmentId_ = -1;
@@ -3467,24 +3538,8 @@ private:
     LwrStageTrace lwrStageTrace_{};
     uint16_t lwrTraceCooldownFrames_ = 0;
     uint16_t lowWorkFreeOverlayCooldownFrames_ = 0;
-    uint32_t lastLowWorkFreeOverlayBytes_ = 0;
-    bool lowWorkFreeOverlayValid_ = false;
-    TrackSystem::LowWorkCategoryBreakdown lastLowWorkBreakdownOverlay_{};
-    bool lowWorkBreakdownOverlayValid_ = false;
-    LowWorkTagGroupOverlay lastLowWorkTagGroupOverlay_{};
-    bool lowWorkTagGroupOverlayValid_ = false;
-    uint32_t lastLowWorkPayloadOverlayBytes_ = 0;
-    uint32_t lastLowWorkOverheadOverlayBytes_ = 0;
-    uint32_t lastLowWorkFreeBlocksOverlay_ = 0;
-    bool lowWorkAllocatorOverlayValid_ = false;
+    LowWorkOverlayState lowWorkOverlay_{};
     bool yHeldPrev_ = false;
-    bool leftHeldPrev_ = false;
-    bool rightHeldPrev_ = false;
-    bool lHeldPrev_ = false;
-    bool rHeldPrev_ = false;
-    uint32_t lastLeftPressFrame_ = 0;
-    uint32_t lastRightPressFrame_ = 0;
-    int8_t reverseSteerDirWhileHeld_ = 0;
     FrameInputState lastInput_{};
     uint8_t carForwardOffsetRepeatFrames_ = 0u;
 };

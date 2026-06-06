@@ -7,14 +7,18 @@
 // C??u em RBG0 com rota????o simples (tilemap), seguindo o yaw da c??mera
 struct SkyBackgroundDome
 {
+    static constexpr SRL::Math::Types::Fxp kFxpZero = SRL::Math::Types::Fxp::BuildRaw(0);
+    static constexpr SRL::Math::Types::Fxp kFxpHalf = SRL::Math::Types::Fxp::BuildRaw(1 << 15);
+    static constexpr SRL::Math::Types::Fxp kFxpOne = SRL::Math::Types::Fxp::BuildRaw(1 << 16);
+
     SRL::Tilemap::Interfaces::Bmp2Tile* tile = nullptr;
-    SRL::Math::Types::Fxp yawFactor = SRL::Math::Types::Fxp(1.0f);
-    SRL::Math::Types::Fxp pitchFactor = SRL::Math::Types::Fxp(1.0f);
-    SRL::Math::Types::Fxp pitchOffsetFactor = SRL::Math::Types::Fxp(0.5f);
-    SRL::Math::Types::Fxp viewYawFactor = SRL::Math::Types::Fxp(1.0f);
-    SRL::Math::Types::Fxp lateralOffsetFactor = SRL::Math::Types::Fxp(0.0f);
-    SRL::Math::Types::Fxp baseOffsetX = SRL::Math::Types::Fxp::Convert(0);
-    SRL::Math::Types::Fxp baseOffsetY = SRL::Math::Types::Fxp::Convert(-128);
+    SRL::Math::Types::Fxp yawFactor = kFxpOne;
+    SRL::Math::Types::Fxp pitchFactor = kFxpOne;
+    SRL::Math::Types::Fxp pitchOffsetFactor = kFxpHalf;
+    SRL::Math::Types::Fxp viewYawFactor = kFxpOne;
+    SRL::Math::Types::Fxp lateralOffsetFactor = kFxpZero;
+    SRL::Math::Types::Fxp baseOffsetX = kFxpZero;
+    SRL::Math::Types::Fxp baseOffsetY = SRL::Math::Types::Fxp::Convert(static_cast<int16_t>(-128));
     bool loaded = false;
 
     ~SkyBackgroundDome()
@@ -76,13 +80,20 @@ struct SkyBackgroundDome
     {
         if (!loaded) return;
 
+        const int16_t yawDeg16 = static_cast<int16_t>(yawDeg);
+        const int16_t viewYawDeg16 = static_cast<int16_t>(viewYawDeg);
+        const int16_t viewPitchDeg16 = static_cast<int16_t>(viewPitchDeg);
+        const SRL::Math::Types::Fxp yawFxp = SRL::Math::Types::Fxp::Convert(yawDeg16);
+        const SRL::Math::Types::Fxp viewYawFxp = SRL::Math::Types::Fxp::Convert(viewYawDeg16);
+        const SRL::Math::Types::Fxp viewPitchFxp = SRL::Math::Types::Fxp::Convert(viewPitchDeg16);
+
         slPushMatrix();
         slUnitMatrix(nullptr);
-        SRL::Math::Types::Fxp vOffset = pitchOffsetFactor * SRL::Math::Types::Fxp::Convert(viewPitchDeg);
-        SRL::Math::Types::Fxp hOffset = lateralOffsetFactor * SRL::Math::Types::Fxp::Convert(viewYawDeg);
+        SRL::Math::Types::Fxp vOffset = pitchOffsetFactor * viewPitchFxp;
+        SRL::Math::Types::Fxp hOffset = lateralOffsetFactor * viewYawFxp;
         slTranslate((baseOffsetX + hOffset).RawValue(), (baseOffsetY + vOffset).RawValue(), 0);
-        auto rotY = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(yawDeg) * yawFactor + SRL::Math::Types::Fxp::Convert(viewYawDeg) * viewYawFactor);
-        auto rotX = SRL::Math::Types::Angle::FromDegrees(SRL::Math::Types::Fxp::Convert(viewPitchDeg) * pitchFactor);
+        auto rotY = SRL::Math::Types::Angle::FromDegrees((yawFxp * yawFactor) + (viewYawFxp * viewYawFactor));
+        auto rotX = SRL::Math::Types::Angle::FromDegrees(viewPitchFxp * pitchFactor);
         slRotY(rotY.RawValue());
         slRotX(rotX.RawValue());
         SRL::VDP2::RBG0::SetCurrentTransform();
