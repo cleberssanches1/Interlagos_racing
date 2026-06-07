@@ -246,6 +246,26 @@ void CarSystem::TickCommandState()
 
 void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
 {
+    runtimeDebug_.speedProxy = frameState.speedProxy;
+    runtimeDebug_.speedKmh = frameState.debugSpeedKmh;
+    runtimeDebug_.engineRpm = frameState.debugEngineRpm;
+    runtimeDebug_.groundRearY = frameState.debugGroundYRear;
+    runtimeDebug_.groundFrontY = frameState.debugGroundYFront;
+    runtimeDebug_.groundTargetY = frameState.debugGroundYTarget;
+    runtimeDebug_.groundFaceIndex = frameState.groundFaceIndex;
+    runtimeDebug_.wallPushX = frameState.debugWallPushX;
+    runtimeDebug_.wallPushZ = frameState.debugWallPushZ;
+    runtimeDebug_.yawRateDeg = frameState.debugYawRateDeg;
+    runtimeDebug_.yawStepDeg = frameState.debugYawStepDeg;
+    runtimeDebug_.planarDx = frameState.debugPlanarDx;
+    runtimeDebug_.netDz = frameState.debugNetDz;
+    runtimeDebug_.gear = frameState.debugGear;
+    runtimeDebug_.groundMask = frameState.debugGroundMask;
+    runtimeDebug_.groundSurfaceType = frameState.groundSurfaceType;
+    runtimeDebug_.groundFamilyId = frameState.groundFamilyId;
+    runtimeDebug_.braking = frameState.braking;
+    runtimeDebug_.wallHit = frameState.debugWallHit;
+
     wheelInput_.speedKmh = frameState.speedProxy;
     wheelInput_.steering = frameState.steering;
     wheelInput_.yawStepDeg = frameState.debugYawStepDeg;
@@ -260,6 +280,8 @@ void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,
                                    uint32_t frameCounter,
                                    GameplayFrameState& ioFrameState)
 {
+    lastGameplayInput_ = input;
+
     const bool leftJustPressed = input.steerLeftHeld && !inputHistory_.leftHeldPrev;
     const bool rightJustPressed = input.steerRightHeld && !inputHistory_.rightHeldPrev;
     const bool lJustPressed = input.shiftDownHeld && !inputHistory_.shiftDownHeldPrev;
@@ -353,6 +375,7 @@ void CarSystem::PrepareGameplayFrameState(const GameplayInputSnapshot* input,
     else
     {
         UpdateWheels(false, false);
+        lastGameplayInput_ = {};
     }
 
     TickCommandState();
@@ -372,25 +395,24 @@ void CarSystem::SyncRenderState(const Vector3D& renderPosition, int32_t gameplay
     SetYawDegrees(gameplayYawDeg);
 }
 
-CarSystem::DrivetrainDebugSnapshot CarSystem::BuildDrivetrainDebugSnapshot(
-    const GameplayFrameState& frameState) const
+CarSystem::DrivetrainDebugSnapshot CarSystem::BuildDrivetrainDebugSnapshot() const
 {
     DrivetrainDebugSnapshot snapshot{};
-    const int gearDebugValue = static_cast<int>(frameState.debugGear);
+    const int gearDebugValue = static_cast<int>(runtimeDebug_.gear);
     snapshot.gearChar =
         (gearDebugValue < 0)
             ? 'R'
             : static_cast<char>('0' + std::clamp<int>(gearDebugValue, 0, 9));
-    snapshot.throttle = frameState.throttle;
-    snapshot.braking = frameState.braking;
-    snapshot.speedProxy = frameState.speedProxy;
-    snapshot.speedKmh = frameState.debugSpeedKmh;
-    snapshot.engineRpm = frameState.debugEngineRpm;
+    snapshot.throttle = commandState_.throttle;
+    snapshot.braking = runtimeDebug_.braking;
+    snapshot.speedProxy = runtimeDebug_.speedProxy;
+    snapshot.speedKmh = runtimeDebug_.speedKmh;
+    snapshot.engineRpm = runtimeDebug_.engineRpm;
     snapshot.steeringCommand = commandState_.steering;
-    snapshot.yawRateDeg = frameState.debugYawRateDeg;
-    snapshot.yawStepDeg = frameState.debugYawStepDeg;
-    snapshot.planarDx = frameState.debugPlanarDx;
-    snapshot.netDz = frameState.debugNetDz;
+    snapshot.yawRateDeg = runtimeDebug_.yawRateDeg;
+    snapshot.yawStepDeg = runtimeDebug_.yawStepDeg;
+    snapshot.planarDx = runtimeDebug_.planarDx;
+    snapshot.netDz = runtimeDebug_.netDz;
     return snapshot;
 }
 

@@ -55,6 +55,7 @@ public:
         bool shiftUpHeld = false;
         bool shiftLockHeld = false;
     };
+    GameplayInputSnapshot LastGameplayInput() const { return lastGameplayInput_; }
     void ApplyGameplayInput(const GameplayInputSnapshot& input,
                             uint32_t frameCounter,
                             GameplayFrameState& ioFrameState);
@@ -66,6 +67,28 @@ public:
                                    GameplayFrameState& ioFrameState);
     void ApplySimulationFrameState(const GameplayFrameState& frameState);
     void SyncRenderState(const Vector3D& renderPosition, int32_t gameplayYawDeg);
+    struct RuntimeDebugSnapshot
+    {
+        int16_t speedProxy = 0;
+        int16_t speedKmh = 0;
+        int16_t engineRpm = 0;
+        int16_t groundRearY = 0;
+        int16_t groundFrontY = 0;
+        int16_t groundTargetY = 0;
+        int16_t groundFaceIndex = 0;
+        int16_t wallPushX = 0;
+        int16_t wallPushZ = 0;
+        int16_t yawRateDeg = 0;
+        int16_t yawStepDeg = 0;
+        int16_t planarDx = 0;
+        int16_t netDz = 0;
+        int8_t gear = 0;
+        uint8_t groundMask = 0;
+        uint8_t groundSurfaceType = 0;
+        uint8_t groundFamilyId = 0;
+        bool braking = false;
+        bool wallHit = false;
+    };
     struct DrivetrainDebugSnapshot
     {
         char gearChar = '1';
@@ -80,7 +103,8 @@ public:
         int16_t planarDx = 0;
         int16_t netDz = 0;
     };
-    DrivetrainDebugSnapshot BuildDrivetrainDebugSnapshot(const GameplayFrameState& frameState) const;
+    const RuntimeDebugSnapshot& RuntimeDebug() const { return runtimeDebug_; }
+    DrivetrainDebugSnapshot BuildDrivetrainDebugSnapshot() const;
     void WriteCommandsToFrameState(GameplayFrameState& ioFrameState, bool enabled = true) const;
 
     void SetWorldPosition(const Vector3D& pos) { worldPosition_ = pos; }
@@ -194,6 +218,8 @@ private:
     bool isSmooth_{false};
     CarWheelRig wheelRig_{};
     CarWheelRig::Input wheelInput_{};
+    GameplayInputSnapshot lastGameplayInput_{};
+    RuntimeDebugSnapshot runtimeDebug_{};
     static constexpr size_t kCrashSkipMesh = SIZE_MAX;
     int32_t yawDeg_{0};
     int32_t visualYawOffsetDeg_{0};
