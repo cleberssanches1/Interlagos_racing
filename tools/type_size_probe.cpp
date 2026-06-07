@@ -39,6 +39,7 @@ DECLARE_SIZE_SYMBOL(size_gameloopsystem_segmentoverlaysnapshot, GameLoopSystem::
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_overlaydiagnosticssnapshot, GameLoopSystem::OverlayDiagnosticsSnapshot);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_sh2splittelemetrysnapshot, GameLoopSystem::Sh2SplitTelemetrySnapshot);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_framepresentationsnapshot, GameLoopSystem::FramePresentationSnapshot);
+DECLARE_SIZE_SYMBOL(size_gameloopsystem_context, GameLoopSystem::Context);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_autolaproutestate, GameLoopSystem::AutoLapRouteState);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_camerapathruntimestate, GameLoopSystem::CameraPathRuntimeState);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_realtimefpsstate, GameLoopSystem::RealtimeFpsState);
@@ -49,9 +50,12 @@ DECLARE_SIZE_SYMBOL(size_gameloopsystem_hwrstagetrace, GameLoopSystem::HwrStageT
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_lwrstagetrace, GameLoopSystem::LwrStageTrace);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_simulationpayload, GameLoopSystem::SimulationPayload);
 DECLARE_SIZE_SYMBOL(size_gameloopsystem_carrenderframestate, GameLoopSystem::CarRenderFrameState);
-DECLARE_SIZE_SYMBOL(size_tracksystem_trackframesnapshot_segmentmeta, TrackSystem::TrackFrameSnapshot::SegmentMeta);
-DECLARE_SIZE_SYMBOL(size_tracksystem_trackframesnapshot, TrackSystem::TrackFrameSnapshot);
+DECLARE_SIZE_SYMBOL(size_gameloopsystem, GameLoopSystem);
 DECLARE_SIZE_SYMBOL(size_tracksystem_trackframeplan, TrackSystem::TrackFramePlan);
+DECLARE_SIZE_SYMBOL(size_tracksystem_segmentlodstate, TrackSystem::SegmentRenderEntry::SegmentLodState);
+DECLARE_SIZE_SYMBOL(size_tracksystem_segmentrenderentry, TrackSystem::SegmentRenderEntry);
+DECLARE_SIZE_SYMBOL(size_tracksystem_slideboundaryupdate, TrackSystem::SlideBoundaryUpdate);
+DECLARE_SIZE_SYMBOL(size_tracksystem_slidebackbuffer, TrackSystem::SlideBackBuffer);
 DECLARE_SIZE_SYMBOL(size_tracksystem_sh2perfbucket, TrackSystem::Sh2PerfBucket);
 DECLARE_SIZE_SYMBOL(size_tracksystem_runtimediagnosticsstate, TrackSystem::RuntimeDiagnosticsState);
 DECLARE_SIZE_SYMBOL(size_tracksystem, TrackSystem);
@@ -77,6 +81,7 @@ int main()
     PrintSize<GameLoopSystem::OverlayDiagnosticsSnapshot>("GameLoopSystem::OverlayDiagnosticsSnapshot");
     PrintSize<GameLoopSystem::Sh2SplitTelemetrySnapshot>("GameLoopSystem::Sh2SplitTelemetrySnapshot");
     PrintSize<GameLoopSystem::FramePresentationSnapshot>("GameLoopSystem::FramePresentationSnapshot");
+    PrintSize<GameLoopSystem::Context>("GameLoopSystem::Context");
     PrintSize<GameLoopSystem::AutoLapRouteState>("GameLoopSystem::AutoLapRouteState");
     PrintSize<GameLoopSystem::CameraPathRuntimeState>("GameLoopSystem::CameraPathRuntimeState");
     PrintSize<GameLoopSystem::RealtimeFpsState>("GameLoopSystem::RealtimeFpsState");
@@ -87,9 +92,12 @@ int main()
     PrintSize<GameLoopSystem::LwrStageTrace>("GameLoopSystem::LwrStageTrace");
     PrintSize<GameLoopSystem::SimulationPayload>("GameLoopSystem::SimulationPayload");
     PrintSize<GameLoopSystem::CarRenderFrameState>("GameLoopSystem::CarRenderFrameState");
-    PrintSize<TrackSystem::TrackFrameSnapshot::SegmentMeta>("TrackSystem::TrackFrameSnapshot::SegmentMeta");
-    PrintSize<TrackSystem::TrackFrameSnapshot>("TrackSystem::TrackFrameSnapshot");
+    PrintSize<GameLoopSystem>("GameLoopSystem");
     PrintSize<TrackSystem::TrackFramePlan>("TrackSystem::TrackFramePlan");
+    PrintSize<TrackSystem::SegmentRenderEntry::SegmentLodState>("TrackSystem::SegmentRenderEntry::SegmentLodState");
+    PrintSize<TrackSystem::SegmentRenderEntry>("TrackSystem::SegmentRenderEntry");
+    PrintSize<TrackSystem::SlideBoundaryUpdate>("TrackSystem::SlideBoundaryUpdate");
+    PrintSize<TrackSystem::SlideBackBuffer>("TrackSystem::SlideBackBuffer");
     PrintSize<TrackSystem::Sh2PerfBucket>("TrackSystem::Sh2PerfBucket");
     PrintSize<TrackSystem::RuntimeDiagnosticsState>("TrackSystem::RuntimeDiagnosticsState");
     PrintSize<TrackSystem>("TrackSystem");

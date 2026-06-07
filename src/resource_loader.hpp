@@ -243,7 +243,7 @@ inline TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCoun
 struct TrackSegmentCopy
 {
     void* cartPtr = nullptr;
-    size_t size = 0;
+    uint32_t size = 0;
 };
 
 enum class CartCopyError

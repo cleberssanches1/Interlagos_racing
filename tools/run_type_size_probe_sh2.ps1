@@ -3,7 +3,8 @@ param()
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$buildDir = Join-Path $repoRoot "BuildDrop\type_size_probe"
+$buildRoot = Join-Path $repoRoot "BuildDrop"
+$buildDir = Join-Path $buildRoot "type_size_probe"
 $probeSource = Join-Path $repoRoot "tools\type_size_probe.cpp"
 $probeObject = Join-Path $buildDir "type_size_probe_sh2.o"
 $probeOutput = Join-Path $buildDir "type_size_probe_sh2.txt"
@@ -19,6 +20,7 @@ if (-not (Test-Path $nm))
     throw "SH2 nm not found: $nm"
 }
 
+New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
 $compileArgs = @(

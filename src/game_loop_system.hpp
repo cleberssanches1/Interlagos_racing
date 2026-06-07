@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -30,23 +31,39 @@ class GameLoopSystem
 public:
     struct Context
     {
+        enum : uint32_t
+        {
+            kEnableBgBit = 1u << 0,
+            kRenderTrackBit = 1u << 1,
+            kRenderCarBit = 1u << 2,
+            kRenderAxesBit = 1u << 3,
+            kTrackSystemReadyBit = 1u << 4,
+            kVerboseFrameLogsBit = 1u << 5,
+            kLogTrackBit = 1u << 6,
+            kLogCarBit = 1u << 7,
+            kEnableRuntimeStatsLogsBit = 1u << 8,
+            kEnableMinimalFpsOverlayBit = 1u << 9,
+            kEnableSlaveForCarPrepareBit = 1u << 10,
+            kEnableSlaveForSimulationBit = 1u << 11,
+            kSlaveSimulationLockstepBit = 1u << 12,
+            kEnableManualGouraudCopyBit = 1u << 13,
+            kAutoLapEnabledOnStartBit = 1u << 14,
+            kAllowAutoLapInputToggleBit = 1u << 15,
+            kRenderCarShadowModelBit = 1u << 16,
+            kSbaLoadedBit = 1u << 17
+        };
+
         bool* cartOkFlag = nullptr;
-        bool enableBg = true;
-        bool renderTrack = true;
-        bool renderCar = true;
-        bool renderAxes = false;
-        bool trackSystemReady = false;
-        bool verboseFrameLogs = false;
-        bool logTrack = true;
-        bool logCar = false;
-        bool enableRuntimeStatsLogs = true;
-        bool enableMinimalFpsOverlay = true;
-        bool enableSlaveForCarPrepare = false;
-        bool enableSlaveForSimulation = false;
-        bool slaveSimulationLockstep = true;
-        bool enableManualGouraudCopy = false;
-        bool autoLapEnabledOnStart = true;
-        bool allowAutoLapInputToggle = true;
+        uint32_t flags =
+            (kEnableBgBit |
+             kRenderTrackBit |
+             kRenderCarBit |
+             kLogTrackBit |
+             kEnableRuntimeStatsLogsBit |
+             kEnableMinimalFpsOverlayBit |
+             kSlaveSimulationLockstepBit |
+             kAutoLapEnabledOnStartBit |
+             kAllowAutoLapInputToggleBit);
         uint32_t faceCount = 0;
         uint32_t vertexCount = 0;
         SRL::Math::Types::Vector3D trackSegOffset{};
@@ -58,8 +75,6 @@ public:
         TrackSystem* trackSystem = nullptr;
         std::unique_ptr<Game::CarSystem>* carSystem = nullptr;
         MeshRenderer* carShadowRenderer = nullptr;
-        bool renderCarShadowModel = false;
-        bool sbaLoaded = false;
         uint16_t sbaMeshCount = 0;
         uint16_t sbaFaceCount = 0;
         RenderPipeline* renderPipeline = nullptr;
@@ -68,13 +83,58 @@ public:
         Game::ICarPhysics* carPhysics = nullptr;
         Game::IGameplayTick* gameplayTick = nullptr;
         Game::IAudioEvents* audioEvents = nullptr;
+
+        bool HasFlag(uint32_t bit) const { return (flags & bit) != 0u; }
+        void SetFlag(uint32_t bit, bool enabled)
+        {
+            if (enabled) flags |= bit;
+            else flags &= ~bit;
+        }
+
+        bool EnableBg() const { return HasFlag(kEnableBgBit); }
+        void SetEnableBg(bool enabled) { SetFlag(kEnableBgBit, enabled); }
+        bool RenderTrack() const { return HasFlag(kRenderTrackBit); }
+        void SetRenderTrack(bool enabled) { SetFlag(kRenderTrackBit, enabled); }
+        bool RenderCar() const { return HasFlag(kRenderCarBit); }
+        void SetRenderCar(bool enabled) { SetFlag(kRenderCarBit, enabled); }
+        bool RenderAxes() const { return HasFlag(kRenderAxesBit); }
+        void SetRenderAxes(bool enabled) { SetFlag(kRenderAxesBit, enabled); }
+        bool TrackSystemReady() const { return HasFlag(kTrackSystemReadyBit); }
+        void SetTrackSystemReady(bool enabled) { SetFlag(kTrackSystemReadyBit, enabled); }
+        bool VerboseFrameLogs() const { return HasFlag(kVerboseFrameLogsBit); }
+        void SetVerboseFrameLogs(bool enabled) { SetFlag(kVerboseFrameLogsBit, enabled); }
+        bool LogTrack() const { return HasFlag(kLogTrackBit); }
+        void SetLogTrack(bool enabled) { SetFlag(kLogTrackBit, enabled); }
+        bool LogCar() const { return HasFlag(kLogCarBit); }
+        void SetLogCar(bool enabled) { SetFlag(kLogCarBit, enabled); }
+        bool EnableRuntimeStatsLogs() const { return HasFlag(kEnableRuntimeStatsLogsBit); }
+        void SetEnableRuntimeStatsLogs(bool enabled) { SetFlag(kEnableRuntimeStatsLogsBit, enabled); }
+        bool EnableMinimalFpsOverlay() const { return HasFlag(kEnableMinimalFpsOverlayBit); }
+        void SetEnableMinimalFpsOverlay(bool enabled) { SetFlag(kEnableMinimalFpsOverlayBit, enabled); }
+        bool EnableSlaveForCarPrepare() const { return HasFlag(kEnableSlaveForCarPrepareBit); }
+        void SetEnableSlaveForCarPrepare(bool enabled) { SetFlag(kEnableSlaveForCarPrepareBit, enabled); }
+        bool EnableSlaveForSimulation() const { return HasFlag(kEnableSlaveForSimulationBit); }
+        void SetEnableSlaveForSimulation(bool enabled) { SetFlag(kEnableSlaveForSimulationBit, enabled); }
+        bool SlaveSimulationLockstep() const { return HasFlag(kSlaveSimulationLockstepBit); }
+        void SetSlaveSimulationLockstep(bool enabled) { SetFlag(kSlaveSimulationLockstepBit, enabled); }
+        bool EnableManualGouraudCopy() const { return HasFlag(kEnableManualGouraudCopyBit); }
+        void SetEnableManualGouraudCopy(bool enabled) { SetFlag(kEnableManualGouraudCopyBit, enabled); }
+        bool AutoLapEnabledOnStart() const { return HasFlag(kAutoLapEnabledOnStartBit); }
+        void SetAutoLapEnabledOnStart(bool enabled) { SetFlag(kAutoLapEnabledOnStartBit, enabled); }
+        bool AllowAutoLapInputToggle() const { return HasFlag(kAllowAutoLapInputToggleBit); }
+        void SetAllowAutoLapInputToggle(bool enabled) { SetFlag(kAllowAutoLapInputToggleBit, enabled); }
+        bool RenderCarShadowModel() const { return HasFlag(kRenderCarShadowModelBit); }
+        void SetRenderCarShadowModel(bool enabled) { SetFlag(kRenderCarShadowModelBit, enabled); }
+        bool SbaLoaded() const { return HasFlag(kSbaLoadedBit); }
+        void SetSbaLoaded(bool enabled) { SetFlag(kSbaLoadedBit, enabled); }
     };
 
     explicit GameLoopSystem(const Context& context)
         : context_(context)
-        , autoLapTestEnabled_(context.autoLapEnabledOnStart)
-        , autoLapInputToggleEnabled_(context.allowAutoLapInputToggle)
-    {}
+    {
+        SetAutoLapTestEnabled(context.AutoLapEnabledOnStart());
+        SetAutoLapInputToggleEnabled(context.AllowAutoLapInputToggle());
+    }
 
     static void SetWorkRamDebugTag(SRL::Memory::DebugTag tag)
     {
@@ -105,7 +165,7 @@ public:
             SyncCameraHeadingFromCar();
             CaptureGameplayStageTraces();
 
-            if (autoLapTestEnabled_)
+            if (AutoLapTestEnabled())
             {
                 SetWorkRamDebugTag(SRL::Memory::DebugTag::AutoLap);
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
@@ -130,6 +190,26 @@ public:
     }
 
 private:
+    enum : uint8_t
+    {
+        kAutoLapTestEnabledBit = 1u << 0,
+        kAutoLapInputToggleEnabledBit = 1u << 1,
+        kYHeldPrevBit = 1u << 2
+    };
+
+    bool HasStateFlag(uint8_t bit) const { return (stateFlags_ & bit) != 0u; }
+    void SetStateFlag(uint8_t bit, bool enabled)
+    {
+        if (enabled) stateFlags_ |= bit;
+        else stateFlags_ &= static_cast<uint8_t>(~bit);
+    }
+    bool AutoLapTestEnabled() const { return HasStateFlag(kAutoLapTestEnabledBit); }
+    void SetAutoLapTestEnabled(bool enabled) { SetStateFlag(kAutoLapTestEnabledBit, enabled); }
+    bool AutoLapInputToggleEnabled() const { return HasStateFlag(kAutoLapInputToggleEnabledBit); }
+    void SetAutoLapInputToggleEnabled(bool enabled) { SetStateFlag(kAutoLapInputToggleEnabledBit, enabled); }
+    bool YHeldPrev() const { return HasStateFlag(kYHeldPrevBit); }
+    void SetYHeldPrev(bool enabled) { SetStateFlag(kYHeldPrevBit, enabled); }
+
     static constexpr int32_t kAutoLapYawBiasDeg = 0;
 
 #if defined(SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY) && SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY
@@ -294,9 +374,7 @@ private:
         Snapshot hud{};
         Snapshot trackDraw{};
         Snapshot trackEnd{};
-        Snapshot track{};
         Snapshot car{};
-        Snapshot preFinish{};
         Snapshot preSync{};
         Snapshot postSync{};
     };
@@ -319,9 +397,7 @@ private:
         Snapshot hud{};
         Snapshot trackDraw{};
         Snapshot trackEnd{};
-        Snapshot track{};
         Snapshot car{};
-        Snapshot preFinish{};
         Snapshot preSync{};
         Snapshot postSync{};
     };
@@ -340,9 +416,7 @@ private:
         Snapshot hud{};
         Snapshot trackDraw{};
         Snapshot trackEnd{};
-        Snapshot track{};
         Snapshot car{};
-        Snapshot preFinish{};
         Snapshot preSync{};
         Snapshot postSync{};
     };
@@ -361,9 +435,7 @@ private:
         Snapshot hud{};
         Snapshot trackDraw{};
         Snapshot trackEnd{};
-        Snapshot track{};
         Snapshot car{};
-        Snapshot preFinish{};
         Snapshot preSync{};
         Snapshot postSync{};
     };
@@ -548,69 +620,70 @@ private:
 
     void UpdateLowWorkFreeOverlay()
     {
-        if constexpr (kEnableLowWorkFreeOverlayRequireRuntimeStats)
-        {
-            if (!context_.enableRuntimeStatsLogs)
-            {
-                return;
-            }
-        }
-
         if constexpr (!kEnableLowWorkFreeOverlay)
         {
             return;
         }
-
-        if (lowWorkFreeOverlayCooldownFrames_ > 0u)
-        {
-            --lowWorkFreeOverlayCooldownFrames_;
-            return;
-        }
-        lowWorkFreeOverlayCooldownFrames_ = kLowWorkFreeOverlayCadenceFrames;
-
-        uint32_t freeBytes = 0u;
-        uint32_t highFreeBytes = 0u;
-        uint8_t slides = 0u;
-        int16_t slideId = -1;
-        uint16_t trackStreamTicks = 0u;
-        uint16_t trackMaintenanceTicks = 0u;
-        uint16_t trackDrawTicks = 0u;
-        uint16_t trackFrameTicks = 0u;
-        uint16_t trackWindowTicks = 0u;
-        uint16_t trackPrefetchTicks = 0u;
-        uint16_t trackLodTicks = 0u;
-        uint16_t trackWorkingSetTicks = 0u;
-        uint8_t prefetchBuildAttempts = 0u;
-        uint8_t prefetchBuildBudget = 0u;
-        uint8_t prefetchBuildDrops = 0u;
-        TrackSystem::LowWorkCategoryBreakdown breakdown{};
-        if (context_.trackSystem && context_.trackSystemReady)
-        {
-            freeBytes = context_.trackSystem->LowWorkEndFreeBytesThisFrame();
-            slides = context_.trackSystem->SlidesThisFrame();
-            slideId = context_.trackSystem->SlideSegmentIdThisFrame();
-            breakdown = context_.trackSystem->LowWorkBreakdownThisFrame();
-            trackStreamTicks = context_.trackSystem->StreamTicksThisFrame();
-            trackMaintenanceTicks = context_.trackSystem->MaintenanceTicksThisFrame();
-            trackDrawTicks = context_.trackSystem->DrawTicksThisFrame();
-            trackFrameTicks = context_.trackSystem->FrameTicksThisFrame();
-            trackWindowTicks = context_.trackSystem->WindowTicksThisFrame();
-            trackPrefetchTicks = context_.trackSystem->PrefetchTicksThisFrame();
-            trackLodTicks = context_.trackSystem->LodTicksThisFrame();
-            trackWorkingSetTicks = context_.trackSystem->WorkingSetTicksThisFrame();
-            prefetchBuildAttempts = context_.trackSystem->PrefetchBuildAttemptsThisFrame();
-            prefetchBuildBudget = context_.trackSystem->PrefetchBuildBudgetThisFrame();
-            prefetchBuildDrops = context_.trackSystem->PrefetchBuildBudgetDropsThisFrame();
-        }
         else
         {
-            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
-            freeBytes = static_cast<uint32_t>(lwr.FreeSize);
-        }
-        {
-            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
-            highFreeBytes = static_cast<uint32_t>(hwr.FreeSize);
-        }
+            if constexpr (kEnableLowWorkFreeOverlayRequireRuntimeStats)
+            {
+                if (!context_.EnableRuntimeStatsLogs())
+                {
+                    return;
+                }
+            }
+
+            if (lowWorkFreeOverlayCooldownFrames_ > 0u)
+            {
+                --lowWorkFreeOverlayCooldownFrames_;
+                return;
+            }
+            lowWorkFreeOverlayCooldownFrames_ = kLowWorkFreeOverlayCadenceFrames;
+
+            uint32_t freeBytes = 0u;
+            uint32_t highFreeBytes = 0u;
+            uint8_t slides = 0u;
+            int16_t slideId = -1;
+            uint16_t trackStreamTicks = 0u;
+            uint16_t trackMaintenanceTicks = 0u;
+            uint16_t trackDrawTicks = 0u;
+            uint16_t trackFrameTicks = 0u;
+            uint16_t trackWindowTicks = 0u;
+            uint16_t trackPrefetchTicks = 0u;
+            uint16_t trackLodTicks = 0u;
+            uint16_t trackWorkingSetTicks = 0u;
+            uint8_t prefetchBuildAttempts = 0u;
+            uint8_t prefetchBuildBudget = 0u;
+            uint8_t prefetchBuildDrops = 0u;
+            TrackSystem::LowWorkCategoryBreakdown breakdown{};
+            if (context_.trackSystem && context_.TrackSystemReady())
+            {
+                freeBytes = context_.trackSystem->LowWorkEndFreeBytesThisFrame();
+                slides = context_.trackSystem->SlidesThisFrame();
+                slideId = context_.trackSystem->SlideSegmentIdThisFrame();
+                breakdown = context_.trackSystem->LowWorkBreakdownThisFrame();
+                trackStreamTicks = context_.trackSystem->StreamTicksThisFrame();
+                trackMaintenanceTicks = context_.trackSystem->MaintenanceTicksThisFrame();
+                trackDrawTicks = context_.trackSystem->DrawTicksThisFrame();
+                trackFrameTicks = context_.trackSystem->FrameTicksThisFrame();
+                trackWindowTicks = context_.trackSystem->WindowTicksThisFrame();
+                trackPrefetchTicks = context_.trackSystem->PrefetchTicksThisFrame();
+                trackLodTicks = context_.trackSystem->LodTicksThisFrame();
+                trackWorkingSetTicks = context_.trackSystem->WorkingSetTicksThisFrame();
+                prefetchBuildAttempts = context_.trackSystem->PrefetchBuildAttemptsThisFrame();
+                prefetchBuildBudget = context_.trackSystem->PrefetchBuildBudgetThisFrame();
+                prefetchBuildDrops = context_.trackSystem->PrefetchBuildBudgetDropsThisFrame();
+            }
+            else
+            {
+                const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+                freeBytes = static_cast<uint32_t>(lwr.FreeSize);
+            }
+            {
+                const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+                highFreeBytes = static_cast<uint32_t>(hwr.FreeSize);
+            }
 
         const int32_t freeDelta = lowWorkOverlay_.FreeValid()
             ? (static_cast<int32_t>(freeBytes) - static_cast<int32_t>(lowWorkOverlay_.lastFreeBytes))
@@ -782,10 +855,11 @@ private:
                           static_cast<unsigned>(trackPrefetchTicks),
                           static_cast<unsigned>(trackLodTicks),
                           static_cast<unsigned>(trackWorkingSetTicks));
-        SRL::Debug::Print(2, 26, "PB b:%u/%u d:%u            ",
-                          static_cast<unsigned>(prefetchBuildAttempts),
-                          static_cast<unsigned>(prefetchBuildBudget),
-                          static_cast<unsigned>(prefetchBuildDrops));
+            SRL::Debug::Print(2, 26, "PB b:%u/%u d:%u            ",
+                              static_cast<unsigned>(prefetchBuildAttempts),
+                              static_cast<unsigned>(prefetchBuildBudget),
+                              static_cast<unsigned>(prefetchBuildDrops));
+        }
     }
 
     void MaybeLogHighWorkRamTrace()
@@ -1002,7 +1076,7 @@ private:
     bool CanRenderCar() const
     {
         Game::CarSystem* car = ActiveCarSystem();
-        return context_.renderCar && car && car->Valid();
+        return context_.RenderCar() && car && car->Valid();
     }
 
     int32_t CurrentCameraYawDeg() const
@@ -1053,7 +1127,7 @@ private:
 
         int32_t yawForCamera = carYawDeg_;
         const bool allowManualYawInput =
-            !autoLapTestEnabled_ && (context_.carPhysics == nullptr);
+            !AutoLapTestEnabled() && (context_.carPhysics == nullptr);
         context_.cameraSystem->UpdateFromPad(pad_, yawForCamera, orbitState_, allowManualYawInput);
         if (allowManualYawInput)
         {
@@ -1064,7 +1138,7 @@ private:
         {
             if (xHeld)
             {
-                if (autoLapTestEnabled_)
+                if (AutoLapTestEnabled())
                 {
                     // In auto-lap, show dynamic path-driven forward offset.
                     SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", static_cast<int>(autoLapRoute_.currentOffDeg));
@@ -1117,7 +1191,7 @@ private:
             input.leftHeld = false;
             input.rightHeld = false;
         }
-        if (input.yHeld && !yHeldPrev_)
+        if (input.yHeld && !YHeldPrev())
         {
             const bool toggleTrackSlave = zHeld && context_.trackSystem;
             if (toggleTrackSlave)
@@ -1131,11 +1205,11 @@ private:
             }
             else
             {
-                if (autoLapInputToggleEnabled_)
+                if (AutoLapInputToggleEnabled())
                 {
-                    autoLapTestEnabled_ = !autoLapTestEnabled_;
+                    SetAutoLapTestEnabled(!AutoLapTestEnabled());
                     autoLapRoute_.SetStartupYawAligned(false);
-                    if (autoLapTestEnabled_)
+                    if (AutoLapTestEnabled())
                     {
                         autoLapRoute_.SetInitialized(false);
                         autoLapRoute_.SetBuilt(false);
@@ -1149,11 +1223,11 @@ private:
                             ReleaseAutoLapRouteStorage();
                         }
                     }
-                    SRL::Debug::Print(1, 23, "CAR MOVE:%u", autoLapTestEnabled_ ? 1u : 0u);
+                    SRL::Debug::Print(1, 23, "CAR MOVE:%u", AutoLapTestEnabled() ? 1u : 0u);
                 }
             }
         }
-        yHeldPrev_ = input.yHeld;
+        SetYHeldPrev(input.yHeld);
         return input;
     }
 
@@ -1180,7 +1254,7 @@ private:
 
     bool IsTrackProducerJobInFlightHint() const
     {
-        if (!context_.trackSystem || !context_.trackSystemReady || !context_.renderTrack)
+        if (!context_.trackSystem || !context_.TrackSystemReady() || !context_.RenderTrack())
         {
             return false;
         }
@@ -1273,7 +1347,7 @@ private:
         if (car)
         {
             Game::CarSystem::GameplayInputSnapshot gameplayInput{};
-            if (!autoLapTestEnabled_)
+            if (!AutoLapTestEnabled())
             {
                 gameplayInput.SetAccelerateHeld(input.bHeld);
                 gameplayInput.SetBrakeHeld(input.cHeld);
@@ -1283,11 +1357,11 @@ private:
                 gameplayInput.SetShiftUpHeld(input.rHeld);
                 gameplayInput.SetShiftLockHeld(input.xHeld);
             }
-            car->PrepareGameplayFrameState(autoLapTestEnabled_ ? nullptr : &gameplayInput,
+            car->PrepareGameplayFrameState(AutoLapTestEnabled() ? nullptr : &gameplayInput,
                                            frameCounter_,
                                            context_.carWorldPosition,
                                            carYawDeg_,
-                                           autoLapTestEnabled_,
+                                           AutoLapTestEnabled(),
                                            frameState);
         }
         else
@@ -1366,12 +1440,12 @@ private:
     void ExecuteGameplayFrame(Game::GameplayFrameState& frameState)
     {
         const bool useSlaveSim =
-            context_.enableSlaveForSimulation &&
+            context_.EnableSlaveForSimulation() &&
             (context_.gameplayTick || context_.carPhysics || context_.audioEvents);
 
         if (useSlaveSim)
         {
-            if (context_.slaveSimulationLockstep)
+            if (context_.SlaveSimulationLockstep())
             {
                 // True lockstep: camera/render must consume the same frame state
                 // produced by simulation to avoid chase drift.
@@ -1420,7 +1494,7 @@ private:
 
     void ScheduleCarPrepareIfEnabled()
     {
-        if (!CanRenderCar() || !context_.enableSlaveForCarPrepare) return;
+        if (!CanRenderCar() || !context_.EnableSlaveForCarPrepare()) return;
         if (carPrepareState_.JobInFlight()) return;
         if (IsTrackProducerJobInFlightHint()) return;
 
@@ -1435,7 +1509,7 @@ private:
 
     void UpdateBackground()
     {
-        if (!context_.enableBg || !context_.bgManager) return;
+        if (!context_.EnableBg() || !context_.bgManager) return;
         AppState::Set(AppState::Stage::LoopBackground, frameCounter_);
         context_.bgManager->Update(context_.cameraSystem->State(), carYawDeg_);
     }
@@ -1448,7 +1522,7 @@ private:
         using SRL::Math::Types::Vector3D;
 
         (void)lookTarget;
-        if (!context_.trackSystem || !context_.trackSystemReady)
+        if (!context_.trackSystem || !context_.TrackSystemReady())
         {
             return desiredCameraLocation;
         }
@@ -1580,7 +1654,7 @@ private:
             rawCameraLocation.Y -= lift;
             rawLookTarget.Y -= lift;
 
-            if (context_.verboseFrameLogs)
+            if (context_.VerboseFrameLogs())
             {
                 SRL::Debug::Print(1, 31, "CAM slp p:%d dy:%d lf:%d",
                                   static_cast<int>(kSlopeCamProfile),
@@ -1604,7 +1678,7 @@ private:
         frame.location = cameraReady ? resolvedCameraLocation : lastValidCameraLocation_;
         frame.lookTarget = cameraReady ? rawLookTarget : lastValidLookTarget_;
 
-        if (context_.verboseFrameLogs)
+        if (context_.VerboseFrameLogs())
         {
             SRL::Debug::Print(0, 18, "Cam pos: %d %d %d",
                               frame.location.X.As<int16_t>(),
@@ -1864,7 +1938,7 @@ private:
         {
             DrawCarShadowBlob(carFrame);
         }
-        if (context_.renderCarShadowModel && context_.carShadowRenderer)
+        if (context_.RenderCarShadowModel() && context_.carShadowRenderer)
         {
             DrawCarShadowModel(carFrame);
         }
@@ -1877,8 +1951,7 @@ private:
         context_.renderPipeline->Flush();
         if (MeshRenderer* renderer = car.Renderer())
         {
-            lastRenderedCarFacesThisFrame_ = renderer->LastRenderFaceCount();
-            lastRenderedCarMeshesThisFrame_ = renderer->LastRenderMeshCount();
+            lastRenderedCarFacesThisFrame_ = ClampToU16(renderer->LastRenderFaceCount());
         }
     }
 
@@ -1899,8 +1972,6 @@ private:
     {
         hwrStageTrace_.trackEnd = MaybeCaptureHighWorkRamSnapshot();
         lwrStageTrace_.trackEnd = MaybeCaptureLowWorkRamSnapshot();
-        hwrStageTrace_.track = hwrStageTrace_.trackEnd;
-        lwrStageTrace_.track = lwrStageTrace_.trackEnd;
     }
 
     void CaptureIdleTrackAndCarTraces()
@@ -1909,10 +1980,8 @@ private:
         lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
         hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
         lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
-        hwrStageTrace_.track = MaybeCaptureHighWorkRamSnapshot();
-        lwrStageTrace_.track = MaybeCaptureLowWorkRamSnapshot();
-        hwrStageTrace_.car = hwrStageTrace_.track;
-        lwrStageTrace_.car = lwrStageTrace_.track;
+        hwrStageTrace_.car = MaybeCaptureHighWorkRamSnapshot();
+        lwrStageTrace_.car = MaybeCaptureLowWorkRamSnapshot();
     }
 
     void CaptureCarStageTraces()
@@ -1924,7 +1993,6 @@ private:
     void RenderFrame(const CameraFrameState& camera)
     {
         lastRenderedCarFacesThisFrame_ = 0u;
-        lastRenderedCarMeshesThisFrame_ = 0u;
         if (!camera.ready)
         {
             if constexpr (kEnableCameraRuntimeLogs)
@@ -1953,8 +2021,8 @@ private:
     bool IsTrackFrameEnabled() const
     {
         return context_.trackSystem &&
-               context_.trackSystemReady &&
-               context_.renderTrack;
+               context_.TrackSystemReady() &&
+               context_.RenderTrack();
     }
 
     void RenderTrackFrame(const CameraFrameState& camera)
@@ -1988,8 +2056,6 @@ private:
         lwrStageTrace_.trackDraw = MaybeCaptureLowWorkRamSnapshot();
         hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
         lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
-        hwrStageTrace_.track = hwrStageTrace_.trackEnd;
-        lwrStageTrace_.track = lwrStageTrace_.trackEnd;
     }
 
     void RenderAxes()
@@ -1997,7 +2063,7 @@ private:
         using SRL::Math::Types::Fxp;
         using SRL::Math::Types::Vector2D;
         using SRL::Math::Types::Vector3D;
-        if (!context_.renderAxes) return;
+        if (!context_.RenderAxes()) return;
 
         Vector2D o2D, x2D, y2D, z2D;
         SRL::Scene3D::ProjectToScreen(Vector3D(0.0, 0.0, 0.0), &o2D);
@@ -2025,7 +2091,7 @@ private:
 
     uint32_t GetSubmittedTrackFacesThisFrame() const
     {
-        if (context_.trackSystemReady && context_.renderTrack && context_.trackSystem)
+        if (context_.TrackSystemReady() && context_.RenderTrack() && context_.trackSystem)
         {
             return context_.trackSystem->Telemetry().submittedTrackFaces;
         }
@@ -2042,20 +2108,18 @@ private:
         FramePresentationSnapshot snapshot{};
         snapshot.submittedTrackFaces = ClampToU16(GetSubmittedTrackFacesThisFrame());
         snapshot.submittedCarFaces = ClampToU16(GetSubmittedCarFacesThisFrame());
-        snapshot.SetRuntimeStatsEnabled(context_.enableRuntimeStatsLogs);
+        snapshot.SetRuntimeStatsEnabled(context_.EnableRuntimeStatsLogs());
         snapshot.sh2 = BuildSh2SplitTelemetrySnapshot();
         return snapshot;
     }
 
     void PresentFrameHudAndTelemetry(const FramePresentationSnapshot& framePresentation)
     {
-        hwrStageTrace_.preFinish = MaybeCaptureHighWorkRamSnapshot();
-        lwrStageTrace_.preFinish = MaybeCaptureLowWorkRamSnapshot();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Finish);
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
-                                                      context_.enableRuntimeStatsLogs,
-                                                      context_.logTrack,
-                                                      context_.logCar,
+                                                      context_.EnableRuntimeStatsLogs(),
+                                                      context_.LogTrack(),
+                                                      context_.LogCar(),
                                                       context_.faceCount,
                                                       context_.vertexCount,
                                                       framePresentation.submittedTrackFaces,
@@ -2069,11 +2133,11 @@ private:
 
     void SynchronizeFrameCore()
     {
-        if (context_.enableManualGouraudCopy)
+        if (context_.EnableManualGouraudCopy())
         {
             SRL::Scene3D::LightCopyGouraudTable();
         }
-        if (context_.verboseFrameLogs)
+        if (context_.VerboseFrameLogs())
         {
             SRL::Debug::Print(1, 15, "SRL::Core::Synchronize frame:%u", frameCounter_);
         }
@@ -2089,7 +2153,7 @@ private:
 
     void UpdateFrameEndOverlays()
     {
-        if (context_.enableRuntimeStatsLogs || context_.enableMinimalFpsOverlay)
+        if (context_.EnableRuntimeStatsLogs() || context_.EnableMinimalFpsOverlay())
         {
             UpdateRealtimeFpsOverlay();
         }
@@ -2250,8 +2314,8 @@ private:
                           static_cast<unsigned>(overlay.submittedCarFaces),
                           static_cast<unsigned>(overlay.submittedFacesTotal));
         SRL::Debug::Print(1, 24, "OVR sba ld:%u rd:%u m:%u f:%u",
-                          static_cast<unsigned>(context_.sbaLoaded ? 1u : 0u),
-                          static_cast<unsigned>((context_.renderCarShadowModel && context_.carShadowRenderer) ? 1u : 0u),
+                          static_cast<unsigned>(context_.SbaLoaded() ? 1u : 0u),
+                          static_cast<unsigned>((context_.RenderCarShadowModel() && context_.carShadowRenderer) ? 1u : 0u),
                           static_cast<unsigned>(context_.sbaMeshCount),
                           static_cast<unsigned>(context_.sbaFaceCount));
     }
@@ -2369,7 +2433,7 @@ private:
 
     bool BuildSegmentOverlaySnapshot(SegmentOverlaySnapshot& out) const
     {
-        if (!context_.trackSystemReady || !context_.trackSystem) return false;
+        if (!context_.TrackSystemReady() || !context_.trackSystem) return false;
 
         int32_t windowStartId = -1;
         uint16_t windowCount = 0;
@@ -2447,7 +2511,7 @@ private:
     Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot() const
     {
         Sh2SplitTelemetrySnapshot snapshot{};
-        if (!context_.trackSystemReady || !context_.trackSystem) return snapshot;
+        if (!context_.TrackSystemReady() || !context_.trackSystem) return snapshot;
 
         snapshot.trackMasterTicks = context_.trackSystem->FrameTicksThisFrame();
         snapshot.trackSlaveProducerTicks = context_.trackSystem->Telemetry().producer.slaveLastJobTicks;
@@ -2697,7 +2761,7 @@ private:
     void AlignCameraPathStartupYawIfNeeded(size_t nearestIndex)
     {
         if (autoLapRoute_.StartupYawAligned() ||
-            autoLapTestEnabled_ ||
+            AutoLapTestEnabled() ||
             nearestIndex >= autoLapRoute_.yawDeg.size())
         {
             return;
@@ -2801,7 +2865,7 @@ private:
 
         if (!CameraSystem::kPathGuidedChaseEnabled)
         {
-            if (!autoLapTestEnabled_ && HasRetainedAutoLapRouteStorage())
+            if (!AutoLapTestEnabled() && HasRetainedAutoLapRouteStorage())
             {
                 ReleaseAutoLapRouteStorage();
             }
@@ -2810,7 +2874,7 @@ private:
             return;
         }
 
-        if (!context_.trackSystem || !context_.trackSystemReady)
+        if (!context_.trackSystem || !context_.TrackSystemReady())
         {
             PublishEmptyCameraPathFrameContext();
             return;
@@ -2886,7 +2950,7 @@ private:
                             SRL::Math::Types::Vector3D& ioCarWorldPosition,
                             int32_t& ioCarYawDeg)
     {
-        if (!context.trackSystem || !context.trackSystemReady) return;
+        if (!context.trackSystem || !context.TrackSystemReady()) return;
         if (!autoLapRoute_.Built())
         {
             BuildAutoLapRoute(context, ioCarWorldPosition);
@@ -3883,6 +3947,13 @@ private:
         }
     };
 
+    struct DisabledLowWorkOverlayState
+    {
+    };
+
+    using WorkRamTraceCooldownType = std::conditional_t<kEnableDetailedWorkRamTelemetry, uint16_t, uint8_t>;
+    using LowWorkOverlayCooldownType = std::conditional_t<kEnableLowWorkFreeOverlay, uint16_t, uint8_t>;
+
     struct AutoLapRouteState
     {
         static constexpr uint8_t kInitializedBit = 1u << 0;
@@ -3955,8 +4026,7 @@ private:
     int32_t cameraSlopeLiftRaw_ = 0;
     int16_t diagPrevCarSegmentId_ = -1;
     int16_t diagPrevWindowStartId_ = -1;
-    uint32_t lastRenderedCarFacesThisFrame_ = 0u;
-    uint32_t lastRenderedCarMeshesThisFrame_ = 0u;
+    uint16_t lastRenderedCarFacesThisFrame_ = 0u;
     SRL::Math::Types::Vector3D lastValidCarRenderPos_{
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
@@ -3969,19 +4039,17 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
-    bool autoLapTestEnabled_ = false;
-    bool autoLapInputToggleEnabled_ = true;
+    uint8_t stateFlags_ = kAutoLapInputToggleEnabledBit;
     int16_t autoLapTargetSegmentId_ = 1;
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)
     AutoLapRouteState autoLapRoute_{};
     CameraPathRuntimeState cameraPathRuntime_{};
     HwrStageTrace hwrStageTrace_{};
-    uint16_t hwrTraceCooldownFrames_ = 0;
+    WorkRamTraceCooldownType hwrTraceCooldownFrames_ = 0;
     LwrStageTrace lwrStageTrace_{};
-    uint16_t lwrTraceCooldownFrames_ = 0;
-    uint16_t lowWorkFreeOverlayCooldownFrames_ = 0;
+    WorkRamTraceCooldownType lwrTraceCooldownFrames_ = 0;
+    LowWorkOverlayCooldownType lowWorkFreeOverlayCooldownFrames_ = 0;
     LowWorkOverlayState lowWorkOverlay_{};
-    bool yHeldPrev_ = false;
     uint8_t carForwardOffsetRepeatFrames_ = 0u;
 };

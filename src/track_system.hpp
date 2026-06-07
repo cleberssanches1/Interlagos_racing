@@ -74,7 +74,9 @@ class TrackSystem
 {
 public:
     static constexpr size_t kTrackSegmentLimit = 48;
-    static constexpr size_t kWindowSegmentIdDirectIndexCap = 512;
+    // Direct lookup only needs to cover the common low segment-id range.
+    // Higher ids already fall back to the dynamic active-window tables.
+    static constexpr size_t kWindowSegmentIdDirectIndexCap = 128;
 
     struct Config
     {
@@ -159,7 +161,7 @@ public:
                                       uint16_t& outWindowCount) const;
     bool GetRenderWindowSegmentIdAt(size_t logicalIndex, int32_t& outSegmentId) const;
 
-    bool Ready() const { return ready_; }
+    bool Ready() const { return ReadyFlag(); }
     const char* LastResolvedPath() const { return lastSegmentPath_; }
     const FrameTelemetry& Telemetry() const { return coordinator_.Telemetry(); }
     uint16_t SegmentCount() const { return totalSegmentCount_; }
@@ -212,7 +214,7 @@ public:
 #endif
 
 private:
-    enum : uint16_t
+    enum : uint32_t
     {
         kSegmentCollisionMapReadyBit = 1u << 0,
         kPrefetchSpeedProxyValidBit = 1u << 1,
@@ -225,14 +227,28 @@ private:
         kActiveWindowLookupDirtyBit = 1u << 8,
         kFamilyWorkingSetDirtyBit = 1u << 9,
         kPendingLodWorkExistsBit = 1u << 10,
-        kFamilySlotIndexDirtyBit = 1u << 11
+        kFamilySlotIndexDirtyBit = 1u << 11,
+        kReadyBit = 1u << 12,
+        kSegmentsReadyBit = 1u << 13,
+        kCoordinatorReadyBit = 1u << 14,
+        kTrackedCarSegmentValidBit = 1u << 15,
+        kSlidePrefetchRendererReadyBit = 1u << 16,
+        kSlidePrefetchLodReadyBit = 1u << 17,
+        kTrackTextureHeapBaseValidBit = 1u << 18,
+        kWallQueryPrevWorldPositionValidBit = 1u << 19,
+        kSurfaceQueryLastInsideValidBit = 1u << 20,
+        kSurfaceFamilyMapReadyBit = 1u << 21,
+        kSeg1ComponentEnabledBit = 1u << 22,
+        kSeg1RendererLodReadyBit = 1u << 23,
+        kSeg1SingleFaceSwapReadyBit = 1u << 24,
+        kSeg1SingleFaceSwapUseAltBit = 1u << 25
     };
 
-    bool HasStateFlag(uint16_t bit) const { return (stateFlags_ & bit) != 0u; }
-    void SetStateFlag(uint16_t bit, bool enabled) const
+    bool HasStateFlag(uint32_t bit) const { return (stateFlags_ & bit) != 0u; }
+    void SetStateFlag(uint32_t bit, bool enabled) const
     {
         if (enabled) stateFlags_ |= bit;
-        else stateFlags_ &= static_cast<uint16_t>(~bit);
+        else stateFlags_ &= ~bit;
     }
     bool SegmentCollisionMapReady() const { return HasStateFlag(kSegmentCollisionMapReadyBit); }
     void SetSegmentCollisionMapReady(bool enabled) const { SetStateFlag(kSegmentCollisionMapReadyBit, enabled); }
@@ -258,6 +274,34 @@ private:
     void SetPendingLodWorkExists(bool enabled) const { SetStateFlag(kPendingLodWorkExistsBit, enabled); }
     bool FamilySlotIndexDirty() const { return HasStateFlag(kFamilySlotIndexDirtyBit); }
     void SetFamilySlotIndexDirty(bool enabled) const { SetStateFlag(kFamilySlotIndexDirtyBit, enabled); }
+    bool ReadyFlag() const { return HasStateFlag(kReadyBit); }
+    void SetReadyFlag(bool enabled) const { SetStateFlag(kReadyBit, enabled); }
+    bool SegmentsReady() const { return HasStateFlag(kSegmentsReadyBit); }
+    void SetSegmentsReady(bool enabled) const { SetStateFlag(kSegmentsReadyBit, enabled); }
+    bool CoordinatorReady() const { return HasStateFlag(kCoordinatorReadyBit); }
+    void SetCoordinatorReady(bool enabled) const { SetStateFlag(kCoordinatorReadyBit, enabled); }
+    bool TrackedCarSegmentValid() const { return HasStateFlag(kTrackedCarSegmentValidBit); }
+    void SetTrackedCarSegmentValid(bool enabled) const { SetStateFlag(kTrackedCarSegmentValidBit, enabled); }
+    bool SlidePrefetchRendererReady() const { return HasStateFlag(kSlidePrefetchRendererReadyBit); }
+    void SetSlidePrefetchRendererReady(bool enabled) const { SetStateFlag(kSlidePrefetchRendererReadyBit, enabled); }
+    bool SlidePrefetchLodReady() const { return HasStateFlag(kSlidePrefetchLodReadyBit); }
+    void SetSlidePrefetchLodReady(bool enabled) const { SetStateFlag(kSlidePrefetchLodReadyBit, enabled); }
+    bool TrackTextureHeapBaseValid() const { return HasStateFlag(kTrackTextureHeapBaseValidBit); }
+    void SetTrackTextureHeapBaseValid(bool enabled) const { SetStateFlag(kTrackTextureHeapBaseValidBit, enabled); }
+    bool WallQueryPrevWorldPositionValid() const { return HasStateFlag(kWallQueryPrevWorldPositionValidBit); }
+    void SetWallQueryPrevWorldPositionValid(bool enabled) const { SetStateFlag(kWallQueryPrevWorldPositionValidBit, enabled); }
+    bool SurfaceQueryLastInsideValid() const { return HasStateFlag(kSurfaceQueryLastInsideValidBit); }
+    void SetSurfaceQueryLastInsideValid(bool enabled) const { SetStateFlag(kSurfaceQueryLastInsideValidBit, enabled); }
+    bool SurfaceFamilyMapReady() const { return HasStateFlag(kSurfaceFamilyMapReadyBit); }
+    void SetSurfaceFamilyMapReady(bool enabled) const { SetStateFlag(kSurfaceFamilyMapReadyBit, enabled); }
+    bool Seg1ComponentEnabled() const { return HasStateFlag(kSeg1ComponentEnabledBit); }
+    void SetSeg1ComponentEnabled(bool enabled) const { SetStateFlag(kSeg1ComponentEnabledBit, enabled); }
+    bool Seg1RendererLodReady() const { return HasStateFlag(kSeg1RendererLodReadyBit); }
+    void SetSeg1RendererLodReady(bool enabled) const { SetStateFlag(kSeg1RendererLodReadyBit, enabled); }
+    bool Seg1SingleFaceSwapReady() const { return HasStateFlag(kSeg1SingleFaceSwapReadyBit); }
+    void SetSeg1SingleFaceSwapReady(bool enabled) const { SetStateFlag(kSeg1SingleFaceSwapReadyBit, enabled); }
+    bool Seg1SingleFaceSwapUseAlt() const { return HasStateFlag(kSeg1SingleFaceSwapUseAltBit); }
+    void SetSeg1SingleFaceSwapUseAlt(bool enabled) const { SetStateFlag(kSeg1SingleFaceSwapUseAltBit, enabled); }
 
     friend class TrackPipeline::TrackMaintenanceStage;
     friend class TrackPipeline::TrackWindowStage;
@@ -298,21 +342,45 @@ private:
 
         struct SegmentLodState
         {
-            bool ready = false;
-            bool hasPerFaceRankOffsets = false;
+            enum : uint8_t
+            {
+                kReadyBit = 1u << 0,
+                kHasPerFaceRankOffsetsBit = 1u << 1,
+                kWorkingSetCacheDirtyBit = 1u << 2
+            };
+
             // Resident state currently visible in the renderer.
             uint8_t currentLodIndex = 0xFF; // 2:32, 3:64 (0/1 reserved)
-            int16_t currentBaseRank = -1;
+            int8_t currentBaseRank = -1;
             // Desired state derived from the logical rank in the sliding window.
             uint8_t desiredLodIndex = 0xFF;
-            int16_t desiredBaseRank = -1;
-            bool workingSetCacheDirty = true;
+            int8_t desiredBaseRank = -1;
+            uint8_t flags = kWorkingSetCacheDirtyBit;
             TrackLowWorkU16Vector faceFamilyIds{};
             TrackLowWorkU8Vector faceRankOffsets{};
             TrackLowWorkI16Vector currentFaceSlots{};
             TrackLowWorkU16Vector workingSetFamilies{};
             TrackLowWorkU8Vector workingSetLodIndices{};
             TrackLowWorkI16Vector workingSetSlots{};
+
+            bool Ready() const { return (flags & kReadyBit) != 0u; }
+            bool HasPerFaceRankOffsets() const { return (flags & kHasPerFaceRankOffsetsBit) != 0u; }
+            bool WorkingSetCacheDirty() const { return (flags & kWorkingSetCacheDirtyBit) != 0u; }
+            void SetReady(bool enabled)
+            {
+                if (enabled) flags |= kReadyBit;
+                else flags &= static_cast<uint8_t>(~kReadyBit);
+            }
+            void SetHasPerFaceRankOffsets(bool enabled)
+            {
+                if (enabled) flags |= kHasPerFaceRankOffsetsBit;
+                else flags &= static_cast<uint8_t>(~kHasPerFaceRankOffsetsBit);
+            }
+            void SetWorkingSetCacheDirty(bool enabled)
+            {
+                if (enabled) flags |= kWorkingSetCacheDirtyBit;
+                else flags &= static_cast<uint8_t>(~kWorkingSetCacheDirtyBit);
+            }
         };
 
         int32_t id = 0;
@@ -321,12 +389,19 @@ private:
         SRL::Math::Types::Vector3D center{};
         SegmentLodState lodState{};
         mutable TrackLowWorkVector<WallSegment2D> wallSegments2D{};
-        mutable uint32_t wallSegmentsCacheVertCount = 0u;
-        mutable uint32_t wallSegmentsCacheFaceCount = 0u;
-        mutable uint32_t wallSegmentsCacheFamilyCount = 0u;
-        mutable int32_t wallSegmentsCacheSegmentId = -1;
+        mutable uint16_t wallSegmentsCacheVertCount = 0u;
+        mutable uint16_t wallSegmentsCacheFaceCount = 0u;
+        mutable uint16_t wallSegmentsCacheFamilyCount = 0u;
+        mutable int16_t wallSegmentsCacheSegmentId = -1;
         mutable uint8_t wallSegmentsCacheLodIndex = 0xFF;
-        mutable bool wallSegmentsCacheReady = false;
+        mutable uint8_t wallSegmentsCacheFlags = 0u;
+
+        bool WallSegmentsCacheReady() const { return (wallSegmentsCacheFlags & 1u) != 0u; }
+        void SetWallSegmentsCacheReady(bool enabled) const
+        {
+            if (enabled) wallSegmentsCacheFlags |= 1u;
+            else wallSegmentsCacheFlags &= static_cast<uint8_t>(~1u);
+        }
     };
     struct RawSegmentEntry
     {
@@ -361,26 +436,40 @@ private:
     };
     struct SlideBoundaryUpdate
     {
-        bool active = false;
-        int32_t segmentId = -1;
+        uint8_t flags = 0u;
+        int16_t segmentId = -1;
         uint8_t desiredLodIndex = 0xFF;
-        int16_t desiredBaseRank = -1;
+        int8_t desiredBaseRank = -1;
         TrackLowWorkI16Vector preparedFaceSlots{};
+
+        bool Active() const { return (flags & 1u) != 0u; }
+        void SetActive(bool enabled)
+        {
+            if (enabled) flags |= 1u;
+            else flags &= static_cast<uint8_t>(~1u);
+        }
     };
     struct SlideBackBuffer
     {
-        bool ready = false;
+        uint8_t flags = 0u;
         int8_t direction = 1;
-        size_t dropIdx = 0;
-        int32_t incomingSegmentId = -1;
-        int32_t outgoingSegmentId = -1;
-        int32_t nextStartId = 1;
+        uint8_t dropIdx = 0;
+        int16_t incomingSegmentId = -1;
+        int16_t outgoingSegmentId = -1;
+        int16_t nextStartId = 1;
         SRL::Math::Types::Vector3D incomingCenter{};
         TrackLowWorkU16Vector incomingFamilyIds{};
         TrackLowWorkI16Vector incomingFaceSlots{};
         uint8_t incomingResidentLodIndex = 0xFF;
-        int16_t incomingResidentBaseRank = -1;
+        int8_t incomingResidentBaseRank = -1;
         std::array<SlideBoundaryUpdate, 4> boundaryUpdates{};
+
+        bool Ready() const { return (flags & 1u) != 0u; }
+        void SetReady(bool enabled)
+        {
+            if (enabled) flags |= 1u;
+            else flags &= static_cast<uint8_t>(~1u);
+        }
     };
 
     using SegmentEntryVector = TrackLowWorkVector<TrackSegmentEntry>;
@@ -394,27 +483,6 @@ private:
     using SegmentPool = TrackSegmentPool<kTrackSegmentLimit, SegmentRenderEntry>;
     using SegmentHandle = SegmentPool::Handle;
 
-    struct TrackFrameSnapshot
-    {
-        struct SegmentMeta
-        {
-            SRL::Math::Types::Vector3D center{};
-            int16_t id = -1;
-            uint8_t logicalSegmentCount = 0;
-            uint8_t flags = 0u; // bit0:renderer bit1:lodReady bit2:perFaceRank
-        };
-
-        uint32_t frameId = 0;
-        SRL::Math::Types::Vector3D carWorldPosition{};
-        SRL::Math::Types::Vector3D cameraLocation{};
-        SRL::Math::Types::Vector3D trackOffset{};
-        int16_t windowStartId = -1;
-        int8_t windowDirection = 1;
-        uint8_t fixedVisibleSegmentCap = 0;
-        uint8_t segmentCount = 0;
-        std::array<SegmentMeta, kTrackSegmentLimit> segmentMeta{};
-    };
-
     struct TrackFramePlan
     {
         static constexpr uint8_t kValidBit = 1u << 0;
@@ -422,8 +490,6 @@ private:
         uint32_t frameId = 0;
         uint8_t flags = 0u;
         uint16_t plannerTicksSlave = 0;
-        uint8_t sortedCount = 0;
-        std::array<int16_t, kTrackSegmentLimit> sortedSegmentIds{};
         // Indexed by logical rank in the active window (0..windowCount-1).
         std::array<uint8_t, kTrackSegmentLimit> desiredLodByLogicalRank{};
         std::array<int8_t, kTrackSegmentLimit> desiredBaseRankByLogicalRank{};
@@ -448,6 +514,9 @@ private:
                                         size_t& outCount);
     void InvalidateFamilySlotIndex() const;
     void RebuildFamilySlotIndex() const;
+    void ResetFamilyLookupTables();
+    void EnsureSurfaceFamilyLookupCapacity(size_t requiredEntries);
+    void EnsureFamilySlotIndexCapacity(size_t requiredEntries) const;
     void InitializeFamilySlots(FamilySlotVector& outSlots,
                                const int* familyIds,
                                size_t count) const;
@@ -604,10 +673,6 @@ private:
     void ResetFramePlan(TrackFramePlan& plan) const;
     void ApplyFramePlanLodTargets(const TrackFramePlan& plan);
     void PromoteLastValidFramePlanForCurrentFrame(bool markStale);
-    void BuildFrameSnapshot(const SRL::Math::Types::Vector3D& trackOffset,
-                            const SRL::Math::Types::Vector3D& cameraLocation,
-                            const SRL::Math::Types::Vector3D& carWorldPosition,
-                            TrackFrameSnapshot& outSnapshot) const;
     void BuildAndApplyFramePlanStage(const SRL::Math::Types::Vector3D& trackOffset,
                                      const SRL::Math::Types::Vector3D& cameraLocation,
                                      const SRL::Math::Types::Vector3D& carWorldPosition);
@@ -722,9 +787,6 @@ private:
     }};
 
     char lastSegmentPath_[128]{};
-    bool ready_ = false;
-    bool segmentsReady_ = false;
-    bool coordinatorReady_ = false;
     uint16_t fixedVisibleSegmentCap_ = 1;
     uint16_t totalSegmentCount_ = 0;
     int16_t activeWindowStartId_ = 1;
@@ -738,7 +800,6 @@ private:
     uint8_t activeWindowSwitchCooldown_ = 0;
     int16_t targetWindowStartId_ = 1;
     int16_t trackedCarSegmentId_ = 1;
-    bool trackedCarSegmentValid_ = false;
     int16_t observedCarSegmentId_ = -1;
     int32_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
@@ -777,10 +838,7 @@ private:
     FamilyIdVector slidePrefetchFamilyIds_{};
     TrackLowWorkI16Vector slidePrefetchFaceSlots_{};
     TrackLowWorkUniquePtr<TrackRenderer> slidePrefetchRenderer_{};
-    bool slidePrefetchRendererReady_ = false;
-    bool slidePrefetchLodReady_ = false;
     uint16_t trackTextureHeapBase_ = 0;
-    bool trackTextureHeapBaseValid_ = false;
     uint16_t trackTextureRecycleCount_ = 0;
     uint8_t textureUploadsThisFrame_ = 0;
     static constexpr uint8_t kTextureUploadsBudgetPerFrame = 4;
@@ -824,22 +882,19 @@ private:
     uint16_t wallQuerySegmentsScannedLastFrame_ = 0;
     uint16_t wallQueryFacesScannedLastFrame_ = 0;
     mutable SRL::Math::Types::Vector3D wallQueryPrevWorldPosition_{};
-    mutable bool wallQueryPrevWorldPositionValid_ = false;
     mutable int16_t surfaceQueryLastInsideSegmentId_ = -1;
     mutable int16_t surfaceQueryLastInsideFaceIndex_ = -1;
     mutable uint16_t surfaceQueryLastInsideFamilyId_ = 0u;
     mutable uint8_t surfaceQueryLastInsideType_ = 0u;
-    mutable bool surfaceQueryLastInsideValid_ = false;
-    std::array<uint8_t, 4096> surfaceTypeByFamilyId_{};
+    TrackLowWorkU8Vector surfaceTypeByFamilyId_{};
     TrackLowWorkU8Vector segmentSurfaceFlagsById_{};
-    bool surfaceFamilyMapReady_ = false;
-    mutable uint16_t stateFlags_ =
-        static_cast<uint16_t>(kTrackSlaveModeRequestedBit |
-                              kTrackSlaveProducerRequestedBit |
-                              kTrackSlaveDepthSortRequestedBit |
-                              kActiveWindowLookupDirtyBit |
-                              kFamilyWorkingSetDirtyBit |
-                              kFamilySlotIndexDirtyBit);
+    mutable uint32_t stateFlags_ =
+        (kTrackSlaveModeRequestedBit |
+         kTrackSlaveProducerRequestedBit |
+         kTrackSlaveDepthSortRequestedBit |
+         kActiveWindowLookupDirtyBit |
+         kFamilyWorkingSetDirtyBit |
+         kFamilySlotIndexDirtyBit);
     uint16_t sh2MasterStreamTicksThisFrame_ = 0;
     uint16_t sh2MasterDrawTicksThisFrame_ = 0;
     uint16_t sh2MasterFrameTicksThisFrame_ = 0;
@@ -961,7 +1016,7 @@ private:
     RuntimeDiagnosticsState runtimeDiagnostics_{};
     size_t lastWindowFreeBytes_ = 0;
     std::array<uint8_t, kTrackSegmentLimit> pendingLodRankFlags_{};
-    mutable std::array<int16_t, 4096> familySlotIndex_{};
+    mutable TrackLowWorkI16Vector familySlotIndex_{};
     mutable std::array<int8_t, kWindowSegmentIdDirectIndexCap> windowEntryIndexBySegmentId_{};
     mutable std::array<int8_t, kWindowSegmentIdDirectIndexCap> windowLogicalRankBySegmentId_{};
     uint8_t familyMergeCooldown_ = 0;
@@ -975,7 +1030,6 @@ private:
     SegmentEntryVector segmentEntries_{};
     RawSegmentVector rawSegmentCatalog_{};
     TrackLowWorkVector<SegmentRenderEntry> segmentRenderers_{};
-    bool seg1ComponentEnabled_ = false;
     SRL::Math::Types::Vector3D seg1ComponentCenter_{};
     TrackLowWorkVector<SRL::Math::Types::Vector3D> seg1ComponentVerts_{};
     TrackLowWorkVector<SRL::Types::Polygon> seg1ComponentFaces_{};
@@ -991,9 +1045,6 @@ private:
     uint16_t seg1TgaAttemptCount_ = 0;
     uint16_t seg1TgaFailCount_ = 0;
     uint8_t seg1TgaJsonOk_ = 0;
-    bool seg1RendererLodReady_ = false;
-    bool seg1SingleFaceSwapReady_ = false;
-    bool seg1SingleFaceSwapUseAlt_ = false;
     uint16_t seg1SingleFaceSwapCounter_ = 0;
     uint16_t seg1SingleFaceSwapFrames_ = 180; // ~3s @60fps
     int16_t seg1SingleFaceSwapFace_ = -1;
@@ -1005,7 +1056,6 @@ private:
     uint16_t seg1LodSwapFrames_ = 60; // ~1s @60fps (teste visual)
     SegmentPool segmentPool_{};
     TrackLowWorkVector<SegmentHandle> segmentHandles_{};
-    TrackFrameSnapshot frameSnapshotScratch_{};
     TrackFramePlan framePlanCurrent_{};
     TrackFramePlan framePlanLastValid_{};
     TrackLowWorkVector<SegmentHandle> framePlanSortedHandles_{};
