@@ -29,6 +29,7 @@ template <typename T>
 using TrackHighWorkVector = TrackHighWorkVectorBase<T>;
 using TrackLowWorkU16Vector = TrackLowWorkVector<uint16_t>;
 using TrackLowWorkU8Vector = TrackLowWorkVector<uint8_t>;
+using TrackLowWorkI8Vector = TrackLowWorkVector<int8_t>;
 using TrackLowWorkI16Vector = TrackLowWorkVector<int16_t>;
 using TrackHighWorkI16Vector = TrackHighWorkVector<int16_t>;
 
@@ -165,14 +166,14 @@ public:
     bool HasSmoothSegments() const;
     uint32_t MaxSegmentFaceCount() const;
     uint32_t MaxSegmentVertexCount() const;
-    int32_t LowWorkDrawPrepareDeltaThisFrame() const { return lowWorkDrawPrepareDeltaThisFrame_; }
-    int32_t LowWorkDrawExecuteDeltaThisFrame() const { return lowWorkDrawExecuteDeltaThisFrame_; }
-    int32_t LowWorkDrawOtherDeltaThisFrame() const { return lowWorkDrawOtherDeltaThisFrame_; }
-    int32_t LowWorkDrawFrameDeltaThisFrame() const { return lowWorkDrawFrameDeltaThisFrame_; }
-    uint32_t LowWorkEndFreeBytesThisFrame() const { return phaseLwrEnd_; }
+    int32_t LowWorkDrawPrepareDeltaThisFrame() const { return frameMemoryTelemetry_.drawPrepareDeltaThisFrame; }
+    int32_t LowWorkDrawExecuteDeltaThisFrame() const { return frameMemoryTelemetry_.drawExecuteDeltaThisFrame; }
+    int32_t LowWorkDrawOtherDeltaThisFrame() const { return frameMemoryTelemetry_.drawOtherDeltaThisFrame; }
+    int32_t LowWorkDrawFrameDeltaThisFrame() const { return frameMemoryTelemetry_.drawFrameDeltaThisFrame; }
+    uint32_t LowWorkEndFreeBytesThisFrame() const { return frameMemoryTelemetry_.phaseLwrEnd; }
     uint8_t SlidesThisFrame() const { return runtimeSlidesThisFrame_; }
-    int32_t SlideSegmentIdThisFrame() const { return slideHwrTraceSegmentId_; }
-    LowWorkCategoryBreakdown LowWorkBreakdownThisFrame() const { return lowWorkBreakdownEnd_; }
+    int32_t SlideSegmentIdThisFrame() const { return slideHwrTrace_.segmentId; }
+    LowWorkCategoryBreakdown LowWorkBreakdownThisFrame() const { return frameMemoryTelemetry_.lowWorkBreakdownEnd; }
     uint16_t StreamTicksThisFrame() const { return sh2MasterStreamTicksThisFrame_; }
     uint16_t MaintenanceTicksThisFrame() const { return sh2MasterMaintenanceTicksThisFrame_; }
     uint16_t DrawTicksThisFrame() const { return sh2MasterDrawTicksThisFrame_; }
@@ -186,24 +187,24 @@ public:
     uint8_t PrefetchBuildAttemptsThisFrame() const { return prefetchBuildAttemptsThisFrame_; }
     uint8_t PrefetchBuildBudgetThisFrame() const { return prefetchBuildBudgetThisFrame_; }
     uint8_t PrefetchBuildBudgetDropsThisFrame() const { return prefetchBuildBudgetDropsThisFrame_; }
-    uint32_t SurfaceQueryCallsThisFrame() const { return surfaceQueryCallsLastFrame_; }
-    uint32_t SurfaceQueryFallbackHitsThisFrame() const { return surfaceQueryFallbackHitsLastFrame_; }
-    uint32_t SurfaceQueryGlobalPassesThisFrame() const { return surfaceQueryGlobalPassesLastFrame_; }
-    uint32_t SurfaceQueryLocalOnlyMissesThisFrame() const { return surfaceQueryLocalOnlyMissesLastFrame_; }
-    uint32_t SurfaceQueryScmapSkipsThisFrame() const { return surfaceQueryScmapSkipsLastFrame_; }
-    uint32_t SurfaceQuerySegmentsScannedThisFrame() const { return surfaceQuerySegmentsScannedLastFrame_; }
-    uint32_t SurfaceQueryFacesScannedThisFrame() const { return surfaceQueryFacesScannedLastFrame_; }
-    uint32_t SurfaceQueryCacheHitsThisFrame() const { return surfaceQueryCacheHitsLastFrame_; }
-    uint32_t SurfaceQueryCacheMissesThisFrame() const { return surfaceQueryCacheMissesLastFrame_; }
-    uint32_t WallQueryCallsThisFrame() const { return wallQueryCallsLastFrame_; }
-    uint32_t WallQueryHitsThisFrame() const { return wallQueryHitsLastFrame_; }
-    uint32_t WallQuerySegmentsScannedThisFrame() const { return wallQuerySegmentsScannedLastFrame_; }
-    uint32_t WallQueryFacesScannedThisFrame() const { return wallQueryFacesScannedLastFrame_; }
+    uint32_t SurfaceQueryCallsThisFrame() const { return static_cast<uint32_t>(surfaceQueryCallsLastFrame_); }
+    uint32_t SurfaceQueryFallbackHitsThisFrame() const { return static_cast<uint32_t>(surfaceQueryFallbackHitsLastFrame_); }
+    uint32_t SurfaceQueryGlobalPassesThisFrame() const { return static_cast<uint32_t>(surfaceQueryGlobalPassesLastFrame_); }
+    uint32_t SurfaceQueryLocalOnlyMissesThisFrame() const { return static_cast<uint32_t>(surfaceQueryLocalOnlyMissesLastFrame_); }
+    uint32_t SurfaceQueryScmapSkipsThisFrame() const { return static_cast<uint32_t>(surfaceQueryScmapSkipsLastFrame_); }
+    uint32_t SurfaceQuerySegmentsScannedThisFrame() const { return static_cast<uint32_t>(surfaceQuerySegmentsScannedLastFrame_); }
+    uint32_t SurfaceQueryFacesScannedThisFrame() const { return static_cast<uint32_t>(surfaceQueryFacesScannedLastFrame_); }
+    uint32_t SurfaceQueryCacheHitsThisFrame() const { return static_cast<uint32_t>(surfaceQueryCacheHitsLastFrame_); }
+    uint32_t SurfaceQueryCacheMissesThisFrame() const { return static_cast<uint32_t>(surfaceQueryCacheMissesLastFrame_); }
+    uint32_t WallQueryCallsThisFrame() const { return static_cast<uint32_t>(wallQueryCallsLastFrame_); }
+    uint32_t WallQueryHitsThisFrame() const { return static_cast<uint32_t>(wallQueryHitsLastFrame_); }
+    uint32_t WallQuerySegmentsScannedThisFrame() const { return static_cast<uint32_t>(wallQuerySegmentsScannedLastFrame_); }
+    uint32_t WallQueryFacesScannedThisFrame() const { return static_cast<uint32_t>(wallQueryFacesScannedLastFrame_); }
     // Toggle track Slave usage at runtime for A/B performance measurements.
     void SetTrackSlaveMode(bool enabled);
-    bool TrackSlaveModeRequested() const { return trackSlaveModeRequested_; }
-    void SetRuntimeStatsLogsEnabled(bool enabled) { runtimeStatsLogsEnabled_ = enabled; }
-    bool RuntimeStatsLogsEnabled() const { return runtimeStatsLogsEnabled_; }
+    bool TrackSlaveModeRequested() const { return TrackSlaveModeRequestedFlag(); }
+    void SetRuntimeStatsLogsEnabled(bool enabled) { runtimeDiagnostics_.SetRuntimeStatsLogsEnabled(enabled); }
+    bool RuntimeStatsLogsEnabled() const { return runtimeDiagnostics_.RuntimeStatsLogsEnabled(); }
     // Re-anchor track texture heap base after loading non-track assets (e.g. car).
     void RebaseTrackTextureHeapBase();
 #ifdef TRACK_LWR_STAGE_TRACE
@@ -211,6 +212,53 @@ public:
 #endif
 
 private:
+    enum : uint16_t
+    {
+        kSegmentCollisionMapReadyBit = 1u << 0,
+        kPrefetchSpeedProxyValidBit = 1u << 1,
+        kTrackSlaveModeRequestedBit = 1u << 2,
+        kTrackSlaveProducerRequestedBit = 1u << 3,
+        kTrackSlaveDepthSortRequestedBit = 1u << 4,
+        kTrackSlaveBarrierLockstepBit = 1u << 5,
+        kFullTrackFamilyCacheReadyBit = 1u << 6,
+        kLastWindowFreeValidBit = 1u << 7,
+        kActiveWindowLookupDirtyBit = 1u << 8,
+        kFamilyWorkingSetDirtyBit = 1u << 9,
+        kPendingLodWorkExistsBit = 1u << 10,
+        kFamilySlotIndexDirtyBit = 1u << 11
+    };
+
+    bool HasStateFlag(uint16_t bit) const { return (stateFlags_ & bit) != 0u; }
+    void SetStateFlag(uint16_t bit, bool enabled) const
+    {
+        if (enabled) stateFlags_ |= bit;
+        else stateFlags_ &= static_cast<uint16_t>(~bit);
+    }
+    bool SegmentCollisionMapReady() const { return HasStateFlag(kSegmentCollisionMapReadyBit); }
+    void SetSegmentCollisionMapReady(bool enabled) const { SetStateFlag(kSegmentCollisionMapReadyBit, enabled); }
+    bool PrefetchSpeedProxyValid() const { return HasStateFlag(kPrefetchSpeedProxyValidBit); }
+    void SetPrefetchSpeedProxyValid(bool enabled) const { SetStateFlag(kPrefetchSpeedProxyValidBit, enabled); }
+    bool TrackSlaveModeRequestedFlag() const { return HasStateFlag(kTrackSlaveModeRequestedBit); }
+    void SetTrackSlaveModeRequestedFlag(bool enabled) const { SetStateFlag(kTrackSlaveModeRequestedBit, enabled); }
+    bool TrackSlaveProducerRequestedFlag() const { return HasStateFlag(kTrackSlaveProducerRequestedBit); }
+    void SetTrackSlaveProducerRequestedFlag(bool enabled) const { SetStateFlag(kTrackSlaveProducerRequestedBit, enabled); }
+    bool TrackSlaveDepthSortRequestedFlag() const { return HasStateFlag(kTrackSlaveDepthSortRequestedBit); }
+    void SetTrackSlaveDepthSortRequestedFlag(bool enabled) const { SetStateFlag(kTrackSlaveDepthSortRequestedBit, enabled); }
+    bool TrackSlaveBarrierLockstepFlag() const { return HasStateFlag(kTrackSlaveBarrierLockstepBit); }
+    void SetTrackSlaveBarrierLockstepFlag(bool enabled) const { SetStateFlag(kTrackSlaveBarrierLockstepBit, enabled); }
+    bool FullTrackFamilyCacheReady() const { return HasStateFlag(kFullTrackFamilyCacheReadyBit); }
+    void SetFullTrackFamilyCacheReady(bool enabled) const { SetStateFlag(kFullTrackFamilyCacheReadyBit, enabled); }
+    bool LastWindowFreeValid() const { return HasStateFlag(kLastWindowFreeValidBit); }
+    void SetLastWindowFreeValid(bool enabled) const { SetStateFlag(kLastWindowFreeValidBit, enabled); }
+    bool ActiveWindowLookupDirty() const { return HasStateFlag(kActiveWindowLookupDirtyBit); }
+    void SetActiveWindowLookupDirty(bool enabled) const { SetStateFlag(kActiveWindowLookupDirtyBit, enabled); }
+    bool FamilyWorkingSetDirty() const { return HasStateFlag(kFamilyWorkingSetDirtyBit); }
+    void SetFamilyWorkingSetDirty(bool enabled) const { SetStateFlag(kFamilyWorkingSetDirtyBit, enabled); }
+    bool PendingLodWorkExists() const { return HasStateFlag(kPendingLodWorkExistsBit); }
+    void SetPendingLodWorkExists(bool enabled) const { SetStateFlag(kPendingLodWorkExistsBit, enabled); }
+    bool FamilySlotIndexDirty() const { return HasStateFlag(kFamilySlotIndexDirtyBit); }
+    void SetFamilySlotIndexDirty(bool enabled) const { SetStateFlag(kFamilySlotIndexDirtyBit, enabled); }
+
     friend class TrackPipeline::TrackMaintenanceStage;
     friend class TrackPipeline::TrackWindowStage;
     friend class TrackPipeline::TrackPrefetchStage;
@@ -350,8 +398,8 @@ private:
     {
         struct SegmentMeta
         {
-            int32_t id = -1;
             SRL::Math::Types::Vector3D center{};
+            int16_t id = -1;
             uint8_t logicalSegmentCount = 0;
             uint8_t flags = 0u; // bit0:renderer bit1:lodReady bit2:perFaceRank
         };
@@ -360,7 +408,7 @@ private:
         SRL::Math::Types::Vector3D carWorldPosition{};
         SRL::Math::Types::Vector3D cameraLocation{};
         SRL::Math::Types::Vector3D trackOffset{};
-        int32_t windowStartId = -1;
+        int16_t windowStartId = -1;
         int8_t windowDirection = 1;
         uint8_t fixedVisibleSegmentCap = 0;
         uint8_t segmentCount = 0;
@@ -369,15 +417,23 @@ private:
 
     struct TrackFramePlan
     {
+        static constexpr uint8_t kValidBit = 1u << 0;
+
         uint32_t frameId = 0;
-        bool valid = false;
         uint8_t flags = 0u;
         uint16_t plannerTicksSlave = 0;
-        uint16_t sortedCount = 0;
-        std::array<int32_t, kTrackSegmentLimit> sortedSegmentIds{};
+        uint8_t sortedCount = 0;
+        std::array<int16_t, kTrackSegmentLimit> sortedSegmentIds{};
         // Indexed by logical rank in the active window (0..windowCount-1).
         std::array<uint8_t, kTrackSegmentLimit> desiredLodByLogicalRank{};
-        std::array<int16_t, kTrackSegmentLimit> desiredBaseRankByLogicalRank{};
+        std::array<int8_t, kTrackSegmentLimit> desiredBaseRankByLogicalRank{};
+
+        bool Valid() const { return (flags & kValidBit) != 0u; }
+        void SetValid(bool enabled)
+        {
+            if (enabled) flags |= kValidBit;
+            else flags &= static_cast<uint8_t>(~kValidBit);
+        }
     };
 
     static SRL::Math::Types::Vector3D ComputeRendererCenter(const TrackRenderer& renderer);
@@ -671,7 +727,7 @@ private:
     bool coordinatorReady_ = false;
     uint16_t fixedVisibleSegmentCap_ = 1;
     uint16_t totalSegmentCount_ = 0;
-    int32_t activeWindowStartId_ = 1;
+    int16_t activeWindowStartId_ = 1;
     uint16_t activeWindowHead_ = 0;
     int8_t windowDirection_ = 1;
     int8_t cameraWindowDirection_ = 1;
@@ -680,10 +736,10 @@ private:
     uint8_t cameraDirectionConfirmFrames_ = 0;
     uint8_t cameraDirectionFlipCooldown_ = 0;
     uint8_t activeWindowSwitchCooldown_ = 0;
-    int32_t targetWindowStartId_ = 1;
-    int32_t trackedCarSegmentId_ = 1;
+    int16_t targetWindowStartId_ = 1;
+    int16_t trackedCarSegmentId_ = 1;
     bool trackedCarSegmentValid_ = false;
-    int32_t observedCarSegmentId_ = -1;
+    int16_t observedCarSegmentId_ = -1;
     int32_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
     uint16_t slotFaceCapacityFloor_ = 0;
@@ -741,35 +797,35 @@ private:
     uint8_t runtimeSafeSkippedThisFrame_ = 0;
     uint8_t runtimeSafeNoDrawThisFrame_ = 0;
     uint8_t runtimeSafeReappliedThisFrame_ = 0;
-    mutable uint32_t surfaceQueryCallsThisFrame_ = 0;
-    mutable uint32_t surfaceQueryFallbackHitsThisFrame_ = 0;
-    mutable uint32_t surfaceQueryGlobalPassesThisFrame_ = 0;
-    mutable uint32_t surfaceQueryLocalOnlyMissesThisFrame_ = 0;
-    mutable uint32_t surfaceQueryScmapSkipsThisFrame_ = 0;
-    mutable uint32_t surfaceQuerySegmentsScannedThisFrame_ = 0;
-    mutable uint32_t surfaceQueryFacesScannedThisFrame_ = 0;
-    mutable uint32_t surfaceQueryCacheHitsThisFrame_ = 0;
-    mutable uint32_t surfaceQueryCacheMissesThisFrame_ = 0;
-    uint32_t surfaceQueryCallsLastFrame_ = 0;
-    uint32_t surfaceQueryFallbackHitsLastFrame_ = 0;
-    uint32_t surfaceQueryGlobalPassesLastFrame_ = 0;
-    uint32_t surfaceQueryLocalOnlyMissesLastFrame_ = 0;
-    uint32_t surfaceQueryScmapSkipsLastFrame_ = 0;
-    uint32_t surfaceQuerySegmentsScannedLastFrame_ = 0;
-    uint32_t surfaceQueryFacesScannedLastFrame_ = 0;
-    uint32_t surfaceQueryCacheHitsLastFrame_ = 0;
-    uint32_t surfaceQueryCacheMissesLastFrame_ = 0;
-    mutable uint32_t wallQueryCallsThisFrame_ = 0;
-    mutable uint32_t wallQueryHitsThisFrame_ = 0;
-    mutable uint32_t wallQuerySegmentsScannedThisFrame_ = 0;
-    mutable uint32_t wallQueryFacesScannedThisFrame_ = 0;
-    uint32_t wallQueryCallsLastFrame_ = 0;
-    uint32_t wallQueryHitsLastFrame_ = 0;
-    uint32_t wallQuerySegmentsScannedLastFrame_ = 0;
-    uint32_t wallQueryFacesScannedLastFrame_ = 0;
+    mutable uint16_t surfaceQueryCallsThisFrame_ = 0;
+    mutable uint16_t surfaceQueryFallbackHitsThisFrame_ = 0;
+    mutable uint16_t surfaceQueryGlobalPassesThisFrame_ = 0;
+    mutable uint16_t surfaceQueryLocalOnlyMissesThisFrame_ = 0;
+    mutable uint16_t surfaceQueryScmapSkipsThisFrame_ = 0;
+    mutable uint16_t surfaceQuerySegmentsScannedThisFrame_ = 0;
+    mutable uint16_t surfaceQueryFacesScannedThisFrame_ = 0;
+    mutable uint16_t surfaceQueryCacheHitsThisFrame_ = 0;
+    mutable uint16_t surfaceQueryCacheMissesThisFrame_ = 0;
+    uint16_t surfaceQueryCallsLastFrame_ = 0;
+    uint16_t surfaceQueryFallbackHitsLastFrame_ = 0;
+    uint16_t surfaceQueryGlobalPassesLastFrame_ = 0;
+    uint16_t surfaceQueryLocalOnlyMissesLastFrame_ = 0;
+    uint16_t surfaceQueryScmapSkipsLastFrame_ = 0;
+    uint16_t surfaceQuerySegmentsScannedLastFrame_ = 0;
+    uint16_t surfaceQueryFacesScannedLastFrame_ = 0;
+    uint16_t surfaceQueryCacheHitsLastFrame_ = 0;
+    uint16_t surfaceQueryCacheMissesLastFrame_ = 0;
+    mutable uint16_t wallQueryCallsThisFrame_ = 0;
+    mutable uint16_t wallQueryHitsThisFrame_ = 0;
+    mutable uint16_t wallQuerySegmentsScannedThisFrame_ = 0;
+    mutable uint16_t wallQueryFacesScannedThisFrame_ = 0;
+    uint16_t wallQueryCallsLastFrame_ = 0;
+    uint16_t wallQueryHitsLastFrame_ = 0;
+    uint16_t wallQuerySegmentsScannedLastFrame_ = 0;
+    uint16_t wallQueryFacesScannedLastFrame_ = 0;
     mutable SRL::Math::Types::Vector3D wallQueryPrevWorldPosition_{};
     mutable bool wallQueryPrevWorldPositionValid_ = false;
-    mutable int32_t surfaceQueryLastInsideSegmentId_ = -1;
+    mutable int16_t surfaceQueryLastInsideSegmentId_ = -1;
     mutable int16_t surfaceQueryLastInsideFaceIndex_ = -1;
     mutable uint16_t surfaceQueryLastInsideFamilyId_ = 0u;
     mutable uint8_t surfaceQueryLastInsideType_ = 0u;
@@ -777,7 +833,13 @@ private:
     std::array<uint8_t, 4096> surfaceTypeByFamilyId_{};
     TrackLowWorkU8Vector segmentSurfaceFlagsById_{};
     bool surfaceFamilyMapReady_ = false;
-    bool segmentCollisionMapReady_ = false;
+    mutable uint16_t stateFlags_ =
+        static_cast<uint16_t>(kTrackSlaveModeRequestedBit |
+                              kTrackSlaveProducerRequestedBit |
+                              kTrackSlaveDepthSortRequestedBit |
+                              kActiveWindowLookupDirtyBit |
+                              kFamilyWorkingSetDirtyBit |
+                              kFamilySlotIndexDirtyBit);
     uint16_t sh2MasterStreamTicksThisFrame_ = 0;
     uint16_t sh2MasterDrawTicksThisFrame_ = 0;
     uint16_t sh2MasterFrameTicksThisFrame_ = 0;
@@ -792,27 +854,36 @@ private:
     uint8_t sh2ProducerListUsedThisFrame_ = 0;
     uint8_t sh2ProducerListFallbacksThisFrame_ = 0;
     uint32_t frameIdThisFrame_ = 0;
-    uint32_t phaseHwrBeforeStream_ = 0;
-    uint32_t phaseHwrAfterStream_ = 0;
-    uint32_t phaseHwrAfterDraw_ = 0;
-    uint32_t phaseHwrEnd_ = 0;
-    uint32_t phaseLwrBeforeStream_ = 0;
-    uint32_t phaseLwrAfterStream_ = 0;
-    uint32_t phaseLwrAfterDraw_ = 0;
-    uint32_t phaseLwrEnd_ = 0;
-    LowWorkCategoryBreakdown lowWorkBreakdownEnd_{};
-    int32_t lowWorkDrawPrepareDeltaThisFrame_ = 0;
-    int32_t lowWorkDrawExecuteDeltaThisFrame_ = 0;
-    int32_t lowWorkDrawOtherDeltaThisFrame_ = 0;
-    int32_t lowWorkDrawFrameDeltaThisFrame_ = 0;
-    int32_t slideHwrTraceSegmentId_ = -1;
-    uint8_t slideHwrTraceFlags_ = 0;
-    uint32_t slideHwrTraceCheck_ = 0;
-    uint32_t slideHwrTraceAfterTrim_ = 0;
-    uint32_t slideHwrTraceAfterResetPrefetch_ = 0;
-    uint32_t slideHwrTraceAfterBuildPrefetch_ = 0;
-    uint32_t slideHwrTraceAfterPrepare_ = 0;
-    uint32_t slideHwrTraceAfterCommit_ = 0;
+    struct FrameMemoryTelemetryState
+    {
+        uint32_t phaseHwrBeforeStream = 0;
+        uint32_t phaseHwrAfterStream = 0;
+        uint32_t phaseHwrAfterDraw = 0;
+        uint32_t phaseHwrEnd = 0;
+        uint32_t phaseLwrBeforeStream = 0;
+        uint32_t phaseLwrAfterStream = 0;
+        uint32_t phaseLwrAfterDraw = 0;
+        uint32_t phaseLwrEnd = 0;
+        LowWorkCategoryBreakdown lowWorkBreakdownEnd{};
+        int32_t drawPrepareDeltaThisFrame = 0;
+        int32_t drawExecuteDeltaThisFrame = 0;
+        int32_t drawOtherDeltaThisFrame = 0;
+        int32_t drawFrameDeltaThisFrame = 0;
+    };
+    FrameMemoryTelemetryState frameMemoryTelemetry_{};
+
+    struct SlideHwrTraceState
+    {
+        int32_t segmentId = -1;
+        uint32_t check = 0;
+        uint32_t afterTrim = 0;
+        uint32_t afterResetPrefetch = 0;
+        uint32_t afterBuildPrefetch = 0;
+        uint32_t afterPrepare = 0;
+        uint32_t afterCommit = 0;
+        uint8_t flags = 0;
+    };
+    SlideHwrTraceState slideHwrTrace_{};
     uint8_t prewarmCooldown_ = 0;
     uint8_t boundaryPrewarmCooldown_ = 0;
     uint8_t prefetchRetryCooldown_ = 0;
@@ -820,7 +891,6 @@ private:
     uint8_t prefetchBuildBudgetThisFrame_ = 1;
     uint8_t prefetchBuildBudgetDropsThisFrame_ = 0;
     uint16_t prefetchSpeedProxyRaw_ = 0;
-    bool prefetchSpeedProxyValid_ = false;
     SRL::Math::Types::Vector3D prefetchLastCarWorldPosition_{};
     uint8_t textureHeapCompactCooldown_ = 0;
     uint8_t workRamTrimCooldown_ = 0;
@@ -830,28 +900,27 @@ private:
     uint8_t pendingLodCursor_ = 0;
     uint8_t pendingLodFrameCooldown_ = 0;
     std::array<uint8_t, kTrackSegmentLimit> pendingLodRetryCooldowns_{};
-    uint16_t workRamRepairCount_ = 0;
-    uint16_t workRamEmergencyReserveReleases_ = 0;
-    uint16_t releasedNowSlotsThisFrame_ = 0;
-    uint16_t releasedEndFrameSlotsThisFrame_ = 0;
-    uint16_t releasedPrefetchNowThisFrame_ = 0;
-    uint8_t memoryPressureLevelThisFrame_ = 0;
-    bool trackSlaveModeRequested_ = true;
-    bool trackSlaveProducerRequested_ = true;
-    bool trackSlaveDepthSortRequested_ = true;
-    bool trackSlaveBarrierLockstep_ = false;
-
+    struct WorkRamMaintenanceState
+    {
+        uint16_t workRamRepairCount = 0;
+        uint16_t workRamEmergencyReserveReleases = 0;
+        uint16_t releasedNowSlotsThisFrame = 0;
+        uint16_t releasedEndFrameSlotsThisFrame = 0;
+        uint16_t releasedPrefetchNowThisFrame = 0;
+        uint8_t memoryPressureLevelThisFrame = 0;
+    };
+    WorkRamMaintenanceState workRamMaintenance_{};
     struct Sh2PerfBucket
     {
         uint16_t sampleFrames = 0;
-        uint32_t samplesAccum = 0;
+        uint16_t samplesAccum = 0;
         uint32_t sumMasterFrameTicks = 0;
         uint32_t sumMasterDrawTicks = 0;
         uint32_t sumProducerTicks = 0;
         uint32_t sumSortTicks = 0;
-        uint32_t sumProducerFallbacks = 0;
-        uint32_t sumProducerListUsed = 0;
-        uint32_t sumProducerListFallbacks = 0;
+        uint16_t sumProducerFallbacks = 0;
+        uint16_t sumProducerListUsed = 0;
+        uint16_t sumProducerListFallbacks = 0;
         uint16_t avgMasterFrameTicks = 0;
         uint16_t avgMasterDrawTicks = 0;
         uint16_t avgProducerTicks = 0;
@@ -861,32 +930,45 @@ private:
         uint16_t avgProducerListFallbacks = 0;
     };
     static constexpr uint16_t kSh2PerfSampleWindowFrames = 120u;
-    Sh2PerfBucket sh2PerfSingle_{}; // Master only
-    Sh2PerfBucket sh2PerfDual_{};   // Master + Slave
-    bool runtimeStatsLogsEnabled_ = false;
-    uint32_t leakProbeSlidesObserved_ = 0;
-    bool leakProbePrevValid_ = false;
-    uint32_t leakProbePrevHwrFree_ = 0;
-    uint32_t leakProbePrevLwrFree_ = 0;
-    uint32_t leakProbePrevRetainedHwr_ = 0;
-    uint32_t leakProbePrevRetainedLwr_ = 0;
-    uint32_t lowWorkBaselineFree_ = 0;
-    bool fullTrackFamilyCacheReady_ = false;
+    struct RuntimeDiagnosticsState
+    {
+        static constexpr uint8_t kRuntimeStatsLogsEnabledBit = 1u << 0;
+        static constexpr uint8_t kLeakProbePrevValidBit = 1u << 1;
+
+        Sh2PerfBucket sh2PerfSingle{}; // Master only
+        Sh2PerfBucket sh2PerfDual{};   // Master + Slave
+        uint32_t leakProbePrevHwrFree = 0;
+        uint32_t leakProbePrevLwrFree = 0;
+        uint32_t leakProbePrevRetainedHwr = 0;
+        uint32_t leakProbePrevRetainedLwr = 0;
+        uint32_t lowWorkBaselineFree = 0;
+        uint16_t leakProbeSlidesObserved = 0;
+        uint8_t flags = 0u;
+
+        bool RuntimeStatsLogsEnabled() const { return (flags & kRuntimeStatsLogsEnabledBit) != 0u; }
+        bool LeakProbePrevValid() const { return (flags & kLeakProbePrevValidBit) != 0u; }
+        void SetRuntimeStatsLogsEnabled(bool enabled)
+        {
+            if (enabled) flags |= kRuntimeStatsLogsEnabledBit;
+            else flags &= static_cast<uint8_t>(~kRuntimeStatsLogsEnabledBit);
+        }
+        void SetLeakProbePrevValid(bool enabled)
+        {
+            if (enabled) flags |= kLeakProbePrevValidBit;
+            else flags &= static_cast<uint8_t>(~kLeakProbePrevValidBit);
+        }
+    };
+    RuntimeDiagnosticsState runtimeDiagnostics_{};
     size_t lastWindowFreeBytes_ = 0;
-    bool lastWindowFreeValid_ = false;
-    bool activeWindowLookupDirty_ = true;
-    bool familyWorkingSetDirty_ = true;
     std::array<uint8_t, kTrackSegmentLimit> pendingLodRankFlags_{};
-    bool pendingLodWorkExists_ = false;
     mutable std::array<int16_t, 4096> familySlotIndex_{};
-    mutable bool familySlotIndexDirty_ = true;
-    mutable std::array<int16_t, kWindowSegmentIdDirectIndexCap> windowEntryIndexBySegmentId_{};
-    mutable std::array<int16_t, kWindowSegmentIdDirectIndexCap> windowLogicalRankBySegmentId_{};
+    mutable std::array<int8_t, kWindowSegmentIdDirectIndexCap> windowEntryIndexBySegmentId_{};
+    mutable std::array<int8_t, kWindowSegmentIdDirectIndexCap> windowLogicalRankBySegmentId_{};
     uint8_t familyMergeCooldown_ = 0;
     std::array<uint8_t, SRL_MAX_TEXTURES> usedTextureSlotsThisFrame_{};
-    TrackLowWorkVector<int32_t> activeWindowLookupSegmentIds_{};
-    TrackLowWorkVector<int16_t> activeWindowEntryIndexBySegmentId_{};
-    TrackLowWorkVector<int16_t> activeWindowLogicalRankBySegmentId_{};
+    TrackLowWorkI16Vector activeWindowLookupSegmentIds_{};
+    TrackLowWorkI8Vector activeWindowEntryIndexBySegmentId_{};
+    TrackLowWorkI8Vector activeWindowLogicalRankBySegmentId_{};
     void* workRamEmergencyReserve_ = nullptr;
     uint32_t workRamEmergencyReserveBytes_ = 0;
 
@@ -931,7 +1013,7 @@ private:
     TrackLowWorkVector<TrackDepthSortItem<SegmentHandle, int64_t>> stabilizedDepthItemsScratch_{};
     TrackLowWorkVector<SegmentHandle> stabilizedSortedHandlesScratch_{};
     std::vector<SegmentHandle> stabilizedProducerInputScratch_{};
-    std::array<uint16_t, kTrackSegmentLimit + 1> lastSortRank_{};
+    std::array<uint8_t, kTrackSegmentLimit + 1> lastSortRank_{};
     SlaveTrackDepthSorter<SegmentHandle, int64_t, kTrackSegmentLimit> stabilizedDepthSorter_{};
     TrackDrawProducerStats stabilizedDepthStats_{};
     SlaveTrackDrawProducer<SegmentHandle, kTrackSegmentLimit> producer_{};

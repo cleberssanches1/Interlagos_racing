@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Interlagos Racing - Auditoria de Footprint de Structs e Tipos</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #1f1f1f; background: #f6f5f2; }
+    h1, h2, h3 { color: #14314d; }
+    .meta { color: #555; margin-bottom: 20px; }
+    .card { background: #fff; border: 1px solid #d8d8d8; border-radius: 8px; padding: 16px 18px; margin: 16px 0; }
+    code { background: #edf2f7; padding: 1px 4px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #d7d7d7; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef4fb; }
+    .low { color: #0b7a4b; font-weight: 600; }
+    .med { color: #a56a00; font-weight: 600; }
+    .high { color: #be2f2f; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Auditoria de Footprint de Structs e Tipos</h1>
+  <div class="meta">Projeto: <code>Interlagos_racing</code> | Escopo: redução de RAM residente sem alterar comportamento | Data: 2026-06-06</div>
+
+  <div class="card">
+    <h2>Objetivo</h2>
+    <p>Esta auditoria foca em reduzir footprint de RAM por meio de compactação de tipos, reordenação de campos para diminuir padding e separação entre estado permanente e telemetria temporária. O alvo principal não é micro-otimização de CPU; é reduzir bytes residentes nos objetos centrais, principalmente em <code>TrackSystem</code>, <code>GameLoopSystem</code>, <code>CarSystem</code> e estados da física.</p>
+  </div>
+
+  <div class="card">
+    <h2>Premissas</h2>
+    <ul>
+      <li>ABI presumida: SH2/GCC 32-bit, alinhamento natural de campos de 32 bits.</li>
+      <li><code>Fxp</code> ocupa 4 bytes; o tipo encapsula um <code>int32_t</code> bruto.</li>
+      <li><code>Vector3D</code> ocupa 12 bytes; é composto por três <code>Fxp</code>.</li>
+      <li>As estimativas abaixo são estáticas, obtidas por leitura do código atual. Se quisermos fechar números exatos depois, o próximo passo é gerar uma tabela de <code>sizeof(...)</code> em build de host.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Onde o ganho real está</h2>
+    <table>
+      <thead>
+        <tr><th>Área</th><th>Perfil</th><th>Leitura</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>TrackSystem</code></td>
+          <td>Estado permanente</td>
+          <td>Maior potencial. Pequenas economias por campo se multiplicam em arrays fixos e estruturas duplicadas de planejamento/snapshot.</td>
+        </tr>
+        <tr>
+          <td><code>CarSystem</code></td>
+          <td>Estado permanente</td>
+          <td>Ganhos menores em bytes absolutos, mas baixo risco e boa organização.</td>
+        </tr>
+        <tr>
+          <td>Física do carro</td>
+          <td>Estado permanente por instância</td>
+          <td>Há padding evitável em <code>DynamicsState</code> e <code>GroundState</code>, mas o ganho bruto é menor que no <code>TrackSystem</code>.</td>
+        </tr>
+        <tr>
+          <td>Snapshots do loop/HUD</td>
+          <td>Transiente/debug</td>
+          <td>Baixa prioridade para RAM residente. Melhor atacar via build flags e gating de telemetria do que só trocar tipos.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Candidatos Prioritários</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Local</th>
+          <th>Estimativa atual</th>
+          <th>Proposta</th>
+          <th>Ganho esperado</th>
+          <th>Risco</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>TrackFrameSnapshot::SegmentMeta</code><br/><code>src/track_system.hpp</code></td>
+          <td>~20 bytes por item<br/>48 itens = ~960 bytes</td>
+          <td>Trocar <code>id</code> de <code>int32_t</code> para <code>int16_t</code> e manter campos pequenos agrupados antes do <code>Vector3D</code>.</td>
+          <td>~4 bytes por item<br/>~192 bytes por snapshot</td>
+          <td class="low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>TrackFramePlan::sortedSegmentIds</code><br/><code>src/track_system.hpp</code></td>
+          <td><code>48 * int32_t = 192 bytes</code> por plano</td>
+          <td>Trocar para <code>std::array&lt;int16_t, 48&gt;</code>.</td>
+          <td>~96 bytes por plano<br/>~192 bytes porque existem <code>framePlanCurrent_</code> e <code>framePlanLastValid_</code></td>
+          <td class="low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>windowEntryIndexBySegmentId_</code><br/><code>windowLogicalRankBySegmentId_</code></td>
+          <td><code>512 * int16_t = 1024 bytes</code> cada</td>
+          <td>Trocar para <code>int8_t</code>. O domínio real é <code>-1..47</code>.</td>
+          <td>~512 bytes por array<br/>~1024 bytes no total</td>
+          <td class="low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>lastSortRank_</code></td>
+          <td><code>49 * uint16_t = 98 bytes</code></td>
+          <td>Trocar para <code>uint8_t</code>.</td>
+          <td>~49 bytes</td>
+          <td class="low">Baixo</td>
+        </tr>
+        <tr>
+          <td>Ids persistentes do <code>TrackSystem</code><br/><code>activeWindowStartId_</code>, <code>targetWindowStartId_</code>, <code>trackedCarSegmentId_</code>, <code>observedCarSegmentId_</code></td>
+          <td><code>4 * int32_t = 16 bytes</code></td>
+          <td>Trocar para <code>int16_t</code> se o domínio continuar abaixo de <code>32767</code>.</td>
+          <td>~8 bytes</td>
+          <td class="med">Médio</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Candidatos Secundários</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Local</th>
+          <th>Leitura</th>
+          <th>Ação recomendada</th>
+          <th>Risco</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>CarSystem::GameplayInputSnapshot</code></td>
+          <td>Sete <code>bool</code> independentes. O footprint absoluto é pequeno, mas é um bom candidato a bitmask.</td>
+          <td>Substituir por um <code>uint8_t flags</code> com accessors nomeados.</td>
+          <td class="low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>CarSystem::CommandSnapshot</code></td>
+          <td>Tem dois <code>bool</code>, um <code>int8_t</code>, um <code>uint32_t</code> e um sub-struct pequeno. A ordem atual induz padding antes de <code>wheelSpinTicks</code>.</td>
+          <td>Reordenar campos e empacotar flags em máscara.</td>
+          <td class="low">Baixo</td>
+        </tr>
+        <tr>
+          <td><code>CarPhysics::DynamicsState</code></td>
+          <td>Vários flags e bytes no final após campos de 32 bits. Deve estar com padding residual.</td>
+          <td>Agrupar bytes e bools em uma palavra de flags, ou ao menos reordenar após <code>engineRpm</code>.</td>
+          <td class="med">Médio</td>
+        </tr>
+        <tr>
+          <td><code>CarPhysics::GroundState</code></td>
+          <td>É maior e mistura <code>Fxp</code>, ids, cooldowns, flags e dados de wall query. Há padding provável.</td>
+          <td>Separar flags/cooldowns num bloco compacto e reordenar inteiros de 32 bits antes dos bools.</td>
+          <td class="med">Médio</td>
+        </tr>
+        <tr>
+          <td>Contadores de telemetria do <code>TrackSystem</code></td>
+          <td>Muitos <code>uint32_t</code> por frame para queries, walls, fases HWR/LWR e leak probes.</td>
+          <td>Manter em <code>uint32_t</code> apenas onde há risco real de overflow; demais podem virar <code>uint16_t</code> ou sair de builds retail.</td>
+          <td class="med">Médio</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>O que não compensa mexer agora</h2>
+    <ul>
+      <li><code>surfaceTypeByFamilyId_[4096]</code>: já está em <code>uint8_t</code>; está praticamente no menor formato útil.</li>
+      <li><code>familySlotIndex_[4096]</code>: ainda precisa de sentinela negativa e faixa acima de <code>255</code>; <code>int16_t</code> continua adequado.</li>
+      <li><code>Fxp</code> e <code>Vector3D</code>: são tipos fundamentais do projeto. Trocar representação aqui é mudança estrutural, não auditoria de footprint.</li>
+      <li>Snapshots de overlay/HUD: o custo maior deles é debug e stack transiente; o foco de footprint permanente deve ficar no runtime de pista e física.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Estimativas de Structs Relevantes</h2>
+    <table>
+      <thead>
+        <tr><th>Struct</th><th>Leitura atual</th><th>Observação</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>CarSystem::RuntimeDebugSnapshot</code></td>
+          <td>~32 bytes</td>
+          <td>Já está relativamente enxuto. O ganho aqui é baixo.</td>
+        </tr>
+        <tr>
+          <td><code>CarSystem::CommandSnapshot</code></td>
+          <td>~20 bytes</td>
+          <td>Pode cair para algo na faixa de ~12-16 bytes com reorder/bitpack.</td>
+        </tr>
+        <tr>
+          <td><code>CarPhysics::DynamicsState</code></td>
+          <td>~36 bytes</td>
+          <td>Ganho modesto, mas limpo e seguro.</td>
+        </tr>
+        <tr>
+          <td><code>CarPhysics::GroundState</code></td>
+          <td>~68 bytes</td>
+          <td>Pode reduzir alguns bytes, mas sem milagre; o volume vem dos vários <code>Fxp</code>.</td>
+        </tr>
+        <tr>
+          <td><code>TrackFrameSnapshot</code></td>
+          <td>~1008 bytes</td>
+          <td>Boa candidata porque é estado de frame do sistema de pista.</td>
+        </tr>
+        <tr>
+          <td><code>TrackFramePlan</code></td>
+          <td>~348 bytes</td>
+          <td>Existe em duplicata; redução aqui multiplica.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Ordem de Ataque Recomendada</h2>
+    <ol>
+      <li>Compactar arrays e ids do <code>TrackSystem</code> com faixa conhecida.</li>
+      <li>Compactar <code>TrackFrameSnapshot::SegmentMeta</code> e <code>TrackFramePlan</code>.</li>
+      <li>Empacotar flags de <code>GameplayInputSnapshot</code> e <code>CommandSnapshot</code>.</li>
+      <li>Reordenar <code>DynamicsState</code> e <code>GroundState</code> para remover padding.</li>
+      <li>Separar telemetria debug de estado retail permanente.</li>
+      <li>Fechar a auditoria com uma tabela automática de <code>sizeof</code> para impedir regressões futuras.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Plano imediato</h2>
+    <p>O próximo passo seguro é atacar apenas o bloco de <code>TrackSystem</code> com risco baixo e ganho concreto:</p>
+    <ul>
+      <li><code>TrackFrameSnapshot::SegmentMeta::id</code> para <code>int16_t</code></li>
+      <li><code>TrackFramePlan::sortedSegmentIds</code> para <code>int16_t</code></li>
+      <li><code>windowEntryIndexBySegmentId_</code> para <code>int8_t</code></li>
+      <li><code>windowLogicalRankBySegmentId_</code> para <code>int8_t</code></li>
+      <li><code>lastSortRank_</code> para <code>uint8_t</code></li>
+    </ul>
+    <p>Esse pacote deve economizar pouco mais de 1 KB de estado residente sem mexer na semântica do jogo.</p>
+  </div>
+</body>
+</html>

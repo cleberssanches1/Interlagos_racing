@@ -21,10 +21,10 @@ struct GameplayFrameState
     int32_t carYawDeg = 0;
     int16_t throttle = 0;
     int16_t steering = 0;
-    bool braking = false;
-    bool shiftUpRequested = false;
-    bool shiftDownRequested = false;
-    bool wheelsSpinning = false;
+    uint8_t braking : 1 = 0;
+    uint8_t shiftUpRequested : 1 = 0;
+    uint8_t shiftDownRequested : 1 = 0;
+    uint8_t wheelsSpinning : 1 = 0;
     uint8_t brakeHoldFrames = 0;
     int16_t speedProxy = 0;
     int32_t activeSegmentId = -1;
@@ -55,20 +55,20 @@ struct GameplayFrameState
     uint8_t groundSurfaceType = 0u;
     uint32_t checkpointsPassed = 0;
     RacePhase phase = RacePhase::Idle;
-    bool resetRequested = false;
+    uint8_t resetRequested : 1 = 0;
     Vector3D respawnPosition{};
     int32_t respawnYawDeg = 0;
 };
 
 struct SurfaceContact
 {
-    bool valid = false;
+    Vector3D normal = Vector3D(0.0, -1.0, 0.0);
+    SRL::Math::Types::Fxp surfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
     int32_t segmentId = -1;
     int16_t faceIndex = -1;
     uint16_t familyId = 0u;
     uint8_t surfaceType = 0u; // 1=asphalt, 2/3=offroad variants
-    Vector3D normal = Vector3D(0.0, -1.0, 0.0);
-    SRL::Math::Types::Fxp surfaceY = SRL::Math::Types::Fxp::BuildRaw(0);
+    uint8_t valid = 0u;
 };
 
 struct ICarCommand

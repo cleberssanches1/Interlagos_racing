@@ -47,13 +47,41 @@ public:
     void SetRuntimeFrameState(const GameplayFrameState& frameState);
     struct GameplayInputSnapshot
     {
-        bool accelerateHeld = false;
-        bool brakeHeld = false;
-        bool steerLeftHeld = false;
-        bool steerRightHeld = false;
-        bool shiftDownHeld = false;
-        bool shiftUpHeld = false;
-        bool shiftLockHeld = false;
+        enum : uint8_t
+        {
+            kAccelerateHeld = 1u << 0,
+            kBrakeHeld = 1u << 1,
+            kSteerLeftHeld = 1u << 2,
+            kSteerRightHeld = 1u << 3,
+            kShiftDownHeld = 1u << 4,
+            kShiftUpHeld = 1u << 5,
+            kShiftLockHeld = 1u << 6
+        };
+
+        uint8_t flags = 0u;
+
+        bool AccelerateHeld() const { return (flags & kAccelerateHeld) != 0u; }
+        bool BrakeHeld() const { return (flags & kBrakeHeld) != 0u; }
+        bool SteerLeftHeld() const { return (flags & kSteerLeftHeld) != 0u; }
+        bool SteerRightHeld() const { return (flags & kSteerRightHeld) != 0u; }
+        bool ShiftDownHeld() const { return (flags & kShiftDownHeld) != 0u; }
+        bool ShiftUpHeld() const { return (flags & kShiftUpHeld) != 0u; }
+        bool ShiftLockHeld() const { return (flags & kShiftLockHeld) != 0u; }
+
+        void SetAccelerateHeld(bool enabled) { SetFlag(kAccelerateHeld, enabled); }
+        void SetBrakeHeld(bool enabled) { SetFlag(kBrakeHeld, enabled); }
+        void SetSteerLeftHeld(bool enabled) { SetFlag(kSteerLeftHeld, enabled); }
+        void SetSteerRightHeld(bool enabled) { SetFlag(kSteerRightHeld, enabled); }
+        void SetShiftDownHeld(bool enabled) { SetFlag(kShiftDownHeld, enabled); }
+        void SetShiftUpHeld(bool enabled) { SetFlag(kShiftUpHeld, enabled); }
+        void SetShiftLockHeld(bool enabled) { SetFlag(kShiftLockHeld, enabled); }
+
+    private:
+        void SetFlag(uint8_t bit, bool enabled)
+        {
+            if (enabled) flags |= bit;
+            else flags = static_cast<uint8_t>(flags & static_cast<uint8_t>(~bit));
+        }
     };
     GameplayInputSnapshot LastGameplayInput() const { return lastGameplayInput_; }
     void ApplyGameplayInput(const GameplayInputSnapshot& input,
@@ -69,6 +97,12 @@ public:
     void SyncRenderState(const Vector3D& renderPosition, int32_t gameplayYawDeg);
     struct RuntimeDebugSnapshot
     {
+        enum : uint8_t
+        {
+            kBrakingBit = 1u << 0,
+            kWallHitBit = 1u << 1
+        };
+
         int16_t speedProxy = 0;
         int16_t speedKmh = 0;
         int16_t engineRpm = 0;
@@ -86,14 +120,30 @@ public:
         uint8_t groundMask = 0;
         uint8_t groundSurfaceType = 0;
         uint8_t groundFamilyId = 0;
-        bool braking = false;
-        bool wallHit = false;
+        uint8_t flags = 0u;
+
+        bool Braking() const { return (flags & kBrakingBit) != 0u; }
+        bool WallHit() const { return (flags & kWallHitBit) != 0u; }
+        void SetBraking(bool enabled) { SetFlag(kBrakingBit, enabled); }
+        void SetWallHit(bool enabled) { SetFlag(kWallHitBit, enabled); }
+
+    private:
+        void SetFlag(uint8_t bit, bool enabled)
+        {
+            if (enabled) flags |= bit;
+            else flags &= static_cast<uint8_t>(~bit);
+        }
     };
     struct DrivetrainDebugSnapshot
     {
+        enum : uint8_t
+        {
+            kBrakingBit = 1u << 0
+        };
+
         char gearChar = '1';
+        uint8_t flags = 0u;
         int16_t throttle = 0;
-        bool braking = false;
         int16_t speedProxy = 0;
         int16_t speedKmh = 0;
         int16_t engineRpm = 0;
@@ -102,6 +152,13 @@ public:
         int16_t yawStepDeg = 0;
         int16_t planarDx = 0;
         int16_t netDz = 0;
+
+        bool Braking() const { return (flags & kBrakingBit) != 0u; }
+        void SetBraking(bool enabled)
+        {
+            if (enabled) flags |= kBrakingBit;
+            else flags &= static_cast<uint8_t>(~kBrakingBit);
+        }
     };
     const RuntimeDebugSnapshot& RuntimeDebug() const { return runtimeDebug_; }
     DrivetrainDebugSnapshot BuildDrivetrainDebugSnapshot() const;
@@ -117,20 +174,56 @@ public:
     {
         struct InputLatchState
         {
-            bool throttleHeld = false;
-            bool brakeHeld = false;
-            bool steerHeld = false;
             uint8_t accelHoldFrames = 0;
             uint8_t brakeHoldFrames = 0;
+            uint8_t flags = 0u;
+
+            enum : uint8_t
+            {
+                kThrottleHeld = 1u << 0,
+                kBrakeHeld = 1u << 1,
+                kSteerHeld = 1u << 2
+            };
+
+            bool ThrottleHeld() const { return (flags & kThrottleHeld) != 0u; }
+            bool BrakeHeld() const { return (flags & kBrakeHeld) != 0u; }
+            bool SteerHeld() const { return (flags & kSteerHeld) != 0u; }
+            void SetThrottleHeld(bool enabled) { SetFlag(kThrottleHeld, enabled); }
+            void SetBrakeHeld(bool enabled) { SetFlag(kBrakeHeld, enabled); }
+            void SetSteerHeld(bool enabled) { SetFlag(kSteerHeld, enabled); }
+
+        private:
+            void SetFlag(uint8_t bit, bool enabled)
+            {
+                if (enabled) flags |= bit;
+                else flags = static_cast<uint8_t>(flags & static_cast<uint8_t>(~bit));
+            }
         };
 
+        uint32_t wheelSpinTicks = 0;
         int16_t throttle = 0;
         int16_t steering = 0;
         int8_t steerDirection = 0; // -1 left, +1 right, 0 neutral
-        bool braking = false;
-        bool wheelsSpinning = false;
-        uint32_t wheelSpinTicks = 0;
         InputLatchState latches{};
+        uint8_t flags = 0u;
+
+        enum : uint8_t
+        {
+            kBraking = 1u << 0,
+            kWheelsSpinning = 1u << 1
+        };
+
+        bool Braking() const { return (flags & kBraking) != 0u; }
+        bool WheelsSpinning() const { return (flags & kWheelsSpinning) != 0u; }
+        void SetBraking(bool enabled) { SetFlag(kBraking, enabled); }
+        void SetWheelsSpinning(bool enabled) { SetFlag(kWheelsSpinning, enabled); }
+
+    private:
+        void SetFlag(uint8_t bit, bool enabled)
+        {
+            if (enabled) flags |= bit;
+            else flags = static_cast<uint8_t>(flags & static_cast<uint8_t>(~bit));
+        }
     };
 
     const CommandSnapshot& Commands() const { return commandState_; }
@@ -200,13 +293,13 @@ private:
 
     struct InputHistoryState
     {
+        uint32_t lastLeftPressFrame = 0;
+        uint32_t lastRightPressFrame = 0;
+        int8_t brakeSteerDirWhileHeld = 0;
         bool leftHeldPrev = false;
         bool rightHeldPrev = false;
         bool shiftDownHeldPrev = false;
         bool shiftUpHeldPrev = false;
-        uint32_t lastLeftPressFrame = 0;
-        uint32_t lastRightPressFrame = 0;
-        int8_t brakeSteerDirWhileHeld = 0;
     };
 
     CommandSnapshot commandState_{};

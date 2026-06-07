@@ -19,8 +19,8 @@ struct DynamicsState
     Fxp steerDeg = Fxp::BuildRaw(0);
     Fxp surfaceGripScale = Fxp::BuildRaw(1 << 16);
     int32_t yawAccumulatorDegRaw = 0; // 16.16 integrated yaw delta
-    uint8_t gear = 1u;                // 0=reverse, 1..kForwardGearCount forward gears
     int16_t engineRpm = 1000;         // debug/telemetry
+    uint8_t gear = 1u;                // 0=reverse, 1..kForwardGearCount forward gears
     uint8_t launchStraightFrames = 0u;
     uint8_t forwardLaunchLateralLockFrames = 0u;
     uint8_t brakeDriftFrames = 0u;
@@ -38,6 +38,9 @@ struct GroundState
     Fxp correctionZ = Fxp::BuildRaw(0);
     Fxp lastStableX = Fxp::BuildRaw(0);
     Fxp lastStableZ = Fxp::BuildRaw(0);
+    int32_t lastWallQueryFrameId = -1;
+    int32_t lastWallApplyFrameId = -1;
+    int16_t lastWallQuerySegmentId = -1;
     int16_t lastSurfaceSegmentId = -1;
     int16_t lastSurfaceFaceIndex = -1;
     uint16_t lastSurfaceFamilyId = 0u;
@@ -51,10 +54,7 @@ struct GroundState
     bool lastStablePlanarInitialized = false;
     bool surfaceYInitialized = false;
     bool surfaceYFilterInitialized = false;
-    int32_t lastWallQueryFrameId = -1;
-    int32_t lastWallApplyFrameId = -1;
     bool lastWallQueryHit = false;
-    int32_t lastWallQuerySegmentId = -1;
     Fxp lastWallPushX = Fxp::BuildRaw(0);
     Fxp lastWallPushZ = Fxp::BuildRaw(0);
 };

@@ -1,0 +1,34 @@
+Compiling SH2 size probe
+TYPE SIZE AUDIT (SH2 OBJECT SYMBOLS)
+------------------------------------------------------------
+size_carsystem_gameplayinputsnapshot                          1
+size_carsystem_commandsnapshot_inputlatchstate                3
+size_fxp                                                      4
+size_gameloopsystem_realtimefpsstate                         12
+size_vector3d                                                12
+size_carsystem_commandsnapshot                               16
+size_gameloopsystem_camerapathruntimestate                   16
+size_tracksystem_trackframesnapshot_segmentmeta              16
+size_carsystem_drivetraindebugsnapshot                       20
+size_gameloopsystem_carprepareruntimestate                   20
+size_surfacecontact                                          28
+size_carsystem_runtimedebugsnapshot                          32
+size_carphysics_dynamicsstate                                36
+size_gameloopsystem_sh2splittelemetrysnapshot                36
+size_tracksystem_sh2perfbucket                               40
+size_gameloopsystem_framepresentationsnapshot                44
+size_gameloopsystem_hwrstagetrace                            48
+size_gameloopsystem_lwrstagetrace                            48
+size_gameloopsystem_carrenderframestate                      52
+size_carphysics_groundstate                                  64
+size_gameloopsystem_lowworkoverlaystate                      72
+size_gameloopsystem_segmentoverlaysnapshot                   76
+size_gameloopsystem_autolaproutestate                        96
+size_tracksystem_runtimediagnosticsstate                    104
+size_gameloopsystem_simulationpayload                       116
+size_gameplayframestate                                     116
+size_gameloopsystem_overlaydiagnosticssnapshot              128
+size_tracksystem_trackframeplan                             204
+size_gameloopsystem_simulationruntimestate                  496
+size_tracksystem_trackframesnapshot                         816
+size_tracksystem                                          19212

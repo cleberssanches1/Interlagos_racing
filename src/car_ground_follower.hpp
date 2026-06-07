@@ -515,7 +515,7 @@ private:
                                           Fxp wallRadius,
                                           int32_t seedSegmentId,
                                           Vector3D& outPush,
-                                          int32_t* outSegmentId)
+                                          int16_t* outSegmentId)
     {
         outPush = Vector3D(Fxp::BuildRaw(0), Fxp::BuildRaw(0), Fxp::BuildRaw(0));
         if (!trackQuery)
@@ -534,12 +534,18 @@ private:
             // Saturn safety path:
             // keep a single wall query only. Multi-probe expansion increased
             // runtime cost/code size enough to destabilize startup on emulator.
-            return trackQuery->ResolvePlanarWallPush(basePosition,
-                                                     forwardDirection,
-                                                     wallRadius,
-                                                     outPush,
-                                                     outSegmentId,
-                                                     seedSegmentId);
+            int32_t hitSegmentId = -1;
+            const bool hit = trackQuery->ResolvePlanarWallPush(basePosition,
+                                                               forwardDirection,
+                                                               wallRadius,
+                                                               outPush,
+                                                               &hitSegmentId,
+                                                               seedSegmentId);
+            if (outSegmentId)
+            {
+                *outSegmentId = static_cast<int16_t>(hitSegmentId);
+            }
+            return hit;
         }
 
         const Fxp wallRightX = cosYaw;
@@ -619,7 +625,7 @@ private:
 
         if (outSegmentId)
         {
-            *outSegmentId = lastHitSegmentId;
+            *outSegmentId = static_cast<int16_t>(lastHitSegmentId);
         }
         return anyHit;
     }
