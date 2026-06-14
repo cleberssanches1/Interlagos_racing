@@ -49,10 +49,33 @@ public:
 
     void Initialize();
     void OnFrame(const GameplayFrameState& frameState) override;
+    void SetVoiceRouter(const IAudioVoiceRouter& router) { voiceRouter_ = &router; }
+    static const IAudioVoiceRouter& DefaultVoiceRouter();
 
     const Snapshot& LastSnapshot() const { return snapshot_; }
 
 private:
+    class FixedVoiceRouter final : public IAudioVoiceRouter
+    {
+    public:
+        uint8_t ResolveVoice(const AudioVoiceGroup group) const override
+        {
+            switch (group)
+            {
+            case AudioVoiceGroup::CarEngine:
+                return kVoiceEngine;
+            case AudioVoiceGroup::CarShiftUp:
+                return kVoiceShiftUp;
+            case AudioVoiceGroup::CarShiftDown:
+                return kVoiceShiftDown;
+            case AudioVoiceGroup::CarTireSkid:
+                return kVoiceTire;
+            default:
+                return kVoiceEngine;
+            }
+        }
+    };
+
     enum class AudioCue : uint8_t
     {
         Engine = 0,
@@ -86,6 +109,7 @@ private:
 
     State state_{};
     Snapshot snapshot_{};
+    const IAudioVoiceRouter* voiceRouter_ = nullptr;
 
     static uint16_t GetPhysicsRpm(const GameplayFrameState& fs);
     static uint16_t SmoothRpm(uint16_t current, uint16_t target);
@@ -93,7 +117,21 @@ private:
     static const char* ResolveAssetName(AudioCue cue, CarAudioProfile profile);
     static SRL::Sound::Pcm::WaveSound* TryLoadWaveCue(AudioCue cue);
     static SRL::Sound::Pcm::WaveSound* TryLoadWave(const char* filename);
+    static bool IsVoiceFree(uint8_t voice);
+    static void StopVoice(uint8_t voice);
+    static void SetVoiceVolumePan(uint8_t voice, uint8_t volume, int8_t pan);
+    static void SetVoicePitch(uint8_t voice, uint16_t pitchWord);
 
+    uint8_t ResolveVoice(AudioVoiceGroup group) const;
+    void TickVoiceLifetime();
+    void EnsureEngineVoiceStarted();
+    void UpdateEngineSnapshot(uint16_t pitchWord);
+    void TriggerShiftVoice(SRL::Sound::Pcm::WaveSound* sample,
+                           uint8_t voice,
+                           uint8_t volume,
+                           int8_t pan,
+                           uint8_t& ioVoiceFrames,
+                           const GameplayFrameState& fs);
     void TickEngine(const GameplayFrameState& fs);
     void TickGearShift(const GameplayFrameState& fs);
     void TickTire(const GameplayFrameState& fs);
@@ -101,6 +139,11 @@ private:
 
 inline void CarAudioSystem::Initialize()
 {
+    if (!voiceRouter_)
+    {
+        voiceRouter_ = &DefaultVoiceRouter();
+    }
+
     const bool hwrHasRoom =
         SRL::Memory::HighWorkRam::GetLargestFreeBlockSize() >= 192u * 1024u;
     const bool cartAvailable =
@@ -126,29 +169,23 @@ inline void CarAudioSystem::Initialize()
 
     if (engineSample_)
     {
-        state_.engineActive = engineSample_->PlayOnVoice(kVoiceEngine, kEngineVolume, 0);
+        state_.engineActive = engineSample_->PlayOnVoice(ResolveVoice(AudioVoiceGroup::CarEngine),
+                                                         kEngineVolume,
+                                                         0);
         if (state_.engineActive)
         {
-            SRL::Sound::Pcm::SetVoicePitch(kVoiceEngine, ComputeEnginePitchWord(kEngineIdleRpm));
+            SetVoicePitch(ResolveVoice(AudioVoiceGroup::CarEngine),
+                          ComputeEnginePitchWord(kEngineIdleRpm));
         }
     }
 }
 
 inline void CarAudioSystem::OnFrame(const GameplayFrameState& frameState)
 {
-    if (state_.shiftSoundCooldownFrames > 0u)
-    {
-        --state_.shiftSoundCooldownFrames;
-    }
-    if ((state_.shiftUpVoiceFrames > 0u) && (--state_.shiftUpVoiceFrames == 0u))
-    {
-        SRL::Sound::Pcm::StopVoice(kVoiceShiftUp);
-    }
-    if ((state_.shiftDownVoiceFrames > 0u) && (--state_.shiftDownVoiceFrames == 0u))
-    {
-        SRL::Sound::Pcm::StopVoice(kVoiceShiftDown);
-    }
+    TickVoiceLifetime();
 
+    // Order matters: shift state may momentarily override engine RPM,
+    // then tire skid is evaluated from the final frame snapshot.
     TickGearShift(frameState);
     TickEngine(frameState);
     TickTire(frameState);
@@ -156,6 +193,7 @@ inline void CarAudioSystem::OnFrame(const GameplayFrameState& frameState)
 
 inline void CarAudioSystem::TickEngine(const GameplayFrameState& fs)
 {
+    // Engine loop synthesis from authoritative drivetrain RPM.
     state_.audioRpmTarget = GetPhysicsRpm(fs);
     if ((state_.forcedShiftFrames > 0u) &&
         (state_.forcedShiftRpm >= kEngineIdleRpm))
@@ -169,38 +207,35 @@ inline void CarAudioSystem::TickEngine(const GameplayFrameState& fs)
         state_.audioRpmCurrent = SmoothRpm(state_.audioRpmCurrent, state_.audioRpmTarget);
     }
 
-    if (SRL::Sound::Pcm::IsVoiceFree(kVoiceEngine))
+    if (IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarEngine)))
     {
         state_.engineActive = false;
     }
 
-    if (!state_.engineActive && engineSample_)
-    {
-        state_.engineActive = engineSample_->PlayOnVoice(kVoiceEngine, kEngineVolume, 0);
-    }
+    EnsureEngineVoiceStarted();
 
     if (state_.engineActive)
     {
         const uint8_t engineVolume =
             (state_.engineShiftDuckFrames > 0u) ? kEngineShiftDuckVolume : kEngineVolume;
-        SRL::Sound::Pcm::SetVoiceVolumePan(kVoiceEngine, engineVolume, 0);
-        SRL::Sound::Pcm::SetVoicePitch(kVoiceEngine, ComputeEnginePitchWord(state_.audioRpmCurrent));
+        const uint16_t pitchWord = ComputeEnginePitchWord(state_.audioRpmCurrent);
+        SetVoiceVolumePan(ResolveVoice(AudioVoiceGroup::CarEngine), engineVolume, 0);
+        SetVoicePitch(ResolveVoice(AudioVoiceGroup::CarEngine), pitchWord);
+        UpdateEngineSnapshot(pitchWord);
+    }
+    else
+    {
+        UpdateEngineSnapshot(ComputeEnginePitchWord(state_.audioRpmCurrent));
     }
     if (state_.engineShiftDuckFrames > 0u)
     {
         --state_.engineShiftDuckFrames;
     }
-
-    snapshot_.currentRpm = state_.audioRpmCurrent;
-    snapshot_.enginePitchWord = ComputeEnginePitchWord(state_.audioRpmCurrent);
-    snapshot_.activeSampleIdx = 0u;
-    snapshot_.idleVolume = kEngineVolume;
-    snapshot_.revVolume = kEngineVolume;
-    snapshot_.enginePlaying = state_.engineActive;
 }
 
 inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 {
+    // Shift SFX are edge-triggered from drivetrain telemetry.
     const int16_t gear = fs.carGear;
     const bool shiftStartedThisFrame =
         (fs.carShiftFrames > 0u) &&
@@ -247,29 +282,21 @@ inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 
     if (playShiftSound && (gear > state_.lastGear))
     {
-        if (shiftUpSample_)
-        {
-            SRL::Sound::Pcm::StopVoice(kVoiceShiftUp);
-            if (shiftUpSample_->PlayOnVoice(kVoiceShiftUp, kShiftUpVolume, kShiftUpPan))
-            {
-                state_.lastShiftSoundFrameId = fs.frameId;
-                state_.shiftSoundCooldownFrames = kShiftRetriggerCooldownFrames;
-                state_.shiftUpVoiceFrames = kShiftVoiceHoldFrames;
-            }
-        }
+        TriggerShiftVoice(shiftUpSample_,
+                          ResolveVoice(AudioVoiceGroup::CarShiftUp),
+                          kShiftUpVolume,
+                          kShiftUpPan,
+                          state_.shiftUpVoiceFrames,
+                          fs);
     }
     else if (playShiftSound)
     {
-        if (shiftDownSample_)
-        {
-            SRL::Sound::Pcm::StopVoice(kVoiceShiftDown);
-            if (shiftDownSample_->PlayOnVoice(kVoiceShiftDown, kShiftDownVolume, kShiftDownPan))
-            {
-                state_.lastShiftSoundFrameId = fs.frameId;
-                state_.shiftSoundCooldownFrames = kShiftRetriggerCooldownFrames;
-                state_.shiftDownVoiceFrames = kShiftVoiceHoldFrames;
-            }
-        }
+        TriggerShiftVoice(shiftDownSample_,
+                          ResolveVoice(AudioVoiceGroup::CarShiftDown),
+                          kShiftDownVolume,
+                          kShiftDownPan,
+                          state_.shiftDownVoiceFrames,
+                          fs);
     }
 
     state_.lastGear = gear;
@@ -278,27 +305,28 @@ inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 
 inline void CarAudioSystem::TickTire(const GameplayFrameState& fs)
 {
+    // Tire skid runs as an independent one-voice layer.
     const bool shouldSkid =
         (fs.carSpeedKmh > kSkidSpeedThreshold) &&
         (fs.wheelsSpinning || fs.braking);
 
     if (shouldSkid)
     {
-        if (SRL::Sound::Pcm::IsVoiceFree(kVoiceTire))
+        if (IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarTireSkid)))
         {
             if (tireSample_)
             {
-                tireSample_->PlayOnVoice(kVoiceTire, kSkidVolume, 0);
+                tireSample_->PlayOnVoice(ResolveVoice(AudioVoiceGroup::CarTireSkid), kSkidVolume, 0);
             }
         }
         else
         {
-            SRL::Sound::Pcm::SetVoiceVolumePan(kVoiceTire, kSkidVolume, 0);
+            SetVoiceVolumePan(ResolveVoice(AudioVoiceGroup::CarTireSkid), kSkidVolume, 0);
         }
     }
-    else if (!SRL::Sound::Pcm::IsVoiceFree(kVoiceTire))
+    else if (!IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarTireSkid)))
     {
-        SRL::Sound::Pcm::StopVoice(kVoiceTire);
+        StopVoice(ResolveVoice(AudioVoiceGroup::CarTireSkid));
     }
 
     state_.skidActive = shouldSkid;
@@ -344,6 +372,96 @@ inline uint16_t CarAudioSystem::ComputeEnginePitchWord(const uint16_t rpm)
                 static_cast<uint32_t>(rpm - kEngineIdleRpm)) /
                    static_cast<uint32_t>(kEngineAcousticMaxRpm - kEngineIdleRpm));
     return SRL::Sound::Pcm::ComputePitchWord(targetHz);
+}
+
+inline const IAudioVoiceRouter& CarAudioSystem::DefaultVoiceRouter()
+{
+    static FixedVoiceRouter kRouter{};
+    return kRouter;
+}
+
+inline bool CarAudioSystem::IsVoiceFree(const uint8_t voice)
+{
+    return SRL::Sound::Pcm::IsVoiceFree(voice);
+}
+
+inline void CarAudioSystem::StopVoice(const uint8_t voice)
+{
+    SRL::Sound::Pcm::StopVoice(voice);
+}
+
+inline void CarAudioSystem::SetVoiceVolumePan(const uint8_t voice,
+                                              const uint8_t volume,
+                                              const int8_t pan)
+{
+    SRL::Sound::Pcm::SetVoiceVolumePan(voice, volume, pan);
+}
+
+inline void CarAudioSystem::SetVoicePitch(const uint8_t voice, const uint16_t pitchWord)
+{
+    SRL::Sound::Pcm::SetVoicePitch(voice, pitchWord);
+}
+
+inline uint8_t CarAudioSystem::ResolveVoice(const AudioVoiceGroup group) const
+{
+    return (voiceRouter_ ? voiceRouter_ : &DefaultVoiceRouter())->ResolveVoice(group);
+}
+
+inline void CarAudioSystem::TickVoiceLifetime()
+{
+    if (state_.shiftSoundCooldownFrames > 0u)
+    {
+        --state_.shiftSoundCooldownFrames;
+    }
+    if ((state_.shiftUpVoiceFrames > 0u) && (--state_.shiftUpVoiceFrames == 0u))
+    {
+        StopVoice(ResolveVoice(AudioVoiceGroup::CarShiftUp));
+    }
+    if ((state_.shiftDownVoiceFrames > 0u) && (--state_.shiftDownVoiceFrames == 0u))
+    {
+        StopVoice(ResolveVoice(AudioVoiceGroup::CarShiftDown));
+    }
+}
+
+inline void CarAudioSystem::EnsureEngineVoiceStarted()
+{
+    if (!state_.engineActive && engineSample_)
+    {
+        state_.engineActive = engineSample_->PlayOnVoice(ResolveVoice(AudioVoiceGroup::CarEngine),
+                                                         kEngineVolume,
+                                                         0);
+    }
+}
+
+inline void CarAudioSystem::UpdateEngineSnapshot(const uint16_t pitchWord)
+{
+    snapshot_.currentRpm = state_.audioRpmCurrent;
+    snapshot_.enginePitchWord = pitchWord;
+    snapshot_.activeSampleIdx = 0u;
+    snapshot_.idleVolume = kEngineVolume;
+    snapshot_.revVolume = kEngineVolume;
+    snapshot_.enginePlaying = state_.engineActive;
+}
+
+inline void CarAudioSystem::TriggerShiftVoice(SRL::Sound::Pcm::WaveSound* sample,
+                                              const uint8_t voice,
+                                              const uint8_t volume,
+                                              const int8_t pan,
+                                              uint8_t& ioVoiceFrames,
+                                              const GameplayFrameState& fs)
+{
+    if (!sample)
+    {
+        return;
+    }
+
+    StopVoice(voice);
+    if (sample->PlayOnVoice(voice, volume, pan))
+    {
+        state_.lastShiftSoundFrameId = fs.frameId;
+        state_.shiftSoundCooldownFrames = kShiftRetriggerCooldownFrames;
+        ioVoiceFrames = kShiftVoiceHoldFrames;
+    }
 }
 
 inline const char* CarAudioSystem::ResolveAssetName(const AudioCue cue, const CarAudioProfile profile)

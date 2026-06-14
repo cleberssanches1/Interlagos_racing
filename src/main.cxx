@@ -9,6 +9,7 @@
 #include "render_pipeline.hpp"
 #include "runtime_null_systems.hpp"
 #include "car_audio_system.hpp"
+#include "project_voice_router.hpp"
 #include "simple_car_physics.hpp"
 #include "simple_gameplay_tick.hpp"
 #include "track_collision_query.hpp"
@@ -910,7 +911,9 @@ static int RunPhysicsPocMode()
         MLOG(1, 4, "Cart DRAM ausente");
     }
 
+    Game::ProjectVoiceRouter projectVoiceRouter;
     Game::CarAudioSystem audioEvents;
+    audioEvents.SetVoiceRouter(projectVoiceRouter);
     audioEvents.Initialize();
 
     // Camera/projecao de teste
@@ -1247,7 +1250,9 @@ int GameApp::Run()
     // SRL::Debug::Print(0, 1, "HWR free:%d total:%d", (int)rep.FreeSize, (int)rep.TotalSize);
     const bool cartOk = crep.TotalSize > 0;
 
+    Game::ProjectVoiceRouter projectVoiceRouter;
     Game::CarAudioSystem audioEvents;
+    audioEvents.SetVoiceRouter(projectVoiceRouter);
     audioEvents.Initialize();
 
     // Teste simples: escreve string na HWR e l^ de volta (VDP2 debug)

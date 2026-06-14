@@ -282,4 +282,26 @@ struct IAudioEvents
     virtual ~IAudioEvents() = default;
     virtual void OnFrame(const GameplayFrameState& frameState) = 0;
 };
+
+enum class AudioVoiceGroup : uint8_t
+{
+    CarEngine = 0,
+    CarShiftUp,
+    CarShiftDown,
+    CarTireSkid,
+    UiPrimary,
+    UiSecondary,
+    AmbiencePrimary,
+    AmbienceSecondary,
+    MusicPrimary,
+    MusicSecondary,
+    SystemPrimary,
+    SystemSecondary
+};
+
+struct IAudioVoiceRouter
+{
+    virtual ~IAudioVoiceRouter() = default;
+    virtual uint8_t ResolveVoice(AudioVoiceGroup group) const = 0;
+};
 } // namespace Game

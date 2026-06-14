@@ -13,6 +13,7 @@ public:
                                 int32_t& ioCarYawDeg,
                                 FrameStepOutput& outStep)
     {
+        // Driver intent and frame-local normalized inputs.
         const Fxp throttleNorm = NormalizePercent(ioFrameState.throttle);
         const Fxp steerNorm = NormalizePercent(ioFrameState.steering);
         const Fxp gripScale = Clamp(ioState.surfaceGripScale,
@@ -29,268 +30,10 @@ public:
         const int16_t speedKmhSigned = BuildSignedSpeedKmh(ioState.forwardSpeed);
         const int16_t speedKmhAbs = static_cast<int16_t>((speedKmhSigned < 0) ? -speedKmhSigned : speedKmhSigned);
 
-        const auto smoothRpmToward = [](int16_t current,
-                                        int16_t target,
-                                        uint16_t risePerFrame,
-                                        uint16_t dropPerFrame) -> int16_t
-        {
-            if (target > current)
-            {
-                const int16_t delta = static_cast<int16_t>(target - current);
-                return static_cast<int16_t>(current + std::min<int16_t>(delta, static_cast<int16_t>(risePerFrame)));
-            }
-
-            const int16_t delta = static_cast<int16_t>(current - target);
-            return static_cast<int16_t>(current - std::min<int16_t>(delta, static_cast<int16_t>(dropPerFrame)));
-        };
-
-        const auto computeRpmTargetForGear = [&](int8_t gear) -> int16_t
-        {
-            int32_t rpm = Tunables::kEngineIdleRpm;
-
-            if (gear == Tunables::kNeutralGear)
-            {
-                rpm += (static_cast<int32_t>(ioFrameState.throttle) *
-                        (Tunables::kNeutralFreeRevMaxRpm - Tunables::kEngineIdleRpm)) / 100;
-            }
-            else if (gear == Tunables::kReverseGear)
-            {
-                const int32_t speedClamped = std::clamp<int32_t>(speedKmhAbs, 0, Tunables::kReverseTopSpeedKmh);
-                const int32_t rpmFromSpeed =
-                    Tunables::kEngineIdleRpm +
-                    (speedClamped * (Tunables::kReverseLoadedMaxRpm - Tunables::kEngineIdleRpm)) /
-                        std::max<int32_t>(1, Tunables::kReverseTopSpeedKmh);
-                rpm = rpmFromSpeed;
-                if (ioFrameState.throttle > 0)
-                {
-                    const int32_t rpmPreload =
-                        Tunables::kEngineIdleRpm +
-                        (static_cast<int32_t>(ioFrameState.throttle) *
-                         (Tunables::kReverseLoadedMinRpm - Tunables::kEngineIdleRpm)) / 100;
-                    rpm = std::max<int32_t>(rpm, rpmPreload);
-                }
-            }
-            else
-            {
-                const int16_t gearTopKmh =
-                    Tunables::GearTopSpeedKmhFor(gear);
-                if (gearTopKmh > 0)
-                {
-                    const int32_t minTypicalSpeedKmh =
-                        std::max<int32_t>(0, Tunables::GearMinTypicalSpeedKmhFor(gear));
-                    const int32_t loadedMinRpm =
-                        Tunables::GearLoadedMinRpmFor(gear);
-                    const int32_t loadedMaxRpm =
-                        Tunables::GearLoadedMaxRpmFor(gear);
-
-                    if (speedKmhAbs <= minTypicalSpeedKmh)
-                    {
-                        const int32_t span = std::max<int32_t>(1, minTypicalSpeedKmh);
-                        rpm =
-                            Tunables::kEngineIdleRpm +
-                            (static_cast<int32_t>(speedKmhAbs) *
-                             (loadedMinRpm - Tunables::kEngineIdleRpm)) / span;
-                    }
-                    else
-                    {
-                        const int32_t speedIntoBand = speedKmhAbs - minTypicalSpeedKmh;
-                        const int32_t speedBand =
-                            std::max<int32_t>(1, gearTopKmh - minTypicalSpeedKmh);
-                        rpm =
-                            loadedMinRpm +
-                            (speedIntoBand * (loadedMaxRpm - loadedMinRpm)) / speedBand;
-                    }
-
-                    if ((gear == 1) &&
-                        (ioFrameState.throttle > 0) &&
-                        (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh))
-                    {
-                        rpm = loadedMinRpm;
-                    }
-                }
-            }
-            return static_cast<int16_t>(std::clamp<int32_t>(rpm,
-                                                            Tunables::kEngineIdleRpm,
-                                                            Tunables::kEngineMaxRpm));
-        };
-
-        const auto gearTopSpeedForShift = [](int8_t gear) -> int16_t
-        {
-            if (gear == Tunables::kReverseGear)
-            {
-                return Tunables::kReverseTopSpeedKmh;
-            }
-            if (gear == Tunables::kNeutralGear)
-            {
-                return 0;
-            }
-            return Tunables::GearTopSpeedKmhFor(gear);
-        };
-
-        const auto computeHighSpeedBlend = [&](int16_t speedKmh) -> Fxp
-        {
-            const int32_t span =
-                std::max<int32_t>(1, Tunables::kHighSpeedAeroFullKmh - Tunables::kHighSpeedAeroStartKmh);
-            const int32_t clamped =
-                std::clamp<int32_t>(speedKmh - Tunables::kHighSpeedAeroStartKmh, 0, span);
-            return Fxp::BuildRaw((clamped << 16) / span);
-        };
-
-        const auto computeForwardDragForGear = [&](const Fxp& forwardSpeed, int8_t gear) -> Fxp
-        {
-            const Fxp speedAbs = forwardSpeed.Abs();
-            const int16_t speedKmh = BuildSpeedProxy(forwardSpeed);
-            Fxp aeroDrag = speedAbs * forwardSpeed * Tunables::kAeroDragCoeff;
-            if (gear > Tunables::kNeutralGear)
-            {
-                const Fxp highSpeedBlend = computeHighSpeedBlend(speedKmh);
-                const Fxp highSpeedAeroExtra =
-                    highSpeedBlend * Tunables::GearHighSpeedAeroExtraScaleFor(gear);
-                aeroDrag = aeroDrag * Fxp::BuildRaw((1 << 16) + highSpeedAeroExtra.RawValue());
-            }
-            return aeroDrag + (forwardSpeed * Tunables::kRollingDragCoeff);
-        };
-
-        const auto computePostShiftRpm = [&](int16_t preShiftRpm,
-                                             int8_t fromGear,
-                                             int8_t toGear) -> int16_t
-        {
-            const bool stationaryNoThrottle =
-                (ioFrameState.throttle <= 0) &&
-                !ioFrameState.braking &&
-                (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh);
-
-            if (stationaryNoThrottle)
-            {
-                return Tunables::kEngineIdleRpm;
-            }
-
-            if (toGear == Tunables::kNeutralGear)
-            {
-                return std::max<int16_t>(Tunables::kEngineIdleRpm, preShiftRpm);
-            }
-
-            if (fromGear == Tunables::kNeutralGear)
-            {
-                return std::max<int16_t>(Tunables::GearLoadedMinRpmFor(toGear), Tunables::kEngineIdleRpm);
-            }
-
-            const int32_t fromTop = std::max<int32_t>(1, gearTopSpeedForShift(fromGear));
-            const int32_t toTop = std::max<int32_t>(1, gearTopSpeedForShift(toGear));
-            const int32_t shifted =
-                (static_cast<int32_t>(preShiftRpm) * fromTop + (toTop / 2)) / toTop;
-
-            const bool isUpShift = toGear > fromGear;
-            int32_t minRpm =
-                (toGear == Tunables::kReverseGear)
-                    ? Tunables::kReverseLoadedMinRpm
-                    : (isUpShift
-                        ? Tunables::GearShiftLandingMinRpmFor(toGear)
-                        : Tunables::GearLoadedMinRpmFor(toGear));
-            int32_t maxRpm =
-                (toGear == Tunables::kReverseGear)
-                    ? Tunables::kReverseLoadedMaxRpm
-                    : (isUpShift
-                        ? Tunables::GearShiftLandingMaxRpmFor(toGear)
-                        : Tunables::GearLoadedMaxRpmFor(toGear));
-
-            if (isUpShift &&
-                toGear != Tunables::kReverseGear)
-            {
-                const int32_t ratioShifted =
-                    std::clamp<int32_t>(shifted, minRpm, maxRpm);
-                return static_cast<int16_t>(ratioShifted);
-            }
-            if (!isUpShift &&
-                     toGear > Tunables::kNeutralGear)
-            {
-                const int32_t nextGearTargetRpm = computeRpmTargetForGear(toGear);
-                const int32_t landingFloor =
-                    std::max<int32_t>(minRpm,
-                                      nextGearTargetRpm - Tunables::kDownshiftTargetWindowBelowRpm);
-                const int32_t landingOvershoot =
-                    ioFrameState.braking
-                        ? Tunables::kDownshiftTargetWindowAboveBrakeRpm
-                        : ((ioFrameState.throttle > 0)
-                            ? Tunables::kDownshiftTargetWindowAboveThrottleRpm
-                            : Tunables::kDownshiftTargetWindowAboveCoastRpm);
-                const int32_t landingCeiling =
-                    std::min<int32_t>(maxRpm, nextGearTargetRpm + landingOvershoot);
-                minRpm = std::min<int32_t>(landingFloor, landingCeiling);
-                maxRpm = landingCeiling;
-            }
-
-            return static_cast<int16_t>(std::clamp<int32_t>(shifted, minRpm, maxRpm));
-        };
-
-        ioState.gear = Tunables::ClampSelectableGear(ioState.gear);
-        int8_t previousGear = ioState.gear;
-        int8_t shiftFromGear = ioState.gear;
-        int8_t shiftToGear = ioState.gear;
-        int16_t shiftSourceRpm = ioState.engineRpm;
-        int16_t shiftResultRpm = ioState.engineRpm;
-        bool shiftedUpThisFrame = false;
-        bool shiftedDownThisFrame = false;
-        if (ioFrameState.shiftDownRequested)
-        {
-            const int8_t nextGear =
-                (ioState.gear > Tunables::kReverseGear)
-                    ? static_cast<int8_t>(ioState.gear - 1)
-                    : Tunables::kReverseGear;
-            const bool reverseRequest = (nextGear == Tunables::kReverseGear);
-            const bool allowShift =
-                reverseRequest
-                    ? (speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
-                    : (computeRpmTargetForGear(nextGear) <= Tunables::kEngineHardMaxRpm);
-            if (allowShift)
-            {
-                ioState.gear = nextGear;
-                shiftedDownThisFrame = ioState.gear != previousGear;
-                if (shiftedDownThisFrame)
-                {
-                    shiftSourceRpm = ioState.engineRpm;
-                    shiftFromGear = previousGear;
-                    shiftToGear = ioState.gear;
-                    ioState.neutralHeldManually = (ioState.gear == Tunables::kNeutralGear);
-                }
-            }
-        }
-        if (ioFrameState.shiftUpRequested)
-        {
-            const bool leavingReverse = (ioState.gear == Tunables::kReverseGear);
-            const bool allowShift =
-                leavingReverse
-                    ? (speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
-                    : (ioState.gear < static_cast<int8_t>(Tunables::kForwardGearCount));
-            if (allowShift && ioState.gear < static_cast<int8_t>(Tunables::kForwardGearCount))
-            {
-                ++ioState.gear;
-                shiftedUpThisFrame = ioState.gear != previousGear;
-                if (shiftedUpThisFrame)
-                {
-                    shiftSourceRpm = ioState.engineRpm;
-                    shiftFromGear = previousGear;
-                    shiftToGear = ioState.gear;
-                    ioState.neutralHeldManually = (ioState.gear == Tunables::kNeutralGear);
-                }
-            }
-        }
-        ioState.gear = Tunables::ClampSelectableGear(ioState.gear);
-
-        if (Tunables::kAutomaticGearboxEnabled &&
-            ioState.gear == Tunables::kNeutralGear &&
-            !ioState.neutralHeldManually &&
-            ioFrameState.throttle > 0 &&
-            !ioFrameState.braking &&
-            speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
-        {
-            shiftFromGear = ioState.gear;
-            ioState.gear = 1;
-            shiftToGear = ioState.gear;
-        }
-
-        const bool isReverseGearSelected = (ioState.gear == Tunables::kReverseGear);
-        const bool isNeutralGearSelected = (ioState.gear == Tunables::kNeutralGear);
+        // Gear selection and shift telemetry.
+        ShiftState shiftState = ResolveGearSelection(ioFrameState, ioState, speedKmhAbs);
+        const bool isReverseGearSelected = shiftState.isReverseGearSelected;
+        const bool isNeutralGearSelected = shiftState.isNeutralGearSelected;
 
         const bool hasForwardDriveIntent =
             hasThrottleDriveIntent &&
@@ -317,151 +60,15 @@ public:
             ioState.brakeDriftFrames = Tunables::kBrakeDriftEntryFrames;
         }
 
-        if (ioState.engineRpm <= 0)
-        {
-            ioState.engineRpm = Tunables::kEngineIdleRpm;
-        }
-        int16_t baseGearRpmTarget = computeRpmTargetForGear(ioState.gear);
-        const uint16_t rpmRisePerFrame =
-            isNeutralGearSelected
-                ? Tunables::kNeutralRpmRisePerFrame
-                : (isReverseGearSelected
-                    ? Tunables::GearRpmRisePerFrameFor(1)
-                    : Tunables::GearRpmRisePerFrameFor(ioState.gear));
-        const uint16_t rpmDropPerFrame =
-            isNeutralGearSelected
-                ? Tunables::kNeutralRpmDropPerFrame
-                : (isReverseGearSelected
-                    ? Tunables::GearRpmDropPerFrameFor(1)
-                    : Tunables::GearRpmDropPerFrameFor(ioState.gear));
-        if (ioState.shiftHoldFrames > 0u)
-        {
-            ioState.engineRpm = ioState.shiftHoldRpm;
-            --ioState.shiftHoldFrames;
-        }
-        else
-        {
-            ioState.engineRpm = smoothRpmToward(ioState.engineRpm,
-                                                baseGearRpmTarget,
-                                                rpmRisePerFrame,
-                                                rpmDropPerFrame);
-        }
+        // Engine RPM state update.
+        UpdateEngineRpmState(ioFrameState,
+                             ioState,
+                             speedKmhAbs,
+                             isReverseGearSelected,
+                             isNeutralGearSelected,
+                             shiftState);
 
-        if (Tunables::kAutomaticGearboxEnabled &&
-            !ioFrameState.braking &&
-            ioFrameState.throttle > 0 &&
-            !isReverseGearSelected &&
-            !isNeutralGearSelected)
-        {
-            if (ioState.engineRpm >= Tunables::GearShiftUpRpmFor(ioState.gear) &&
-                ioState.gear < static_cast<int8_t>(Tunables::kForwardGearCount))
-            {
-                const int16_t preShiftRpm = ioState.engineRpm;
-                shiftSourceRpm = preShiftRpm;
-                shiftFromGear = ioState.gear;
-                ++ioState.gear;
-                shiftToGear = ioState.gear;
-                shiftedUpThisFrame = true;
-                ioState.engineRpm = computePostShiftRpm(preShiftRpm, shiftFromGear, shiftToGear);
-                shiftResultRpm = ioState.engineRpm;
-                baseGearRpmTarget = computeRpmTargetForGear(ioState.gear);
-            }
-        }
-
-        if (Tunables::kAutomaticGearboxEnabled &&
-            !shiftedUpThisFrame &&
-            !shiftedDownThisFrame &&
-            !isReverseGearSelected &&
-            !isNeutralGearSelected &&
-            (ioState.gear > 1) &&
-            ((ioFrameState.throttle == 0) || ioFrameState.braking))
-        {
-            const int16_t currentGearMinSpeed =
-                Tunables::GearMinTypicalSpeedKmhFor(ioState.gear);
-            const int16_t downshiftSpeedThreshold =
-                static_cast<int16_t>(
-                    std::max<int32_t>(0,
-                                      currentGearMinSpeed - Tunables::kAutoDownshiftSpeedHysteresisKmh));
-
-            const bool speedRequestsDownshift = speedKmhAbs <= downshiftSpeedThreshold;
-            const bool rpmRequestsDownshift =
-                (ioState.engineRpm <= Tunables::kEngineDownShiftRpm) &&
-                (speedKmhAbs < currentGearMinSpeed);
-
-            if (speedRequestsDownshift || rpmRequestsDownshift)
-            {
-                const int8_t nextGear = static_cast<int8_t>(ioState.gear - 1);
-                const int16_t postShiftRpm = computePostShiftRpm(ioState.engineRpm,
-                                                                 ioState.gear,
-                                                                 nextGear);
-                if (postShiftRpm <= Tunables::kEngineHardMaxRpm)
-                {
-                    shiftSourceRpm = ioState.engineRpm;
-                    shiftFromGear = ioState.gear;
-                    ioState.gear = nextGear;
-                    shiftToGear = ioState.gear;
-                    shiftedDownThisFrame = true;
-                    ioState.engineRpm = postShiftRpm;
-                    shiftResultRpm = ioState.engineRpm;
-                    baseGearRpmTarget = computeRpmTargetForGear(ioState.gear);
-                }
-            }
-        }
-
-        if (shiftedUpThisFrame)
-        {
-            if (shiftFromGear != shiftToGear)
-            {
-                ioState.engineRpm = computePostShiftRpm(shiftSourceRpm, shiftFromGear, shiftToGear);
-                shiftResultRpm = ioState.engineRpm;
-            }
-            const bool stationaryNoThrottle =
-                (ioFrameState.throttle <= 0) &&
-                !ioFrameState.braking &&
-                (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh);
-            ioState.shiftHoldRpm = ioState.engineRpm;
-            ioState.shiftHoldFrames = stationaryNoThrottle ? 0u : Tunables::kShiftRpmHoldFrames;
-            ioState.shiftTransientFrames = stationaryNoThrottle ? 0u : Tunables::kShiftTransientFrames;
-            ioState.engineRpmVisual = ioState.engineRpm;
-        }
-        else if (shiftedDownThisFrame)
-        {
-            if (shiftFromGear != shiftToGear)
-            {
-                ioState.engineRpm = computePostShiftRpm(shiftSourceRpm, shiftFromGear, shiftToGear);
-                shiftResultRpm = ioState.engineRpm;
-            }
-            const bool stationaryNoThrottle =
-                (ioFrameState.throttle <= 0) &&
-                !ioFrameState.braking &&
-                (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh);
-            ioState.shiftHoldRpm = ioState.engineRpm;
-            ioState.shiftHoldFrames = stationaryNoThrottle ? 0u : Tunables::kShiftRpmHoldFrames;
-            ioState.shiftTransientFrames = stationaryNoThrottle ? 0u : Tunables::kShiftTransientFrames;
-            ioState.engineRpmVisual = ioState.engineRpm;
-        }
-        else
-        {
-            if (ioState.shiftTransientFrames > 0u)
-            {
-                const uint16_t recoverRise =
-                    isNeutralGearSelected
-                        ? Tunables::kNeutralRpmRisePerFrame
-                        : (isReverseGearSelected
-                            ? Tunables::GearRpmRisePerFrameFor(1)
-                            : Tunables::GearRpmRisePerFrameFor(ioState.gear));
-                ioState.engineRpmVisual = smoothRpmToward(ioState.engineRpmVisual,
-                                                          ioState.engineRpm,
-                                                          recoverRise,
-                                                          Tunables::kNeutralRpmDropPerFrame);
-                --ioState.shiftTransientFrames;
-            }
-            else
-            {
-                ioState.engineRpmVisual = ioState.engineRpm;
-            }
-        }
-
+        // Longitudinal drive / braking.
         if (ioFrameState.braking)
         {
             Fxp brakeDecel = Tunables::kBrakeDecelPerFrame;
@@ -504,7 +111,7 @@ public:
             }
             else
             {
-                const Fxp highSpeedBlend = computeHighSpeedBlend(speedKmhAbs);
+                const Fxp highSpeedBlend = ComputeHighSpeedBlend(speedKmhAbs);
                 const Fxp highSpeedAccelMinScale = Tunables::GearHighSpeedAccelMinScaleFor(ioState.gear);
                 const Fxp highSpeedAccelRange = Fxp::BuildRaw((1 << 16) - highSpeedAccelMinScale.RawValue());
                 const Fxp highSpeedAccelScale =
@@ -532,7 +139,7 @@ public:
                 Fxp dragCompensation = Fxp::BuildRaw(0);
                 if (ioState.forwardSpeed > Fxp::BuildRaw(0))
                 {
-                    dragCompensation = computeForwardDragForGear(ioState.forwardSpeed, ioState.gear);
+                    dragCompensation = ComputeForwardDragForGear(ioState.forwardSpeed, ioState.gear);
                 }
 
                 Fxp dragCompensationScale = Fxp::BuildRaw(1 << 16);
@@ -561,6 +168,7 @@ public:
             }
         }
 
+        // Longitudinal drag and steering authority preparation.
         outStep.speedAbs = ioState.forwardSpeed.Abs();
         const bool hasForwardDriveCommand =
             hasForwardDriveIntent &&
@@ -580,7 +188,7 @@ public:
         Fxp aeroDrag = outStep.speedAbs * ioState.forwardSpeed * Tunables::kAeroDragCoeff;
         if (!isNeutralGearSelected && !isReverseGearSelected)
         {
-            const Fxp highSpeedBlend = computeHighSpeedBlend(speedKmhAbs);
+            const Fxp highSpeedBlend = ComputeHighSpeedBlend(speedKmhAbs);
             const Fxp highSpeedAeroExtra =
                 highSpeedBlend * Tunables::GearHighSpeedAeroExtraScaleFor(ioState.gear);
             aeroDrag = aeroDrag * Fxp::BuildRaw((1 << 16) + highSpeedAeroExtra.RawValue());
@@ -989,7 +597,8 @@ public:
                         targetBrakeLateral = Fxp::BuildRaw(-skidLateralMagnitude.RawValue());
                     }
                 }
-                if (brakeDriftEntry)
+        // Lateral / yaw dynamics.
+        if (brakeDriftEntry)
                 {
                     if (ioFrameState.steering < 0)
                     {
@@ -1086,6 +695,7 @@ public:
         ioCarWorldPosition.X += outStep.planarDx;
         ioCarWorldPosition.Z += outStep.planarDz;
 
+        // Final integration and authoritative publication.
         if (forceStraightLaunch && ioState.launchStraightFrames > 0u)
         {
             --ioState.launchStraightFrames;
@@ -1103,11 +713,11 @@ public:
                                        static_cast<int16_t>(ioState.gear),
                                        ioState.engineRpmVisual,
                                        speedKmhAbs);
-        if (shiftedUpThisFrame || shiftedDownThisFrame)
+        if (shiftState.shiftedUpThisFrame || shiftState.shiftedDownThisFrame)
         {
             PublishShiftTelemetry(ioFrameState,
-                                  shiftSourceRpm,
-                                  shiftResultRpm,
+                                  shiftState.shiftSourceRpm,
+                                  shiftState.shiftResultRpm,
                                   Tunables::kShiftTransientFrames);
         }
         else if (ioFrameState.carShiftFrames > 0u)
@@ -1162,6 +772,466 @@ public:
     }
 
 private:
+    struct ShiftState
+    {
+        int8_t previousGear;
+        int8_t shiftFromGear;
+        int8_t shiftToGear;
+        int16_t shiftSourceRpm;
+        int16_t shiftResultRpm;
+        bool shiftedUpThisFrame;
+        bool shiftedDownThisFrame;
+        bool isReverseGearSelected;
+        bool isNeutralGearSelected;
+    };
+
+    static ShiftState ResolveGearSelection(const GameplayFrameState& frameState,
+                                           DynamicsState& ioState,
+                                           int16_t speedKmhAbs)
+    {
+        ioState.gear = Tunables::ClampSelectableGear(ioState.gear);
+
+        ShiftState result = {
+            ioState.gear,
+            ioState.gear,
+            ioState.gear,
+            ioState.engineRpm,
+            ioState.engineRpm,
+            false,
+            false,
+            false,
+            false,
+        };
+
+        if (frameState.shiftDownRequested)
+        {
+            const int8_t nextGear =
+                (ioState.gear > Tunables::kReverseGear)
+                    ? static_cast<int8_t>(ioState.gear - 1)
+                    : Tunables::kReverseGear;
+            const bool reverseRequest = (nextGear == Tunables::kReverseGear);
+            const bool allowShift =
+                reverseRequest
+                    ? (speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
+                    : (ComputeRpmTargetForGear(frameState, speedKmhAbs, nextGear) <= Tunables::kEngineHardMaxRpm);
+            if (allowShift)
+            {
+                ioState.gear = nextGear;
+                result.shiftedDownThisFrame = ioState.gear != result.previousGear;
+                if (result.shiftedDownThisFrame)
+                {
+                    result.shiftSourceRpm = ioState.engineRpm;
+                    result.shiftFromGear = result.previousGear;
+                    result.shiftToGear = ioState.gear;
+                    ioState.neutralHeldManually = (ioState.gear == Tunables::kNeutralGear);
+                }
+            }
+        }
+
+        if (frameState.shiftUpRequested)
+        {
+            const bool leavingReverse = (ioState.gear == Tunables::kReverseGear);
+            const bool allowShift =
+                leavingReverse
+                    ? (speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
+                    : (ioState.gear < static_cast<int8_t>(Tunables::kForwardGearCount));
+            if (allowShift && ioState.gear < static_cast<int8_t>(Tunables::kForwardGearCount))
+            {
+                ++ioState.gear;
+                result.shiftedUpThisFrame = ioState.gear != result.previousGear;
+                if (result.shiftedUpThisFrame)
+                {
+                    result.shiftSourceRpm = ioState.engineRpm;
+                    result.shiftFromGear = result.previousGear;
+                    result.shiftToGear = ioState.gear;
+                    ioState.neutralHeldManually = (ioState.gear == Tunables::kNeutralGear);
+                }
+            }
+        }
+
+        ioState.gear = Tunables::ClampSelectableGear(ioState.gear);
+        if (Tunables::kAutomaticGearboxEnabled &&
+            ioState.gear == Tunables::kNeutralGear &&
+            !ioState.neutralHeldManually &&
+            frameState.throttle > 0 &&
+            !frameState.braking &&
+            speedKmhAbs <= Tunables::kReverseShiftMaxKmh)
+        {
+            result.shiftFromGear = ioState.gear;
+            ioState.gear = 1;
+            result.shiftToGear = ioState.gear;
+        }
+
+        result.isReverseGearSelected = (ioState.gear == Tunables::kReverseGear);
+        result.isNeutralGearSelected = (ioState.gear == Tunables::kNeutralGear);
+        return result;
+    }
+
+    static void UpdateEngineRpmState(const GameplayFrameState& frameState,
+                                     DynamicsState& ioState,
+                                     int16_t speedKmhAbs,
+                                     bool isReverseGearSelected,
+                                     bool isNeutralGearSelected,
+                                     ShiftState& ioShiftState)
+    {
+        if (ioState.engineRpm <= 0)
+        {
+            ioState.engineRpm = Tunables::kEngineIdleRpm;
+        }
+
+        int16_t baseGearRpmTarget = ComputeRpmTargetForGear(frameState, speedKmhAbs, ioState.gear);
+        const uint16_t rpmRisePerFrame =
+            isNeutralGearSelected
+                ? Tunables::kNeutralRpmRisePerFrame
+                : (isReverseGearSelected
+                    ? Tunables::GearRpmRisePerFrameFor(1)
+                    : Tunables::GearRpmRisePerFrameFor(ioState.gear));
+        const uint16_t rpmDropPerFrame =
+            isNeutralGearSelected
+                ? Tunables::kNeutralRpmDropPerFrame
+                : (isReverseGearSelected
+                    ? Tunables::GearRpmDropPerFrameFor(1)
+                    : Tunables::GearRpmDropPerFrameFor(ioState.gear));
+
+        if (ioState.shiftHoldFrames > 0u)
+        {
+            ioState.engineRpm = ioState.shiftHoldRpm;
+            --ioState.shiftHoldFrames;
+        }
+        else
+        {
+            ioState.engineRpm = SmoothRpmToward(ioState.engineRpm,
+                                                baseGearRpmTarget,
+                                                rpmRisePerFrame,
+                                                rpmDropPerFrame);
+        }
+
+        if (Tunables::kAutomaticGearboxEnabled &&
+            !frameState.braking &&
+            frameState.throttle > 0 &&
+            !isReverseGearSelected &&
+            !isNeutralGearSelected)
+        {
+            if (ioState.engineRpm >= Tunables::GearShiftUpRpmFor(ioState.gear) &&
+                ioState.gear < static_cast<int8_t>(Tunables::kForwardGearCount))
+            {
+                const int16_t preShiftRpm = ioState.engineRpm;
+                ioShiftState.shiftSourceRpm = preShiftRpm;
+                ioShiftState.shiftFromGear = ioState.gear;
+                ++ioState.gear;
+                ioShiftState.shiftToGear = ioState.gear;
+                ioShiftState.shiftedUpThisFrame = true;
+                ioState.engineRpm = ComputePostShiftRpm(frameState,
+                                                        speedKmhAbs,
+                                                        preShiftRpm,
+                                                        ioShiftState.shiftFromGear,
+                                                        ioShiftState.shiftToGear);
+                ioShiftState.shiftResultRpm = ioState.engineRpm;
+                baseGearRpmTarget = ComputeRpmTargetForGear(frameState, speedKmhAbs, ioState.gear);
+            }
+        }
+
+        if (Tunables::kAutomaticGearboxEnabled &&
+            !ioShiftState.shiftedUpThisFrame &&
+            !ioShiftState.shiftedDownThisFrame &&
+            !isReverseGearSelected &&
+            !isNeutralGearSelected &&
+            (ioState.gear > 1) &&
+            ((frameState.throttle == 0) || frameState.braking))
+        {
+            const int16_t currentGearMinSpeed =
+                Tunables::GearMinTypicalSpeedKmhFor(ioState.gear);
+            const int16_t downshiftSpeedThreshold =
+                static_cast<int16_t>(
+                    std::max<int32_t>(0,
+                                      currentGearMinSpeed - Tunables::kAutoDownshiftSpeedHysteresisKmh));
+
+            const bool speedRequestsDownshift = speedKmhAbs <= downshiftSpeedThreshold;
+            const bool rpmRequestsDownshift =
+                (ioState.engineRpm <= Tunables::kEngineDownShiftRpm) &&
+                (speedKmhAbs < currentGearMinSpeed);
+
+            if (speedRequestsDownshift || rpmRequestsDownshift)
+            {
+                const int8_t nextGear = static_cast<int8_t>(ioState.gear - 1);
+                const int16_t postShiftRpm = ComputePostShiftRpm(frameState,
+                                                                 speedKmhAbs,
+                                                                 ioState.engineRpm,
+                                                                 ioState.gear,
+                                                                 nextGear);
+                if (postShiftRpm <= Tunables::kEngineHardMaxRpm)
+                {
+                    ioShiftState.shiftSourceRpm = ioState.engineRpm;
+                    ioShiftState.shiftFromGear = ioState.gear;
+                    ioState.gear = nextGear;
+                    ioShiftState.shiftToGear = ioState.gear;
+                    ioShiftState.shiftedDownThisFrame = true;
+                    ioState.engineRpm = postShiftRpm;
+                    ioShiftState.shiftResultRpm = ioState.engineRpm;
+                    baseGearRpmTarget = ComputeRpmTargetForGear(frameState, speedKmhAbs, ioState.gear);
+                }
+            }
+        }
+
+        if (ioShiftState.shiftedUpThisFrame)
+        {
+            if (ioShiftState.shiftFromGear != ioShiftState.shiftToGear)
+            {
+                ioState.engineRpm = ComputePostShiftRpm(frameState,
+                                                        speedKmhAbs,
+                                                        ioShiftState.shiftSourceRpm,
+                                                        ioShiftState.shiftFromGear,
+                                                        ioShiftState.shiftToGear);
+                ioShiftState.shiftResultRpm = ioState.engineRpm;
+            }
+            const bool stationaryNoThrottle =
+                (frameState.throttle <= 0) &&
+                !frameState.braking &&
+                (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh);
+            ioState.shiftHoldRpm = ioState.engineRpm;
+            ioState.shiftHoldFrames = stationaryNoThrottle ? 0u : Tunables::kShiftRpmHoldFrames;
+            ioState.shiftTransientFrames = stationaryNoThrottle ? 0u : Tunables::kShiftTransientFrames;
+            ioState.engineRpmVisual = ioState.engineRpm;
+        }
+        else if (ioShiftState.shiftedDownThisFrame)
+        {
+            if (ioShiftState.shiftFromGear != ioShiftState.shiftToGear)
+            {
+                ioState.engineRpm = ComputePostShiftRpm(frameState,
+                                                        speedKmhAbs,
+                                                        ioShiftState.shiftSourceRpm,
+                                                        ioShiftState.shiftFromGear,
+                                                        ioShiftState.shiftToGear);
+                ioShiftState.shiftResultRpm = ioState.engineRpm;
+            }
+            const bool stationaryNoThrottle =
+                (frameState.throttle <= 0) &&
+                !frameState.braking &&
+                (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh);
+            ioState.shiftHoldRpm = ioState.engineRpm;
+            ioState.shiftHoldFrames = stationaryNoThrottle ? 0u : Tunables::kShiftRpmHoldFrames;
+            ioState.shiftTransientFrames = stationaryNoThrottle ? 0u : Tunables::kShiftTransientFrames;
+            ioState.engineRpmVisual = ioState.engineRpm;
+        }
+        else
+        {
+            if (ioState.shiftTransientFrames > 0u)
+            {
+                const uint16_t recoverRise =
+                    isNeutralGearSelected
+                        ? Tunables::kNeutralRpmRisePerFrame
+                        : (isReverseGearSelected
+                            ? Tunables::GearRpmRisePerFrameFor(1)
+                            : Tunables::GearRpmRisePerFrameFor(ioState.gear));
+                ioState.engineRpmVisual = SmoothRpmToward(ioState.engineRpmVisual,
+                                                          ioState.engineRpm,
+                                                          recoverRise,
+                                                          Tunables::kNeutralRpmDropPerFrame);
+                --ioState.shiftTransientFrames;
+            }
+            else
+            {
+                ioState.engineRpmVisual = ioState.engineRpm;
+            }
+        }
+    }
+
+    static int16_t SmoothRpmToward(int16_t current,
+                                   int16_t target,
+                                   uint16_t risePerFrame,
+                                   uint16_t dropPerFrame)
+    {
+        if (target > current)
+        {
+            const int16_t delta = static_cast<int16_t>(target - current);
+            return static_cast<int16_t>(current + std::min<int16_t>(delta, static_cast<int16_t>(risePerFrame)));
+        }
+
+        const int16_t delta = static_cast<int16_t>(current - target);
+        return static_cast<int16_t>(current - std::min<int16_t>(delta, static_cast<int16_t>(dropPerFrame)));
+    }
+
+    static int16_t ComputeRpmTargetForGear(const GameplayFrameState& frameState,
+                                           int16_t speedKmhAbs,
+                                           int8_t gear)
+    {
+        int32_t rpm = Tunables::kEngineIdleRpm;
+
+        if (gear == Tunables::kNeutralGear)
+        {
+            rpm += (static_cast<int32_t>(frameState.throttle) *
+                    (Tunables::kNeutralFreeRevMaxRpm - Tunables::kEngineIdleRpm)) / 100;
+        }
+        else if (gear == Tunables::kReverseGear)
+        {
+            const int32_t speedClamped = std::clamp<int32_t>(speedKmhAbs, 0, Tunables::kReverseTopSpeedKmh);
+            const int32_t rpmFromSpeed =
+                Tunables::kEngineIdleRpm +
+                (speedClamped * (Tunables::kReverseLoadedMaxRpm - Tunables::kEngineIdleRpm)) /
+                    std::max<int32_t>(1, Tunables::kReverseTopSpeedKmh);
+            rpm = rpmFromSpeed;
+            if (frameState.throttle > 0)
+            {
+                const int32_t rpmPreload =
+                    Tunables::kEngineIdleRpm +
+                    (static_cast<int32_t>(frameState.throttle) *
+                     (Tunables::kReverseLoadedMinRpm - Tunables::kEngineIdleRpm)) / 100;
+                rpm = std::max<int32_t>(rpm, rpmPreload);
+            }
+        }
+        else
+        {
+            const int16_t gearTopKmh = Tunables::GearTopSpeedKmhFor(gear);
+            if (gearTopKmh > 0)
+            {
+                const int32_t minTypicalSpeedKmh =
+                    std::max<int32_t>(0, Tunables::GearMinTypicalSpeedKmhFor(gear));
+                const int32_t loadedMinRpm = Tunables::GearLoadedMinRpmFor(gear);
+                const int32_t loadedMaxRpm = Tunables::GearLoadedMaxRpmFor(gear);
+
+                if (speedKmhAbs <= minTypicalSpeedKmh)
+                {
+                    const int32_t span = std::max<int32_t>(1, minTypicalSpeedKmh);
+                    rpm =
+                        Tunables::kEngineIdleRpm +
+                        (static_cast<int32_t>(speedKmhAbs) *
+                         (loadedMinRpm - Tunables::kEngineIdleRpm)) / span;
+                }
+                else
+                {
+                    const int32_t speedIntoBand = speedKmhAbs - minTypicalSpeedKmh;
+                    const int32_t speedBand =
+                        std::max<int32_t>(1, gearTopKmh - minTypicalSpeedKmh);
+                    rpm =
+                        loadedMinRpm +
+                        (speedIntoBand * (loadedMaxRpm - loadedMinRpm)) / speedBand;
+                }
+
+                if ((gear == 1) &&
+                    (frameState.throttle > 0) &&
+                    (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh))
+                {
+                    rpm = loadedMinRpm;
+                }
+            }
+        }
+
+        return static_cast<int16_t>(std::clamp<int32_t>(rpm,
+                                                        Tunables::kEngineIdleRpm,
+                                                        Tunables::kEngineMaxRpm));
+    }
+
+    static int16_t GearTopSpeedForShift(int8_t gear)
+    {
+        if (gear == Tunables::kReverseGear)
+        {
+            return Tunables::kReverseTopSpeedKmh;
+        }
+        if (gear == Tunables::kNeutralGear)
+        {
+            return 0;
+        }
+        return Tunables::GearTopSpeedKmhFor(gear);
+    }
+
+    static Fxp ComputeHighSpeedBlend(int16_t speedKmh)
+    {
+        const int32_t span =
+            std::max<int32_t>(1, Tunables::kHighSpeedAeroFullKmh - Tunables::kHighSpeedAeroStartKmh);
+        const int32_t clamped =
+            std::clamp<int32_t>(speedKmh - Tunables::kHighSpeedAeroStartKmh, 0, span);
+        return Fxp::BuildRaw((clamped << 16) / span);
+    }
+
+    static Fxp ComputeForwardDragForGear(const Fxp& forwardSpeed, int8_t gear)
+    {
+        const Fxp speedAbs = forwardSpeed.Abs();
+        const int16_t speedKmh = BuildSpeedProxy(forwardSpeed);
+        Fxp aeroDrag = speedAbs * forwardSpeed * Tunables::kAeroDragCoeff;
+        if (gear > Tunables::kNeutralGear)
+        {
+            const Fxp highSpeedBlend = ComputeHighSpeedBlend(speedKmh);
+            const Fxp highSpeedAeroExtra =
+                highSpeedBlend * Tunables::GearHighSpeedAeroExtraScaleFor(gear);
+            aeroDrag = aeroDrag * Fxp::BuildRaw((1 << 16) + highSpeedAeroExtra.RawValue());
+        }
+        return aeroDrag + (forwardSpeed * Tunables::kRollingDragCoeff);
+    }
+
+    static int16_t ComputePostShiftRpm(const GameplayFrameState& frameState,
+                                       int16_t speedKmhAbs,
+                                       int16_t preShiftRpm,
+                                       int8_t fromGear,
+                                       int8_t toGear)
+    {
+        const bool stationaryNoThrottle =
+            (frameState.throttle <= 0) &&
+            !frameState.braking &&
+            (speedKmhAbs <= Tunables::kStationaryShiftMaxKmh);
+
+        if (stationaryNoThrottle)
+        {
+            return Tunables::kEngineIdleRpm;
+        }
+
+        if (toGear == Tunables::kNeutralGear)
+        {
+            return std::max<int16_t>(Tunables::kEngineIdleRpm, preShiftRpm);
+        }
+
+        if (fromGear == Tunables::kNeutralGear)
+        {
+            return std::max<int16_t>(Tunables::GearLoadedMinRpmFor(toGear), Tunables::kEngineIdleRpm);
+        }
+
+        const int32_t fromTop = std::max<int32_t>(1, GearTopSpeedForShift(fromGear));
+        const int32_t toTop = std::max<int32_t>(1, GearTopSpeedForShift(toGear));
+        const int32_t shifted =
+            (static_cast<int32_t>(preShiftRpm) * fromTop + (toTop / 2)) / toTop;
+
+        const bool isUpShift = toGear > fromGear;
+        int32_t minRpm =
+            (toGear == Tunables::kReverseGear)
+                ? Tunables::kReverseLoadedMinRpm
+                : (isUpShift
+                    ? Tunables::GearShiftLandingMinRpmFor(toGear)
+                    : Tunables::GearLoadedMinRpmFor(toGear));
+        int32_t maxRpm =
+            (toGear == Tunables::kReverseGear)
+                ? Tunables::kReverseLoadedMaxRpm
+                : (isUpShift
+                    ? Tunables::GearShiftLandingMaxRpmFor(toGear)
+                    : Tunables::GearLoadedMaxRpmFor(toGear));
+
+        if (isUpShift &&
+            toGear != Tunables::kReverseGear)
+        {
+            const int32_t ratioShifted =
+                std::clamp<int32_t>(shifted, minRpm, maxRpm);
+            return static_cast<int16_t>(ratioShifted);
+        }
+        if (!isUpShift &&
+            toGear > Tunables::kNeutralGear)
+        {
+            const int32_t nextGearTargetRpm = ComputeRpmTargetForGear(frameState, speedKmhAbs, toGear);
+            const int32_t landingFloor =
+                std::max<int32_t>(minRpm,
+                                  nextGearTargetRpm - Tunables::kDownshiftTargetWindowBelowRpm);
+            const int32_t landingOvershoot =
+                frameState.braking
+                    ? Tunables::kDownshiftTargetWindowAboveBrakeRpm
+                    : ((frameState.throttle > 0)
+                        ? Tunables::kDownshiftTargetWindowAboveThrottleRpm
+                        : Tunables::kDownshiftTargetWindowAboveCoastRpm);
+            const int32_t landingCeiling =
+                std::min<int32_t>(maxRpm, nextGearTargetRpm + landingOvershoot);
+            minRpm = std::min<int32_t>(landingFloor, landingCeiling);
+            maxRpm = landingCeiling;
+        }
+
+        return static_cast<int16_t>(std::clamp<int32_t>(shifted, minRpm, maxRpm));
+    }
+
     static Fxp SaturateSigned(const Fxp& value, const Fxp& maxAbs)
     {
         if (value > maxAbs) return maxAbs;
