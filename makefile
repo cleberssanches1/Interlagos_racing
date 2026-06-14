@@ -22,14 +22,15 @@ SGL_MAX_WORKS = 64              # Number of works that can be used
 #   1 = desliga o fluxo principal e roda um mini-circuito sintetico de fisica.
 #   0 = mantem o fluxo principal do jogo.
 PHYSICS_POC_MODE ?= 1
+AUDIO_PROFILE ?= 1
 
 # Extra compile flags — two profiles:
 #   make                      → debug (default): LWR stage tracing enabled
 #   make BUILD_PROFILE=perf   → perf: tracing disabled, cleanest LWR baseline
 ifeq ($(BUILD_PROFILE),perf)
-SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
 else
-SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
 endif
 
 # Disk name

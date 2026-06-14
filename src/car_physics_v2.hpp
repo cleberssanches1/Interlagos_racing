@@ -272,6 +272,10 @@ private:
         lastGripSeedSegmentId_ = -1;
         ioFrameState.speedProxy = 0;
         CarPhysics::ResetGroundDebug(ioFrameState);
+        CarPhysics::PublishAuthoritativeDrivetrain(ioFrameState,
+                                                   static_cast<int16_t>(CarPhysics::Tunables::kNeutralGear),
+                                                   CarPhysics::Tunables::kEngineIdleRpm,
+                                                   0);
     }
 
     void StepOnce(GameplayFrameState& ioFrameState,
@@ -493,6 +497,9 @@ private:
         ioFrameState.throttle = physicsFrame.throttle;
         ioFrameState.braking = physicsFrame.braking;
         ioFrameState.speedProxy = physicsFrame.speedProxy;
+        ioFrameState.carGear = physicsFrame.carGear;
+        ioFrameState.carEngineRpm = physicsFrame.carEngineRpm;
+        ioFrameState.carSpeedKmh = physicsFrame.carSpeedKmh;
         ioFrameState.activeSegmentId = physicsFrame.activeSegmentId;
         ioFrameState.debugGroundYRear = physicsFrame.debugGroundYRear;
         ioFrameState.debugGroundYFront = physicsFrame.debugGroundYFront;

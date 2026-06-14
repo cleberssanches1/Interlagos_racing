@@ -19,11 +19,16 @@ struct DynamicsState
     Fxp steerDeg = Fxp::BuildRaw(0);
     Fxp surfaceGripScale = Fxp::BuildRaw(1 << 16);
     int32_t yawAccumulatorDegRaw = 0; // 16.16 integrated yaw delta
-    int16_t engineRpm = 1000;         // debug/telemetry
-    uint8_t gear = 1u;                // 0=reverse, 1..kForwardGearCount forward gears
+    int16_t engineRpm = 4200;         // debug/telemetry
+    int16_t engineRpmVisual = 4200;   // audio/telemetry with shift transient
+    int16_t shiftHoldRpm = 4200;
+    int8_t gear = 0;                  // -1=reverse, 0=neutral, 1..kForwardGearCount forward gears
+    uint8_t shiftTransientFrames = 0u;
+    uint8_t shiftHoldFrames = 0u;
     uint8_t launchStraightFrames = 0u;
     uint8_t forwardLaunchLateralLockFrames = 0u;
     uint8_t brakeDriftFrames = 0u;
+    bool neutralHeldManually = false;
     bool steerLaunchArmed = true;
     bool wasKinematic = false;
     bool wasBraking = false;
@@ -105,10 +110,11 @@ struct Tunables
     // the dynamics code reads only these tables and helpers, which keeps room
     // for future per-car profiles and a manual shift mode without rewriting
     // the integration path.
-    static constexpr uint8_t kReverseGear = 0u;
+    static constexpr int8_t kReverseGear = -1;
+    static constexpr int8_t kNeutralGear = 0;
     static constexpr uint8_t kForwardGearCount = 8u;
     static constexpr bool kAutomaticGearboxEnabled = true;
-    static constexpr int16_t kTargetTopSpeedKmh = 320;
+    static constexpr int16_t kTargetTopSpeedKmh = 335;
     // PATH.NYA closed-loop XZ length: 84689.019 world units.
     // Real Interlagos lap length: 4309 m.
     // Derived scale: 19.653985 world units / meter.
@@ -157,33 +163,102 @@ struct Tunables
     static constexpr Fxp kGripScaleOffroad = Fxp::BuildRaw(0x0000B333); // ~0.70
     static constexpr Fxp kGripScaleFallback = Fxp::BuildRaw(0x0000999A); // ~0.60
     static constexpr Fxp kEngineAccelPerFrame = Fxp::BuildRaw(0x000047AE); // base (legacy)
-    // Target band times at full throttle for the current arcade-F1 profile.
-    // These are calibration targets, not real disclosed team ratios:
-    // G1 0-85 in 2.1s, G2 85-125 in 0.8s, G3 125-165 in 1.0s,
-    // G4 165-205 in 1.1s, G5 205-240 in 1.3s, G6 240-270 in 1.4s,
-    // G7 270-297 in 1.5s, G8 297-320 in 1.6s.
+    // Target full-throttle band times for the Interlagos/F1 profile:
+    // G1 0-95 in 2.3s, G2 95-140 in 1.1s, G3 140-185 in 1.0s,
+    // G4 185-225 in 0.9s, G5 225-265 in 1.0s, G6 265-295 in 1.0s,
+    // G7 295-320 in 1.2s, G8 320-335 in 1.5s.
     static constexpr std::array<uint8_t, kForwardGearCount> kGearBandTargetFrames = {
-        63u, 24u, 30u, 33u, 39u, 42u, 45u, 48u
+        69u, 33u, 30u, 27u, 30u, 30u, 36u, 45u
     };
+    // Target net longitudinal acceleration per frame at full throttle.
+    // These values are derived from the requested speed bands and times,
+    // and represent the post-drag speed rise we want the car to achieve
+    // while each gear is active.
     static constexpr std::array<Fxp, kForwardGearCount> kGearAccelPerFrame = {
-        Fxp::BuildRaw(0x00003EDB), // ~0.2455
-        Fxp::BuildRaw(0x00004DA5), // ~0.3033
+        Fxp::BuildRaw(0x00004024), // ~0.2506
+        Fxp::BuildRaw(0x00003F87), // ~0.2482
+        Fxp::BuildRaw(0x000045E1), // ~0.2730
+        Fxp::BuildRaw(0x00004505), // ~0.2696
         Fxp::BuildRaw(0x00003E1E), // ~0.2426
-        Fxp::BuildRaw(0x00003878), // ~0.2206
-        Fxp::BuildRaw(0x000029CF), // ~0.1633
-        Fxp::BuildRaw(0x00002147), // ~0.1300
-        Fxp::BuildRaw(0x00001BF4), // ~0.1092
-        Fxp::BuildRaw(0x00001653)  // ~0.0872
+        Fxp::BuildRaw(0x00002E96), // ~0.1820
+        Fxp::BuildRaw(0x0000205A), // ~0.1264
+        Fxp::BuildRaw(0x00000F87)  // ~0.0607
     };
     static constexpr std::array<int16_t, kForwardGearCount> kGearTopSpeedKmh = {
-        85, 125, 165, 205, 240, 270, 297, 320
+        95, 140, 185, 225, 265, 295, 320, 335
     };
-    static constexpr int16_t kEngineIdleRpm = 2200;
+    static constexpr int16_t kEngineIdleRpm = 4200;
+    static constexpr int16_t kStationaryShiftMaxKmh = 3;
     static constexpr int16_t kReverseTopSpeedKmh = 100;
     static constexpr int16_t kReverseShiftMaxKmh = 25;
-    static constexpr int16_t kEngineUpShiftRpm = 13200;
-    static constexpr int16_t kEngineDownShiftRpm = 8500;
-    static constexpr int16_t kEngineMaxRpm = 13500;
+    static constexpr int16_t kEngineUpShiftRpm = 12500;
+    static constexpr int16_t kEngineDownShiftRpm = 9600;
+    static constexpr int16_t kAutoDownshiftSpeedHysteresisKmh = 3;
+    static constexpr int16_t kEngineMaxRpm = 12500;
+    static constexpr int16_t kEngineHardMaxRpm = 13500;
+    static constexpr int16_t kNeutralFreeRevMaxRpm = 12500;
+    static constexpr int16_t kReverseLoadedMinRpm = 5200;
+    static constexpr int16_t kReverseLoadedMaxRpm = 10800;
+    static constexpr int16_t kShiftRpmDropUp = 2100;
+    static constexpr int16_t kShiftRpmDropDown = -900;
+    static constexpr int16_t kShiftRpmRecoverPerFrame = 180;
+    static constexpr uint8_t kShiftTransientFrames = 5u;
+    static constexpr uint8_t kShiftRpmHoldFrames = 2u;
+    static constexpr int16_t kDownshiftTargetWindowBelowRpm = 150;
+    static constexpr int16_t kDownshiftTargetWindowAboveCoastRpm = 100;
+    static constexpr int16_t kDownshiftTargetWindowAboveBrakeRpm = 220;
+    static constexpr int16_t kDownshiftTargetWindowAboveThrottleRpm = 320;
+    static constexpr uint16_t kNeutralRpmRisePerFrame = 240u;
+    static constexpr uint16_t kNeutralRpmDropPerFrame = 300u;
+    static constexpr std::array<int16_t, kForwardGearCount> kGearMinTypicalSpeedKmh = {
+        0, 75, 110, 145, 185, 225, 265, 295
+    };
+    static constexpr std::array<int16_t, kForwardGearCount> kGearLoadedMinRpm = {
+        9500, 9200, 9000, 9100, 9300, 9400, 9500, 10200
+    };
+    static constexpr std::array<int16_t, kForwardGearCount> kGearLoadedMaxRpm = {
+        12500, 12500, 12500, 12500, 12500, 12500, 12500, 12500
+    };
+    static constexpr std::array<int16_t, kForwardGearCount> kGearShiftUpRpm = {
+        12500, 12500, 12500, 12500, 12500, 12500, 12500, 12500
+    };
+    static constexpr std::array<int16_t, kForwardGearCount> kGearShiftLandingMinRpm = {
+        9500, 9200, 9000, 9100, 9300, 9400, 9500, 10200
+    };
+    static constexpr std::array<int16_t, kForwardGearCount> kGearShiftLandingMaxRpm = {
+        9500, 9200, 9000, 9100, 9300, 9400, 9500, 10200
+    };
+    static constexpr std::array<int16_t, kForwardGearCount> kGearShiftLandingDipRpm = {
+        0, 3300, 3500, 3400, 3200, 3100, 3000, 2300
+    };
+    static constexpr std::array<uint16_t, kForwardGearCount> kGearRpmRisePerFrame = {
+        180u, 150u, 120u, 100u, 85u, 72u, 62u, 54u
+    };
+    static constexpr std::array<uint16_t, kForwardGearCount> kGearRpmDropPerFrame = {
+        230u, 210u, 190u, 170u, 150u, 135u, 120u, 110u
+    };
+    static constexpr int16_t kHighSpeedAeroStartKmh = 320;
+    static constexpr int16_t kHighSpeedAeroFullKmh = 335;
+    static constexpr std::array<Fxp, kForwardGearCount> kGearHighSpeedAeroExtraScale = {
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00000000), // 0.00
+        Fxp::BuildRaw(0x00003852)  // 0.22
+    };
+    static constexpr std::array<Fxp, kForwardGearCount> kGearHighSpeedAccelMinScale = {
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x00010000), // 1.00
+        Fxp::BuildRaw(0x0000CCCC)  // 0.80
+    };
     static constexpr Fxp kReverseAccelPerFrame = Fxp::BuildRaw(0x0000E8F0); // ~0.9099
     // Forward launch while steering from standstill:
     // keep initial traction similar to reverse to reduce side kick.
@@ -191,11 +266,11 @@ struct Tunables
     static constexpr Fxp kForwardSteerLaunchSpeedThreshold = Fxp::BuildRaw(0x0001D1DF); // ~1.8198
     static constexpr Fxp kBrakeDecelPerFrame = Fxp::BuildRaw(0x0000999A);  // ~0.60
     static constexpr Fxp kBrakeStopSpeedThreshold = Fxp::BuildRaw(0x0000C000); // 0.75
-    static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000008);       // ~0.00012
-    static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x0000009D);    // ~0.0024
+    static constexpr Fxp kAeroDragCoeff = Fxp::BuildRaw(0x00000004);       // ~0.00006
+    static constexpr Fxp kRollingDragCoeff = Fxp::BuildRaw(0x00000050);    // ~0.0012
     static constexpr Fxp kCoastDampingPerFrame = Fxp::BuildRaw(0x000004A9);// ~0.0182
     static constexpr Fxp kCoastStopSpeedThreshold = Fxp::BuildRaw(0x0007477D); // ~7.2793
-    static constexpr Fxp kMaxForwardSpeed = Fxp::BuildRaw(0x003A3BE9);     // ~58.2340 => 320 km/h
+    static constexpr Fxp kMaxForwardSpeed = Fxp::BuildRaw(0x003CF6B8);     // ~60.9637 => 335 km/h
     static constexpr Fxp kMaxReverseSpeed = Fxp::BuildRaw(0x001232B9);     // ~18.1981
     static constexpr Fxp kMaxSteerDeg = Fxp::BuildRaw(12 << 16);           // 12 deg
     static constexpr Fxp kInvMaxSteerDeg = Fxp::BuildRaw(0x00001555);      // ~1/12
@@ -333,32 +408,100 @@ struct Tunables
     static constexpr Fxp kVerticalBounceFollow = Fxp::BuildRaw(0x00003000); // 0.1875
     static constexpr Fxp kVerticalBounceDamping = Fxp::BuildRaw(0x0000A000); // 0.625
 
-    static constexpr uint8_t ClampForwardGear(uint8_t gear)
+    static constexpr int8_t ClampForwardGear(int8_t gear)
     {
-        if (gear < 1u) return 1u;
-        if (gear > kForwardGearCount) return kForwardGearCount;
+        if (gear < 1) return 1;
+        if (gear > static_cast<int8_t>(kForwardGearCount)) return static_cast<int8_t>(kForwardGearCount);
         return gear;
     }
 
-    static constexpr uint8_t ClampSelectableGear(uint8_t gear)
+    static constexpr int8_t ClampSelectableGear(int8_t gear)
     {
-        if (gear > kForwardGearCount) return kForwardGearCount;
+        if (gear < kReverseGear) return kReverseGear;
+        if (gear > static_cast<int8_t>(kForwardGearCount)) return static_cast<int8_t>(kForwardGearCount);
         return gear;
     }
 
-    static constexpr size_t GearIndex(uint8_t gear)
+    static constexpr size_t GearIndex(int8_t gear)
     {
-        return static_cast<size_t>(ClampForwardGear(gear) - 1u);
+        return static_cast<size_t>(ClampForwardGear(gear) - 1);
     }
 
-    static constexpr Fxp GearAccelFor(uint8_t gear)
+    static constexpr Fxp GearAccelFor(int8_t gear)
     {
         return kGearAccelPerFrame[GearIndex(gear)];
     }
 
-    static constexpr int16_t GearTopSpeedKmhFor(uint8_t gear)
+    static constexpr uint8_t GearBandTargetFramesFor(int8_t gear)
+    {
+        return kGearBandTargetFrames[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearBandStartSpeedKmhFor(int8_t gear)
+    {
+        const size_t index = GearIndex(gear);
+        return (index == 0u) ? 0 : kGearTopSpeedKmh[index - 1u];
+    }
+
+    static constexpr int16_t GearTopSpeedKmhFor(int8_t gear)
     {
         return kGearTopSpeedKmh[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearLoadedMinRpmFor(int8_t gear)
+    {
+        return kGearLoadedMinRpm[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearMinTypicalSpeedKmhFor(int8_t gear)
+    {
+        return kGearMinTypicalSpeedKmh[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearLoadedMaxRpmFor(int8_t gear)
+    {
+        return kGearLoadedMaxRpm[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearShiftUpRpmFor(int8_t gear)
+    {
+        return kGearShiftUpRpm[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearShiftLandingMinRpmFor(int8_t gear)
+    {
+        return kGearShiftLandingMinRpm[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearShiftLandingMaxRpmFor(int8_t gear)
+    {
+        return kGearShiftLandingMaxRpm[GearIndex(gear)];
+    }
+
+    static constexpr int16_t GearShiftLandingDipRpmFor(int8_t gear)
+    {
+        return kGearShiftLandingDipRpm[GearIndex(gear)];
+    }
+
+    static constexpr uint16_t GearRpmRisePerFrameFor(int8_t gear)
+    {
+        return kGearRpmRisePerFrame[GearIndex(gear)];
+    }
+
+    static constexpr uint16_t GearRpmDropPerFrameFor(int8_t gear)
+    {
+        return kGearRpmDropPerFrame[GearIndex(gear)];
+    }
+
+
+    static constexpr Fxp GearHighSpeedAeroExtraScaleFor(int8_t gear)
+    {
+        return kGearHighSpeedAeroExtraScale[GearIndex(gear)];
+    }
+
+    static constexpr Fxp GearHighSpeedAccelMinScaleFor(int8_t gear)
+    {
+        return kGearHighSpeedAccelMinScale[GearIndex(gear)];
     }
 };
 
@@ -423,7 +566,7 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugYawRateDeg = 0;
     ioFrameState.debugYawStepDeg = 0;
     ioFrameState.debugEngineRpm = 0;
-    ioFrameState.debugGear = 1;
+    ioFrameState.debugGear = 0;
     ioFrameState.debugSpeedKmh = 0;
     ioFrameState.debugPlanarDx = 0;
     ioFrameState.debugPlanarDz = 0;
@@ -438,6 +581,30 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.groundFaceIndex = -1;
     ioFrameState.groundFamilyId = 0u;
     ioFrameState.groundSurfaceType = 0u;
+}
+
+inline void PublishAuthoritativeDrivetrain(GameplayFrameState& ioFrameState,
+                                           int16_t gear,
+                                           int16_t engineRpm,
+                                           int16_t speedKmh)
+{
+    ioFrameState.carGear = gear;
+    ioFrameState.carEngineRpm = engineRpm;
+    ioFrameState.carSpeedKmh = speedKmh;
+
+    ioFrameState.debugGear = gear;
+    ioFrameState.debugEngineRpm = engineRpm;
+    ioFrameState.debugSpeedKmh = speedKmh;
+}
+
+inline void PublishShiftTelemetry(GameplayFrameState& ioFrameState,
+                                  int16_t rpmBefore,
+                                  int16_t rpmAfter,
+                                  uint8_t framesVisible)
+{
+    ioFrameState.carShiftRpmBefore = rpmBefore;
+    ioFrameState.carShiftRpmAfter = rpmAfter;
+    ioFrameState.carShiftFrames = framesVisible;
 }
 
 inline Fxp& RuntimeRideHeightOffset()

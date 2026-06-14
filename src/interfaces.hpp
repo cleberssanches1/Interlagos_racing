@@ -27,6 +27,12 @@ struct GameplayFrameState
     uint8_t wheelsSpinning : 1 = 0;
     uint8_t brakeHoldFrames = 0;
     int16_t speedProxy = 0;
+    int16_t carGear = 0;
+    int16_t carEngineRpm = 4200;
+    int16_t carSpeedKmh = 0;
+    int16_t carShiftRpmBefore = 0;
+    int16_t carShiftRpmAfter = 0;
+    uint8_t carShiftFrames = 0;
     int32_t activeSegmentId = -1;
     int16_t debugGroundYRear = 0;
     int16_t debugGroundYFront = 0;
@@ -38,7 +44,7 @@ struct GameplayFrameState
     int16_t debugYawRateDeg = 0;
     int16_t debugYawStepDeg = 0;
     int16_t debugEngineRpm = 0;
-    int16_t debugGear = 1;
+    int16_t debugGear = 0;
     int16_t debugSpeedKmh = 0;
     int16_t debugPlanarDx = 0;
     int16_t debugPlanarDz = 0;
@@ -269,7 +275,8 @@ struct IGameplayTick
     virtual void Tick(GameplayFrameState& ioFrameState, const ITrackCollisionQuery* trackQuery) = 0;
 };
 
-// Audio event contract executed after render submission each frame.
+// Audio event contract executed on the Master SH2 after the gameplay frame
+// has been resolved for the current tick.
 struct IAudioEvents
 {
     virtual ~IAudioEvents() = default;

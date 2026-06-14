@@ -247,8 +247,11 @@ void CarSystem::TickCommandState()
 void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
 {
     runtimeDebug_.speedProxy = frameState.speedProxy;
-    runtimeDebug_.speedKmh = frameState.debugSpeedKmh;
-    runtimeDebug_.engineRpm = frameState.debugEngineRpm;
+    runtimeDebug_.speedKmh = frameState.carSpeedKmh;
+    runtimeDebug_.engineRpm = frameState.carEngineRpm;
+    runtimeDebug_.shiftRpmBefore = frameState.carShiftRpmBefore;
+    runtimeDebug_.shiftRpmAfter = frameState.carShiftRpmAfter;
+    runtimeDebug_.shiftFrames = frameState.carShiftFrames;
     runtimeDebug_.groundRearY = frameState.debugGroundYRear;
     runtimeDebug_.groundFrontY = frameState.debugGroundYFront;
     runtimeDebug_.groundTargetY = frameState.debugGroundYTarget;
@@ -259,7 +262,7 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     runtimeDebug_.yawStepDeg = frameState.debugYawStepDeg;
     runtimeDebug_.planarDx = frameState.debugPlanarDx;
     runtimeDebug_.netDz = frameState.debugNetDz;
-    runtimeDebug_.gear = frameState.debugGear;
+    runtimeDebug_.gear = static_cast<int8_t>(frameState.carGear);
     runtimeDebug_.groundMask = frameState.debugGroundMask;
     runtimeDebug_.groundSurfaceType = frameState.groundSurfaceType;
     runtimeDebug_.groundFamilyId = frameState.groundFamilyId;
@@ -410,12 +413,17 @@ CarSystem::DrivetrainDebugSnapshot CarSystem::BuildDrivetrainDebugSnapshot() con
     snapshot.gearChar =
         (gearDebugValue < 0)
             ? 'R'
-            : static_cast<char>('0' + std::clamp<int>(gearDebugValue, 0, 9));
+            : ((gearDebugValue == 0)
+                ? 'N'
+                : static_cast<char>('0' + std::clamp<int>(gearDebugValue, 0, 9)));
     snapshot.throttle = commandState_.throttle;
     snapshot.SetBraking(runtimeDebug_.Braking());
     snapshot.speedProxy = runtimeDebug_.speedProxy;
     snapshot.speedKmh = runtimeDebug_.speedKmh;
     snapshot.engineRpm = runtimeDebug_.engineRpm;
+    snapshot.shiftRpmBefore = runtimeDebug_.shiftRpmBefore;
+    snapshot.shiftRpmAfter = runtimeDebug_.shiftRpmAfter;
+    snapshot.shiftFrames = runtimeDebug_.shiftFrames;
     snapshot.steeringCommand = commandState_.steering;
     snapshot.yawRateDeg = runtimeDebug_.yawRateDeg;
     snapshot.yawStepDeg = runtimeDebug_.yawStepDeg;

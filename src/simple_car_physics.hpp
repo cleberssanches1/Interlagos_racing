@@ -172,6 +172,10 @@ private:
         lastGripSeedSegmentId_ = -1;
         ioFrameState.speedProxy = 0;
         CarPhysics::ResetGroundDebug(ioFrameState);
+        CarPhysics::PublishAuthoritativeDrivetrain(ioFrameState,
+                                                   static_cast<int16_t>(CarPhysics::Tunables::kNeutralGear),
+                                                   CarPhysics::Tunables::kEngineIdleRpm,
+                                                   0);
     }
 
     CarPhysics::DynamicsState dynamicsState_{};

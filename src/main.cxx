@@ -8,7 +8,7 @@
 #include "car_system.hpp"
 #include "render_pipeline.hpp"
 #include "runtime_null_systems.hpp"
-#include "simple_audio_events.hpp"
+#include "car_audio_system.hpp"
 #include "simple_car_physics.hpp"
 #include "simple_gameplay_tick.hpp"
 #include "track_collision_query.hpp"
@@ -910,6 +910,9 @@ static int RunPhysicsPocMode()
         MLOG(1, 4, "Cart DRAM ausente");
     }
 
+    Game::CarAudioSystem audioEvents;
+    audioEvents.Initialize();
+
     // Camera/projecao de teste
     // Narrower FOV reduces affine texture warp near screen edges.
     constexpr float kCameraFovDeg = 30.0f;
@@ -979,8 +982,8 @@ static int RunPhysicsPocMode()
     // - Master keeps render/orchestration
     constexpr bool kPocDualSh2Profile = true;
     const bool kPocEnableTrackSlave = kPocDualSh2Profile && renderTrack;
-    constexpr bool kPocEnableSlaveSimulation = true;
-    constexpr bool kPocSlaveSimulationLockstep = false; // async mode for FPS
+    constexpr bool kPocEnableSlaveSimulation = false;
+    constexpr bool kPocSlaveSimulationLockstep = true; // lockstep for coherent HUD/audio/drivetrain
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
@@ -1147,7 +1150,6 @@ static int RunPhysicsPocMode()
 
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
-    Game::SimpleAudioEvents audioEvents;
 
     const bool enableRuntimeSimulation = true;
     GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,
@@ -1244,6 +1246,9 @@ int GameApp::Run()
     auto rep = SRL::Memory::HighWorkRam::GetReport();
     // SRL::Debug::Print(0, 1, "HWR free:%d total:%d", (int)rep.FreeSize, (int)rep.TotalSize);
     const bool cartOk = crep.TotalSize > 0;
+
+    Game::CarAudioSystem audioEvents;
+    audioEvents.Initialize();
 
     // Teste simples: escreve string na HWR e l^ de volta (VDP2 debug)
     const char testMsg[] = "Cart DRAM OK";
@@ -1641,7 +1646,6 @@ int GameApp::Run()
 
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
-    Game::SimpleAudioEvents audioEvents;
     // Runtime simulation enabled to keep gameplay/physics on SH2 pipeline.
     const bool enableRuntimeSimulation = true;
     const bool enableSlaveSimulation = true;

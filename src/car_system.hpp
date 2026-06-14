@@ -106,6 +106,9 @@ public:
         int16_t speedProxy = 0;
         int16_t speedKmh = 0;
         int16_t engineRpm = 0;
+        int16_t shiftRpmBefore = 0;
+        int16_t shiftRpmAfter = 0;
+        uint8_t shiftFrames = 0;
         int16_t groundRearY = 0;
         int16_t groundFrontY = 0;
         int16_t groundTargetY = 0;
@@ -141,12 +144,15 @@ public:
             kBrakingBit = 1u << 0
         };
 
-        char gearChar = '1';
+        char gearChar = 'N';
         uint8_t flags = 0u;
         int16_t throttle = 0;
         int16_t speedProxy = 0;
         int16_t speedKmh = 0;
         int16_t engineRpm = 0;
+        int16_t shiftRpmBefore = 0;
+        int16_t shiftRpmAfter = 0;
+        uint8_t shiftFrames = 0;
         int16_t steeringCommand = 0;
         int16_t yawRateDeg = 0;
         int16_t yawStepDeg = 0;
