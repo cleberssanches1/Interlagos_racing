@@ -202,7 +202,7 @@ struct Tunables
     static constexpr int16_t kShiftRpmDropUp = 2100;
     static constexpr int16_t kShiftRpmDropDown = -900;
     static constexpr int16_t kShiftRpmRecoverPerFrame = 180;
-    static constexpr uint8_t kShiftTransientFrames = 5u;
+    static constexpr uint8_t kShiftTransientFrames = 10u;
     static constexpr uint8_t kShiftRpmHoldFrames = 2u;
     static constexpr int16_t kDownshiftTargetWindowBelowRpm = 150;
     static constexpr int16_t kDownshiftTargetWindowAboveCoastRpm = 100;

@@ -31,7 +31,7 @@ public:
     static constexpr int8_t   kShiftUpPan         = 4;
     static constexpr int8_t   kShiftDownPan       = -2;
     static constexpr uint8_t  kShiftVoiceHoldFrames = 20u;
-    static constexpr uint8_t  kShiftRetriggerCooldownFrames = 6u;
+    static constexpr uint8_t  kShiftRetriggerCooldownFrames = 20u;
     static constexpr uint8_t  kSkidVolume         = 90u;
     static constexpr uint32_t kEngineBaseHz       = 22050u;
     static constexpr uint32_t kEngineMaxHz        = kEngineBaseHz * 3u;
@@ -261,6 +261,10 @@ inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 
     const bool isStartupWindow = fs.frameId < 30u;
     const bool gearChanged = (gear != state_.lastGear);
+    const bool autoBrakeDownshift =
+        fs.braking &&
+        !fs.shiftDownRequested &&
+        (gear < state_.lastGear);
     const bool playShiftSound =
         !isStartupWindow &&
         (shiftStartedThisFrame || gearChanged) &&
@@ -289,7 +293,7 @@ inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
                           state_.shiftUpVoiceFrames,
                           fs);
     }
-    else if (playShiftSound)
+    else if (playShiftSound && !autoBrakeDownshift)
     {
         TriggerShiftVoice(shiftDownSample_,
                           ResolveVoice(AudioVoiceGroup::CarShiftDown),
@@ -364,14 +368,52 @@ inline uint16_t CarAudioSystem::SmoothRpm(const uint16_t current, const uint16_t
 
 inline uint16_t CarAudioSystem::ComputeEnginePitchWord(const uint16_t rpm)
 {
-    const uint32_t targetHz =
-        (rpm <= kEngineIdleRpm)
-            ? kEngineBaseHz
-            : (kEngineBaseHz +
-               ((kEngineMaxHz - kEngineBaseHz) *
-                static_cast<uint32_t>(rpm - kEngineIdleRpm)) /
-                   static_cast<uint32_t>(kEngineAcousticMaxRpm - kEngineIdleRpm));
-    return SRL::Sound::Pcm::ComputePitchWord(targetHz);
+    struct AcousticPoint
+    {
+        uint16_t rpm;
+        uint32_t hz;
+    };
+
+    static constexpr AcousticPoint kAcousticCurve[] = {
+        { 4200u, 22050u },
+        { 7000u, 27563u },
+        { 8500u, 31973u },
+        { 9200u, 35280u },
+        { 10000u, 38588u },
+        { 11000u, 42998u },
+        { 12000u, 47408u },
+        { 12500u, 49613u },
+        { 15000u, 54023u }
+    };
+
+    if (rpm <= kAcousticCurve[0].rpm)
+    {
+        return SRL::Sound::Pcm::ComputePitchWord(kAcousticCurve[0].hz);
+    }
+
+    const uint16_t clampedRpm =
+        (rpm >= kEngineAcousticMaxRpm) ? kEngineAcousticMaxRpm : rpm;
+    for (size_t i = 1u; i < (sizeof(kAcousticCurve) / sizeof(kAcousticCurve[0])); ++i)
+    {
+        if (clampedRpm > kAcousticCurve[i].rpm)
+        {
+            continue;
+        }
+
+        const AcousticPoint& lower = kAcousticCurve[i - 1u];
+        const AcousticPoint& upper = kAcousticCurve[i];
+        const uint32_t rpmSpan =
+            static_cast<uint32_t>(upper.rpm - lower.rpm);
+        const uint32_t rpmIntoSpan =
+            static_cast<uint32_t>(clampedRpm - lower.rpm);
+        const uint32_t hzSpan = upper.hz - lower.hz;
+        const uint32_t targetHz =
+            lower.hz + ((hzSpan * rpmIntoSpan) / std::max<uint32_t>(1u, rpmSpan));
+        return SRL::Sound::Pcm::ComputePitchWord(targetHz);
+    }
+
+    return SRL::Sound::Pcm::ComputePitchWord(
+        kAcousticCurve[(sizeof(kAcousticCurve) / sizeof(kAcousticCurve[0])) - 1u].hz);
 }
 
 inline const IAudioVoiceRouter& CarAudioSystem::DefaultVoiceRouter()

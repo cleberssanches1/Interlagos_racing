@@ -892,6 +892,9 @@ private:
                 : (isReverseGearSelected
                     ? Tunables::GearRpmDropPerFrameFor(1)
                     : Tunables::GearRpmDropPerFrameFor(ioState.gear));
+        const bool shiftWindowFree =
+            (ioState.shiftHoldFrames == 0u) &&
+            (ioState.shiftTransientFrames == 0u);
 
         if (ioState.shiftHoldFrames > 0u)
         {
@@ -907,6 +910,7 @@ private:
         }
 
         if (Tunables::kAutomaticGearboxEnabled &&
+            shiftWindowFree &&
             !frameState.braking &&
             frameState.throttle > 0 &&
             !isReverseGearSelected &&
@@ -932,6 +936,7 @@ private:
         }
 
         if (Tunables::kAutomaticGearboxEnabled &&
+            shiftWindowFree &&
             !ioShiftState.shiftedUpThisFrame &&
             !ioShiftState.shiftedDownThisFrame &&
             !isReverseGearSelected &&

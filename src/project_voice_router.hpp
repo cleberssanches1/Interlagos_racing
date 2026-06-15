@@ -75,6 +75,7 @@ public:
             return VoiceLayout::kSystemPrimary;
         }
     }
+
 };
 
 } // namespace Game
