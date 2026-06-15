@@ -1,0 +1,65 @@
+Building debug...
+rm -f ../../saturnringlib/../modules/sgl/LIB/../SRC/*.o
+rm -f src/camera_system.o src/car_system.o src/car_wheel_rig.o src/exception_stubs.o src/main.o src/mesh_renderer.o src/track_pipeline_stages.o src/track_system.o ./BuildDrop/Interlagos_racing.elf ./BuildDrop/Interlagos_racing.iso ./BuildDrop/Interlagos_racing.map ./cd/data/0.bin
+rm -f 
+rm -f ./cd/data/SDDRVS.DAT ./cd/data/SDDRVS.TSK ./cd/data/BOOTSND.MAP
+rm -f ./cd/data/3BANDANA.EXB
+rm -rf ./BuildDrop/
+****** No pre build steps ******
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/camera_system.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/camera_system.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/car_system.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/car_system.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/car_wheel_rig.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/car_wheel_rig.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/exception_stubs.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/exception_stubs.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/main.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/main.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/mesh_renderer.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/mesh_renderer.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/track_pipeline_stages.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/track_pipeline_stages.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-g++.exe src/track_system.cxx -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c++23 -fpermissive -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -fno-use-cxa-atexit -o src/track_system.o
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-gcc.exe ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.c -DSRL_FRAMERATE=0 -DDEBUG -DSRL_USE_SGL_SOUND_DRIVER=1 -DSRL_ENABLE_FREQ_ANALYSIS=1 -DSRL_MODE_NTSC -DSRL_MAX_TEXTURES=512 -DSRL_MAX_CD_BACKGROUND_JOBS=1 -DSRL_MAX_CD_FILES=4096 -DSRL_MAX_CD_RETRIES=5 -DSRL_DEBUG_MAX_PRINT_LENGTH=45 -DSRL_DEBUG_MAX_LOG_LENGTH=80  -DPHYSICS_POC_MODE=1 -DAUDIO_PROFILE=1 -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DSGL_MAX_VERTICES=2800 -DSGL_MAX_POLYGONS=2200 -DSGL_MAX_EVENTS=64 -DSGL_MAX_WORKS=64 -W -m2 -c -O2 -Wno-strict-aliasing -idirafter ../../saturnringlib/../modules/dummy -I../../saturnringlib/../modules/SaturnMathPP -I../../saturnringlib/../modules/sgl/INC -I../../saturnringlib/../modules/danny/INC -I../../saturnringlib/../modules/tlsf -I../../saturnringlib  -std=c2x -o ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o
+****** Info ******
+Maximum textures : 512          
+Maximum vertices : 2800
+Maximum polygons : 2200
+Maximum events : 64             
+Maximum work : 64              
+Log level selected : NONE
+Maximum Log length : 80
+******************
+mkdir -p ./cd/music
+mkdir -p ./cd/data
+mkdir -p ./BuildDrop
+test -f ./cd/data/ABS.TXT || echo "NOT Abstracted by SEGA" >> ./cd/data/ABS.TXT
+test -f ./cd/data/BIB.TXT || echo "NOT Bibliographiced by SEGA" >> ./cd/data/BIB.TXT
+test -f ./cd/data/CPY.TXT || touch ./cd/data/CPY.TXT
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-gcc.exe -m2 -L../../saturnringlib/../modules/sgl/LIB -Xlinker -T../../saturnringlib/../modules/sgl/sgl.linker -Xlinker -Map -Xlinker ./BuildDrop/Interlagos_racing.map -Xlinker -e -Xlinker ___Start -nostartfiles -specs=nosys.specs ../../saturnringlib/../modules/sgl/LIB/../SRC/workarea.o src/camera_system.o src/car_system.o src/car_wheel_rig.o src/exception_stubs.o src/main.o src/mesh_renderer.o src/track_pipeline_stages.o src/track_system.o ../../saturnringlib/../modules/sgl/LIB/LIBCPK.A ../../saturnringlib/../modules/sgl/LIB/SEGA_SYS.A ../../saturnringlib/../modules/sgl/LIB/LIBCD.A ../../saturnringlib/../modules/sgl/LIB/LIBSGL.A ../../saturnringlib/../modules/sgl/LIB/LIBSND.A -o ./BuildDrop/Interlagos_racing.elf
+../../saturnringlib/../Compiler/sh2eb-elf/bin/sh2eb-elf-objcopy.exe -O binary ./BuildDrop/Interlagos_racing.elf ./cd/data/0.bin
+cp -r ../../saturnringlib/../modules/sgl/DRV/. ./cd/data/
+cp ../../saturnringlib/../modules/sgl/DSP/3BANDANA.EXB ./cd/data/
+../../saturnringlib/../Compiler/msys2/usr/bin/xorrisofs.exe --norock -quiet -sysid "SEGA SATURN" -volid "SaturnApp" -volset "SaturnApp" \
+-publisher "SEGA ENTERPRISES, LTD." -preparer "SEGA ENTERPRISES, LTD." -appid "SaturnApp" \
+-abstract "./cd/data/ABS.TXT" -copyright "./cd/data/CPY.TXT" -biblio "./cd/data/BIB.TXT" -generic-boot ../../saturnringlib/../modules/sgl/IP.BIN \
+-full-iso9660-filenames -o ./BuildDrop/Interlagos_racing.iso ./cd/data 
+GNU xorriso 1.5.4 : RockRidge filesystem manipulator, libburnia project.
+
+dd if=./BuildDrop/Interlagos_racing.iso of=./BuildDrop/Interlagos_racing.bin bs=2048
+2019+0 records in
+2019+0 records out
+4134912 bytes (4.1 MB, 3.9 MiB) copied, 0.0547646 s, 75.5 MB/s
+echo 'FILE "Interlagos_racing.bin" BINARY' > ./BuildDrop/Interlagos_racing.cue
+echo '  TRACK 01 MODE1/2048' >> ./BuildDrop/Interlagos_racing.cue
+echo '    INDEX 01 00:00:00' >> ./BuildDrop/Interlagos_racing.cue
+track=2; \
+total_size=$(stat -c%s "./BuildDrop/Interlagos_racing.bin"); \
+for i in ; do \
+	sectors=$((total_size / 2352)); \
+	minutes=$((sectors / (60 * 75))); \
+	seconds=$((sectors % (60 * 75) / 75)); \
+	frames=$((sectors % 75)); \
+	echo '  TRACK' $(printf "%02d" $track) 'AUDIO' >> ./BuildDrop/Interlagos_racing.cue; \
+	echo '    INDEX 01' $(printf "%02d:%02d:%02d" $minutes $seconds $frames) >> ./BuildDrop/Interlagos_racing.cue; \
+	cat "$i" >> ./BuildDrop/Interlagos_racing.bin; \
+	track=$((track + 1)); \
+	size=$(stat -c%s "$i"); \
+	total_size=$((total_size + size)); \
+done
+rm -f 
+****** No post build steps ******

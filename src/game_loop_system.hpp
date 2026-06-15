@@ -21,6 +21,7 @@
 #include "path_nya_loader.hpp"
 #include "physics_feature_flags.hpp"
 #include "render_pipeline.hpp"
+#include "runtime_component_boundaries.hpp"
 #include "sh2_frt_profiler.hpp"
 #include "track_system.hpp"
 
@@ -1172,10 +1173,67 @@ private:
         bool ready = false;
     };
 
+    // ---- Domain: component boundaries ------------------------------------
+
     Game::CarSystem* ActiveCarSystem() const
     {
         return (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr;
     }
+
+    RuntimeBoundaries::FrameOrchestratorPorts BuildFrameOrchestratorPorts() const
+    {
+        RuntimeBoundaries::FrameOrchestratorPorts ports{};
+        ports.background = context_.bgManager;
+        ports.camera = context_.cameraSystem;
+        ports.track = context_.trackSystem;
+        ports.car = context_.carSystem;
+        ports.renderPipeline = context_.renderPipeline;
+        ports.hud = context_.hudSystem;
+        return ports;
+    }
+
+    RuntimeBoundaries::SimulationPorts BuildSimulationPorts() const
+    {
+        RuntimeBoundaries::SimulationPorts ports{};
+        ports.gameplayTick = context_.gameplayTick;
+        ports.carPhysics = context_.carPhysics;
+        ports.trackCollision = context_.trackCollision;
+        return ports;
+    }
+
+    RuntimeBoundaries::AudioPorts BuildAudioPorts() const
+    {
+        RuntimeBoundaries::AudioPorts ports{};
+        ports.audioEvents = context_.audioEvents;
+        return ports;
+    }
+
+    RuntimeBoundaries::CarPorts BuildCarPorts() const
+    {
+        RuntimeBoundaries::CarPorts ports{};
+        ports.car = context_.carSystem;
+        return ports;
+    }
+
+    RuntimeBoundaries::TrackPorts BuildTrackPorts() const
+    {
+        RuntimeBoundaries::TrackPorts ports{};
+        ports.track = context_.trackSystem;
+        ports.trackCollision = context_.trackCollision;
+        return ports;
+    }
+
+    RuntimeBoundaries::PresentationPorts BuildPresentationPorts() const
+    {
+        RuntimeBoundaries::PresentationPorts ports{};
+        ports.background = context_.bgManager;
+        ports.camera = context_.cameraSystem;
+        ports.renderPipeline = context_.renderPipeline;
+        ports.hud = context_.hudSystem;
+        return ports;
+    }
+
+    // ---- Domain: frame gating and input ----------------------------------
 
     bool CanRenderCar() const
     {
@@ -1215,6 +1273,7 @@ private:
         return true;
     }
 
+    // Assemble pad state and debug toggles before gameplay/simulation.
     FrameInputState PollFrameInput()
     {
         FrameInputState input{};
@@ -1334,6 +1393,8 @@ private:
         SetYHeldPrev(input.yHeld);
         return input;
     }
+
+    // ---- Domain: simulation orchestration --------------------------------
 
     void ApplyResolvedFrameState(const Game::GameplayFrameState& frameState,
                                  const SRL::Math::Types::Vector3D& worldPosition,
@@ -1596,6 +1657,8 @@ private:
         RunGameplayFrameSynchronously(frameState);
     }
 
+    // ---- Domain: presentation and camera ---------------------------------
+
     void ScheduleCarPrepareIfEnabled()
     {
         if (!CanRenderCar() || !context_.EnableSlaveForCarPrepare()) return;
@@ -1695,6 +1758,7 @@ private:
         return carPos + Vector3D(ray.X * safeT, ray.Y * safeT, ray.Z * safeT);
     }
 
+    // Resolve camera snapshot for the current authoritative car state.
     CameraFrameState ResolveCameraFrameState()
     {
         UpdateCameraPathFrameContext();
@@ -1792,6 +1856,7 @@ private:
         return frame;
     }
 
+    // HUD consumes the resolved camera snapshot and current world state.
     void UpdateHud(const CameraFrameState& camera)
     {
         context_.hudSystem->Update(context_.cameraSystem->State(),
@@ -2089,6 +2154,7 @@ private:
         CaptureWorkRamStage(hwrStageTrace_.car, lwrStageTrace_.car);
     }
 
+    // Submit prepared 3D content in the fixed order: track then car.
     void RenderFrame(const CameraFrameState& camera)
     {
         lastRenderedCarFacesThisFrame_ = 0u;
@@ -2173,6 +2239,8 @@ private:
         SRL::Scene2D::DrawLine(o2D, y2D, SRL::Types::HighColor::Colors::Green, sort2D);
         SRL::Scene2D::DrawLine(o2D, z2D, SRL::Types::HighColor::Colors::Blue, sort2D);
     }
+
+    // ---- Domain: frame finalization and telemetry ------------------------
 
     void FinishFrame()
     {
