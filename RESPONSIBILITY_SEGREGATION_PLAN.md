@@ -343,6 +343,13 @@ Critério:
 
 Esses wrappers apenas organizam chamadas já existentes.
 
+Restrição adicional observada:
+
+- a área de telemetria/overlay de fim de frame é sensível a crescimento de binário;
+- uma tentativa de separar agenda de overlays em snapshots/helpers aumentou o ISO para `4136960` bytes;
+- esse envelope já coincidiu com falhas de boot no emulador;
+- portanto, a telemetria de fim de frame deve permanecer inline até que a redução venha por remoção real de código, e não por criação de novos wrappers no caminho crítico.
+
 
 ### Fase D — extrações de runtime críticas
 

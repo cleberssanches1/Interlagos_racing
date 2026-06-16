@@ -14,15 +14,22 @@
 
 #include "background_manager.hpp"
 #include "application_state.hpp"
+#include "auto_lap_route_runtime_state.hpp"
+#include "camera_path_runtime_state.hpp"
 #include "camera_system.hpp"
+#include "car_prepare_runtime_state.hpp"
 #include "car_system.hpp"
+#include "frame_worker_tasks.hpp"
 #include "hud_system.hpp"
 #include "interfaces.hpp"
 #include "path_nya_loader.hpp"
 #include "physics_feature_flags.hpp"
+#include "realtime_fps_runtime_state.hpp"
 #include "render_pipeline.hpp"
 #include "runtime_component_boundaries.hpp"
 #include "sh2_frt_profiler.hpp"
+#include "shadow_debug_state.hpp"
+#include "simulation_scheduler_state.hpp"
 #include "track_system.hpp"
 
 extern "C" uint32_t SRL_AppGetVblankCounter();
@@ -545,10 +552,7 @@ private:
                                                      LowWorkOverlayState,
                                                      DisabledLowWorkOverlayState>;
 
-    struct SimulationPayload
-    {
-        Game::GameplayFrameState frameState{};
-    };
+    using SimulationPayload = Game::SimulationPayload;
 
     static HwrStageTrace::Snapshot CaptureHighWorkRamSnapshot()
     {
@@ -1442,44 +1446,38 @@ private:
     {
         if (!simState_.JobInFlight()) return true;
 
-        if (simulationTask_.IsDone())
-        {
-            simState_.SetJobInFlight(false);
-            simState_.SetHasCompleted(true);
-            simState_.completedIdx = simState_.inFlightIdx;
-            simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
-            ApplySimulationOutput(simState_.output[simState_.completedIdx]);
-            return true;
-        }
-
-        if (!mandatoryWait) return false;
-
-        Sh2FrtProfiler::EnsureInitialized();
-        const uint16_t waitStartTicks = Sh2FrtProfiler::Now();
-        uint32_t spins = 0;
-        while (!simulationTask_.IsDone() && spins < kSimDrainSoftSpinLimit)
-        {
-            ++spins;
-        }
-
         if (!simulationTask_.IsDone())
         {
-            ++simState_.drainSoftTimeouts;
-            BackoffSimulationSlaveDispatch();
-            while (!simulationTask_.IsDone() && spins < kSimDrainHardSpinLimit)
+            if (!mandatoryWait) return false;
+
+            Sh2FrtProfiler::EnsureInitialized();
+            const uint16_t waitStartTicks = Sh2FrtProfiler::Now();
+            uint32_t spins = 0;
+            while (!simulationTask_.IsDone() && spins < kSimDrainSoftSpinLimit)
             {
                 ++spins;
             }
+
             if (!simulationTask_.IsDone())
             {
-                ++simState_.drainHardWaits;
-                while (!simulationTask_.IsDone()) {}
+                ++simState_.drainSoftTimeouts;
+                BackoffSimulationSlaveDispatch();
+                while (!simulationTask_.IsDone() && spins < kSimDrainHardSpinLimit)
+                {
+                    ++spins;
+                }
+                if (!simulationTask_.IsDone())
+                {
+                    ++simState_.drainHardWaits;
+                    while (!simulationTask_.IsDone()) {}
+                }
             }
+
+            simState_.masterWaitTicksThisFrame = static_cast<uint16_t>(
+                simState_.masterWaitTicksThisFrame +
+                Sh2FrtProfiler::Elapsed(waitStartTicks, Sh2FrtProfiler::Now()));
         }
 
-        simState_.masterWaitTicksThisFrame = static_cast<uint16_t>(
-            simState_.masterWaitTicksThisFrame +
-            Sh2FrtProfiler::Elapsed(waitStartTicks, Sh2FrtProfiler::Now()));
         simState_.SetJobInFlight(false);
         simState_.SetHasCompleted(true);
         simState_.completedIdx = simState_.inFlightIdx;
@@ -1490,14 +1488,14 @@ private:
 
     void ConsumeCompletedJobs()
     {
-        if (simState_.JobInFlight() && simulationTask_.IsDone())
+        if (simState_.JobInFlight())
         {
-            simState_.SetJobInFlight(false);
-            simState_.SetHasCompleted(true);
-            simState_.completedIdx = simState_.inFlightIdx;
-            simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
+            if (simulationTask_.IsDone())
+            {
+                (void)DrainSimulationJobIfInFlight(false);
+            }
         }
-        if (simState_.HasCompleted())
+        else if (simState_.HasCompleted())
         {
             ApplySimulationOutput(simState_.output[simState_.completedIdx]);
         }
@@ -1619,8 +1617,7 @@ private:
                     (void)DrainSimulationJobIfInFlight(true);
                     if (simState_.HasCompleted())
                     {
-                        simState_.SetHasCompleted(false);
-                        return;
+                        goto sim_lockstep_completed;
                     }
                 }
 
@@ -1629,13 +1626,16 @@ private:
                     (void)DrainSimulationJobIfInFlight(true);
                     if (simState_.HasCompleted())
                     {
-                        simState_.SetHasCompleted(false);
-                        return;
+                        goto sim_lockstep_completed;
                     }
                 }
 
                 // Fallback safety: if Slave dispatch/drain fails, keep frame coherent.
                 RunGameplayFrameSynchronously(frameState);
+                return;
+
+            sim_lockstep_completed:
+                simState_.SetHasCompleted(false);
                 return;
             }
 
@@ -4259,221 +4259,10 @@ private:
         return true;
     }
 
-    class SimulationTask final : public SRL::Types::ITask
-    {
-    public:
-        void Configure(const SimulationPayload* input,
-                       SimulationPayload* output,
-                       Game::IGameplayTick* gameplayTick,
-                       Game::ICarPhysics* carPhysics,
-                       Game::ITrackCollisionQuery* trackCollision)
-        {
-            input_ = input;
-            output_ = output;
-            gameplayTick_ = gameplayTick;
-            carPhysics_ = carPhysics;
-            trackCollision_ = trackCollision;
-        }
+    using SimulationTask = Game::SimulationTask;
+    using CarRenderPrepareTask = Game::CarRenderPrepareTask;
 
-        uint16_t LastTicks() const { return lastTicks_; }
-
-    private:
-        void Do() override
-        {
-            if (!input_ || !output_) return;
-            Sh2FrtProfiler::EnsureInitialized();
-            const uint16_t startTicks = Sh2FrtProfiler::Now();
-            auto state = input_->frameState;
-            if (gameplayTick_)
-            {
-                gameplayTick_->Tick(state, trackCollision_);
-            }
-            if (carPhysics_)
-            {
-                carPhysics_->Step(state,
-                                  trackCollision_,
-                                  state.carWorldPosition,
-                                  state.carYawDeg);
-            }
-            if (state.resetRequested)
-            {
-                state.carWorldPosition = state.respawnPosition;
-                state.carYawDeg = state.respawnYawDeg;
-                state.resetRequested = false;
-            }
-            output_->frameState = state;
-            lastTicks_ = Sh2FrtProfiler::Elapsed(startTicks, Sh2FrtProfiler::Now());
-        }
-
-        const SimulationPayload* input_ = nullptr;
-        SimulationPayload* output_ = nullptr;
-        Game::IGameplayTick* gameplayTick_ = nullptr;
-        Game::ICarPhysics* carPhysics_ = nullptr;
-        Game::ITrackCollisionQuery* trackCollision_ = nullptr;
-        volatile uint16_t lastTicks_ = 0;
-    };
-
-    class CarRenderPrepareTask final : public SRL::Types::ITask
-    {
-    public:
-        void Configure(const int32_t* inputYawDeg, int32_t* outputYawDeg)
-        {
-            inputYawDeg_ = inputYawDeg;
-            outputYawDeg_ = outputYawDeg;
-        }
-
-    private:
-        void Do() override
-        {
-            if (!inputYawDeg_ || !outputYawDeg_) return;
-            int32_t yaw = *inputYawDeg_;
-            yaw %= 360;
-            if (yaw < 0) yaw += 360;
-            *outputYawDeg_ = yaw;
-        }
-
-        const int32_t* inputYawDeg_ = nullptr;
-        int32_t* outputYawDeg_ = nullptr;
-    };
-
-    struct RealtimeFpsState
-    {
-        static constexpr uint8_t kVblankValidBit = 1u << 0;
-        uint32_t lastVblank = 0u;
-        uint16_t sampleVblanks = 0u;
-        uint8_t sampleFrames = 0u;
-        uint8_t framesOver30Budget = 0u;
-        uint8_t framesOver60Budget = 0u;
-        uint8_t flags = 0u;
-
-        bool VblankValid() const { return (flags & kVblankValidBit) != 0u; }
-        void SetVblankValid(bool enabled)
-        {
-            if (enabled) flags |= kVblankValidBit;
-            else flags &= static_cast<uint8_t>(~kVblankValidBit);
-        }
-    };
-
-    struct SimulationRuntimeState
-    {
-        static constexpr uint8_t kJobInFlightBit = 1u << 0;
-        static constexpr uint8_t kHasCompletedBit = 1u << 1;
-        SimulationPayload input[2]{};
-        SimulationPayload output[2]{};
-        uint32_t slaveDispatchCount = 0;
-        uint32_t slaveDispatchSkipsTrackBusy = 0;
-        uint32_t slaveDispatchSkipsBackoff = 0;
-        uint32_t drainSoftTimeouts = 0;
-        uint32_t drainHardWaits = 0;
-        uint16_t masterWaitTicksThisFrame = 0;
-        uint16_t slaveLastJobTicksThisFrame = 0;
-        uint8_t writeIdx = 0;
-        uint8_t inFlightIdx = 0;
-        uint8_t completedIdx = 0;
-        uint8_t slaveBackoffFrames = 0;
-        uint8_t flags = 0u;
-
-        bool JobInFlight() const { return (flags & kJobInFlightBit) != 0u; }
-        bool HasCompleted() const { return (flags & kHasCompletedBit) != 0u; }
-        void SetJobInFlight(bool enabled)
-        {
-            if (enabled) flags |= kJobInFlightBit;
-            else flags &= static_cast<uint8_t>(~kJobInFlightBit);
-        }
-        void SetHasCompleted(bool enabled)
-        {
-            if (enabled) flags |= kHasCompletedBit;
-            else flags &= static_cast<uint8_t>(~kHasCompletedBit);
-        }
-    };
-
-    struct CarPrepareRuntimeState
-    {
-        static constexpr uint8_t kJobInFlightBit = 1u << 0;
-        static constexpr uint8_t kHasCompletedBit = 1u << 1;
-        int32_t inputYaw[2]{};
-        int32_t outputYaw[2]{};
-        uint8_t writeIdx = 0;
-        uint8_t inFlightIdx = 0;
-        uint8_t completedIdx = 0;
-        uint8_t flags = 0u;
-
-        bool JobInFlight() const { return (flags & kJobInFlightBit) != 0u; }
-        bool HasCompleted() const { return (flags & kHasCompletedBit) != 0u; }
-        void SetJobInFlight(bool enabled)
-        {
-            if (enabled) flags |= kJobInFlightBit;
-            else flags &= static_cast<uint8_t>(~kJobInFlightBit);
-        }
-        void SetHasCompleted(bool enabled)
-        {
-            if (enabled) flags |= kHasCompletedBit;
-            else flags &= static_cast<uint8_t>(~kHasCompletedBit);
-        }
-    };
-
-    struct ShadowDebugState
-    {
-        SRL::Math::Types::Vector3D worldPos{0.0, 0.0, 0.0};
-        int32_t yawDeg = 0;
-    };
-
-    struct AutoLapRouteState
-    {
-        static constexpr uint8_t kInitializedBit = 1u << 0;
-        static constexpr uint8_t kBuiltBit = 1u << 1;
-        static constexpr uint8_t kStartupYawAlignedBit = 1u << 2;
-
-        uint16_t index = 0;
-        TrackLowWorkVector<int16_t> ids{};
-        TrackLowWorkVector<SRL::Math::Types::Vector3D> centers{};
-        TrackLowWorkVector<int16_t> yawDeg{};
-        TrackLowWorkVector<int16_t> offDeg{};
-        int16_t baseYawDeg = 0;
-        int16_t currentOffDeg = 0;
-        int8_t selectedGuideLine = -1;
-        uint8_t flags = 0u;
-        std::array<TrackLowWorkVector<SRL::Math::Types::Vector3D>, 3> guideLines{};
-
-        bool Initialized() const { return (flags & kInitializedBit) != 0u; }
-        bool Built() const { return (flags & kBuiltBit) != 0u; }
-        bool StartupYawAligned() const { return (flags & kStartupYawAlignedBit) != 0u; }
-        void SetInitialized(bool enabled)
-        {
-            if (enabled) flags |= kInitializedBit;
-            else flags &= static_cast<uint8_t>(~kInitializedBit);
-        }
-        void SetBuilt(bool enabled)
-        {
-            if (enabled) flags |= kBuiltBit;
-            else flags &= static_cast<uint8_t>(~kBuiltBit);
-        }
-        void SetStartupYawAligned(bool enabled)
-        {
-            if (enabled) flags |= kStartupYawAlignedBit;
-            else flags &= static_cast<uint8_t>(~kStartupYawAlignedBit);
-        }
-    };
-
-    struct CameraPathRuntimeState
-    {
-        static constexpr uint8_t kPrevCarWorldPositionValidBit = 1u << 0;
-        SRL::Math::Types::Vector3D prevCarWorldPosition{
-            SRL::Math::Types::Fxp::BuildRaw(0),
-            SRL::Math::Types::Fxp::BuildRaw(0),
-            SRL::Math::Types::Fxp::BuildRaw(0)};
-        uint8_t flags = 0u;
-
-        bool PrevCarWorldPositionValid() const
-        {
-            return (flags & kPrevCarWorldPositionValidBit) != 0u;
-        }
-        void SetPrevCarWorldPositionValid(bool enabled)
-        {
-            if (enabled) flags |= kPrevCarWorldPositionValidBit;
-            else flags &= static_cast<uint8_t>(~kPrevCarWorldPositionValidBit);
-        }
-    };
+    using SimulationRuntimeState = Game::SimulationRuntimeState;
 
     Context context_{};
     SRL::Input::Digital pad_{0};
