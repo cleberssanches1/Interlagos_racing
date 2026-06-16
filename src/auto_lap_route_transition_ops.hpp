@@ -1,6 +1,7 @@
 #pragma once
 
 #include "auto_lap_route_state_assembler.hpp"
+#include "auto_lap_route_runtime_state.hpp"
 
 namespace AutoLapRouteDomain
 {
@@ -58,6 +59,30 @@ inline AutoLapRouteStorageSnapshot BuildAutoLapRouteStorageSnapshot(
     return snapshot;
 }
 
+inline AutoLapRouteStorageSnapshot BuildAutoLapRouteStorageSnapshot(
+    const AutoLapRouteState& state)
+{
+    std::array<uint16_t, 3> guideLinePointCounts{};
+    for (size_t i = 0; i < guideLinePointCounts.size(); ++i)
+    {
+        guideLinePointCounts[i] = static_cast<uint16_t>(state.guideLines[i].size());
+    }
+
+    return BuildAutoLapRouteStorageSnapshot(
+        state.Initialized(),
+        state.Built(),
+        state.StartupYawAligned(),
+        state.index,
+        static_cast<uint16_t>(state.ids.size()),
+        static_cast<uint16_t>(state.centers.size()),
+        static_cast<uint16_t>(state.yawDeg.size()),
+        static_cast<uint16_t>(state.offDeg.size()),
+        state.baseYawDeg,
+        state.currentOffDeg,
+        state.selectedGuideLine,
+        guideLinePointCounts);
+}
+
 inline AutoLapGuideLoadPacket BuildAutoLapGuideLoadPacket(
     bool attempted,
     bool loaded,
@@ -97,6 +122,19 @@ inline AutoLapRouteBuildPacket BuildAutoLapRouteBuildPacket(bool valid,
     return packet;
 }
 
+inline AutoLapRouteBuildPacket BuildAutoLapRouteBuildPacket(const AutoLapRouteState& state,
+                                                            bool valid,
+                                                            bool usedGuidePath,
+                                                            bool normalizedDirection)
+{
+    return BuildAutoLapRouteBuildPacket(valid,
+                                        usedGuidePath,
+                                        normalizedDirection,
+                                        state.selectedGuideLine,
+                                        static_cast<uint16_t>(state.centers.size()),
+                                        static_cast<uint16_t>(state.ids.size()));
+}
+
 inline AutoLapRouteStepPacket BuildAutoLapRouteStepPacket(
     bool valid,
     uint16_t routeIndex,
@@ -112,6 +150,19 @@ inline AutoLapRouteStepPacket BuildAutoLapRouteStepPacket(
                                carWorldPosition,
                                packet);
     return packet;
+}
+
+inline AutoLapRouteStepPacket BuildAutoLapRouteStepPacket(const AutoLapRouteState& state,
+                                                          int16_t observedSegmentId,
+                                                          int32_t carYawDeg,
+                                                          const SRL::Math::Types::Vector3D& carWorldPosition,
+                                                          bool valid = true)
+{
+    return BuildAutoLapRouteStepPacket(valid,
+                                       state.index,
+                                       observedSegmentId,
+                                       carYawDeg,
+                                       carWorldPosition);
 }
 
 inline void ClearAutoLapSelection(AutoLapRouteStorageSnapshot& ioSnapshot)

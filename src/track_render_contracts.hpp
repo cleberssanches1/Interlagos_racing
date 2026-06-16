@@ -47,9 +47,17 @@ struct TrackRenderTelemetry
     uint16_t slaveProducerTicks = 0u;
     uint16_t slaveSortTicks = 0u;
     uint16_t slavePlanTicks = 0u;
+    uint16_t queryCalls = 0u;
+    uint16_t queryGlobal = 0u;
+    uint16_t queryScmap = 0u;
+    uint16_t queryCacheHits = 0u;
+    uint16_t queryCacheMisses = 0u;
+    uint16_t wallQueryCalls = 0u;
+    uint16_t wallQueryHits = 0u;
     uint32_t producerTimeoutFallbacks = 0u;
     uint32_t producerSafeModeFrames = 0u;
     bool producerSafeModeActive = false;
+    bool producerJobInFlight = false;
 };
 
 } // namespace TrackRenderDomain

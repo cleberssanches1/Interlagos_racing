@@ -14,14 +14,18 @@
 
 #include "background_manager.hpp"
 #include "application_state.hpp"
+#include "auto_lap_route_build_ops.hpp"
 #include "auto_lap_route_runtime_state.hpp"
+#include "auto_lap_route_lifecycle_ops.hpp"
 #include "camera_path_runtime_state.hpp"
 #include "camera_system.hpp"
 #include "car_prepare_runtime_state.hpp"
 #include "car_system.hpp"
+#include "cd_asset_transition_ops.hpp"
 #include "frame_worker_tasks.hpp"
 #include "hud_system.hpp"
 #include "interfaces.hpp"
+#include "memory_budget_transition_ops.hpp"
 #include "path_nya_loader.hpp"
 #include "physics_feature_flags.hpp"
 #include "realtime_fps_runtime_state.hpp"
@@ -30,6 +34,10 @@
 #include "sh2_frt_profiler.hpp"
 #include "shadow_debug_state.hpp"
 #include "simulation_scheduler_state.hpp"
+#include "simulation_scheduler_dispatch_assembler.hpp"
+#include "simulation_scheduler_transition_ops.hpp"
+#include "simulation_scheduler_telemetry_assembler.hpp"
+#include "track_render_transition_ops.hpp"
 #include "track_system.hpp"
 
 extern "C" uint32_t SRL_AppGetVblankCounter();
@@ -557,8 +565,9 @@ private:
     static HwrStageTrace::Snapshot CaptureHighWorkRamSnapshot()
     {
         HwrStageTrace::Snapshot snapshot{};
+        const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
         const auto report = SRL::Memory::HighWorkRam::GetReport();
-        snapshot.freeBytes = static_cast<uint32_t>(report.FreeSize);
+        snapshot.freeBytes = memorySnapshot.snapshot.highWorkFree;
 #if defined(SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY) && SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY
         const auto stats = SRL::Memory::HighWorkRam::GetOpStats();
         snapshot.usedBlocks = static_cast<uint32_t>(report.UsedBlocks);
@@ -574,9 +583,10 @@ private:
 
     static LwrStageTrace::Snapshot CaptureLowWorkRamSnapshot(bool detailed = false)
     {
+        const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
         const auto report = SRL::Memory::LowWorkRam::GetReport();
         LwrStageTrace::Snapshot snapshot{};
-        snapshot.freeBytes = static_cast<uint32_t>(report.FreeSize);
+        snapshot.freeBytes = memorySnapshot.snapshot.lowWorkFree;
 #if !defined(SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY) || !SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY
         (void)detailed;
         return snapshot;
@@ -587,7 +597,9 @@ private:
         }
 
         const uint32_t usedBytes = static_cast<uint32_t>(
-            (report.TotalSize >= report.FreeSize) ? (report.TotalSize - report.FreeSize) : 0u);
+            (memorySnapshot.snapshot.lowWorkTotal >= memorySnapshot.snapshot.lowWorkFree)
+                ? (memorySnapshot.snapshot.lowWorkTotal - memorySnapshot.snapshot.lowWorkFree)
+                : 0u);
         const uint32_t payloadBytes = static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedPayloadBytes());
         snapshot.payloadBytes = payloadBytes;
         snapshot.overheadBytes = (usedBytes >= payloadBytes) ? (usedBytes - payloadBytes) : 0u;
@@ -705,18 +717,22 @@ private:
 
     void PrintWorkRamUsageRealtime() const
     {
-        const auto hwr = SRL::Memory::HighWorkRam::GetReport();
-        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
+        const auto& snapshot = memorySnapshot.snapshot;
         const uint32_t hwrUsed = static_cast<uint32_t>(
-            (hwr.TotalSize >= hwr.FreeSize) ? (hwr.TotalSize - hwr.FreeSize) : 0u);
+            (snapshot.highWorkTotal >= snapshot.highWorkFree)
+                ? (snapshot.highWorkTotal - snapshot.highWorkFree)
+                : 0u);
         const uint32_t lwrUsed = static_cast<uint32_t>(
-            (lwr.TotalSize >= lwr.FreeSize) ? (lwr.TotalSize - lwr.FreeSize) : 0u);
+            (snapshot.lowWorkTotal >= snapshot.lowWorkFree)
+                ? (snapshot.lowWorkTotal - snapshot.lowWorkFree)
+                : 0u);
         SRL::Debug::Print(2, 14, "HWR u:%u f:%u        ",
                           static_cast<unsigned>(hwrUsed),
-                          static_cast<unsigned>(hwr.FreeSize));
+                          static_cast<unsigned>(snapshot.highWorkFree));
         SRL::Debug::Print(2, 15, "LWR u:%u f:%u        ",
                           static_cast<unsigned>(lwrUsed),
-                          static_cast<unsigned>(lwr.FreeSize));
+                          static_cast<unsigned>(snapshot.lowWorkFree));
     }
 
     void UpdateLowWorkFreeOverlay()
@@ -786,12 +802,12 @@ private:
             }
             else
             {
-                const auto lwr = SRL::Memory::LowWorkRam::GetReport();
-                freeBytes = static_cast<uint32_t>(lwr.FreeSize);
+                const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
+                freeBytes = memorySnapshot.snapshot.lowWorkFree;
             }
             {
-                const auto hwr = SRL::Memory::HighWorkRam::GetReport();
-                highFreeBytes = static_cast<uint32_t>(hwr.FreeSize);
+                const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
+                highFreeBytes = memorySnapshot.snapshot.highWorkFree;
             }
 
         const int32_t freeDelta = overlay.FreeValid()
@@ -1067,11 +1083,12 @@ private:
         }
         else
         {
+            const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
             SRL::Debug::Print(2, 22, "LW9 bo:%u nx:%u bs:%u free:%u ",
                               static_cast<unsigned>(validation.blockOffset),
                               static_cast<unsigned>(validation.nextOffset),
                               static_cast<unsigned>(validation.blockSize),
-                              static_cast<unsigned>(SRL::Memory::LowWorkRam::GetReport().FreeSize));
+                              static_cast<unsigned>(memorySnapshot.snapshot.lowWorkFree));
         }
         hwrTraceCooldownFrames_ = 15u;
 #endif
@@ -1432,7 +1449,8 @@ private:
         {
             return false;
         }
-        return context_.trackSystem->Telemetry().producer.jobInFlight;
+        const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
+        return trackTelemetry.producerJobInFlight;
     }
 
     void BackoffSimulationSlaveDispatch()
@@ -1446,14 +1464,22 @@ private:
     {
         if (!simState_.JobInFlight()) return true;
 
+        Game::SimulationSchedulerPolicy drainPolicy{};
+        drainPolicy.softSpinLimit = kSimDrainSoftSpinLimit;
+        drainPolicy.hardSpinLimit = kSimDrainHardSpinLimit;
+        SimulationSchedulerDomain::SimulationDrainPacket drainPacket{};
+        SimulationSchedulerDomain::SeedSimulationDrainPacket(drainPolicy,
+                                                             mandatoryWait,
+                                                             drainPacket);
+
         if (!simulationTask_.IsDone())
         {
-            if (!mandatoryWait) return false;
+            if (!drainPacket.mandatoryWait) return false;
 
             Sh2FrtProfiler::EnsureInitialized();
             const uint16_t waitStartTicks = Sh2FrtProfiler::Now();
             uint32_t spins = 0;
-            while (!simulationTask_.IsDone() && spins < kSimDrainSoftSpinLimit)
+            while (!simulationTask_.IsDone() && spins < drainPacket.softSpinLimit)
             {
                 ++spins;
             }
@@ -1462,7 +1488,7 @@ private:
             {
                 ++simState_.drainSoftTimeouts;
                 BackoffSimulationSlaveDispatch();
-                while (!simulationTask_.IsDone() && spins < kSimDrainHardSpinLimit)
+                while (!simulationTask_.IsDone() && spins < drainPacket.hardSpinLimit)
                 {
                     ++spins;
                 }
@@ -1478,9 +1504,7 @@ private:
                 Sh2FrtProfiler::Elapsed(waitStartTicks, Sh2FrtProfiler::Now()));
         }
 
-        simState_.SetJobInFlight(false);
-        simState_.SetHasCompleted(true);
-        simState_.completedIdx = simState_.inFlightIdx;
+        SimulationSchedulerDomain::MarkSimulationCompleted(simState_, simState_.inFlightIdx);
         simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
         ApplySimulationOutput(simState_.output[simState_.completedIdx]);
         return true;
@@ -1488,22 +1512,24 @@ private:
 
     void ConsumeCompletedJobs()
     {
-        if (simState_.JobInFlight())
+        SimulationSchedulerDomain::SimulationCompletionPacket completionPacket{};
+        SimulationSchedulerDomain::SeedSimulationCompletionPacket(simState_, completionPacket);
+
+        if (completionPacket.jobInFlight)
         {
             if (simulationTask_.IsDone())
             {
                 (void)DrainSimulationJobIfInFlight(false);
             }
         }
-        else if (simState_.HasCompleted())
+        else if (completionPacket.hasCompleted)
         {
-            ApplySimulationOutput(simState_.output[simState_.completedIdx]);
+            ApplySimulationOutput(simState_.output[completionPacket.completedIdx]);
         }
         if (carPrepareState_.JobInFlight() && carPrepareTask_.IsDone())
         {
-            carPrepareState_.SetJobInFlight(false);
-            carPrepareState_.SetHasCompleted(true);
-            carPrepareState_.completedIdx = carPrepareState_.inFlightIdx;
+            SimulationSchedulerDomain::MarkPrepareCompleted(carPrepareState_,
+                                                            carPrepareState_.inFlightIdx);
         }
     }
 
@@ -1571,32 +1597,50 @@ private:
             ++simState_.slaveDispatchSkipsBackoff;
             return false;
         }
-        if (simState_.JobInFlight() || carPrepareState_.JobInFlight())
+
+        SimulationSchedulerDomain::SimulationFrameContext dispatchContext{};
+        Game::SimulationSchedulerPolicy dispatchPolicy{};
+        dispatchPolicy.lockstep = context_.SlaveSimulationLockstep();
+        SimulationSchedulerDomain::SeedSimulationFrameContext(
+            frameState,
+            dispatchPolicy,
+            context_.SlaveSimulationLockstep()
+                ? Game::SimulationDispatchMode::SlaveLockstep
+                : Game::SimulationDispatchMode::SlaveAsync,
+            true,
+            context_.SlaveSimulationLockstep(),
+            IsTrackProducerJobInFlightHint(),
+            carPrepareState_.JobInFlight(),
+            dispatchContext);
+
+        SimulationSchedulerDomain::SimulationDispatchPacket dispatchPacket{};
+        SimulationSchedulerDomain::SeedSimulationDispatchPacket(dispatchContext,
+                                                               simState_,
+                                                               dispatchPacket);
+        if (dispatchPacket.blockedByInFlightJob || dispatchPacket.blockedByCarPrepare)
         {
             return false;
         }
-        if (IsTrackProducerJobInFlightHint())
+        if (dispatchPacket.blockedByTrackBusy)
         {
             ++simState_.slaveDispatchSkipsTrackBusy;
             BackoffSimulationSlaveDispatch();
             return false;
         }
+        if (!SimulationSchedulerDomain::CanDispatchSimulationPacket(dispatchPacket))
+        {
+            return false;
+        }
 
-        SimulationPayload simPayload{};
-        simPayload.frameState = frameState;
-
-        const uint8_t slot = simState_.writeIdx;
-        simState_.input[slot] = simPayload;
+        const uint8_t slot = dispatchPacket.targetSlot;
+        simState_.input[slot] = dispatchPacket.payload;
         simulationTask_.Configure(&simState_.input[slot],
                                   &simState_.output[slot],
                                   context_.gameplayTick,
                                   context_.carPhysics,
                                   context_.trackCollision);
         SRL::Slave::ExecuteOnSlave(simulationTask_);
-        simState_.SetJobInFlight(true);
-        simState_.inFlightIdx = slot;
-        simState_.writeIdx ^= 1u;
-        ++simState_.slaveDispatchCount;
+        SimulationSchedulerDomain::MarkSimulationDispatched(simState_, slot);
         return true;
     }
 
@@ -1635,7 +1679,7 @@ private:
                 return;
 
             sim_lockstep_completed:
-                simState_.SetHasCompleted(false);
+                SimulationSchedulerDomain::ClearSimulationCompleted(simState_);
                 return;
             }
 
@@ -1669,9 +1713,7 @@ private:
         carPrepareState_.inputYaw[slot] = carYawDeg_;
         carPrepareTask_.Configure(&carPrepareState_.inputYaw[slot], &carPrepareState_.outputYaw[slot]);
         SRL::Slave::ExecuteOnSlave(carPrepareTask_);
-        carPrepareState_.SetJobInFlight(true);
-        carPrepareState_.inFlightIdx = slot;
-        carPrepareState_.writeIdx ^= 1u;
+        SimulationSchedulerDomain::MarkPrepareDispatched(carPrepareState_, slot);
     }
 
     void UpdateBackground()
@@ -2198,17 +2240,29 @@ private:
             return;
         }
 
-        context_.trackSystem->SetObservedCarSegmentId(latestActiveSegmentId_);
+        const auto trackFrameContext = TrackRenderDomain::BuildTrackFrameContext(
+            frameCounter_,
+            latestActiveSegmentId_,
+            true,
+            context_.trackSegOffset,
+            context_.lightDirection,
+            camera.location,
+            camera.lookTarget,
+            context_.carWorldPosition);
+        const auto trackRenderPacket =
+            TrackRenderDomain::BuildTrackRenderPacket(trackFrameContext, context_.trackSystem);
+
+        context_.trackSystem->SetObservedCarSegmentId(trackRenderPacket.observedCarSegmentId);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
-        context_.trackSystem->BeginFrame(frameCounter_);
-        AppState::Set(AppState::Stage::LoopTrack, frameCounter_);
+        context_.trackSystem->BeginFrame(trackFrameContext.frameId);
+        AppState::Set(AppState::Stage::LoopTrack, trackFrameContext.frameId);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
-        context_.trackSystem->RenderFrame(true,
-                                          context_.trackSegOffset,
-                                          context_.lightDirection,
-                                          camera.location,
-                                          camera.lookTarget,
-                                          context_.carWorldPosition);
+        context_.trackSystem->RenderFrame(trackRenderPacket.valid,
+                                          trackFrameContext.trackOffset,
+                                          trackFrameContext.lightDirection,
+                                          trackFrameContext.cameraLocation,
+                                          trackFrameContext.cameraLookTarget,
+                                          trackFrameContext.carWorldPosition);
         CaptureTrackDrawStageTraces();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
         context_.trackSystem->EndFrame();
@@ -2259,7 +2313,18 @@ private:
     {
         if (context_.TrackSystemReady() && context_.RenderTrack() && context_.trackSystem)
         {
-            return context_.trackSystem->Telemetry().submittedTrackFaces;
+            const auto trackFrameContext = TrackRenderDomain::BuildTrackFrameContext(
+                frameCounter_,
+                latestActiveSegmentId_,
+                true,
+                context_.trackSegOffset,
+                context_.lightDirection,
+                lastValidCameraLocation_,
+                lastValidLookTarget_,
+                context_.carWorldPosition);
+            const auto trackPacket =
+                TrackRenderDomain::BuildTrackRenderPacket(trackFrameContext, context_.trackSystem);
+            return trackPacket.submittedTrackFaces;
         }
         return 0u;
     }
@@ -2612,12 +2677,13 @@ private:
             return;
         }
 
-        out.queryCalls = ClampToU16(context_.trackSystem->SurfaceQueryCallsThisFrame());
-        out.queryGlobalPasses = ClampToU16(context_.trackSystem->SurfaceQueryGlobalPassesThisFrame());
-        out.queryCacheHits = ClampToU16(context_.trackSystem->SurfaceQueryCacheHitsThisFrame());
-        out.queryCacheMisses = ClampToU16(context_.trackSystem->SurfaceQueryCacheMissesThisFrame());
-        out.wallQueryCalls = ClampToU16(context_.trackSystem->WallQueryCallsThisFrame());
-        out.wallQueryHits = ClampToU16(context_.trackSystem->WallQueryHitsThisFrame());
+        const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
+        out.queryCalls = ClampToU16(trackTelemetry.queryCalls);
+        out.queryGlobalPasses = ClampToU16(trackTelemetry.queryGlobal);
+        out.queryCacheHits = ClampToU16(trackTelemetry.queryCacheHits);
+        out.queryCacheMisses = ClampToU16(trackTelemetry.queryCacheMisses);
+        out.wallQueryCalls = ClampToU16(trackTelemetry.wallQueryCalls);
+        out.wallQueryHits = ClampToU16(trackTelemetry.wallQueryHits);
     }
 
     bool BuildOverlayDiagnosticsSnapshot(uint32_t submittedTrackFaces,
@@ -2764,12 +2830,16 @@ private:
 
     void PopulateSh2TickSources(Sh2SplitTelemetrySnapshot& out) const
     {
-        out.trackMasterTicks = context_.trackSystem->FrameTicksThisFrame();
-        out.trackSlaveProducerTicks = context_.trackSystem->Telemetry().producer.slaveLastJobTicks;
-        out.trackSlaveSortTicks = context_.trackSystem->SlaveSortTicksThisFrame();
-        out.trackSlavePlanTicks = context_.trackSystem->SlavePlanTicksThisFrame();
-        out.simSlaveTicks = simState_.slaveLastJobTicksThisFrame;
-        out.simMasterWaitTicks = simState_.masterWaitTicksThisFrame;
+        SimulationSchedulerDomain::SimulationSchedulerTelemetry simTelemetry{};
+        SimulationSchedulerDomain::SeedSimulationSchedulerTelemetry(simState_, simTelemetry);
+        const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
+
+        out.trackMasterTicks = trackTelemetry.masterFrameTicks;
+        out.trackSlaveProducerTicks = trackTelemetry.slaveProducerTicks;
+        out.trackSlaveSortTicks = trackTelemetry.slaveSortTicks;
+        out.trackSlavePlanTicks = trackTelemetry.slavePlanTicks;
+        out.simSlaveTicks = simTelemetry.slaveLastJobTicksThisFrame;
+        out.simMasterWaitTicks = simTelemetry.masterWaitTicksThisFrame;
     }
 
     void PopulateSh2BusyMetrics(Sh2SplitTelemetrySnapshot& out) const
@@ -2801,9 +2871,10 @@ private:
             return;
         }
 
-        out.queryCalls = ClampToU16(context_.trackSystem->SurfaceQueryCallsThisFrame());
-        out.queryGlobal = ClampToU16(context_.trackSystem->SurfaceQueryGlobalPassesThisFrame());
-        out.queryScmap = ClampToU16(context_.trackSystem->SurfaceQueryScmapSkipsThisFrame());
+        const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
+        out.queryCalls = ClampToU16(trackTelemetry.queryCalls);
+        out.queryGlobal = ClampToU16(trackTelemetry.queryGlobal);
+        out.queryScmap = ClampToU16(trackTelemetry.queryScmap);
     }
 
     void PrintSh2SplitTelemetry(const Sh2SplitTelemetrySnapshot& snapshot)
@@ -3046,7 +3117,7 @@ private:
     {
         if (autoLapRoute_.StartupYawAligned() ||
             AutoLapTestEnabled() ||
-            nearestIndex >= autoLapRoute_.yawDeg.size())
+            !AutoLapRouteDomain::HasYawAtIndex(autoLapRoute_, nearestIndex))
         {
             return;
         }
@@ -3274,12 +3345,11 @@ private:
         {
             BuildAutoLapRoute(context, referenceCarWorldPosition);
         }
-        if (autoLapRoute_.centers.size() < 2u)
+        if (!AutoLapRouteDomain::HasMinimumRoutePoints(autoLapRoute_))
         {
             return false;
         }
-        if (autoLapRoute_.yawDeg.size() != autoLapRoute_.centers.size() ||
-            autoLapRoute_.offDeg.size() != autoLapRoute_.centers.size())
+        if (AutoLapRouteDomain::NeedsYawRebuild(autoLapRoute_))
         {
             RebuildAutoLapRouteYawData();
         }
@@ -3292,7 +3362,7 @@ private:
                                         const SRL::Math::Types::Fxp& rideHeight,
                                         int32_t segmentCount)
     {
-        if (autoLapRoute_.Initialized())
+        if (AutoLapRouteDomain::IsRouteInitialized(autoLapRoute_))
         {
             return true;
         }
@@ -3309,8 +3379,7 @@ private:
         ioCarWorldPosition.Y =
             ResolveAutoLapRouteGroundYAt(context, autoLapRoute_.index, ioCarWorldPosition.Y) + rideHeight;
         autoLapRoute_.SetInitialized(true);
-        if (autoLapRoute_.yawDeg.size() == autoLapRoute_.centers.size() &&
-            autoLapRoute_.index < autoLapRoute_.yawDeg.size())
+        if (AutoLapRouteDomain::CanApplyYawAtCurrentIndex(autoLapRoute_))
         {
             ioCarYawDeg = autoLapRoute_.yawDeg[autoLapRoute_.index];
         }
@@ -3385,7 +3454,7 @@ private:
 
     void AdvanceAutoLapObservedSegmentIfAvailable(int32_t segmentCount)
     {
-        if (!autoLapRoute_.ids.empty() && autoLapRoute_.index < autoLapRoute_.ids.size())
+        if (AutoLapRouteDomain::HasObservedSegmentAtCurrentIndex(autoLapRoute_))
         {
             AdvanceObservedAutoLapSegmentToward(segmentCount, autoLapRoute_.ids[autoLapRoute_.index]);
         }
@@ -3508,7 +3577,7 @@ private:
         outLoadedCandidate = nullptr;
         for (size_t i = 0; i < candidateCount; ++i)
         {
-            if (!ReadCdBinaryFile(candidates[i], outBytes)) continue;
+            if (!CdAssetDomain::ReadBinaryAsset(candidates[i], outBytes)) continue;
             outLoadedCandidate = candidates[i];
             return true;
         }
@@ -3617,10 +3686,7 @@ private:
                                       autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)].size(),
                                       routeLine->size());
         RebuildAutoLapRouteYawData();
-        return !autoLapRoute_.centers.empty() &&
-               autoLapRoute_.centers.size() == autoLapRoute_.ids.size() &&
-               autoLapRoute_.centers.size() == autoLapRoute_.yawDeg.size() &&
-               autoLapRoute_.centers.size() == autoLapRoute_.offDeg.size();
+        return AutoLapRouteDomain::HasValidGuideBuildOutput(autoLapRoute_);
     }
 
     void LogAutoLapGuideLineEmpty() const
@@ -3635,18 +3701,23 @@ private:
         const Context& context,
         int32_t selectedLineIndex)
     {
+        if (!AutoLapRouteDomain::HasValidGuideLineIndex(autoLapRoute_, selectedLineIndex))
+        {
+            return nullptr;
+        }
+
         autoLapRoute_.selectedGuideLine = static_cast<int8_t>(selectedLineIndex);
         const auto& selectedLine = autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)];
 
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
-        if (segmentCount <= 0)
+        if (!AutoLapRouteDomain::HasPositiveSegmentCount(segmentCount))
         {
             return nullptr;
         }
 
         const auto simplifiedMiddleLine =
             SimplifyAutoLapGuideLine(selectedLine, static_cast<size_t>(segmentCount));
-        if (simplifiedMiddleLine.size() >= 2u)
+        if (AutoLapRouteDomain::HasMinimumPointCount(simplifiedMiddleLine.size()))
         {
             autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)] = simplifiedMiddleLine;
         }
@@ -3702,7 +3773,7 @@ private:
                                            const TrackLowWorkVector<SRL::Math::Types::Vector3D>& routeLine)
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
-        if (segmentCount <= 0) return false;
+        if (!AutoLapRouteDomain::HasPositiveSegmentCount(segmentCount)) return false;
 
         autoLapRoute_.centers.reserve(routeLine.size());
         autoLapRoute_.ids.reserve(routeLine.size());
@@ -3725,7 +3796,7 @@ private:
     int32_t ScoreAutoLapRouteDirection(int32_t segmentCount) const
     {
         int32_t directionScore = 0;
-        if (autoLapRoute_.ids.size() < 2u)
+        if (!AutoLapRouteDomain::HasMinimumRouteIds(autoLapRoute_))
         {
             return directionScore;
         }
@@ -3754,7 +3825,7 @@ private:
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         const int32_t directionScore = ScoreAutoLapRouteDirection(segmentCount);
-        if (directionScore < 0)
+        if (AutoLapRouteDomain::ShouldReverseRouteDirection(directionScore))
         {
             std::reverse(autoLapRoute_.centers.begin(), autoLapRoute_.centers.end());
             std::reverse(autoLapRoute_.ids.begin(), autoLapRoute_.ids.end());
@@ -3786,18 +3857,12 @@ private:
 
     void ReleaseAutoLapGuideLines()
     {
-        for (size_t i = 0; i < autoLapRoute_.guideLines.size(); ++i)
-        {
-            using GuideLineVector = std::remove_reference_t<decltype(autoLapRoute_.guideLines[i])>;
-            GuideLineVector{}.swap(autoLapRoute_.guideLines[i]);
-        }
+        AutoLapRouteDomain::ClearAutoLapGuideLines(autoLapRoute_);
     }
 
     void ReleaseAutoLapRouteStorage()
     {
-        ClearAutoLapRouteBuffers();
-        ReleaseAutoLapGuideLines();
-        ResetAutoLapRouteState();
+        AutoLapRouteDomain::ReleaseAutoLapRouteStorage(autoLapRoute_);
     }
 
     static double AutoLapPointSegmentDistanceSqXZ(const SRL::Math::Types::Vector3D& point,
@@ -3922,33 +3987,22 @@ private:
 
     bool HasRetainedAutoLapRouteStorage() const
     {
-        return autoLapRoute_.Built() ||
-               autoLapRoute_.Initialized() ||
-               autoLapRoute_.ids.capacity() > 0u ||
-               autoLapRoute_.centers.capacity() > 0u ||
-               autoLapRoute_.yawDeg.capacity() > 0u ||
-               autoLapRoute_.offDeg.capacity() > 0u;
+        return AutoLapRouteDomain::HasRetainedAutoLapRouteStorage(autoLapRoute_);
     }
 
     void ResetAutoLapRouteFlags()
     {
-        autoLapRoute_.SetInitialized(false);
-        autoLapRoute_.SetBuilt(false);
-        autoLapRoute_.SetStartupYawAligned(false);
+        AutoLapRouteDomain::ResetAutoLapRouteFlags(autoLapRoute_);
     }
 
     void ResetAutoLapRouteScalars()
     {
-        autoLapRoute_.index = 0;
-        autoLapRoute_.baseYawDeg = 0;
-        autoLapRoute_.currentOffDeg = 0;
-        autoLapRoute_.selectedGuideLine = -1;
+        AutoLapRouteDomain::ResetAutoLapRouteScalars(autoLapRoute_);
     }
 
     void ResetAutoLapRouteState()
     {
-        ResetAutoLapRouteFlags();
-        ResetAutoLapRouteScalars();
+        AutoLapRouteDomain::ResetAutoLapRouteState(autoLapRoute_);
     }
 
     template <typename TVector>
@@ -3961,16 +4015,13 @@ private:
 
     void ClearAutoLapRouteBuffers()
     {
-        ClearAndReleaseAutoLapVector(autoLapRoute_.ids);
-        ClearAndReleaseAutoLapVector(autoLapRoute_.centers);
-        ClearAndReleaseAutoLapVector(autoLapRoute_.yawDeg);
-        ClearAndReleaseAutoLapVector(autoLapRoute_.offDeg);
+        AutoLapRouteDomain::ClearAutoLapRouteBuffers(autoLapRoute_);
     }
 
     bool FindNearestAutoLapRoutePointIndex(const SRL::Math::Types::Vector3D& worldPosition,
                                            size_t& outIndex) const
     {
-        if (autoLapRoute_.centers.empty())
+        if (!AutoLapRouteDomain::HasAnyRoutePoints(autoLapRoute_))
         {
             return false;
         }
@@ -4008,7 +4059,11 @@ private:
         for (int32_t lineIndex = 0; lineIndex < static_cast<int32_t>(autoLapRoute_.guideLines.size()); ++lineIndex)
         {
             const auto& line = autoLapRoute_.guideLines[lineIndex];
-            if (line.size() < 2u) continue;
+            if (!AutoLapRouteDomain::HasGuideLineMinimumPoints(
+                    autoLapRoute_, static_cast<size_t>(lineIndex)))
+            {
+                continue;
+            }
 
             SRL::Math::Types::Fxp lineScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
             for (size_t i = 0; i < line.size(); ++i)
@@ -4121,7 +4176,7 @@ private:
     {
         static constexpr uint16_t kAsphaltFamilyId = 1u; // F01064.tga
 
-        if (routeIndex < autoLapRoute_.centers.size())
+        if (AutoLapRouteDomain::HasCenterAtIndex(autoLapRoute_, routeIndex))
         {
             SRL::Math::Types::Fxp asphaltY{};
             if (context.trackSystem->FindSurfaceYByFamilyId(
@@ -4134,9 +4189,7 @@ private:
             }
         }
 
-        if (routeIndex < autoLapRoute_.centers.size() &&
-            !autoLapRoute_.ids.empty() &&
-            routeIndex < autoLapRoute_.ids.size())
+        if (AutoLapRouteDomain::HasMappedSegmentAtIndex(autoLapRoute_, routeIndex))
         {
             const int32_t routeSegmentId = static_cast<int32_t>(autoLapRoute_.ids[routeIndex]);
             SRL::Math::Types::Vector3D segmentCenter{};
@@ -4150,7 +4203,7 @@ private:
             }
         }
 
-        return (routeIndex < autoLapRoute_.centers.size())
+        return AutoLapRouteDomain::HasCenterAtIndex(autoLapRoute_, routeIndex)
             ? autoLapRoute_.centers[routeIndex].Y
             : fallbackY;
     }
@@ -4206,8 +4259,7 @@ private:
 
         const int32_t targetYawDeg = YawFromDeltaRaw(pathDxRaw, pathDzRaw, ioCarYawDeg);
         ioCarYawDeg = normalizeYawDeg(targetYawDeg);
-        if (autoLapRoute_.yawDeg.size() == autoLapRoute_.centers.size() &&
-            !autoLapRoute_.yawDeg.empty())
+        if (AutoLapRouteDomain::CanUpdateCurrentYawOffset(autoLapRoute_))
         {
             autoLapRoute_.currentOffDeg = static_cast<int16_t>(
                 ShortestDeltaDeg(static_cast<int32_t>(autoLapRoute_.baseYawDeg), ioCarYawDeg));
