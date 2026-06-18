@@ -9,6 +9,7 @@
 #include "render_pipeline.hpp"
 #include "runtime_null_systems.hpp"
 #include "car_audio_system.hpp"
+#include "cd_asset_transition_ops.hpp"
 #include "project_voice_router.hpp"
 #include "simple_car_physics.hpp"
 #include "simple_gameplay_tick.hpp"
@@ -50,19 +51,13 @@ constexpr bool kEnableMinimalFpsOverlay = true;
 constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
-static const char* FindExistingPath(const char* const* paths, size_t count);
 static constexpr size_t kCarGouraudOffset = 4096;
 static constexpr int32_t kFixedSpawnX = 5177;
 static constexpr int32_t kFixedSpawnY = 208;
 static constexpr int32_t kFixedSpawnZ = 1054;
 volatile uint32_t g_srlAppVblankCounter = 0;
 
-struct CarAnchorPoints
-{
-    bool valid = false;
-    Vector3D front{0.0, 0.0, 0.0};
-    Vector3D rear{0.0, 0.0, 0.0};
-};
+using CarAnchorPoints = Game::CdAssetSystem::CarAnchorPoints;
 
 extern "C" uint32_t SRL_AppGetVblankCounter()
 {
@@ -76,124 +71,6 @@ static void SafeVblankNoEvent()
     SRL::Input::Management::RefreshPeripherals();
     SRL::Input::Gun::VblankRefresh();
     g_srlAppVblankCounter = g_srlAppVblankCounter + 1u;
-}
-
-// Procura o primeiro caminho existente em disco.
-static const char* FindExistingPath(const char* const* paths, size_t count)
-{
-    for (size_t i = 0; i < count; ++i)
-    {
-        SRL::Cd::File f(paths[i]);
-        if (f.Exists() && f.Size.Bytes > 0) return paths[i];
-    }
-    return nullptr;
-}
-
-static bool ReadCdBinaryFileSimple(const char* path, std::vector<uint8_t>& outBytes)
-{
-    outBytes.clear();
-    if (!path || path[0] == '\0') return false;
-
-    SRL::Cd::File f(path);
-    if (!f.Exists() || f.Size.Bytes <= 0) return false;
-    if (!f.Open()) return false;
-
-    const size_t size = static_cast<size_t>(f.Size.Bytes);
-    if (size == 0u) return false;
-
-    outBytes.resize(size);
-    size_t totalRead = 0u;
-    while (totalRead < size)
-    {
-        const int32_t want = static_cast<int32_t>(std::min<size_t>(2048u, size - totalRead));
-        const int32_t got = f.Read(want, outBytes.data() + totalRead);
-        if (got <= 0) break;
-        totalRead += static_cast<size_t>(got);
-        if (got < want) break;
-    }
-
-    if (totalRead != size)
-    {
-        outBytes.clear();
-        return false;
-    }
-    return true;
-}
-
-static const char* SkipWs(const char* p)
-{
-    while (p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
-    return p;
-}
-
-static bool ParseJsonVec3ByKey(const char* json, const char* key, Vector3D& outVec)
-{
-    if (!json || !key) return false;
-    const char* k = ::strstr(json, key);
-    if (!k) return false;
-    const char* lb = ::strchr(k, '[');
-    const char* rb = lb ? ::strchr(lb, ']') : nullptr;
-    if (!lb || !rb || rb <= lb) return false;
-
-    const char* p = SkipWs(lb + 1);
-    char* end = nullptr;
-    const float x = std::strtof(p, &end);
-    if (end == p) return false;
-    p = SkipWs(end);
-    if (*p == ',') ++p;
-
-    p = SkipWs(p);
-    const float y = std::strtof(p, &end);
-    if (end == p) return false;
-    p = SkipWs(end);
-    if (*p == ',') ++p;
-
-    p = SkipWs(p);
-    const float z = std::strtof(p, &end);
-    if (end == p) return false;
-
-    auto toRaw = [](float v) -> int32_t
-    {
-        const float scaled = v * 65536.0f;
-        return static_cast<int32_t>(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-    };
-    outVec = Vector3D(Fxp::BuildRaw(toRaw(x)),
-                      Fxp::BuildRaw(toRaw(y)),
-                      Fxp::BuildRaw(toRaw(z)));
-    return true;
-}
-
-static CarAnchorPoints LoadCarAnchorPointsFromCd()
-{
-    const char* candidates[] = {
-        "CD/DATA/CAR1_ANCHORS.JSON;1",
-        "CD/DATA/CAR1_ANCHORS.JSON",
-        "DATA/CAR1_ANCHORS.JSON;1",
-        "DATA/CAR1_ANCHORS.JSON",
-        "CAR1_ANCHORS.JSON;1",
-        "CAR1_ANCHORS.JSON",
-        "cd/data/CAR1_ANCHORS.JSON",
-        "cd/data/CAR1_ANCHORS.json",
-        "data/CAR1_ANCHORS.JSON",
-        "data/CAR1_ANCHORS.json",
-        "CAR1_ANCHORS.json"
-    };
-
-    std::vector<uint8_t> bytes{};
-    for (size_t i = 0; i < (sizeof(candidates) / sizeof(candidates[0])); ++i)
-    {
-        if (!ReadCdBinaryFileSimple(candidates[i], bytes)) continue;
-        std::vector<char> text(bytes.begin(), bytes.end());
-        text.push_back('\0');
-
-        CarAnchorPoints anchors{};
-        if (!ParseJsonVec3ByKey(text.data(), "\"front\"", anchors.front)) continue;
-        if (!ParseJsonVec3ByKey(text.data(), "\"rear\"", anchors.rear)) continue;
-        anchors.valid = true;
-        return anchors;
-    }
-
-    return {};
 }
 
 static int32_t NormalizeYawDeg360Main(int32_t yawDeg)
@@ -389,7 +266,7 @@ struct CarPipeline
 static CarPipeline LoadCarPipeline(const char* const* paths, size_t pathCount, bool makeWramCopy, size_t gouraudOffset)
 {
     CarPipeline pipe{};
-    const char* chosenPath = FindExistingPath(paths, pathCount);
+    const char* chosenPath = CdAssetDomain::ResolveExistingPath(paths, pathCount);
 
     // 1) Prefer WRAM-first when requested.
     // This avoids a second full load (including textures) and prevents runtime
@@ -1089,7 +966,7 @@ static int RunPhysicsPocMode()
     constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
-        const char* sbaPath = FindExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
+        const char* sbaPath = CdAssetDomain::ResolveExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
         if (sbaPath)
         {
             sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
@@ -1337,7 +1214,7 @@ int GameApp::Run()
     constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
-        const char* sbaPath = FindExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
+        const char* sbaPath = CdAssetDomain::ResolveExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
         if (sbaPath)
         {
             sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
@@ -1587,7 +1464,7 @@ int GameApp::Run()
             markerVerts,
             markerFaces);
 
-        const CarAnchorPoints anchors = LoadCarAnchorPointsFromCd();
+        const CarAnchorPoints anchors = CdAssetDomain::LoadCarAnchorPointsAsset();
         int32_t anchorYawDeg = 0;
         bool anchorOffsetValid = false;
         if (!markerOffsetValid)

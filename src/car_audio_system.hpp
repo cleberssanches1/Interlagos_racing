@@ -4,6 +4,7 @@
 
 #include "car_audio_profile.hpp"
 #include "interfaces.hpp"
+#include "memory_budget_system.hpp"
 
 namespace Game
 {
@@ -144,17 +145,7 @@ inline void CarAudioSystem::Initialize()
         voiceRouter_ = &DefaultVoiceRouter();
     }
 
-    const bool hwrHasRoom =
-        SRL::Memory::HighWorkRam::GetLargestFreeBlockSize() >= 192u * 1024u;
-    const bool cartAvailable =
-        SRL::Memory::CartRam::GetReport().TotalSize > 0u;
-    SRL::Sound::Pcm::SetMemAllocationBehaviour(
-        SRL::Sound::Pcm::PcmMalloc::LwRam,
-        hwrHasRoom
-            ? SRL::Sound::Pcm::PcmMalloc::HwRam
-            : (cartAvailable
-                ? SRL::Sound::Pcm::PcmMalloc::CartRam
-                : SRL::Sound::Pcm::PcmMalloc::HwRam));
+    MemoryBudgetSystem::ConfigurePcmStreamingBudget();
 
     engineSample_ = TryLoadWaveCue(AudioCue::Engine);
     shiftUpSample_ = TryLoadWaveCue(AudioCue::ShiftUp);

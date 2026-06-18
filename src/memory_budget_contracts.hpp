@@ -24,6 +24,23 @@ enum class PressureLevel : uint8_t
     Catastrophic
 };
 
+enum class ConsumerCategory : uint8_t
+{
+    TrackRender = 0,
+    CarRender,
+    AudioPcm,
+    Hud,
+    CdStaging,
+    DebugTransient
+};
+
+enum class AllocationPool : uint8_t
+{
+    LowWork = 0,
+    HighWork,
+    Cart
+};
+
 struct Thresholds
 {
     uint32_t highWorkSoftFloor = 0u;
@@ -64,6 +81,14 @@ struct MemoryBudgetPolicyPacket
     bool shouldReduceStreamingPressure = false;
     bool shouldAvoidOptionalAllocations = false;
     bool cartAvailable = false;
+};
+
+struct CategoryBudgetPolicy
+{
+    ConsumerCategory category = ConsumerCategory::TrackRender;
+    AllocationPool preferredPool = AllocationPool::LowWork;
+    bool shouldReducePressure = false;
+    bool shouldAvoidOptionalAllocations = false;
 };
 
 struct MemoryTelemetryPacket

@@ -11,6 +11,23 @@ namespace Game
 class MemoryBudgetSystem final
 {
 public:
+    enum class ConsumerCategory : uint8_t
+    {
+        TrackRender = 0,
+        CarRender,
+        AudioPcm,
+        Hud,
+        CdStaging,
+        DebugTransient
+    };
+
+    enum class AllocationPool : uint8_t
+    {
+        LowWork = 0,
+        HighWork,
+        Cart
+    };
+
     struct Snapshot
     {
         uint32_t highWorkFree = 0u;
@@ -62,17 +79,52 @@ public:
         return SRL::Memory::CartRam::Malloc(byteCount);
     }
 
+    static AllocationPool ResolvePreferredPool(const ConsumerCategory category)
+    {
+        switch (category)
+        {
+        case ConsumerCategory::AudioPcm:
+            return ResolveAudioPcmPool();
+        case ConsumerCategory::CdStaging:
+            return HasCartRam() ? AllocationPool::Cart : AllocationPool::HighWork;
+        case ConsumerCategory::TrackRender:
+        case ConsumerCategory::CarRender:
+            return AllocationPool::HighWork;
+        case ConsumerCategory::Hud:
+        case ConsumerCategory::DebugTransient:
+        default:
+            return AllocationPool::LowWork;
+        }
+    }
+
     static void ConfigurePcmStreamingBudget()
     {
-        const bool highWorkHasRoom = HighWorkLargestFreeBlock() >= 192u * 1024u;
-        const bool cartAvailable = HasCartRam();
+        const AllocationPool pool = ResolvePreferredPool(ConsumerCategory::AudioPcm);
         SRL::Sound::Pcm::SetMemAllocationBehaviour(
             SRL::Sound::Pcm::PcmMalloc::LwRam,
-            highWorkHasRoom
-                ? SRL::Sound::Pcm::PcmMalloc::HwRam
-                : (cartAvailable
-                    ? SRL::Sound::Pcm::PcmMalloc::CartRam
-                    : SRL::Sound::Pcm::PcmMalloc::HwRam));
+            ToPcmMalloc(pool));
+    }
+
+private:
+    static AllocationPool ResolveAudioPcmPool()
+    {
+        return (HighWorkLargestFreeBlock() >= 192u * 1024u)
+            ? AllocationPool::HighWork
+            : (HasCartRam() ? AllocationPool::Cart : AllocationPool::HighWork);
+    }
+
+    static SRL::Sound::Pcm::PcmMalloc ToPcmMalloc(const AllocationPool pool)
+    {
+        switch (pool)
+        {
+        case AllocationPool::HighWork:
+            return SRL::Sound::Pcm::PcmMalloc::HwRam;
+        case AllocationPool::Cart:
+            return SRL::Sound::Pcm::PcmMalloc::CartRam;
+        case AllocationPool::LowWork:
+        default:
+            return SRL::Sound::Pcm::PcmMalloc::LwRam;
+        }
     }
 };
 
