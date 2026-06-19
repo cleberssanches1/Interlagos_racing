@@ -862,8 +862,8 @@ static int RunPhysicsPocMode()
     // - Master keeps render/orchestration
     constexpr bool kPocDualSh2Profile = true;
     const bool kPocEnableTrackSlave = kPocDualSh2Profile && renderTrack;
-    constexpr bool kPocEnableSlaveSimulation = false;
-    constexpr bool kPocSlaveSimulationLockstep = true; // lockstep for coherent HUD/audio/drivetrain
+    constexpr bool kPocEnableSlaveSimulation = true;
+    constexpr bool kPocSlaveSimulationLockstep = true; // lockstep para manter audio/HUD/drivetrain coerentes
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
@@ -1531,7 +1531,7 @@ int GameApp::Run()
     // Runtime simulation enabled to keep gameplay/physics on SH2 pipeline.
     const bool enableRuntimeSimulation = true;
     const bool enableSlaveSimulation = true;
-    // Deterministic lockstep: Master waits for Slave simulation each frame.
+    // Lockstep: mantem audio/HUD/drivetrain coerentes no frame atual.
     const bool slaveSimulationLockstep = true;
     const bool enableSlaveForCarPrepare = false;
 

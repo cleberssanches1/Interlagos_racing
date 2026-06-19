@@ -1,0 +1,179 @@
+# Track Render Passive Flow Plan
+
+## Objective
+
+Prepare the extraction of track-side scheduling/consumption out of
+`src/game_loop_system.hpp` without changing the current lockstep runtime.
+
+## Current passive building blocks
+
+- `src/track_render_contracts.hpp`
+- `src/track_render_state_assembler.hpp`
+- `src/track_render_telemetry_assembler.hpp`
+- `src/track_render_transition_ops.hpp`
+- `src/track_render_scheduler.hpp`
+- `src/game_loop_track_render_packet.hpp`
+- `src/game_loop_track_render_packet_assembler.hpp`
+
+These files already describe a passive track path for:
+
+- frame-context assembly
+- render-packet assembly
+- telemetry assembly
+- frame-local aggregation of the track data consumed by the Master
+
+## Current runtime touch points
+
+Track-side packet/telemetry logic currently appears in `src/game_loop_system.hpp`
+through small direct calls such as:
+
+1. `IsTrackProducerJobInFlightHint(...)`
+2. overlay query population via `BuildTrackRenderTelemetry(...)`
+3. SH2 split telemetry assembly via `BuildTrackRenderTelemetry(...)`
+
+This means the runtime already consumes passive track telemetry, but without a
+single frame-local packet that groups:
+
+- the scheduling context
+- the render packet
+- the telemetry snapshot
+
+## Passive packet model
+
+`src/game_loop_track_render_packet.hpp` aggregates:
+
+- `FrameContext`
+- `RenderPacket`
+- `Telemetry`
+
+This stays:
+
+- frame-local
+- non-owning
+- runtime-neutral until explicit integration is needed
+
+## Runtime-to-passive substitution map
+
+### Frame context
+
+Passive coverage already available:
+
+1. `Game::TrackRenderScheduler::BuildFrameContext(...)`
+2. `TrackRenderDomain::SeedTrackFrameContext(...)`
+
+Main source data that will eventually feed it:
+
+- `frameCounter_`
+- `latestActiveSegmentId_`
+- `context_.RenderTrack()`
+- `context_.trackSegOffset`
+- `context_.lightDirection`
+- camera location / look target
+- `context_.carWorldPosition`
+
+### Render packet
+
+Passive coverage already available:
+
+1. `Game::TrackRenderScheduler::BuildRenderPacket(...)`
+2. `TrackRenderDomain::SeedTrackRenderPacket(...)`
+3. `TrackRenderDomain::SeedTrackRenderPacketProducerFlags(...)`
+
+Current runtime-relevant outputs:
+
+- `renderPacket.valid`
+- `renderPacket.observedCarSegmentId`
+- `renderPacket.submittedTrackFaces`
+- `renderPacket.usedSlaveProducer`
+- `renderPacket.usedSlaveSort`
+
+### Telemetry
+
+Passive coverage already available:
+
+1. `Game::TrackRenderScheduler::BuildTelemetry(...)`
+2. `TrackRenderDomain::BuildTrackRenderTelemetry(...)`
+3. `TrackRenderDomain::SeedTrackRenderTelemetry(...)`
+
+Current runtime-relevant outputs:
+
+- producer in-flight hint
+- query counters for overlays
+- SH2 split counters
+- producer safe-mode state
+
+## Safe integration order
+
+### Step 1 - keep runtime consumption unchanged
+
+Do not change:
+
+- lockstep producer/sort behavior
+- render submission order
+- safe-mode fallback
+- any `N-1` reuse decision
+
+### Step 2 - local packet assembly only
+
+When runtime integration becomes safe, assemble locally:
+
+1. `FrameContext`
+2. `RenderPacket`
+3. `Telemetry`
+4. `TrackRenderFramePacket`
+
+Consume immediately in the same function.
+
+No new persistent members.
+No ownership transfer.
+No async policy changes.
+
+### Step 3 - replace repeated telemetry fetches first
+
+The best first runtime candidate is not producer scheduling itself.
+
+It is:
+
+- reuse one local track packet across:
+  - `IsTrackProducerJobInFlightHint(...)`
+  - overlay query/producer diagnostics
+  - SH2 telemetry presentation
+
+This is the lowest-risk place to reduce repeated ad hoc track telemetry fetches
+without touching render ownership.
+
+### Step 4 - only later revisit reuse/latency decisions
+
+Only after repeated stable emulator runs:
+
+- make previous-frame reuse explicit
+- isolate the decision packet for `N-1` track consumption
+- keep a synchronous fallback path
+
+## Guard rails
+
+- do not mix this extraction with car-audio or drivetrain changes
+- do not reintroduce `N-1` behavior in the same patch that introduces the packet
+- do not alter `TrackSystem` producer/sort ownership yet
+- validate every step with `tools/validate_saturn_stable_build.ps1`
+- keep ISO exactly `4134912`
+
+## Immediate next safe step
+
+The next safe step is:
+
+1. keep the current runtime unchanged
+2. use this packet only as passive groundwork
+3. later try a tiny runtime cut that shares one telemetry snapshot across the
+   track overlay and SH2 presentation paths
+
+## Validation coverage
+
+Current compile-only SH2 validation now covers:
+
+- `src/game_loop_track_render_packet.hpp`
+- `src/game_loop_track_render_packet_assembler.hpp`
+
+through:
+
+- `tools/validate_game_loop_passive_headers.ps1`

@@ -1,294 +1,314 @@
 # SH2 Balancing Execution Roadmap
 
-## Objetivo
+## Objective
 
-Fechar a refatoração de balanceamento entre Master SH2 e Slave SH2 sem perder boot estável.
+Finish the Master/Slave SH2 balancing refactor without losing stable boot.
 
-O foco não é apenas “mover carga” para a Slave.
-O foco real é:
+The goal is not simply to move work to the Slave SH2.
+The real goal is:
 
-1. reduzir `simMasterWaitTicks`;
-2. reduzir waits de pista em lockstep;
-3. manter Master restrito a render final, HUD, áudio e IO crítico;
-4. preparar o projeto para overlap real de trabalho entre os dois SH2.
+1. reduce `simMasterWaitTicks`;
+2. reduce track-side waits in lockstep paths;
+3. keep the Master focused on final render, HUD, audio and critical IO;
+4. prepare the project for real work overlap between both SH2 CPUs.
 
-
-## Estado de partida
+## Current stable baseline
 
 ### Master SH2
 
-- loop principal do frame
+- frame orchestration
 - input
+- camera
 - background
-- câmera
 - HUD
-- submissão final VDP1/VDP2
-- driver PCM/SGL
+- final VDP submission
+- PCM/SGL audio driver calls
 
 ### Slave SH2
 
-- simulação gameplay/física em lockstep
-- producer/sort da pista em lockstep
+- gameplay/car simulation in lockstep
+- track producer/sort in the current guarded pipeline
 
-### Gargalo dominante
+### Dominant bottleneck
 
-- o Master já despacha trabalho para a Slave;
-- porém ainda bloqueia no mesmo frame em dois pontos:
-  - simulação do carro/gameplay;
-  - producer/sort da pista.
+- the Master already dispatches work to the Slave;
+- but it still blocks within the same frame on critical paths:
+  - car/gameplay simulation;
+  - track preparation barriers.
 
-Resultado:
+Result:
 
-- existe paralelismo de execução;
-- ainda não existe ganho pleno de latência.
+- there is execution parallelism;
+- there is not yet consistent latency gain.
 
+## Technical end state
 
-## Meta técnica final
-
-### Master
-
-Deve ficar responsável por:
+### Master responsibilities
 
 - input
-- montagem de pacotes
-- consumo de snapshots já prontos
-- câmera
+- packet assembly
+- consume already prepared snapshots
+- camera
 - HUD
-- render final
-- áudio real/driver
+- final render
+- real audio driver calls
 
-### Slave
+### Slave responsibilities
 
-Deve ficar responsável por:
+- gameplay/car physics
+- car render preparation
+- track planning/producer/sort
+- preparation of data that can be consumed on the next frame
 
-- gameplay/física do carro
-- preparação de render do carro
-- planning/producer/sort da pista
-- preparação de dados consumidos no frame seguinte
+## Current operating rules
 
+Before any new change in the critical runtime:
 
-## Ordem real de execução recomendada
+1. `src/game_loop_system.hpp` only grows if the same patch removes equivalent code elsewhere;
+2. do not reintroduce `N-1` car simulation now;
+3. keep audio, HUD, VDP and input on the Master SH2;
+4. always validate with a clean build;
+5. the ISO must remain exactly `4134912` bytes.
 
-### Etapa 1 — fechar `SimulationScheduler`
+Validation script:
 
-**Prioridade:** máxima  
-**Risco:** médio/alto  
-**Arquivos sensíveis:** `src/game_loop_system.hpp`
+- `tools/validate_saturn_stable_build.ps1`
 
-Falta:
+Usage:
 
-- fechar a extração lógica de:
-  - dispatch
-  - drain
-  - backoff
-  - política lockstep vs async
+- `powershell -ExecutionPolicy Bypass -File tools/validate_saturn_stable_build.ps1`
+- `powershell -ExecutionPolicy Bypass -File tools/validate_saturn_stable_build.ps1 -SkipHostTests`
 
-Sem fazer:
+## Recommended execution order
 
-- nova integração de helpers no caminho crítico;
-- novos wrappers inline dentro de `GameLoopSystem`.
+### Stage 1 - hold `SimulationScheduler` stable
 
-Estratégia:
+**Priority:** maximum  
+**Risk:** medium/high  
+**Sensitive file:** `src/game_loop_system.hpp`
 
-- manter contratos e documentação fora do runtime;
-- só mover lógica se houver redução líquida de código no arquivo crítico;
-- cada microetapa deve ser revertível isoladamente.
+Current rule for this stage:
 
-Critério de aceite:
+- keep simulation lockstep as the stable baseline;
+- do not try to cache telemetry inside `GameLoopSystem` right now;
+- any future wait reduction must come first from external preparation and measurement, not from extra runtime state inside the loop.
 
-- build estável;
-- ISO em `4134912` bytes;
-- sem regressão de telemetria;
-- boot estável no emulador.
+Acceptance criteria:
 
+- stable build;
+- ISO at `4134912` bytes;
+- no telemetry regression;
+- stable emulator boot.
 
-### Etapa 2 — isolar `CarRenderSystem`
+### Stage 2 - isolate `CarRenderSystem`
 
-**Prioridade:** alta  
-**Risco:** médio  
-**Arquivos alvo:** `src/car_system.*`, `src/mesh_renderer.*`, `src/render_pipeline.*`
+**Priority:** high  
+**Risk:** medium  
+**Target files:** `src/car_system.*`, `src/mesh_renderer.*`
 
-Falta:
+Goal:
 
-- separar a parte visual do carro da parte de gameplay/comando;
-- preparar um pacote de render do carro consumido pelo Master.
+- keep gameplay and car control cohesive in `CarSystem`;
+- move only passive visual preparation toward explicit render contracts.
 
-O que deve sair de `CarSystem`:
+What should leave `CarSystem` over time:
 
-- preparação de posição de render;
-- yaw visual/final;
-- submit visual;
-- estado transitório puramente visual.
+- render position preparation;
+- final visual yaw composition;
+- visual-only transient state;
+- explicit render packet assembly.
 
-O que deve permanecer no `CarSystem`:
+What must stay in `CarSystem`:
 
-- input e comando do carro;
-- fachada de gameplay;
-- snapshots de debug do carro.
+- input and car command flow;
+- gameplay facade;
+- drivetrain/debug snapshots;
+- anything required for coherent audio/gameplay in the current frame.
 
-Critério de aceite:
+Acceptance criteria:
 
-- carro visualmente idêntico;
-- `GameLoopSystem` não cresce;
-- `CarSystem` perde responsabilidade visual.
+- car remains visually identical;
+- `GameLoopSystem` does not grow;
+- `CarSystem` loses visual-only responsibilities without changing runtime behavior.
 
+Passive groundwork already available:
 
-### Etapa 3 — isolar `TrackRenderScheduler`
+- `src/car_render_contracts.hpp`
+- `src/car_render_state_assembler.hpp`
+- `src/car_shadow_assembler.hpp`
+- `src/car_render_submitter.hpp`
+- `src/car_render_transition_ops.hpp`
+- `src/car_render_system.hpp`
+- `src/game_loop_car_visual_packet.hpp`
+- `src/game_loop_car_visual_packet_assembler.hpp`
+- `CAR_RENDER_PASSIVE_FLOW_PLAN.md`
 
-**Prioridade:** alta  
-**Risco:** médio/alto  
-**Arquivos alvo:** `src/track_system.*`, `src/track_draw_producer.hpp`
+Current execution rule for this stage:
 
-Falta:
+- do not add `CarRender` packet assembly into `src/game_loop_system.hpp`
+  unless the same patch removes equivalent visual logic first
+- the current ISO envelope proves that additive integration is not acceptable
+- treat `CAR_RENDER_PASSIVE_FLOW_PLAN.md` as the substitution map for the next
+  sector-neutral runtime step
+- do not isolate `SubmitCarRender(...)` telemetry as the next runtime cut;
+  it is too small to pay for passive packet integration by itself
+- prefer the shadow-preparation slice as the next runtime candidate because it
+  contains duplicated anchor/yaw setup that can be removed and replaced in the
+  same patch
 
-- transformar a saída da pista em pacote explícito;
-- separar planning/producer/sort do consumo final pelo Master.
+### Stage 3 - isolate `TrackRenderScheduler`
 
-Objetivo real:
+**Priority:** high  
+**Risk:** medium/high  
+**Target files:** `src/track_system.*`, `src/track_draw_producer.hpp`
 
-- permitir que o Master consuma um packet de pista válido do frame anterior;
-- reduzir o barrier lockstep da pista.
+Safe sequence for this stage:
 
-Critério de aceite:
+1. keep passive contracts outside runtime first;
+2. document the explicit track packet before consuming it;
+3. measure each telemetry bridge separately;
+4. only then attempt controlled `N-1` visual reuse for track data;
+5. never mix in one patch:
+   - scheduler runtime changes;
+   - cached telemetry state;
+   - a new reuse decision path.
 
-- fallback síncrono continua existindo;
-- pista não perde estabilidade;
-- safe mode continua funcional;
-- draw list do frame anterior pode ser reutilizada conscientemente.
+Acceptance criteria:
 
+- synchronous fallback still exists;
+- track path remains stable;
+- safe mode remains valid;
+- previous-frame draw list reuse is explicit and reversible.
 
-### Etapa 4 — criar `CdAssetSystem`
+### Stage 4 - finish `CdAssetSystem`
 
-**Prioridade:** média  
-**Risco:** baixo/médio  
-**Arquivos alvo:** `src/main.cxx` e loaders auxiliares
+**Priority:** medium  
+**Risk:** low/medium  
+**Target files:** `src/main.cxx` and CD loaders
 
-Falta:
+Goal:
 
-- scheduler central de leitura de CD;
-- fila explícita de jobs;
-- retries centralizados;
-- staging previsível.
+- centralize CD read jobs;
+- centralize retries;
+- make staging explicit and observable.
 
-Benefício:
+Passive groundwork already available for this stage:
 
-- tira acoplamento de bootstrap;
-- prepara melhor distribuição de carga e previsibilidade temporal.
+- `src/cd_asset_contracts.hpp`
+- `src/cd_asset_parse_assembler.hpp`
+- `src/cd_asset_transition_ops.hpp`
+- `src/cd_asset_system.hpp`
+- `src/game_loop_cd_asset_packet.hpp`
+- `src/game_loop_cd_asset_packet_assembler.hpp`
+- `CD_ASSET_PASSIVE_FLOW_PLAN.md`
 
-Critério de aceite:
+Acceptance criteria:
 
-- `main.cxx` deixa de orquestrar carregamento direto;
-- jobs de CD ficam observáveis;
-- boot continua estável.
+- `main.cxx` stops orchestrating raw CD asset loading directly;
+- CD jobs become inspectable;
+- boot remains stable.
 
+Current execution rule for this CD stage:
 
-### Etapa 5 — criar `MemoryBudgetSystem`
+- do not touch boot ordering yet
+- do not introduce background CD jobs yet
+- prefer first cuts that only centralize SBA/anchor request metadata and
+  telemetry, not read timing
 
-**Prioridade:** média  
-**Risco:** médio  
-**Arquivos alvo:** bootstrap, track, áudio e loaders
+### Stage 5 - finish `MemoryBudgetSystem`
 
-Falta:
+**Priority:** medium  
+**Risk:** medium  
+**Target files:** bootstrap, track, audio and loaders
 
-- política central de CART/HWR/LWR;
-- budget por categoria de asset.
+Minimum categories:
 
-Categorias mínimas:
-
-- pista
-- carro
-- áudio
+- track
+- car
+- audio
 - HUD
-- staging de CD
+- CD staging
 
-Critério de aceite:
+Acceptance criteria:
 
-- decisões de memória deixam de ficar espalhadas;
-- footprint por categoria fica previsível;
-- futuras mudanças param de quebrar por alocação implícita.
+- memory decisions stop being scattered;
+- footprint per category becomes predictable;
+- later changes stop breaking because of implicit allocation drift.
 
+### Stage 6 - only then revisit lockstep removal
 
-### Etapa 6 — remover lockstep de forma gradual
+**Priority:** maximum  
+**Risk:** high  
+**Prerequisites:** stages 1, 2 and 3 complete
 
-**Prioridade:** máxima  
-**Risco:** alto  
-**Pré-requisitos:** Etapas 1, 2 e 3
+Goal:
 
-Meta:
+- reduce same-frame Master waits only after explicit packets and safe fallbacks are already stable.
 
-- Master parar de esperar sempre pela Slave no mesmo frame.
+## Recommended sequence from the current state
 
-Estratégia:
+### Phase A - guard rails and baseline
 
-1. simulação usa snapshot `N-1`;
-2. pista usa draw packet `N-1`;
-3. Master só bloqueia se não houver packet consistente disponível.
+- keep the current runtime unchanged;
+- validate every step with `tools/validate_saturn_stable_build.ps1`;
+- record ISO size, boot status and basic telemetry as mandatory gates.
 
-Métricas de sucesso:
+### Phase B - passive cuts with zero runtime cost
 
-- queda visível em `simMasterWaitTicks`;
-- queda de waits de pista;
-- pacing melhor;
-- sem drift perceptível entre carro, câmera e render.
+- continue extracting small passive helpers from `src/game_loop_system.hpp`;
+- prioritize overlay, snapshots and visual packet contracts;
+- avoid adding any new member state to `GameLoopSystem`.
 
+Current passive observability slice already prepared:
 
-## O que falta especificamente no código
+- `src/game_loop_presentation_ops.hpp`
+- `src/game_loop_overlay_contracts.hpp`
+- `src/game_loop_overlay_state_assembler.hpp`
+- `src/game_loop_telemetry_contracts.hpp`
+- `src/game_loop_telemetry_state_assembler.hpp`
+- `src/game_loop_memory_presentation_contracts.hpp`
+- `src/game_loop_memory_presentation_state_assembler.hpp`
+- `src/game_loop_observability_contracts.hpp`
+- `src/game_loop_observability_state_assembler.hpp`
 
-### Ainda falta componente dedicado
+Rule for the next safe runtime step:
 
-- `SimulationScheduler`
-- `CarRenderSystem`
-- `TrackRenderScheduler`
-- `CdAssetSystem`
-- `MemoryBudgetSystem`
+- only introduce stack-local packet assembly in `GameLoopSystem`;
+- do not replace print behavior in the same patch;
+- do not mix this with scheduler, audio, drivetrain or render ownership changes.
 
-### Ainda falta desacoplamento estrutural
+### Phase C - prepare track-side overlap
 
-- bootstrap/carregamento em `src/main.cxx`
-- política de memória central
-- visual do carro fora da fachada `CarSystem`
-- render da pista em packet explícito
-- consumo assíncrono de snapshots `N-1`
+- finish the passive track render packet contract;
+- make explicit what the Master consumes from track work;
+- prepare reuse/latency measurements outside the critical loop.
 
+Passive groundwork now available for this stage:
 
-## Regras de segurança por arquivo
+- `src/track_render_contracts.hpp`
+- `src/track_render_state_assembler.hpp`
+- `src/track_render_telemetry_assembler.hpp`
+- `src/track_render_transition_ops.hpp`
+- `src/track_render_scheduler.hpp`
+- `src/game_loop_track_render_packet.hpp`
+- `src/game_loop_track_render_packet_assembler.hpp`
+- `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 
-### `src/game_loop_system.hpp`
+Current execution rule for this track stage:
 
-- risco máximo;
-- evitar wrappers novos inline;
-- evitar extrações que aumentem o binário;
-- só mexer se houver ganho claro e microetapa isolada.
+- do not touch producer/sort ownership yet
+- do not introduce `N-1` reuse yet
+- prefer first runtime cuts that only share one local telemetry snapshot across
+  existing overlay/SH2 presentation paths
 
-### `src/car_system.cxx`
+### Phase D - try conservative wait reduction on track only
 
-- risco alto;
-- pequenas integrações “passivas” já quebraram boot;
-- usar apenas documentação e contratos passivos até que a extração visual do carro aconteça fora do caminho crítico.
+- test track-side reductions before touching car simulation;
+- apply one micro-step at a time;
+- require clean build, ISO validation and emulator validation after each step.
 
-### `src/main.cxx`
+### Phase E - only later reconsider broader async behavior
 
-- risco alto para boot;
-- refatorar só após existir `CdAssetSystem` e contratos bem estáveis.
-
-### `src/track_system.*`
-
-- risco médio/alto;
-- pode evoluir melhor que `GameLoopSystem`, desde que preserve safe mode e fallback síncrono.
-
-
-## Próximo passo operacional recomendado
-
-Próxima execução recomendada:
-
-1. não tocar em `GameLoopSystem`;
-2. não tocar em `CarSystem` runtime;
-3. documentar o recorte exato de `CarRenderSystem`;
-4. preparar contratos passivos de render do carro;
-5. só depois mover preparo visual do carro para fora da fachada atual.
-
-Essa é hoje a trilha com melhor relação entre:
-
-- ganho arquitetural;
-- risco de boot;
-- chance real de avançar no balanceamento entre as SH2.
+- only if the track packet path is stable and reversible;
+- only if telemetry proves actual Master-side gain;
+- never together with audio or drivetrain changes.
