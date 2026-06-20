@@ -39,6 +39,60 @@ The first runtime experiment for this slice already proved a hard constraint:
 This means the current passive work remains valid, but the next runtime cut
 must avoid introducing new AutoLap packet assembly on top of existing logic.
 
+One safe substitution already validated for this slice is:
+
+- remove thin AutoLap wrappers from `src/game_loop_system.hpp`
+- call `AutoLapRouteDomain::*` lifecycle helpers directly at the use sites
+
+This is acceptable because it reduces local code instead of layering new
+packet/runtime assembly on top of the existing flow.
+
+Another safe substitution already validated for this slice is:
+
+- move build-reset and guide-build finalization helpers into
+  `src/auto_lap_route_lifecycle_ops.hpp`
+- remove the single-use local wrappers from `src/game_loop_system.hpp`
+
+This keeps the route-build flow unchanged while shrinking local orchestration
+code in the critical loop host.
+
+Another safe substitution already validated for this slice is:
+
+- move pure route-search helpers into `src/auto_lap_route_build_ops.hpp`
+- remove the corresponding local methods from `src/game_loop_system.hpp`
+
+Validated examples:
+
+- nearest route-point search
+- best guide-line selection
+
+These are good candidates because they depend only on AutoLap state plus
+explicit input values, so they reduce host-local algorithmic code without
+changing ownership or execution order.
+
+Another safe substitution already validated for this slice is:
+
+- move additional route-advance helpers into `src/auto_lap_route_build_ops.hpp`
+- remove their local equivalents from `src/game_loop_system.hpp`
+
+Validated examples:
+
+- segment-id wrapping
+- route-direction scoring
+- waypoint reached/passed test
+
+These remain safe because they are deterministic calculations over explicit
+inputs and do not change route ownership or frame sequencing.
+
+Another safe substitution already validated for this slice is:
+
+- move the heading-vector assembly into `src/auto_lap_route_build_ops.hpp`
+- keep only final yaw/offset application in `src/game_loop_system.hpp`
+
+This is a good split because it removes route-lookahead vector assembly from
+the critical host while preserving the final yaw normalization and state write
+at the consumption point.
+
 ## Current runtime touch points
 
 The AutoLap domain is still consumed directly in `src/game_loop_system.hpp`,

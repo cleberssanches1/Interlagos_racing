@@ -63,6 +63,24 @@ inline void ClearAutoLapGuideLines(AutoLapRouteState& state)
     }
 }
 
+inline void ResetAutoLapRouteBuildData(AutoLapRouteState& state)
+{
+    state.ids.clear();
+    state.centers.clear();
+    state.yawDeg.clear();
+    state.offDeg.clear();
+    state.baseYawDeg = 0;
+    state.selectedGuideLine = -1;
+    state.SetStartupYawAligned(false);
+}
+
+inline void FinalizeAutoLapGuideBuild(AutoLapRouteState& state)
+{
+    ClearAutoLapGuideLines(state);
+    state.SetBuilt(true);
+    state.SetInitialized(false);
+}
+
 inline void ReleaseAutoLapRouteStorage(AutoLapRouteState& state)
 {
     ClearAutoLapRouteBuffers(state);

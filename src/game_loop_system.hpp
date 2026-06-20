@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -1103,7 +1102,7 @@ private:
                         cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
                         if (!CameraSystem::kPathGuidedChaseEnabled)
                         {
-                            ReleaseAutoLapRouteStorage();
+                            AutoLapRouteDomain::ReleaseAutoLapRouteStorage(autoLapRoute_);
                         }
                     }
                     SRL::Debug::Print(1, 23, "CAR MOVE:%u", AutoLapTestEnabled() ? 1u : 0u);
@@ -2773,9 +2772,9 @@ private:
 
     void ResetCameraPathRuntimeIfNeeded()
     {
-        if (!AutoLapTestEnabled() && HasRetainedAutoLapRouteStorage())
+        if (!AutoLapTestEnabled() && AutoLapRouteDomain::HasRetainedAutoLapRouteStorage(autoLapRoute_))
         {
-            ReleaseAutoLapRouteStorage();
+            AutoLapRouteDomain::ReleaseAutoLapRouteStorage(autoLapRoute_);
         }
         cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
     }
@@ -2796,7 +2795,8 @@ private:
 
     bool TryResolveCameraPathRouteIndices(CameraPathRouteIndices& out) const
     {
-        if (!FindNearestAutoLapRoutePointIndex(context_.carWorldPosition, out.nearest))
+        if (!AutoLapRouteDomain::FindNearestRoutePointIndex(
+                autoLapRoute_, context_.carWorldPosition, out.nearest))
         {
             return false;
         }
@@ -2927,7 +2927,8 @@ private:
         }
 
         size_t bestIdx = 0u;
-        if (!FindNearestAutoLapRoutePointIndex(ioCarWorldPosition, bestIdx))
+        if (!AutoLapRouteDomain::FindNearestRoutePointIndex(
+                autoLapRoute_, ioCarWorldPosition, bestIdx))
         {
             return false;
         }
@@ -3003,7 +3004,8 @@ private:
     {
         for (size_t guard = 0u; guard < 8u; ++guard)
         {
-            if (!HasReachedOrPassedAutoLapWaypoint(ioCurrentIndex, ioNextIndex, ioCarWorldPosition)) break;
+            if (!AutoLapRouteDomain::HasReachedOrPassedWaypoint(
+                    autoLapRoute_, ioCurrentIndex, ioNextIndex, ioCarWorldPosition)) break;
             ioCurrentIndex = ioNextIndex;
             ioNextIndex = (ioCurrentIndex + 1u) % routePointCount;
             ioCarWorldPosition.Y =
@@ -3094,14 +3096,6 @@ private:
         }
 
         return true;
-    }
-
-    void ClearAutoLapGuideLinesData()
-    {
-        for (size_t i = 0; i < autoLapRoute_.guideLines.size(); ++i)
-        {
-            autoLapRoute_.guideLines[i].clear();
-        }
     }
 
     static const char* const* AutoLapGuidePathCandidates(size_t& outCount)
@@ -3205,7 +3199,7 @@ private:
 
     bool LoadAutoLapGuideLines()
     {
-        ClearAutoLapGuideLinesData();
+        AutoLapRouteDomain::ClearAutoLapGuideLines(autoLapRoute_);
 
         std::vector<uint8_t> bytes{};
         const char* loadedCandidate = nullptr;
@@ -3231,7 +3225,10 @@ private:
     {
         if (!LoadAutoLapGuideLines()) return false;
 
-        const int32_t selectedLineIndex = SelectBestAutoLapGuideLineIndex(referenceCarWorldPosition);
+        const int32_t selectedLineIndex = AutoLapRouteDomain::SelectBestGuideLineIndex(
+            autoLapRoute_,
+            context_.trackSegOffset,
+            referenceCarWorldPosition);
         if (selectedLineIndex < 0)
         {
             LogAutoLapGuideLineEmpty();
@@ -3319,7 +3316,8 @@ private:
         static constexpr int32_t kForwardSearch = 12;
         for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
         {
-            const int32_t segmentId = WrapAutoLapSegmentId(segmentCount, mappedSegmentId + delta);
+            const int32_t segmentId =
+                AutoLapRouteDomain::WrapSegmentId(segmentCount, mappedSegmentId + delta);
             const auto score = ScoreAutoLapPointToSegment(context, routePoint, segmentId);
             if (bestSegmentId > 0 && !(score < bestScore)) continue;
             bestSegmentId = segmentId;
@@ -3352,38 +3350,11 @@ private:
         return true;
     }
 
-    int32_t ScoreAutoLapRouteDirection(int32_t segmentCount) const
-    {
-        int32_t directionScore = 0;
-        if (!AutoLapRouteDomain::HasMinimumRouteIds(autoLapRoute_))
-        {
-            return directionScore;
-        }
-
-        for (size_t i = 0; i < autoLapRoute_.ids.size(); ++i)
-        {
-            const int32_t fromId = autoLapRoute_.ids[i];
-            const int32_t toId = autoLapRoute_.ids[(i + 1u) % autoLapRoute_.ids.size()];
-            if (fromId <= 0 || toId <= 0) continue;
-            int32_t forwardDelta = (toId - fromId) % segmentCount;
-            if (forwardDelta < 0) forwardDelta += segmentCount;
-            if (forwardDelta == 0) continue;
-            if (forwardDelta <= (segmentCount / 2))
-            {
-                ++directionScore;
-            }
-            else
-            {
-                --directionScore;
-            }
-        }
-        return directionScore;
-    }
-
     void NormalizeAutoLapRouteDirection(const Context& context)
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
-        const int32_t directionScore = ScoreAutoLapRouteDirection(segmentCount);
+        const int32_t directionScore = AutoLapRouteDomain::ScoreRouteDirection(
+            autoLapRoute_, segmentCount);
         if (AutoLapRouteDomain::ShouldReverseRouteDirection(directionScore))
         {
             std::reverse(autoLapRoute_.centers.begin(), autoLapRoute_.centers.end());
@@ -3412,16 +3383,6 @@ private:
                               static_cast<unsigned>(rawPointCount),
                               static_cast<unsigned>(outputPointCount));
         }
-    }
-
-    void ReleaseAutoLapGuideLines()
-    {
-        AutoLapRouteDomain::ClearAutoLapGuideLines(autoLapRoute_);
-    }
-
-    void ReleaseAutoLapRouteStorage()
-    {
-        AutoLapRouteDomain::ReleaseAutoLapRouteStorage(autoLapRoute_);
     }
 
     static double AutoLapPointSegmentDistanceSqXZ(const SRL::Math::Types::Vector3D& point,
@@ -3544,106 +3505,6 @@ private:
         return output;
     }
 
-    bool HasRetainedAutoLapRouteStorage() const
-    {
-        return AutoLapRouteDomain::HasRetainedAutoLapRouteStorage(autoLapRoute_);
-    }
-
-    void ResetAutoLapRouteFlags()
-    {
-        AutoLapRouteDomain::ResetAutoLapRouteFlags(autoLapRoute_);
-    }
-
-    void ResetAutoLapRouteScalars()
-    {
-        AutoLapRouteDomain::ResetAutoLapRouteScalars(autoLapRoute_);
-    }
-
-    void ResetAutoLapRouteState()
-    {
-        AutoLapRouteDomain::ResetAutoLapRouteState(autoLapRoute_);
-    }
-
-    template <typename TVector>
-    static void ClearAndReleaseAutoLapVector(TVector& ioVector)
-    {
-        using VectorType = std::remove_reference_t<TVector>;
-        ioVector.clear();
-        VectorType{}.swap(ioVector);
-    }
-
-    void ClearAutoLapRouteBuffers()
-    {
-        AutoLapRouteDomain::ClearAutoLapRouteBuffers(autoLapRoute_);
-    }
-
-    bool FindNearestAutoLapRoutePointIndex(const SRL::Math::Types::Vector3D& worldPosition,
-                                           size_t& outIndex) const
-    {
-        if (!AutoLapRouteDomain::HasAnyRoutePoints(autoLapRoute_))
-        {
-            return false;
-        }
-
-        size_t nearestIndex = 0u;
-        bool foundNearest = false;
-        SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
-        for (size_t i = 0u; i < autoLapRoute_.centers.size(); ++i)
-        {
-            const auto& routePoint = autoLapRoute_.centers[i];
-            const auto dx = (routePoint.X - worldPosition.X).Abs();
-            const auto dz = (routePoint.Z - worldPosition.Z).Abs();
-            const auto score = dx + dz;
-            if (!foundNearest || score < bestScore)
-            {
-                foundNearest = true;
-                bestScore = score;
-                nearestIndex = i;
-            }
-        }
-
-        if (!foundNearest)
-        {
-            return false;
-        }
-
-        outIndex = nearestIndex;
-        return true;
-    }
-
-    int32_t SelectBestAutoLapGuideLineIndex(const SRL::Math::Types::Vector3D& referenceCarWorldPosition) const
-    {
-        int32_t selectedLineIndex = -1;
-        SRL::Math::Types::Fxp selectedScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
-        for (int32_t lineIndex = 0; lineIndex < static_cast<int32_t>(autoLapRoute_.guideLines.size()); ++lineIndex)
-        {
-            const auto& line = autoLapRoute_.guideLines[lineIndex];
-            if (!AutoLapRouteDomain::HasGuideLineMinimumPoints(
-                    autoLapRoute_, static_cast<size_t>(lineIndex)))
-            {
-                continue;
-            }
-
-            SRL::Math::Types::Fxp lineScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
-            for (size_t i = 0; i < line.size(); ++i)
-            {
-                const auto worldPoint = line[i] + context_.trackSegOffset;
-                const auto dx = (worldPoint.X - referenceCarWorldPosition.X).Abs();
-                const auto dz = (worldPoint.Z - referenceCarWorldPosition.Z).Abs();
-                const auto score = dx + dz;
-                if (score < lineScore) lineScore = score;
-            }
-
-            if (selectedLineIndex < 0 || lineScore < selectedScore)
-            {
-                selectedLineIndex = lineIndex;
-                selectedScore = lineScore;
-            }
-        }
-
-        return selectedLineIndex;
-    }
-
     void BuildFallbackAutoLapRoute(const Context& context)
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
@@ -3678,14 +3539,6 @@ private:
         autoLapRoute_.SetInitialized(false);
     }
 
-    int32_t WrapAutoLapSegmentId(int32_t segmentCount, int32_t segmentId) const
-    {
-        if (segmentCount <= 0) return -1;
-        int32_t normalized = (segmentId - 1) % segmentCount;
-        if (normalized < 0) normalized += segmentCount;
-        return normalized + 1;
-    }
-
     void AdvanceObservedAutoLapSegmentToward(int32_t segmentCount, int32_t desiredSegmentId)
     {
         if (desiredSegmentId <= 0 || segmentCount <= 0)
@@ -3694,14 +3547,15 @@ private:
             return;
         }
 
-        desiredSegmentId = WrapAutoLapSegmentId(segmentCount, desiredSegmentId);
+        desiredSegmentId = AutoLapRouteDomain::WrapSegmentId(segmentCount, desiredSegmentId);
         if (latestActiveSegmentId_ <= 0)
         {
             latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
             return;
         }
 
-        const int32_t currentSegmentId = WrapAutoLapSegmentId(segmentCount, latestActiveSegmentId_);
+        const int32_t currentSegmentId =
+            AutoLapRouteDomain::WrapSegmentId(segmentCount, latestActiveSegmentId_);
         if (currentSegmentId <= 0)
         {
             latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
@@ -3719,7 +3573,7 @@ private:
         if (forwardDistance < (segmentCount / 2))
         {
             latestActiveSegmentId_ =
-                static_cast<int16_t>(WrapAutoLapSegmentId(segmentCount, currentSegmentId + 1));
+                static_cast<int16_t>(AutoLapRouteDomain::WrapSegmentId(segmentCount, currentSegmentId + 1));
             return;
         }
 
@@ -3767,57 +3621,21 @@ private:
             : fallbackY;
     }
 
-    bool HasReachedOrPassedAutoLapWaypoint(size_t fromIndex,
-                                           size_t toIndex,
-                                           const SRL::Math::Types::Vector3D& worldPosition) const
-    {
-        const auto& from = autoLapRoute_.centers[fromIndex];
-        const auto& to = autoLapRoute_.centers[toIndex];
-        const int32_t remX = to.X.RawValue() - worldPosition.X.RawValue();
-        const int32_t remZ = to.Z.RawValue() - worldPosition.Z.RawValue();
-        const int32_t absRemX = (remX < 0) ? -remX : remX;
-        const int32_t absRemZ = (remZ < 0) ? -remZ : remZ;
-        if (absRemX <= (8 << 16) && absRemZ <= (8 << 16)) return true;
-
-        const int64_t segX = static_cast<int64_t>(to.X.RawValue()) -
-                             static_cast<int64_t>(from.X.RawValue());
-        const int64_t segZ = static_cast<int64_t>(to.Z.RawValue()) -
-                             static_cast<int64_t>(from.Z.RawValue());
-        const int64_t toCarX = static_cast<int64_t>(worldPosition.X.RawValue()) -
-                               static_cast<int64_t>(to.X.RawValue());
-        const int64_t toCarZ = static_cast<int64_t>(worldPosition.Z.RawValue()) -
-                               static_cast<int64_t>(to.Z.RawValue());
-        return ((segX * toCarX) + (segZ * toCarZ)) >= 0;
-    }
-
     void UpdateAutoLapHeading(size_t currentIndex,
                               size_t nextIndex,
                               size_t routePointCount,
                               int32_t& ioCarYawDeg)
     {
-        const auto normalizeYawDeg = [](int32_t yawDeg) -> int32_t
-        {
-            return NormalizeYawDeg360(yawDeg);
-        };
-
-        const size_t headingA = currentIndex;
-        constexpr size_t kYawLookAheadPoints = 2u;
-        const size_t headingB = (headingA + kYawLookAheadPoints) % routePointCount;
-
-        int32_t pathDxRaw = autoLapRoute_.centers[headingB].X.RawValue() -
-                            autoLapRoute_.centers[headingA].X.RawValue();
-        int32_t pathDzRaw = autoLapRoute_.centers[headingB].Z.RawValue() -
-                            autoLapRoute_.centers[headingA].Z.RawValue();
-        if (pathDxRaw == 0 && pathDzRaw == 0)
-        {
-            pathDxRaw = autoLapRoute_.centers[nextIndex].X.RawValue() -
-                        autoLapRoute_.centers[headingA].X.RawValue();
-            pathDzRaw = autoLapRoute_.centers[nextIndex].Z.RawValue() -
-                        autoLapRoute_.centers[headingA].Z.RawValue();
-        }
-
-        const int32_t targetYawDeg = YawFromDeltaRaw(pathDxRaw, pathDzRaw, ioCarYawDeg);
-        ioCarYawDeg = normalizeYawDeg(targetYawDeg);
+        const auto headingVector = AutoLapRouteDomain::BuildHeadingVector(
+            autoLapRoute_,
+            currentIndex,
+            nextIndex,
+            routePointCount);
+        const int32_t targetYawDeg = YawFromDeltaRaw(
+            headingVector.deltaXRaw,
+            headingVector.deltaZRaw,
+            ioCarYawDeg);
+        ioCarYawDeg = NormalizeYawDeg360(targetYawDeg);
         if (AutoLapRouteDomain::CanUpdateCurrentYawOffset(autoLapRoute_))
         {
             autoLapRoute_.currentOffDeg = static_cast<int16_t>(
@@ -3833,41 +3651,17 @@ private:
     void BuildAutoLapRoute(const Context& context,
                            const SRL::Math::Types::Vector3D& referenceCarWorldPosition)
     {
-        ResetAutoLapRouteBuildData();
+        AutoLapRouteDomain::ResetAutoLapRouteBuildData(autoLapRoute_);
         if (!context.trackSystem) return;
 
-        if (TryBuildAutoLapRouteFromGuide(context, referenceCarWorldPosition))
+        if (BuildAutoLapRouteFromPathGuide(context, referenceCarWorldPosition))
         {
+            AutoLapRouteDomain::FinalizeAutoLapGuideBuild(autoLapRoute_);
             return;
         }
 
-        ReleaseAutoLapGuideLines();
+        AutoLapRouteDomain::ClearAutoLapGuideLines(autoLapRoute_);
         BuildFallbackAutoLapRoute(context);
-    }
-
-    void ResetAutoLapRouteBuildData()
-    {
-        autoLapRoute_.ids.clear();
-        autoLapRoute_.centers.clear();
-        autoLapRoute_.yawDeg.clear();
-        autoLapRoute_.offDeg.clear();
-        autoLapRoute_.baseYawDeg = 0;
-        autoLapRoute_.selectedGuideLine = -1;
-        autoLapRoute_.SetStartupYawAligned(false);
-    }
-
-    bool TryBuildAutoLapRouteFromGuide(const Context& context,
-                                       const SRL::Math::Types::Vector3D& referenceCarWorldPosition)
-    {
-        if (!BuildAutoLapRouteFromPathGuide(context, referenceCarWorldPosition))
-        {
-            return false;
-        }
-
-        ReleaseAutoLapGuideLines();
-        autoLapRoute_.SetBuilt(true);
-        autoLapRoute_.SetInitialized(false);
-        return true;
     }
 
     using SimulationTask = Game::SimulationTask;
