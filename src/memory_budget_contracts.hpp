@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include "memory_budget_system.hpp"
@@ -89,6 +90,13 @@ struct CategoryBudgetPolicy
     AllocationPool preferredPool = AllocationPool::LowWork;
     bool shouldReducePressure = false;
     bool shouldAvoidOptionalAllocations = false;
+};
+
+struct CategoryBudgetPolicyPacket
+{
+    bool valid = false;
+    std::array<CategoryBudgetPolicy, 6u> entries{};
+    uint32_t count = 0u;
 };
 
 struct MemoryTelemetryPacket

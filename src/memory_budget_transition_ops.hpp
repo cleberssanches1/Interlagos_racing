@@ -1,6 +1,7 @@
 #pragma once
 
 #include "memory_budget_contracts.hpp"
+#include "memory_budget_category_assembler.hpp"
 #include "memory_budget_policy_assembler.hpp"
 #include "memory_budget_telemetry_assembler.hpp"
 
@@ -45,6 +46,16 @@ inline MemoryTelemetryPacket BuildMemoryTelemetryPacket(const MemorySnapshotPack
 {
     MemoryTelemetryPacket packet{};
     SeedMemoryTelemetryPacket(snapshot, pressure, packet);
+    return packet;
+}
+
+inline CategoryBudgetPolicyPacket BuildCategoryBudgetPolicyPacket(
+    const MemorySnapshotPacket& snapshot,
+    const MemoryPressurePacket& pressure,
+    const MemoryBudgetPolicyPacket& policy)
+{
+    CategoryBudgetPolicyPacket packet{};
+    SeedCategoryBudgetPolicyPacket(snapshot, pressure, policy, packet);
     return packet;
 }
 

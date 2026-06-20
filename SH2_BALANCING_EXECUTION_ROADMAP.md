@@ -100,6 +100,24 @@ Acceptance criteria:
 - no telemetry regression;
 - stable emulator boot.
 
+Supporting passive groundwork already available for this stage:
+
+- `src/auto_lap_route_contracts.hpp`
+- `src/auto_lap_route_state_assembler.hpp`
+- `src/auto_lap_route_transition_ops.hpp`
+- `src/auto_lap_route_build_ops.hpp`
+- `src/auto_lap_route_lifecycle_ops.hpp`
+- `src/auto_lap_route_runtime_state.hpp`
+- `src/game_loop_auto_lap_packet.hpp`
+- `src/game_loop_auto_lap_packet_assembler.hpp`
+- `AUTO_LAP_ROUTE_PASSIVE_FLOW_PLAN.md`
+
+Current execution rule for this supporting slice:
+
+- do not touch AutoLap runtime control flow yet
+- prefer packetizing build/init/step state before changing ownership
+- use AutoLap packet groundwork first for local debug/trace consolidation only
+
 ### Stage 2 - isolate `CarRenderSystem`
 
 **Priority:** high  
@@ -229,11 +247,30 @@ Minimum categories:
 - HUD
 - CD staging
 
+Passive groundwork already available for this stage:
+
+- `src/memory_budget_contracts.hpp`
+- `src/memory_budget_policy_assembler.hpp`
+- `src/memory_budget_telemetry_assembler.hpp`
+- `src/memory_budget_category_assembler.hpp`
+- `src/memory_budget_transition_ops.hpp`
+- `src/memory_budget_system.hpp`
+- `src/game_loop_memory_budget_packet.hpp`
+- `src/game_loop_memory_budget_packet_assembler.hpp`
+- `MEMORY_BUDGET_PASSIVE_FLOW_PLAN.md`
+
 Acceptance criteria:
 
 - memory decisions stop being scattered;
 - footprint per category becomes predictable;
 - later changes stop breaking because of implicit allocation drift.
+
+Current execution rule for this memory stage:
+
+- do not change allocator timing yet
+- do not reroute PCM runtime behavior yet
+- prefer first cuts that only expose explicit category-policy packets to
+  bootstrap/audio/debug consumers
 
 ### Stage 6 - only then revisit lockstep removal
 

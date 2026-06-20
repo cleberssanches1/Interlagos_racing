@@ -29,6 +29,10 @@ New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 #include "game_loop_track_render_packet_assembler.hpp"
 #include "game_loop_cd_asset_packet.hpp"
 #include "game_loop_cd_asset_packet_assembler.hpp"
+#include "game_loop_memory_budget_packet.hpp"
+#include "game_loop_memory_budget_packet_assembler.hpp"
+#include "game_loop_auto_lap_packet.hpp"
+#include "game_loop_auto_lap_packet_assembler.hpp"
 int main() { return 0; }
 "@ | Set-Content $sourcePath
 
