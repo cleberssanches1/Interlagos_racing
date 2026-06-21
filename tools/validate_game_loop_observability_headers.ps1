@@ -3,9 +3,9 @@ param()
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$buildDir = Join-Path $repoRoot "BuildDrop\passive_header_validation"
-$sourcePath = Join-Path $buildDir "game_loop_passive_headers_smoke.cxx"
-$objectPath = Join-Path $buildDir "game_loop_passive_headers_smoke.o"
+$buildDir = Join-Path $repoRoot "BuildDrop\observability_header_validation"
+$sourcePath = Join-Path $buildDir "game_loop_observability_headers_smoke.cxx"
+$objectPath = Join-Path $buildDir "game_loop_observability_headers_smoke.o"
 $compiler = Join-Path $repoRoot "..\..\Compiler\sh2eb-elf\bin\sh2eb-elf-g++.exe"
 
 if (-not (Test-Path $compiler))
@@ -16,7 +16,7 @@ if (-not (Test-Path $compiler))
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
 @"
-#include "game_loop_presentation_ops.hpp"
+#include "game_loop_overlay_contracts.hpp"
 #include "game_loop_presentation_debug_contracts.hpp"
 #include "game_loop_presentation_debug_assembler.hpp"
 #include "game_loop_render_debug_contracts.hpp"
@@ -25,13 +25,9 @@ New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 #include "game_loop_car_visual_debug_assembler.hpp"
 #include "game_loop_presenter_input_contracts.hpp"
 #include "game_loop_presenter_input_assembler.hpp"
-#include "game_loop_overlay_contracts.hpp"
 #include "game_loop_overlay_state_assembler.hpp"
 #include "game_loop_telemetry_contracts.hpp"
 #include "game_loop_telemetry_state_assembler.hpp"
-#include "game_loop_observability_contracts.hpp"
-#include "game_loop_observability_state_assembler.hpp"
-#include "game_loop_observability_packet_assembler.hpp"
 #include "game_loop_memory_presentation_contracts.hpp"
 #include "game_loop_memory_presentation_state_assembler.hpp"
 #include "game_loop_memory_presentation_packet_assembler.hpp"
@@ -52,12 +48,9 @@ New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 #include "game_loop_track_render_packet_assembler.hpp"
 #include "game_loop_car_visual_packet.hpp"
 #include "game_loop_car_visual_packet_assembler.hpp"
-#include "game_loop_cd_asset_packet.hpp"
-#include "game_loop_cd_asset_packet_assembler.hpp"
-#include "game_loop_memory_budget_packet.hpp"
-#include "game_loop_memory_budget_packet_assembler.hpp"
-#include "game_loop_auto_lap_packet.hpp"
-#include "game_loop_auto_lap_packet_assembler.hpp"
+#include "game_loop_observability_contracts.hpp"
+#include "game_loop_observability_state_assembler.hpp"
+#include "game_loop_observability_packet_assembler.hpp"
 int main() { return 0; }
 "@ | Set-Content $sourcePath
 
@@ -105,11 +98,11 @@ $compileArgs = @(
     "-o", $objectPath
 )
 
-Write-Host "Compiling passive game-loop headers with SH2 toolchain"
+Write-Host "Compiling passive observability headers with SH2 toolchain"
 & $compiler @compileArgs
 if ($LASTEXITCODE -ne 0)
 {
-    throw "Passive header validation failed with exit code $LASTEXITCODE"
+    throw "Observability header validation failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "Passive header validation passed."
+Write-Host "Observability header validation passed."

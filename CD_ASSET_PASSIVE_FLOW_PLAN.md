@@ -160,3 +160,40 @@ The next safe step is:
 1. keep `src/main.cxx` runtime behavior unchanged
 2. use this packet only as passive groundwork
 3. later try a bootstrap-local cut that centralizes SBA/anchor request metadata
+
+A safe bootstrap-side substitution now also validated for this slice is:
+
+- remove duplicated SBA candidate arrays from `src/main.cxx`
+- consume `CdAssetDomain::ResolveSbaShadowModelPath()` directly at the existing use sites
+
+This reduces bootstrap-local duplication without changing boot order, read timing or fallback behavior.
+
+Another safe passive step now available for this slice is:
+
+- explicit request builders for `SBA.NYA` and `CAR1_ANCHORS.JSON`
+- explicit read/parse/telemetry builders in `src/cd_asset_transition_ops.hpp`
+- explicit `CdAssetFramePacket` builder in `src/game_loop_cd_asset_packet_assembler.hpp`
+
+This means the passive CD side now has a complete request-to-frame-packet path
+ready for future substitutional bootstrap cuts.
+
+## Applied safe runtime bridge
+
+A first bootstrap-side runtime cut is now in place for `CdStaging` preference:
+
+- `src/memory_budget_runtime_bridge.hpp`
+- `src/main.cxx`
+
+Current behavior remains intentionally equivalent:
+
+- bootstrap still treats CD staging as cart-preferred when cart RAM exists
+- no boot-stage order changed
+- no track/car loader sequencing changed
+- no file-read timing changed
+
+Current runtime consumption is intentionally minimal:
+
+- derive `CdStaging` preferred pool from passive memory-budget category policy
+- consume it only in bootstrap-local cart-availability checks
+- keep direct asset-loading flows untouched for now
+

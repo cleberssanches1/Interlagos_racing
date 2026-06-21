@@ -38,6 +38,28 @@ inline void ResetAutoLapRouteState(AutoLapRouteState& state)
     ResetAutoLapRouteScalars(state);
 }
 
+inline void ClearAutoLapStartupYawAlignment(AutoLapRouteState& state)
+{
+    state.SetStartupYawAligned(false);
+}
+
+inline void MarkAutoLapStartupYawAligned(AutoLapRouteState& state)
+{
+    state.SetStartupYawAligned(true);
+}
+
+inline void MarkAutoLapInitialized(AutoLapRouteState& state)
+{
+    state.SetInitialized(true);
+}
+
+inline void ResetAutoLapPendingBuild(AutoLapRouteState& state)
+{
+    ClearAutoLapStartupYawAlignment(state);
+    state.SetInitialized(false);
+    state.SetBuilt(false);
+}
+
 template <typename TVector>
 inline void ClearAndReleaseAutoLapVector(TVector& ioVector)
 {
@@ -78,6 +100,12 @@ inline void FinalizeAutoLapGuideBuild(AutoLapRouteState& state)
 {
     ClearAutoLapGuideLines(state);
     state.SetBuilt(true);
+    state.SetInitialized(false);
+}
+
+inline void FinalizeAutoLapFallbackBuildState(AutoLapRouteState& state)
+{
+    state.SetBuilt(!state.ids.empty());
     state.SetInitialized(false);
 }
 

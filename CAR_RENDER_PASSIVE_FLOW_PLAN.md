@@ -373,3 +373,29 @@ The first safe runtime move for car visuals is:
 - assemble `CarVisualFramePacket` locally in `RenderCar(...)`
 - keep existing shadow draw and submit calls untouched
 - do not alter `CarSystem` ownership or APIs in the same patch
+
+## New passive render aggregation
+
+The car visual slice now also participates in one higher-level passive render bundle:
+
+- `src/game_loop_render_debug_contracts.hpp`
+- `src/game_loop_render_debug_assembler.hpp`
+
+Current effect:
+
+- `CarVisualFramePacket` can now be grouped off-path with `TrackRenderFramePacket`
+- this prepares a future render/presenter facade without touching `RenderCar(...)`
+- shadow, submit and mesh-render ownership remain untouched
+
+An additional passive derived-debug slice is now also available for the car path:
+
+- `src/game_loop_car_visual_debug_contracts.hpp`
+- `src/game_loop_car_visual_debug_assembler.hpp`
+
+Current effect:
+
+- `CarVisualFramePacket` can now be reduced off-path into a smaller
+  `CarVisualDebugPacket`
+- future presenter/debug formatting can consume car visual state without walking
+  the full render/shadow/submit packet structure
+- runtime render ownership remains untouched

@@ -93,6 +93,45 @@ This is a good split because it removes route-lookahead vector assembly from
 the critical host while preserving the final yaw normalization and state write
 at the consumption point.
 
+Another safe substitution already validated for this slice is:
+
+- move guide-line segment mapping, observed-segment advance and ground-Y
+  resolution helpers into `src/auto_lap_route_build_ops.hpp`
+- keep the host only as the call-site orchestrator
+
+Validated examples:
+
+- point-to-segment scoring
+- best-segment search per route point
+- route population from guide line
+- route direction normalization
+- observed segment advance
+- route ground-Y resolution
+
+This removes most of the remaining AutoLap algorithmic/helpers from the host
+without changing route ownership or frame ordering.
+
+Another safe substitution already validated for this slice is:
+
+- move guide-line simplification/selection helpers and fallback-center
+  population into `src/auto_lap_route_build_ops.hpp`
+- keep only the remaining orchestration and final yaw rebuild in the host
+
+This leaves the host with a much smaller AutoLap surface focused on:
+
+- guide load orchestration
+- final yaw rebuild/state write
+- final fallback/build orchestration
+
+Another safe substitution already validated for this slice is:
+
+- move guide-path candidate/read/parse/copy mechanics into
+  `src/auto_lap_route_build_ops.hpp`
+- remove thin local forwarding wrappers from `src/game_loop_system.hpp`
+
+This keeps logging and final orchestration local, but further reduces host-local
+algorithmic and asset-loading detail without changing AutoLap ownership.
+
 ## Current runtime touch points
 
 The AutoLap domain is still consumed directly in `src/game_loop_system.hpp`,
@@ -126,6 +165,29 @@ This stays:
 - frame-local
 - non-owning
 - runtime-neutral until explicit integration is needed
+
+`src/game_loop_auto_lap_packet_assembler.hpp` now also provides passive
+builder entry points for `AutoLapFramePacket`, so future substitutional runtime
+cuts can assemble the full packet from already-passive route contracts without
+reintroducing ad hoc packet wiring in the host.
+
+The passive contract layer now also includes an `AutoLapGuideRouteTrace`
+builder path, so the current host-local guide-route selection/fallback logging
+can later move behind explicit passive data instead of ad hoc local values.
+
+`src/game_loop_auto_lap_packet.hpp` and
+`src/game_loop_auto_lap_packet_assembler.hpp` now carry that guide-route trace
+through the passive frame packet as well, keeping future substitutional runtime
+cuts aligned around one explicit AutoLap packet shape.
+
+The guide-load passive side now also has explicit builders for:
+
+- read failure
+- parse failure
+- parse success from `PathNya::ParseResult`
+
+This keeps the remaining host-local guide-load flow easier to substitute later
+without re-encoding packet values at the call site.
 
 ## Runtime-to-passive substitution map
 
@@ -253,3 +315,12 @@ Current compile-only SH2 validation now covers:
 through:
 
 - `tools/validate_game_loop_passive_headers.ps1`
+
+A safe host-side substitution now also validated for this slice is:
+
+- replace ad hoc guide-route log arguments in `src/game_loop_system.hpp` with
+  `AutoLapGuideRouteTrace`
+- keep the same logging behavior and call order
+
+This is a small host/runtime substitution that consumes the already-passive route trace without touching guide-load orchestration or yaw rebuild.
+

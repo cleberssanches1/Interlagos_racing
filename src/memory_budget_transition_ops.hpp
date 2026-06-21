@@ -11,6 +11,23 @@
 namespace MemoryBudgetDomain
 {
 
+inline Thresholds BuildThresholds(uint32_t highWorkSoftFloor,
+                                  uint32_t highWorkHardFloor,
+                                  uint32_t highWorkCatastrophicFloor,
+                                  uint32_t lowWorkSoftFloor,
+                                  uint32_t lowWorkHardFloor,
+                                  uint32_t pcmPreferredHighWorkBlock = 192u * 1024u)
+{
+    Thresholds thresholds{};
+    thresholds.highWorkSoftFloor = highWorkSoftFloor;
+    thresholds.highWorkHardFloor = highWorkHardFloor;
+    thresholds.highWorkCatastrophicFloor = highWorkCatastrophicFloor;
+    thresholds.lowWorkSoftFloor = lowWorkSoftFloor;
+    thresholds.lowWorkHardFloor = lowWorkHardFloor;
+    thresholds.pcmPreferredHighWorkBlock = pcmPreferredHighWorkBlock;
+    return thresholds;
+}
+
 inline MemorySnapshotPacket CaptureMemorySnapshotPacket()
 {
     MemorySnapshotPacket packet{};
@@ -57,6 +74,16 @@ inline CategoryBudgetPolicyPacket BuildCategoryBudgetPolicyPacket(
     CategoryBudgetPolicyPacket packet{};
     SeedCategoryBudgetPolicyPacket(snapshot, pressure, policy, packet);
     return packet;
+}
+
+inline CategoryBudgetPolicy BuildCategoryBudgetPolicy(const ConsumerCategory category,
+                                                      const MemorySnapshotPacket& snapshot,
+                                                      const MemoryPressurePacket& pressure,
+                                                      const MemoryBudgetPolicyPacket& policy)
+{
+    CategoryBudgetPolicy categoryPolicy{};
+    SeedCategoryBudgetPolicy(category, snapshot, pressure, policy, categoryPolicy);
+    return categoryPolicy;
 }
 
 } // namespace MemoryBudgetDomain

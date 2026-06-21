@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interlagos Racing - Mapa de Subsistemas</title>
+  <style>
+    :root {
+      --bg: #09111f;
+      --panel: #101b2d;
+      --panel-2: #13233b;
+      --text: #e8f0ff;
+      --muted: #9bb0d3;
+      --line: #2b4266;
+      --accent: #6dd3ff;
+      --accent-2: #84f0b7;
+      --warn: #ffd36d;
+      --hot: #ff8f8f;
+      --passive: #c9a7ff;
+      --master: #69b7ff;
+      --slave: #7ef0b1;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(109, 211, 255, 0.08), transparent 30%),
+        linear-gradient(180deg, #08101d 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .hero {
+      background: linear-gradient(180deg, rgba(19, 35, 59, 0.95), rgba(12, 22, 38, 0.95));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .legend-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      flex: 0 0 auto;
+    }
+
+    .diagram-panel,
+    .info-panel {
+      background: linear-gradient(180deg, rgba(16, 27, 45, 0.96), rgba(11, 19, 32, 0.96));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .panel-header {
+      padding: 18px 20px 0;
+    }
+
+    .diagram-wrap {
+      padding: 8px 12px 18px;
+      overflow-x: auto;
+    }
+
+    svg {
+      min-width: 1360px;
+      height: auto;
+      display: block;
+    }
+
+    .section-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+    }
+
+    .info-panel-body {
+      padding: 18px 20px 22px;
+    }
+
+    .sub-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .card h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    li { margin: 6px 0; }
+
+    .frame-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .frame-step {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 12px;
+      align-items: start;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .frame-step .idx {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      color: #041120;
+      background: linear-gradient(180deg, var(--accent), #8ee2ff);
+    }
+
+    .footer-note {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      color: #dff3ff;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 1100px) {
+      .hero-grid,
+      .section-grid,
+      .sub-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <h1>Interlagos Racing - Quadro de Subsistemas</h1>
+          <p>
+            Este quadro resume como os subsistemas do projeto se integram hoje no runtime:
+            orquestração do frame, simulação, pista, carro, câmera, apresentação, áudio,
+            streaming de CD, orçamento de memória e contratos passivos usados na refatoração.
+          </p>
+          <div class="chips">
+            <span class="chip">Orquestrador central: <code>GameLoopSystem</code></span>
+            <span class="chip">Runtime atual: Master + Slave SH2</span>
+            <span class="chip">Simulação em lockstep na Slave</span>
+            <span class="chip">Pista com producer/sort na Slave</span>
+            <span class="chip">Camada passiva preparada para refatoração</span>
+          </div>
+        </div>
+        <div class="legend">
+          <h3>Legenda</h3>
+          <div class="legend-row"><span class="swatch" style="background: var(--master);"></span>Bloco majoritariamente no Master SH2</div>
+          <div class="legend-row"><span class="swatch" style="background: var(--slave);"></span>Bloco majoritariamente na Slave SH2</div>
+          <div class="legend-row"><span class="swatch" style="background: var(--hot);"></span>Caminho crítico do frame</div>
+          <div class="legend-row"><span class="swatch" style="background: var(--passive);"></span>Contratos / packets passivos</div>
+          <div class="legend-row"><span class="swatch" style="background: var(--warn);"></span>Integração de assets / orçamento / suporte</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="diagram-panel">
+      <div class="panel-header">
+        <h2>Mapa Visual de Integração</h2>
+        <p>Caixas representam subsistemas; setas mostram dependência funcional e fluxo dominante.</p>
+      </div>
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 1360 860" xmlns="http://www.w3.org/2000/svg" aria-label="Mapa de subsistemas do projeto">
+          <defs>
+            <linearGradient id="masterFill" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#69b7ff" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#69b7ff" stop-opacity="0.12"/>
+            </linearGradient>
+            <linearGradient id="slaveFill" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7ef0b1" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#7ef0b1" stop-opacity="0.12"/>
+            </linearGradient>
+            <linearGradient id="hotFill" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff8f8f" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#ff8f8f" stop-opacity="0.12"/>
+            </linearGradient>
+            <linearGradient id="passiveFill" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#c9a7ff" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#c9a7ff" stop-opacity="0.12"/>
+            </linearGradient>
+            <linearGradient id="supportFill" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffd36d" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#ffd36d" stop-opacity="0.12"/>
+            </linearGradient>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#8fb0d8"/>
+            </marker>
+            <style>
+              .box-title { font: 700 20px 'Segoe UI', Arial, sans-serif; fill: #edf4ff; }
+              .box-sub { font: 13px 'Segoe UI', Arial, sans-serif; fill: #b2c6e6; }
+              .box-mini { font: 12px 'Segoe UI', Arial, sans-serif; fill: #dbe8ff; }
+              .lane-label { font: 700 18px 'Segoe UI', Arial, sans-serif; fill: #dce9ff; }
+              .arrow-line { stroke: #8fb0d8; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+              .arrow-passive { stroke: #c9a7ff; stroke-width: 2.5; fill: none; stroke-dasharray: 8 6; marker-end: url(#arrow); }
+              .group { fill: none; stroke: rgba(255,255,255,0.10); stroke-width: 1.5; stroke-dasharray: 8 6; }
+            </style>
+          </defs>
+
+          <text x="38" y="42" class="lane-label">Camada de Entrada / Orquestração</text>
+          <rect x="32" y="58" width="1290" height="162" rx="22" class="group"/>
+
+          <rect x="60" y="92" width="240" height="96" rx="18" fill="url(#masterFill)" stroke="#69b7ff" stroke-opacity="0.45"/>
+          <text x="84" y="122" class="box-title">Boot / Wiring</text>
+          <text x="84" y="145" class="box-sub">`main.cxx`</text>
+          <text x="84" y="165" class="box-mini">Configura SRL, flags, interfaces e tarefas SH2</text>
+
+          <rect x="340" y="78" width="360" height="126" rx="18" fill="url(#hotFill)" stroke="#ff8f8f" stroke-opacity="0.45"/>
+          <text x="365" y="112" class="box-title">GameLoopSystem</text>
+          <text x="365" y="135" class="box-sub">Orquestrador central do frame</text>
+          <text x="365" y="156" class="box-mini">Input -> simulação -> background -> câmera -> HUD -> render -> áudio</text>
+          <text x="365" y="176" class="box-mini">Coordenador de jobs Master/Slave, timeouts e sincronização</text>
+
+          <rect x="750" y="92" width="260" height="96" rx="18" fill="url(#supportFill)" stroke="#ffd36d" stroke-opacity="0.50"/>
+          <text x="776" y="122" class="box-title">Runtime Boundaries</text>
+          <text x="776" y="145" class="box-sub">`runtime_component_boundaries.hpp`</text>
+          <text x="776" y="165" class="box-mini">Ports de Frame, Simulation, Audio, Track e Presentation</text>
+
+          <rect x="1050" y="92" width="240" height="96" rx="18" fill="url(#passiveFill)" stroke="#c9a7ff" stroke-opacity="0.50"/>
+          <text x="1075" y="122" class="box-title">Contratos Passivos</text>
+          <text x="1075" y="145" class="box-sub">Packets / snapshots / assemblers</text>
+          <text x="1075" y="165" class="box-mini">Base da refatoração sem tocar no runtime crítico</text>
+
+          <text x="38" y="278" class="lane-label">Camada de Simulação / Gameplay</text>
+          <rect x="32" y="294" width="1290" height="212" rx="22" class="group"/>
+
+          <rect x="60" y="328" width="272" height="138" rx="18" fill="url(#slaveFill)" stroke="#7ef0b1" stroke-opacity="0.45"/>
+          <text x="85" y="360" class="box-title">Simulation Scheduler</text>
+          <text x="85" y="383" class="box-sub">Slave SH2 em lockstep</text>
+          <text x="85" y="404" class="box-mini">Despacho de `IGameplayTick`, `ICarPhysics` e `IAudioEvents`</text>
+          <text x="85" y="424" class="box-mini">Backoff, drain, wait ticks e telemetria de sincronização</text>
+          <text x="85" y="444" class="box-mini">Arquivos: scheduler contracts / dispatch / transition ops</text>
+
+          <rect x="370" y="328" width="242" height="138" rx="18" fill="url(#slaveFill)" stroke="#7ef0b1" stroke-opacity="0.45"/>
+          <text x="394" y="360" class="box-title">Gameplay + Física</text>
+          <text x="394" y="383" class="box-sub">`IGameplayTick` + `ICarPhysics`</text>
+          <text x="394" y="404" class="box-mini">Estado do carro, RPM, marcha, colisão e progressão</text>
+          <text x="394" y="424" class="box-mini">Implementações simples e variantes físicas do projeto</text>
+
+          <rect x="648" y="328" width="250" height="138" rx="18" fill="url(#masterFill)" stroke="#69b7ff" stroke-opacity="0.45"/>
+          <text x="673" y="360" class="box-title">CarSystem</text>
+          <text x="673" y="383" class="box-sub">Comando + estado visual do carro</text>
+          <text x="673" y="404" class="box-mini">Entrada filtrada, wheel spin, render instance e gameplay state</text>
+          <text x="673" y="424" class="box-mini">Liga física, áudio e render do carro</text>
+
+          <rect x="934" y="328" width="180" height="138" rx="18" fill="url(#masterFill)" stroke="#69b7ff" stroke-opacity="0.45"/>
+          <text x="959" y="360" class="box-title">CameraSystem</text>
+          <text x="959" y="383" class="box-sub">Master SH2</text>
+          <text x="959" y="404" class="box-mini">Chase, orbit, safety, obstruction e path runtime</text>
+          <text x="959" y="424" class="box-mini">Consome posição/yaw do carro</text>
+
+          <rect x="1148" y="328" width="142" height="138" rx="18" fill="url(#masterFill)" stroke="#69b7ff" stroke-opacity="0.45"/>
+          <text x="1170" y="360" class="box-title">Áudio</text>
+          <text x="1170" y="383" class="box-sub">Eventos / voz</text>
+          <text x="1170" y="404" class="box-mini">`IAudioEvents`</text>
+          <text x="1170" y="424" class="box-mini">Perfis do carro</text>
+
+          <text x="38" y="564" class="lane-label">Camada de Mundo / Render / Streaming</text>
+          <rect x="32" y="580" width="1290" height="240" rx="22" class="group"/>
+
+          <rect x="60" y="618" width="292" height="152" rx="18" fill="url(#slaveFill)" stroke="#7ef0b1" stroke-opacity="0.45"/>
+          <text x="84" y="652" class="box-title">TrackSystem</text>
+          <text x="84" y="675" class="box-sub">Streaming, draw producer e sort estabilizado</text>
+          <text x="84" y="696" class="box-mini">Pista carrega `.NYA`, mantém draw list, colisão e queries</text>
+          <text x="84" y="716" class="box-mini">Producer/sort na Slave com safe mode e fallback síncrono</text>
+          <text x="84" y="736" class="box-mini">Fornece base para render da pista e gameplay</text>
+
+          <rect x="388" y="618" width="236" height="152" rx="18" fill="url(#masterFill)" stroke="#69b7ff" stroke-opacity="0.45"/>
+          <text x="412" y="652" class="box-title">RenderPipeline</text>
+          <text x="412" y="675" class="box-sub">Ponto de apresentação final</text>
+          <text x="412" y="696" class="box-mini">Coordena track render, car render, mesh e submits</text>
+          <text x="412" y="716" class="box-mini">Integra VDP1, câmera e HUD</text>
+
+          <rect x="658" y="618" width="208" height="152" rx="18" fill="url(#masterFill)" stroke="#69b7ff" stroke-opacity="0.45"/>
+          <text x="682" y="652" class="box-title">HUD / Overlay</text>
+          <text x="682" y="675" class="box-sub">`HudSystem`</text>
+          <text x="682" y="696" class="box-mini">Telemetria de FPS, memória, SH2 e diagnósticos</text>
+          <text x="682" y="716" class="box-mini">Camada de apresentação textual</text>
+
+          <rect x="902" y="618" width="192" height="152" rx="18" fill="url(#supportFill)" stroke="#ffd36d" stroke-opacity="0.50"/>
+          <text x="926" y="652" class="box-title">CD Asset System</text>
+          <text x="926" y="675" class="box-sub">Streaming e parsing</text>
+          <text x="926" y="696" class="box-mini">Assets de CD, requests, parse e contratos</text>
+          <text x="926" y="716" class="box-mini">Apoia pista, áudio e dados auxiliares</text>
+
+          <rect x="1128" y="618" width="162" height="152" rx="18" fill="url(#supportFill)" stroke="#ffd36d" stroke-opacity="0.50"/>
+          <text x="1150" y="652" class="box-title">Memory Budget</text>
+          <text x="1150" y="675" class="box-sub">Orçamento / categorias</text>
+          <text x="1150" y="696" class="box-mini">Budget, política e telemetria</text>
+          <text x="1150" y="716" class="box-mini">Protege frame e streaming</text>
+
+          <path d="M300 140 L340 140" class="arrow-line"/>
+          <path d="M700 140 L750 140" class="arrow-line"/>
+          <path d="M1010 140 L1050 140" class="arrow-passive"/>
+
+          <path d="M520 204 L520 328" class="arrow-line"/>
+          <path d="M520 466 L520 618" class="arrow-line"/>
+          <path d="M332 397 L370 397" class="arrow-line"/>
+          <path d="M612 397 L648 397" class="arrow-line"/>
+          <path d="M898 397 L934 397" class="arrow-line"/>
+          <path d="M898 397 L1148 397" class="arrow-line"/>
+
+          <path d="M206 466 L206 618" class="arrow-line"/>
+          <path d="M352 694 L388 694" class="arrow-line"/>
+          <path d="M624 694 L658 694" class="arrow-line"/>
+          <path d="M866 694 L902 694" class="arrow-line"/>
+          <path d="M1094 694 L1128 694" class="arrow-line"/>
+
+          <path d="M1170 140 C1240 140,1240 400,1240 618" class="arrow-passive"/>
+          <path d="M1170 140 C1000 140,980 300,998 618" class="arrow-passive"/>
+          <path d="M1170 140 C860 140,760 250,760 618" class="arrow-passive"/>
+        </svg>
+      </div>
+    </section>
+
+    <div class="section-grid">
+      <section class="info-panel">
+        <div class="panel-header">
+          <h2>Fluxo do Frame</h2>
+          <p>Sequência principal conforme a arquitetura atual do projeto.</p>
+        </div>
+        <div class="info-panel-body">
+          <div class="frame-list">
+            <div class="frame-step"><div class="idx">1</div><div><strong>Input e câmera</strong><p>Coleta de entrada, atualização de câmera e preparação do frame.</p></div></div>
+            <div class="frame-step"><div class="idx">2</div><div><strong>Comando do carro</strong><p><code>ICarCommand</code> alimenta o estado do carro antes da simulação.</p></div></div>
+            <div class="frame-step"><div class="idx">3</div><div><strong>Gameplay tick</strong><p><code>IGameplayTick</code> aplica regras de progressão, estados e lógica de corrida.</p></div></div>
+            <div class="frame-step"><div class="idx">4</div><div><strong>Física</strong><p><code>ICarPhysics</code> processa dinâmica longitudinal, lateral, yaw, RPM e marcha.</p></div></div>
+            <div class="frame-step"><div class="idx">5</div><div><strong>Background</strong><p>Atualização de ambiente, sky/background e estados auxiliares de cena.</p></div></div>
+            <div class="frame-step"><div class="idx">6</div><div><strong>Pista</strong><p><code>TrackSystem</code> produz draw list, ordenação e dados de render.</p></div></div>
+            <div class="frame-step"><div class="idx">7</div><div><strong>Carro + render</strong><p><code>CarSystem</code> e <code>RenderPipeline</code> integram modelo, sombra e submissão.</p></div></div>
+            <div class="frame-step"><div class="idx">8</div><div><strong>Áudio</strong><p><code>IAudioEvents</code> emite os eventos do frame, coordenados com o estado do carro.</p></div></div>
+            <div class="frame-step"><div class="idx">9</div><div><strong>HUD e telemetria</strong><p><code>HudSystem</code> apresenta overlay, FPS, memória e diagnósticos.</p></div></div>
+            <div class="frame-step"><div class="idx">10</div><div><strong>Sync</strong><p><code>SRL::Core::Synchronize()</code> fecha o frame.</p></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="info-panel">
+        <div class="panel-header">
+          <h2>Distribuição nas SH2</h2>
+          <p>Resumo do uso atual entre Master e Slave.</p>
+        </div>
+        <div class="info-panel-body sub-grid">
+          <div class="card">
+            <h3>Master SH2</h3>
+            <ul>
+              <li>Loop principal do frame</li>
+              <li>Câmera, HUD e apresentação final</li>
+              <li>Coordenação de jobs e fallback síncrono</li>
+              <li>Integração de <code>RenderPipeline</code>, <code>CarSystem</code> e estado visual</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Slave SH2</h3>
+            <ul>
+              <li>Simulação de gameplay/física/áudio em lockstep</li>
+              <li>Producer e depth-sort da pista</li>
+              <li>Fallback robusto quando há timeout ou safe mode</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Blocos sensíveis</h3>
+            <ul>
+              <li><code>GameLoopSystem</code> é o centro do caminho crítico</li>
+              <li><code>TrackSystem</code> e producer da pista afetam diretamente FPS</li>
+              <li>AutoLap ainda tem partes críticas mantidas no host</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Refatoração atual</h3>
+            <ul>
+              <li>Packets e contratos passivos preparados antes da reintegração runtime</li>
+              <li>Objetivo: reduzir acoplamento sem alterar o ISO estável</li>
+              <li>Regra operacional: cortes pequenos, substitucionais e validados</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="info-panel">
+      <div class="panel-header">
+        <h2>Resumo por Subsistema</h2>
+        <p>Responsabilidade principal de cada caixa do diagrama.</p>
+      </div>
+      <div class="info-panel-body sub-grid">
+        <div class="card">
+          <h3>Boot / Wiring</h3>
+          <p>Configura SRL, dependências runtime, interfaces de física/gameplay/áudio e flags de uso da Slave.</p>
+        </div>
+        <div class="card">
+          <h3>GameLoopSystem</h3>
+          <p>Sequencia o frame, controla drains, timeouts, sincronização Master/Slave e integra todos os subsistemas.</p>
+        </div>
+        <div class="card">
+          <h3>Simulation Scheduler</h3>
+          <p>Despacha simulação em lockstep para a Slave, mede espera do Master e aplica backoff quando necessário.</p>
+        </div>
+        <div class="card">
+          <h3>TrackSystem</h3>
+          <p>Faz streaming de pista, sort/producer, queries de colisão e preparação da draw list para render.</p>
+        </div>
+        <div class="card">
+          <h3>CarSystem</h3>
+          <p>Centraliza comando do carro, estado visual, wheel rig, integração com física e integração com render.</p>
+        </div>
+        <div class="card">
+          <h3>CameraSystem</h3>
+          <p>Produz posição, direção e alvo da câmera com regras de chase, orbit, safety e obstrução.</p>
+        </div>
+        <div class="card">
+          <h3>RenderPipeline</h3>
+          <p>Integra pista, carro, meshes, sombra e submissão para o caminho de apresentação do frame.</p>
+        </div>
+        <div class="card">
+          <h3>HUD / Observabilidade</h3>
+          <p>Exibe FPS, memória, SH2, estados do carro e diagnósticos em tempo real.</p>
+        </div>
+        <div class="card">
+          <h3>CD Asset System</h3>
+          <p>Cuida de leitura, parsing e contratos de assets de CD usados por pista, dados auxiliares e suporte a runtime.</p>
+        </div>
+        <div class="card">
+          <h3>Memory Budget</h3>
+          <p>Define categorias, orçamento e telemetria para limitar carga e estabilizar o frame.</p>
+        </div>
+        <div class="card">
+          <h3>Packets / Contratos Passivos</h3>
+          <p>Formalizam snapshots e traces de AutoLap, render, memória, CD e observabilidade para refatorar sem tocar no caminho crítico imediatamente.</p>
+        </div>
+        <div class="card">
+          <h3>AutoLap Passivo</h3>
+          <p>Hoje já possui contracts, snapshots, route trace, guide-load packet e frame packet passivo, mas ainda evita tocar nos pontos sensíveis de load e yaw rebuild.</p>
+        </div>
+      </div>
+      <div class="footer-note">
+        Referências principais consideradas neste quadro: <code>ARCHITECTURE.md</code>,
+        <code>src/runtime_component_boundaries.hpp</code>, <code>SH2_USO_ATUAL.md</code> e a organização atual de <code>src/</code>.
+      </div>
+    </section>
+  </div>
+</body>
+</html>

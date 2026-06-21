@@ -177,3 +177,16 @@ Current compile-only SH2 validation now covers:
 through:
 
 - `tools/validate_game_loop_passive_headers.ps1`
+
+## New passive render aggregation
+
+The track render slice now also participates in one higher-level passive render bundle:
+
+- `src/game_loop_render_debug_contracts.hpp`
+- `src/game_loop_render_debug_assembler.hpp`
+
+Current effect:
+
+- `TrackRenderFramePacket` can now be grouped off-path with `CarVisualFramePacket`
+- this prepares a future render/presenter facade without touching producer/sort ownership
+- runtime scheduling and `N-1` policy remain untouched

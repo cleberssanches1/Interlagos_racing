@@ -22,6 +22,13 @@ inline void SeedWorkRamUsagePacket(const MemoryBudgetDomain::MemorySnapshotPacke
             : 0u;
 }
 
+inline WorkRamUsagePacket BuildWorkRamUsagePacket(const MemoryBudgetDomain::MemorySnapshotPacket& snapshot)
+{
+    WorkRamUsagePacket packet{};
+    SeedWorkRamUsagePacket(snapshot, packet);
+    return packet;
+}
+
 inline void SeedLowWorkOverlayHeaderPacket(int32_t freeDelta,
                                            uint32_t lowWorkFree,
                                            uint32_t highWorkFree,
@@ -85,6 +92,19 @@ inline void SeedLowWorkOverlayPacket(const GameLoopRuntime::LowWorkOverlayState&
     outPacket.freeBlocks = overlayState.lastFreeBlocks;
 }
 
+inline LowWorkOverlayPacket BuildLowWorkOverlayPacket(const GameLoopRuntime::LowWorkOverlayState& overlayState,
+                                                      int32_t freeDelta,
+                                                      uint32_t lowWorkFree,
+                                                      uint32_t highWorkFree,
+                                                      uint8_t slides,
+                                                      int16_t slideId)
+{
+    LowWorkOverlayPacket packet{};
+    SeedLowWorkOverlayPacket(
+        overlayState, freeDelta, lowWorkFree, highWorkFree, slides, slideId, packet);
+    return packet;
+}
+
 inline void AttachLowWorkTrackTicks(uint16_t trackStreamTicks,
                                     uint16_t trackMaintenanceTicks,
                                     uint16_t trackDrawTicks,
@@ -132,6 +152,13 @@ inline void SeedHighWorkTracePacket(const GameLoopRuntime::HwrStageTrace& trace,
     outPacket.syncAccum = GameLoopRuntime::SnapshotLiveDelta(trace.preSync, trace.postSync);
 }
 
+inline HighWorkTracePacket BuildHighWorkTracePacket(const GameLoopRuntime::HwrStageTrace& trace)
+{
+    HighWorkTracePacket packet{};
+    SeedHighWorkTracePacket(trace, packet);
+    return packet;
+}
+
 inline void SeedLowWorkTracePacket(const GameLoopRuntime::LwrStageTrace& trace,
                                    LowWorkTracePacket& outPacket)
 {
@@ -146,6 +173,13 @@ inline void SeedLowWorkTracePacket(const GameLoopRuntime::LwrStageTrace& trace,
     outPacket.car = trace.car;
     outPacket.preSync = trace.preSync;
     outPacket.postSync = trace.postSync;
+}
+
+inline LowWorkTracePacket BuildLowWorkTracePacket(const GameLoopRuntime::LwrStageTrace& trace)
+{
+    LowWorkTracePacket packet{};
+    SeedLowWorkTracePacket(trace, packet);
+    return packet;
 }
 
 } // namespace GameLoopMemoryPresentationDomain

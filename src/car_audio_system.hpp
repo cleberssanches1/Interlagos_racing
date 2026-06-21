@@ -4,7 +4,7 @@
 
 #include "car_audio_profile.hpp"
 #include "interfaces.hpp"
-#include "memory_budget_system.hpp"
+#include "memory_budget_runtime_bridge.hpp"
 
 namespace Game
 {
@@ -145,7 +145,7 @@ inline void CarAudioSystem::Initialize()
         voiceRouter_ = &DefaultVoiceRouter();
     }
 
-    MemoryBudgetSystem::ConfigurePcmStreamingBudget();
+    MemoryBudgetRuntimeBridge::ConfigurePcmStreamingBudgetFromPolicy();
 
     engineSample_ = TryLoadWaveCue(AudioCue::Engine);
     shiftUpSample_ = TryLoadWaveCue(AudioCue::ShiftUp);

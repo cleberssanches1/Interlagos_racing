@@ -1,5 +1,6 @@
 #pragma once
 
+#include "memory_budget_contracts.hpp"
 #include "car_render_system.hpp"
 
 namespace GameLoopRuntime
@@ -14,6 +15,7 @@ struct CarVisualFramePacket
     Game::CarRenderSystem::ShadowPacket shadowPacket{};
     Game::CarRenderSystem::SubmitPacket submitPacket{};
     Game::CarRenderSystem::Telemetry telemetry{};
+    MemoryBudgetDomain::CategoryBudgetPolicy budgetPolicy{};
 
     bool Valid() const
     {

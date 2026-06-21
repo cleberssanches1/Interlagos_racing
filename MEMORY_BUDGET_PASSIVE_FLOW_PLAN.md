@@ -156,3 +156,234 @@ The next safe step is:
 2. use this packet only as passive groundwork
 3. later try a tiny cut that routes PCM/bootstrap decisions through the
    category-policy packet without changing allocator behavior
+
+Another safe passive step now available for this slice is:
+
+- explicit `Thresholds` builder in `src/memory_budget_transition_ops.hpp`
+- explicit single-category builder in `src/memory_budget_transition_ops.hpp`
+- explicit `MemoryBudgetFramePacket` builder in
+  `src/game_loop_memory_budget_packet_assembler.hpp`
+
+This means the passive memory-budget side now has a complete
+snapshot-to-frame-packet path ready for future substitutional runtime cuts.
+
+## Applied safe runtime bridge
+
+A first substitutional runtime cut is now in place for PCM bootstrap setup:
+
+- `src/memory_budget_runtime_bridge.hpp`
+- `src/car_audio_system.hpp`
+
+Current behavior remains intentionally equivalent:
+
+- capture current memory snapshot
+- build passive thresholds with zero pressure floors
+- derive `AudioPcm` preferred pool from passive policy/category-policy
+- map the resulting pool to `SRL::Sound::Pcm::SetMemAllocationBehaviour(...)`
+
+This keeps:
+
+- original PCM setup timing
+- original high-work preferred block rule (`192 KiB`)
+- original cart fallback behavior
+- old `MemoryBudgetSystem` interface intact for compatibility
+
+Another safe runtime cut now in place for category-policy consumption is:
+
+- `src/memory_budget_runtime_bridge.hpp`
+- `src/game_loop_system.hpp`
+
+Current behavior remains intentionally neutral under the current thresholds:
+
+- optional frame debug telemetry now queries `DebugTransient` policy explicitly
+- no allocator ownership changed
+- no gameplay/render/audio path changed
+- with the current zero-pressure bridge thresholds, the telemetry path stays enabled
+
+This still improves responsibility placement because optional observability no longer
+depends on a host-local assumption about transient budget policy.
+
+An additional safe runtime cut is now in place for `Hud` optional telemetry:
+
+- `src/memory_budget_runtime_bridge.hpp`
+- `src/game_loop_system.hpp`
+
+Current behavior remains intentionally neutral under the current thresholds:
+
+- periodic HUD telemetry now queries `Hud` policy explicitly
+- the driving HUD and critical frame presentation remain untouched
+- with the current zero-pressure bridge thresholds, the periodic HUD telemetry path stays enabled
+
+The bridge is now also consolidated around explicit category accessors:
+
+- `QueryCategoryPolicy(...)`
+- `PreferredPoolForCategory(...)`
+- `ShouldAvoidOptionalAllocationsForCategory(...)`
+
+This keeps behavior unchanged while reducing duplicated category-specific helpers
+before any future migration of more sensitive consumers.
+
+A further passive render-side cut is now in place:
+
+- `src/game_loop_track_render_packet.hpp`
+- `src/game_loop_track_render_packet_assembler.hpp`
+- `src/game_loop_car_visual_packet.hpp`
+- `src/game_loop_car_visual_packet_assembler.hpp`
+
+Current effect:
+
+- passive visual packets now carry category-policy snapshots for `TrackRender` and `CarRender`
+- no scheduler, draw submission or runtime render behavior changed
+- this prepares future render-budget consumers without touching the critical render path
+
+Those passive render-budget packets are now also consumable from observability contracts:
+
+- `src/game_loop_observability_contracts.hpp`
+- `src/game_loop_observability_state_assembler.hpp`
+
+Current effect:
+
+- observability can assemble passive render-budget flow from track/car visual packets
+- no frame-loop consumer was switched to this flow yet
+- this creates the internal documentation/contract layer before any runtime usage
+
+That observability slice now also exposes complete passive builders:
+
+- `BuildRenderBudgetPolicyPacket(...)`
+- `BuildRenderBudgetPacketFlow(...)`
+- `BuildFrameObservabilityPacket(...)`
+
+This means a full observability packet can now be assembled off the critical path
+with render-budget information included, without changing any live frame orchestration.
+
+That off-path assembly is now also centralized in a dedicated helper:
+
+- `src/game_loop_observability_packet_assembler.hpp`
+
+Current effect:
+
+- a full `FrameObservabilityPacket` can be assembled directly from overlay, telemetry,
+  render and memory packet inputs
+- this remains a local/passive utility and is still not connected to the live loop
+
+That same off-path observability slice now has dedicated compile-only SH2 validation:
+
+- `tools/validate_game_loop_observability_headers.ps1`
+
+This reduces risk for future render-budget and observability refactors without
+touching the critical runtime path.
+
+The memory/debug presentation side now also has a dedicated off-path packet assembler:
+
+- `src/game_loop_memory_presentation_packet_assembler.hpp`
+
+Current effect:
+
+- raw memory snapshot, low-work overlay inputs, and trace state can be assembled into
+  passive memory-presentation packets outside `src/game_loop_system.hpp`
+- an observability-ready `MemoryPresentationPacketFlow` can be built without adding any
+  runtime ownership or frame-loop changes
+
+The trace side now also exposes derived delta packets off-path:
+
+- `src/game_loop_memory_trace_packet_assembler.hpp`
+
+Current effect:
+
+- high-work trace deltas (`alloc/free/realloc/failed`, blocks, finish/sync accumulation)
+  can now be built from `HighWorkTracePacket`
+- low-work stage deltas (`GLW1`-`GLW5` style free/payload/overhead deltas and track-draw
+  sub-deltas) can now be built from `LowWorkTracePacket`
+- this prepares future formatting extraction without changing any live debug print path
+
+The next passive layer is now also prepared for textual trace extraction:
+
+- `src/game_loop_memory_trace_text_contracts.hpp`
+- `src/game_loop_memory_trace_text_assembler.hpp`
+
+Current effect:
+
+- the trace-only print payloads for `GH3`/`GH4` and `GLW1`-`GLW5` can now be assembled
+  outside `src/game_loop_system.hpp`
+- runtime print calls still remain untouched
+- future formatting extraction can now substitute line-by-line from passive text packets
+
+The low-work overlay textual layer is now also prepared off-path:
+
+- `src/game_loop_memory_overlay_text_contracts.hpp`
+- `src/game_loop_memory_overlay_text_assembler.hpp`
+
+Current effect:
+
+- `WLWR`, `HWT`, `LWC`, `LTK`, `LTX`, and `LFO` print payloads now have passive text packets
+- a full low-work overlay text bundle can now be assembled outside `src/game_loop_system.hpp`
+- runtime overlay rendering remains untouched
+
+The memory/debug side now also has one consolidated passive assembly point:
+
+- `src/game_loop_memory_debug_contracts.hpp`
+- `src/game_loop_memory_debug_packet_assembler.hpp`
+
+Current effect:
+
+- one off-path bundle can now carry:
+  - observability-ready `MemoryPresentationPacketFlow`
+  - low-work overlay text bundle
+  - high-work trace text packet
+  - low-work trace text packet
+- future extraction can move from scattered builders to one passive assembly call
+- runtime ownership and print timing remain untouched
+
+That consolidated memory/debug slice is now also joinable with frame observability
+through one off-path bundle:
+
+- `src/game_loop_observability_debug_contracts.hpp`
+- `src/game_loop_observability_debug_packet_assembler.hpp`
+
+Current effect:
+
+- one passive `ObservabilityDebugBundle` can now carry both:
+  - `FrameObservabilityPacket`
+  - `MemoryDebugPresentationBundle`
+- future overlay/debug presenter extraction can move to a single assembled input
+- runtime frame execution remains untouched
+
+The non-memory overlay/debug side now also has an off-path bundle:
+
+- `src/game_loop_overlay_debug_text_contracts.hpp`
+- `src/game_loop_overlay_debug_text_assembler.hpp`
+- `src/game_loop_overlay_debug_contracts.hpp`
+- `src/game_loop_overlay_debug_packet_assembler.hpp`
+
+Current effect:
+
+- spatial, shadow, face/shadow, ground-probe, physics-query, and segment-event
+  debug payloads can now be assembled as passive text packets
+- one `OverlayDebugBundle` can now carry both overlay/telemetry flows and their
+  text-ready debug payloads
+- runtime overlay printing remains untouched
+
+The presentation/HUD side now also has a passive bundle:
+
+- `src/game_loop_presentation_debug_contracts.hpp`
+- `src/game_loop_presentation_debug_assembler.hpp`
+
+Current effect:
+
+- frame presentation, driving HUD text, periodic HUD stats, and realtime FPS packet
+  can now be grouped outside `src/game_loop_system.hpp`
+- future presenter extraction can reuse a single passive presentation bundle
+- runtime HUD/update order remains untouched
+
+That presenter-facing passive groundwork is now also consolidated one level higher:
+
+- `src/game_loop_presenter_input_contracts.hpp`
+- `src/game_loop_presenter_input_assembler.hpp`
+
+Current effect:
+
+- memory/debug presentation can now participate in one top-level presenter input
+  alongside presentation/HUD and overlay/debug bundles
+- this reduces future host-side stitching before any runtime migration of the
+  presenter path
+- allocator, audio, render and frame-loop behavior remain untouched

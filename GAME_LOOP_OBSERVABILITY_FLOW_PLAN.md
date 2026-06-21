@@ -9,11 +9,15 @@ Prepare a future extraction of observability/debug presentation out of `src/game
 ### Presentation
 
 - `src/game_loop_presentation_ops.hpp`
+- `src/game_loop_presentation_debug_contracts.hpp`
+- `src/game_loop_presentation_debug_assembler.hpp`
 
 Provides passive builders for:
 
 - `FramePresentationSnapshot`
 - `Sh2SplitTelemetrySnapshot`
+- `PresentationDebugBundle`
+- `PresenterInputBundle`
 
 ### Overlay
 
@@ -114,6 +118,8 @@ Only after repeated stable builds, introduce a passive presenter/facade that rec
 
 - `FrameObservabilityPacket`
 - memory/debug packets
+- presentation/HUD packets
+- overlay/debug packets
 
 and returns no runtime side effects except formatted print decisions.
 
@@ -271,10 +277,78 @@ Current safe validation path:
 Hook:
 
 - `tools/validate_game_loop_passive_headers.ps1`
+- `tools/validate_game_loop_observability_headers.ps1`
 
 ## Next low-risk steps
 
-1. Add compile-only SH2 validation hooks for passive observability headers
-2. Rehearse one textual integration point without changing behavior
-3. Isolate a narrower pure-data export layer if host tests become necessary
-4. Only then consider a local observability assembly method in `GameLoopSystem`
+1. Isolate a narrower pure-data export layer if host tests become necessary
+2. Only then consider a second local observability assembly point in `GameLoopSystem`
+
+## Validation coverage closed in this step
+
+The observability-specific compile-only hook now validates the passive include chain for:
+
+- `src/game_loop_observability_contracts.hpp`
+- `src/game_loop_observability_state_assembler.hpp`
+- `src/game_loop_observability_packet_assembler.hpp`
+- `src/game_loop_memory_presentation_packet_assembler.hpp`
+- `src/game_loop_memory_trace_packet_assembler.hpp`
+- `src/game_loop_memory_trace_text_contracts.hpp`
+- `src/game_loop_memory_trace_text_assembler.hpp`
+- `src/game_loop_memory_overlay_text_contracts.hpp`
+- `src/game_loop_memory_overlay_text_assembler.hpp`
+- `src/game_loop_memory_debug_contracts.hpp`
+- `src/game_loop_memory_debug_packet_assembler.hpp`
+- `src/game_loop_observability_debug_contracts.hpp`
+- `src/game_loop_observability_debug_packet_assembler.hpp`
+- `src/game_loop_overlay_debug_text_contracts.hpp`
+- `src/game_loop_overlay_debug_text_assembler.hpp`
+- `src/game_loop_overlay_debug_contracts.hpp`
+- `src/game_loop_overlay_debug_packet_assembler.hpp`
+- `src/game_loop_presentation_debug_contracts.hpp`
+- `src/game_loop_presentation_debug_assembler.hpp`
+- `src/game_loop_render_debug_contracts.hpp`
+- `src/game_loop_render_debug_assembler.hpp`
+- `src/game_loop_car_visual_debug_contracts.hpp`
+- `src/game_loop_car_visual_debug_assembler.hpp`
+- `src/game_loop_presenter_input_contracts.hpp`
+- `src/game_loop_presenter_input_assembler.hpp`
+- `src/game_loop_track_render_packet.hpp`
+- `src/game_loop_track_render_packet_assembler.hpp`
+- `src/game_loop_car_visual_packet.hpp`
+- `src/game_loop_car_visual_packet_assembler.hpp`
+
+This keeps the next observability cuts outside the critical frame loop while still catching include/regression breaks with the SH2 toolchain.
+
+## Newly consolidated presenter input
+
+The passive presenter-facing side now also exposes one higher-level aggregate:
+
+- `src/game_loop_presenter_input_contracts.hpp`
+- `src/game_loop_presenter_input_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterInputBundle` can now carry:
+  - `PresentationDebugBundle`
+  - `RenderFrameDebugBundle`
+  - `OverlayDebugBundle`
+  - `ObservabilityDebugBundle`
+- future presenter/facade extraction can consume one stable aggregate input
+  instead of rebuilding cross-domain debug/presentation dependencies at the host
+- runtime execution remains untouched
+
+The render-facing passive side now also exposes one aggregate bundle:
+
+- `src/game_loop_render_debug_contracts.hpp`
+- `src/game_loop_render_debug_assembler.hpp`
+
+Current effect:
+
+- one off-path `RenderFrameDebugBundle` can now carry:
+  - `TrackRenderFramePacket`
+  - `CarVisualFramePacket`
+  - `CarVisualDebugPacket`
+- the future presenter/render-facade path can consume one stable visual/render
+  aggregate before any ownership change in the live loop
+- runtime execution remains untouched

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "memory_budget_runtime_bridge.hpp"
 #include "game_loop_car_visual_packet.hpp"
 
 namespace GameLoopRuntime
@@ -21,6 +22,8 @@ inline void SeedCarVisualFramePacket(Game::CarSystem* car,
     outPacket.shadowPacket = shadowPacket;
     outPacket.submitPacket = submitPacket;
     outPacket.telemetry = telemetry;
+    outPacket.budgetPolicy = Game::MemoryBudgetRuntimeBridge::QueryCategoryPolicy(
+        Game::MemoryBudgetRuntimeBridge::ConsumerCategory::CarRender);
 }
 
 inline bool CanSubmitCarVisualFramePacket(const CarVisualFramePacket& packet)

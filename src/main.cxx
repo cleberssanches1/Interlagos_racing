@@ -10,6 +10,7 @@
 #include "runtime_null_systems.hpp"
 #include "car_audio_system.hpp"
 #include "cd_asset_transition_ops.hpp"
+#include "memory_budget_runtime_bridge.hpp"
 #include "project_voice_router.hpp"
 #include "simple_car_physics.hpp"
 #include "simple_gameplay_tick.hpp"
@@ -830,12 +831,6 @@ static int RunPhysicsPocMode()
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
     };
-    const char* sbaPaths[] = {
-        "CD/DATA/SBA.NYA;1", "CD/DATA/SBA.NYA",
-        "DATA/SBA.NYA;1", "DATA/SBA.NYA",
-        "SBA.NYA;1", "SBA.NYA",
-        "sba.nya;1", "sba.nya"
-    };
     // POC: try WRAM-first before track runtime startup.
     const bool useCartCopyPipeline = true;
     AppState::Set(AppState::Stage::CarLoad, 0);
@@ -966,7 +961,7 @@ static int RunPhysicsPocMode()
     constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
-        const char* sbaPath = CdAssetDomain::ResolveExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
+        const char* sbaPath = CdAssetDomain::ResolveSbaShadowModelPath();
         if (sbaPath)
         {
             sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
@@ -1125,7 +1120,7 @@ int GameApp::Run()
     // SRL::Debug::Print(0, 0, "CRT ok:%d free:%d total:%d", crep.TotalSize > 0 ? 1 : 0, (int)crep.FreeSize, (int)crep.TotalSize);
     auto rep = SRL::Memory::HighWorkRam::GetReport();
     // SRL::Debug::Print(0, 1, "HWR free:%d total:%d", (int)rep.FreeSize, (int)rep.TotalSize);
-    const bool cartOk = crep.TotalSize > 0;
+    const bool cartOk = Game::MemoryBudgetRuntimeBridge::ShouldPreferCartForCdStaging();
 
     Game::ProjectVoiceRouter projectVoiceRouter;
     Game::CarAudioSystem audioEvents;
@@ -1136,7 +1131,11 @@ int GameApp::Run()
     const char testMsg[] = "Cart DRAM OK";
     int32_t hwrBeforeStr = SRL::Memory::CartRam::GetFreeSpace();
     size_t testLen = sizeof(testMsg); // inclui terminador
-    char* hwrStr = reinterpret_cast<char*>(SRL::Memory::CartRam::Malloc(testLen));
+    char* hwrStr = nullptr;
+    if (cartOk)
+    {
+        hwrStr = reinterpret_cast<char*>(SRL::Memory::CartRam::Malloc(testLen));
+    }
     if (hwrStr)
     {
         for (size_t i = 0; i < testLen; ++i) hwrStr[i] = testMsg[i];
@@ -1164,12 +1163,6 @@ int GameApp::Run()
         "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
-    };
-    const char* sbaPaths[] = {
-        "CD/DATA/SBA.NYA;1", "CD/DATA/SBA.NYA",
-        "DATA/SBA.NYA;1", "DATA/SBA.NYA",
-        "SBA.NYA;1", "SBA.NYA",
-        "sba.nya;1", "sba.nya"
     };
     // Keep an independent WRAM copy of CAR1.NYA to isolate car rendering from
     // track Cart RAM streaming activity.
@@ -1214,7 +1207,7 @@ int GameApp::Run()
     constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
-        const char* sbaPath = CdAssetDomain::ResolveExistingPath(sbaPaths, sizeof(sbaPaths) / sizeof(sbaPaths[0]));
+        const char* sbaPath = CdAssetDomain::ResolveSbaShadowModelPath();
         if (sbaPath)
         {
             sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);

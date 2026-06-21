@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interlagos Racing - Fluxo Passivo de Budget, Render e Observabilidade</title>
+  <style>
+    :root {
+      --bg: #08101c;
+      --panel: #101a2a;
+      --panel-2: #122238;
+      --text: #e7efff;
+      --muted: #96aacc;
+      --line: #2c4366;
+      --accent: #79d7ff;
+      --accent-2: #8cf2ba;
+      --warn: #ffd36d;
+      --passive: #cda9ff;
+      --critical: #ff9797;
+      --safe: #7ef0b1;
+      --shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(121, 215, 255, 0.08), transparent 28%),
+        linear-gradient(180deg, #07101a 0%, var(--bg) 100%);
+    }
+
+    .page {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      color: #ebf8ff;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 6px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(16, 26, 42, 0.96), rgba(10, 17, 28, 0.98));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .hero,
+    .body {
+      padding: 22px 24px;
+    }
+
+    .hero-grid,
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero-grid { grid-template-columns: 1.45fr 1fr; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.14);
+      flex: 0 0 auto;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    li { margin: 6px 0; }
+
+    .diagram-wrap {
+      overflow-x: auto;
+      padding: 8px 12px 18px;
+    }
+
+    svg {
+      min-width: 1380px;
+      height: auto;
+      display: block;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .table th,
+    .table td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      vertical-align: top;
+    }
+
+    .table th {
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .footer-note {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1100px) {
+      .hero-grid,
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="panel">
+      <div class="hero">
+        <div class="hero-grid">
+          <div>
+            <h1>Fluxo Passivo de Budget, Render e Observabilidade</h1>
+            <p>
+              Este quadro mostra o recorte seguro mais recente da refatoração:
+              o domínio de <code>MemoryBudget</code> já fornece política por categoria,
+              os packets passivos de render carregam essa política,
+              e a camada de observabilidade já consegue montar um pacote completo fora do loop crítico.
+            </p>
+            <div class="chips">
+              <span class="chip">Bridge consolidado: <code>MemoryBudgetRuntimeBridge</code></span>
+              <span class="chip">Categorias ativas: <code>AudioPcm</code>, <code>CdStaging</code>, <code>Hud</code>, <code>DebugTransient</code></span>
+              <span class="chip">Render passivo: <code>TrackRenderFramePacket</code> + <code>CarVisualFramePacket</code></span>
+              <span class="chip">Observabilidade passiva: <code>FrameObservabilityPacket</code></span>
+            </div>
+          </div>
+          <div class="legend">
+            <h3>Legenda</h3>
+            <div class="legend-row"><span class="swatch" style="background: var(--passive);"></span>Contrato / packet passivo</div>
+            <div class="legend-row"><span class="swatch" style="background: var(--accent);"></span>Bridge / assembler</div>
+            <div class="legend-row"><span class="swatch" style="background: var(--warn);"></span>Consumidor runtime seguro</div>
+            <div class="legend-row"><span class="swatch" style="background: var(--critical);"></span>Caminho crítico ainda não tocado</div>
+            <div class="legend-row"><span class="swatch" style="background: var(--safe);"></span>Integração já validada</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="body">
+        <h2>Mapa Visual</h2>
+        <p>O fluxo abaixo já existe no código, mas ainda está majoritariamente desacoplado do runtime crítico.</p>
+      </div>
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 1380 760" xmlns="http://www.w3.org/2000/svg" aria-label="Fluxo passivo de budget, render e observabilidade">
+          <defs>
+            <marker id="arrowA" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="#79d7ff"></path>
+            </marker>
+            <marker id="arrowP" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="#cda9ff"></path>
+            </marker>
+          </defs>
+
+          <rect x="40" y="40" width="260" height="150" rx="20" fill="#122238" stroke="#2c4366"/>
+          <text x="64" y="74" fill="#e7efff" font-size="24" font-weight="700">MemoryBudgetDomain</text>
+          <text x="64" y="104" fill="#96aacc" font-size="15">thresholds, snapshot, pressure, policy</text>
+          <text x="64" y="134" fill="#96aacc" font-size="15">category-policy por tipo de consumidor</text>
+          <text x="64" y="166" fill="#ebf8ff" font-size="14">BuildCategoryBudgetPolicy(...)</text>
+
+          <rect x="370" y="40" width="290" height="150" rx="20" fill="#13283d" stroke="#2c4366"/>
+          <text x="394" y="74" fill="#e7efff" font-size="24" font-weight="700">MemoryBudgetRuntimeBridge</text>
+          <text x="394" y="104" fill="#96aacc" font-size="15">QueryCategoryPolicy(...)</text>
+          <text x="394" y="128" fill="#96aacc" font-size="15">PreferredPoolForCategory(...)</text>
+          <text x="394" y="152" fill="#96aacc" font-size="15">ShouldAvoidOptionalAllocationsForCategory(...)</text>
+
+          <rect x="740" y="40" width="260" height="150" rx="20" fill="#2d2540" stroke="#2c4366"/>
+          <text x="764" y="74" fill="#e7efff" font-size="24" font-weight="700">Runtime seguro já ligado</text>
+          <text x="764" y="104" fill="#96aacc" font-size="15">PCM bootstrap</text>
+          <text x="764" y="128" fill="#96aacc" font-size="15">CdStaging bootstrap</text>
+          <text x="764" y="152" fill="#96aacc" font-size="15">Hud / DebugTransient opcional</text>
+
+          <rect x="1080" y="40" width="260" height="150" rx="20" fill="#3b1f29" stroke="#2c4366"/>
+          <text x="1104" y="74" fill="#e7efff" font-size="24" font-weight="700">Loop crítico</text>
+          <text x="1104" y="104" fill="#96aacc" font-size="15">scheduler de pista</text>
+          <text x="1104" y="128" fill="#96aacc" font-size="15">submit de render</text>
+          <text x="1104" y="152" fill="#96aacc" font-size="15">draw / sync ainda intocados</text>
+
+          <rect x="180" y="280" width="280" height="160" rx="20" fill="#2d2540" stroke="#2c4366"/>
+          <text x="204" y="314" fill="#e7efff" font-size="24" font-weight="700">TrackRenderFramePacket</text>
+          <text x="204" y="344" fill="#96aacc" font-size="15">frameContext + renderPacket + telemetry</text>
+          <text x="204" y="370" fill="#96aacc" font-size="15">+ budgetPolicy(TrackRender)</text>
+          <text x="204" y="402" fill="#ebf8ff" font-size="14">SeedTrackRenderFramePacket(...)</text>
+
+          <rect x="520" y="280" width="280" height="160" rx="20" fill="#2d2540" stroke="#2c4366"/>
+          <text x="544" y="314" fill="#e7efff" font-size="24" font-weight="700">CarVisualFramePacket</text>
+          <text x="544" y="344" fill="#96aacc" font-size="15">frameContext + render/shadow/submit</text>
+          <text x="544" y="370" fill="#96aacc" font-size="15">+ telemetry + budgetPolicy(CarRender)</text>
+          <text x="544" y="402" fill="#ebf8ff" font-size="14">SeedCarVisualFramePacket(...)</text>
+
+          <rect x="860" y="280" width="320" height="160" rx="20" fill="#2d2540" stroke="#2c4366"/>
+          <text x="884" y="314" fill="#e7efff" font-size="24" font-weight="700">RenderBudgetPacketFlow</text>
+          <text x="884" y="344" fill="#96aacc" font-size="15">track + car</text>
+          <text x="884" y="370" fill="#96aacc" font-size="15">RenderBudgetPolicyPacket</text>
+          <text x="884" y="402" fill="#ebf8ff" font-size="14">BuildRenderBudgetPacketFlow(...)</text>
+
+          <rect x="450" y="530" width="470" height="170" rx="22" fill="#13283d" stroke="#2c4366"/>
+          <text x="478" y="566" fill="#e7efff" font-size="26" font-weight="700">FrameObservabilityPacket</text>
+          <text x="478" y="600" fill="#96aacc" font-size="15">overlay + telemetry + renderBudget + memory</text>
+          <text x="478" y="626" fill="#96aacc" font-size="15">builder completo fora do frame-loop</text>
+          <text x="478" y="658" fill="#ebf8ff" font-size="14">BuildFrameObservabilityPacket(...)</text>
+
+          <line x1="300" y1="115" x2="370" y2="115" stroke="#79d7ff" stroke-width="4" marker-end="url(#arrowA)"/>
+          <line x1="660" y1="115" x2="740" y2="115" stroke="#79d7ff" stroke-width="4" marker-end="url(#arrowA)"/>
+          <line x1="1000" y1="115" x2="1080" y2="115" stroke="#ff9797" stroke-width="4" marker-end="url(#arrowA)"/>
+
+          <line x1="515" y1="190" x2="320" y2="280" stroke="#cda9ff" stroke-width="4" marker-end="url(#arrowP)"/>
+          <line x1="555" y1="190" x2="660" y2="280" stroke="#cda9ff" stroke-width="4" marker-end="url(#arrowP)"/>
+          <line x1="460" y1="360" x2="860" y2="360" stroke="#cda9ff" stroke-width="4" marker-end="url(#arrowP)"/>
+          <line x1="800" y1="360" x2="860" y2="360" stroke="#cda9ff" stroke-width="4" marker-end="url(#arrowP)"/>
+          <line x1="1020" y1="440" x2="760" y2="530" stroke="#79d7ff" stroke-width="4" marker-end="url(#arrowA)"/>
+        </svg>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <section class="panel">
+        <div class="body">
+          <h2>Estado Atual</h2>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Camada</th>
+                <th>Já consome</th>
+                <th>Ainda não consome</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Bridge runtime</td>
+                <td>PCM, CdStaging, Hud opcional, DebugTransient opcional</td>
+                <td>TrackRender / CarRender em runtime crítico</td>
+              </tr>
+              <tr>
+                <td>Packets passivos</td>
+                <td><code>TrackRenderFramePacket</code>, <code>CarVisualFramePacket</code> com <code>budgetPolicy</code></td>
+                <td>Scheduler ou submit real usando esses campos</td>
+              </tr>
+              <tr>
+                <td>Observabilidade</td>
+                <td>Builders completos fora do loop</td>
+                <td>Montagem no frame-loop principal</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="body">
+          <h2>Arquivos-Chave</h2>
+          <div class="card">
+            <ul>
+              <li><code>src/memory_budget_runtime_bridge.hpp</code></li>
+              <li><code>src/game_loop_track_render_packet.hpp</code></li>
+              <li><code>src/game_loop_track_render_packet_assembler.hpp</code></li>
+              <li><code>src/game_loop_car_visual_packet.hpp</code></li>
+              <li><code>src/game_loop_car_visual_packet_assembler.hpp</code></li>
+              <li><code>src/game_loop_observability_contracts.hpp</code></li>
+              <li><code>src/game_loop_observability_state_assembler.hpp</code></li>
+              <li><code>MEMORY_BUDGET_PASSIVE_FLOW_PLAN.md</code></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel">
+      <div class="body">
+        <h2>Próximos Passos Seguros</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h3>1. Observabilidade passiva</h3>
+            <p>Montar um exemplo local de <code>FrameObservabilityPacket</code> em helper/test hook, sem entrar no loop.</p>
+          </div>
+          <div class="card">
+            <h3>2. Telemetria de budget</h3>
+            <p>Expor leitura resumida de <code>shouldReducePressure</code> para análise offline de render.</p>
+          </div>
+          <div class="card">
+            <h3>3. Runtime futuro</h3>
+            <p>Só depois usar esses signals para influenciar budget de pista/carro, com corte pequeno e validado isoladamente.</p>
+          </div>
+        </div>
+        <p class="footer-note">
+          Este documento representa apenas a camada passiva e os bridges seguros já validados.
+          Nenhuma parte do draw crítico, scheduler de pista ou submit real depende ainda desse fluxo.
+        </p>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

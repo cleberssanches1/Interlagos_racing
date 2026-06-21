@@ -14,6 +14,7 @@
 #include "background_manager.hpp"
 #include "application_state.hpp"
 #include "auto_lap_route_build_ops.hpp"
+#include "auto_lap_route_transition_ops.hpp"
 #include "auto_lap_route_runtime_state.hpp"
 #include "auto_lap_route_lifecycle_ops.hpp"
 #include "camera_path_runtime_state.hpp"
@@ -32,6 +33,7 @@
 #include "hud_system.hpp"
 #include "interfaces.hpp"
 #include "memory_budget_transition_ops.hpp"
+#include "memory_budget_runtime_bridge.hpp"
 #include "path_nya_loader.hpp"
 #include "physics_feature_flags.hpp"
 #include "realtime_fps_runtime_state.hpp"
@@ -1090,11 +1092,10 @@ private:
                 if (AutoLapInputToggleEnabled())
                 {
                     SetAutoLapTestEnabled(!AutoLapTestEnabled());
-                    autoLapRoute_.SetStartupYawAligned(false);
+                    AutoLapRouteDomain::ClearAutoLapStartupYawAlignment(autoLapRoute_);
                     if (AutoLapTestEnabled())
                     {
-                        autoLapRoute_.SetInitialized(false);
-                        autoLapRoute_.SetBuilt(false);
+                        AutoLapRouteDomain::ResetAutoLapPendingBuild(autoLapRoute_);
                     }
                     else
                     {
@@ -2030,8 +2031,11 @@ private:
     void PresentFrameHudAndTelemetry(const FramePresentationSnapshot& framePresentation)
     {
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Finish);
+        const bool allowOptionalHudTelemetry =
+            !Game::MemoryBudgetRuntimeBridge::ShouldAvoidHudOptionalTelemetry();
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
-                                                      context_.EnableRuntimeStatsLogs(),
+                                                      context_.EnableRuntimeStatsLogs() &&
+                                                          allowOptionalHudTelemetry,
                                                       context_.LogTrack(),
                                                       context_.LogCar(),
                                                       context_.faceCount,
@@ -2039,6 +2043,7 @@ private:
                                                       framePresentation.submittedTrackFaces,
                                                       framePresentation.submittedCarFaces);
         if (!framePresentation.RuntimeStatsEnabled()) return;
+        if (Game::MemoryBudgetRuntimeBridge::ShouldAvoidDebugTransientOptionalTelemetry()) return;
 
         PrintSegmentOverlapDiagnostics(framePresentation.submittedTrackFaces,
                                        framePresentation.submittedCarFaces);
@@ -2682,7 +2687,7 @@ private:
 
         carYawDeg_ = NormalizeYawDeg360(static_cast<int32_t>(autoLapRoute_.yawDeg[nearestIndex]));
         SyncCameraHeadingFromCar();
-        autoLapRoute_.SetStartupYawAligned(true);
+        AutoLapRouteDomain::MarkAutoLapStartupYawAligned(autoLapRoute_);
     }
 
     void PopulateCameraPathGeometryContext(CameraSystem::PathFrameContext& pathCtx,
@@ -2936,9 +2941,14 @@ private:
         autoLapRoute_.index = static_cast<uint16_t>(bestIdx);
         ioCarWorldPosition.X = autoLapRoute_.centers[autoLapRoute_.index].X;
         ioCarWorldPosition.Z = autoLapRoute_.centers[autoLapRoute_.index].Z;
-        ioCarWorldPosition.Y =
-            ResolveAutoLapRouteGroundYAt(context, autoLapRoute_.index, ioCarWorldPosition.Y) + rideHeight;
-        autoLapRoute_.SetInitialized(true);
+        ioCarWorldPosition.Y = AutoLapRouteDomain::ResolveRouteGroundYAt(
+                                   autoLapRoute_,
+                                   *context.trackSystem,
+                                   context.trackSegOffset,
+                                   autoLapRoute_.index,
+                                   ioCarWorldPosition.Y) +
+                               rideHeight;
+        AutoLapRouteDomain::MarkAutoLapInitialized(autoLapRoute_);
         if (AutoLapRouteDomain::CanApplyYawAtCurrentIndex(autoLapRoute_))
         {
             ioCarYawDeg = autoLapRoute_.yawDeg[autoLapRoute_.index];
@@ -3008,8 +3018,13 @@ private:
                     autoLapRoute_, ioCurrentIndex, ioNextIndex, ioCarWorldPosition)) break;
             ioCurrentIndex = ioNextIndex;
             ioNextIndex = (ioCurrentIndex + 1u) % routePointCount;
-            ioCarWorldPosition.Y =
-                ResolveAutoLapRouteGroundYAt(context, ioCurrentIndex, ioCarWorldPosition.Y) + rideHeight;
+            ioCarWorldPosition.Y = AutoLapRouteDomain::ResolveRouteGroundYAt(
+                                       autoLapRoute_,
+                                       *context.trackSystem,
+                                       context.trackSegOffset,
+                                       ioCurrentIndex,
+                                       ioCarWorldPosition.Y) +
+                                   rideHeight;
         }
     }
 
@@ -3017,7 +3032,10 @@ private:
     {
         if (AutoLapRouteDomain::HasObservedSegmentAtCurrentIndex(autoLapRoute_))
         {
-            AdvanceObservedAutoLapSegmentToward(segmentCount, autoLapRoute_.ids[autoLapRoute_.index]);
+            AutoLapRouteDomain::AdvanceObservedSegmentToward(
+                segmentCount,
+                autoLapRoute_.ids[autoLapRoute_.index],
+                latestActiveSegmentId_);
         }
     }
 
@@ -3044,10 +3062,18 @@ private:
         size_t nextIndex = (currentIndex + 1u) % routePointCount;
         const SRL::Math::Types::Vector3D& currentCenter = autoLapRoute_.centers[currentIndex];
         const SRL::Math::Types::Vector3D& nextCenter = autoLapRoute_.centers[nextIndex];
-        const SRL::Math::Types::Fxp currentGroundY =
-            ResolveAutoLapRouteGroundYAt(context, currentIndex, ioCarWorldPosition.Y);
-        const SRL::Math::Types::Fxp nextGroundY =
-            ResolveAutoLapRouteGroundYAt(context, nextIndex, ioCarWorldPosition.Y);
+        const SRL::Math::Types::Fxp currentGroundY = AutoLapRouteDomain::ResolveRouteGroundYAt(
+            autoLapRoute_,
+            *context.trackSystem,
+            context.trackSegOffset,
+            currentIndex,
+            ioCarWorldPosition.Y);
+        const SRL::Math::Types::Fxp nextGroundY = AutoLapRouteDomain::ResolveRouteGroundYAt(
+            autoLapRoute_,
+            *context.trackSystem,
+            context.trackSegOffset,
+            nextIndex,
+            ioCarWorldPosition.Y);
         AdvanceAutoLapPlanarPosition(nextCenter, ioCarWorldPosition);
         AdvanceAutoLapVerticalPosition(currentCenter,
                                        nextCenter,
@@ -3098,102 +3124,39 @@ private:
         return true;
     }
 
-    static const char* const* AutoLapGuidePathCandidates(size_t& outCount)
-    {
-        static const char* const kCandidates[] = {
-            "/CD/DATA/PATH.NYA",
-            "/CD/DATA/PATH.NYA;1",
-            "/DATA/PATH.NYA",
-            "/DATA/PATH.NYA;1",
-            "CD/DATA/PATH.NYA",
-            "CD/DATA/PATH.NYA;1",
-            "DATA/PATH.NYA",
-            "DATA/PATH.NYA;1",
-            "cd/data/PATH.NYA",
-            "cd/data/PATH.NYA;1",
-            "data/PATH.NYA",
-            "data/PATH.NYA;1",
-            "/PATH.NYA",
-            "/PATH.NYA;1",
-            "PATH.NYA",
-            "PATH.NYA;1",
-        };
-        outCount = sizeof(kCandidates) / sizeof(kCandidates[0]);
-        return kCandidates;
-    }
-
-    bool TryLoadAutoLapGuideBytes(std::vector<uint8_t>& outBytes,
-                                  const char*& outLoadedCandidate) const
-    {
-        size_t candidateCount = 0u;
-        const char* const* candidates = AutoLapGuidePathCandidates(candidateCount);
-        outLoadedCandidate = nullptr;
-        for (size_t i = 0; i < candidateCount; ++i)
-        {
-            if (!CdAssetDomain::ReadBinaryAsset(candidates[i], outBytes)) continue;
-            outLoadedCandidate = candidates[i];
-            return true;
-        }
-        return false;
-    }
-
-    void LogAutoLapGuideLoadFailure() const
+    void LogAutoLapGuideLoadFailure(
+        const AutoLapRouteDomain::AutoLapGuideLoadPacket& guideLoad) const
     {
         if constexpr (kEnableAutoPathLogs)
         {
-            SRL::Debug::Print(1, 23, "AUTO PATH read fail");
+            SRL::Debug::Print(1, 23, guideLoad.attempted ? "AUTO PATH read state" : "AUTO PATH read fail");
         }
     }
 
-    bool TryParseAutoLapGuideBytes(const std::vector<uint8_t>& bytes,
-                                   const char* loadedCandidate,
-                                   PathNya::ParseResult& outParsed) const
+    void LogAutoLapGuideParseFailure(
+        const AutoLapRouteDomain::AutoLapGuideLoadPacket& guideLoad) const
     {
-        if (PathNya::Parse(bytes.data(), bytes.size(), outParsed))
-        {
-            return true;
-        }
-
         if constexpr (kEnableAutoPathLogs)
         {
             SRL::Debug::Print(1, 23, "AUTO PATH parse fail %s",
-                              loadedCandidate ? loadedCandidate : "none");
+                              guideLoad.loadedCandidate ? guideLoad.loadedCandidate : "none");
             SRL::Debug::Print(1, 24, "AUTO PATH parse sz:%u",
-                              static_cast<unsigned>(bytes.size()));
-        }
-        return false;
-    }
-
-    void CopyParsedAutoLapGuideLines(const PathNya::ParseResult& parsed)
-    {
-        for (size_t lineIndex = 0; lineIndex < autoLapRoute_.guideLines.size(); ++lineIndex)
-        {
-            const auto& srcLine = parsed.lines[lineIndex];
-            auto& dstLine = autoLapRoute_.guideLines[lineIndex];
-            dstLine.reserve(srcLine.size());
-            for (size_t pointIndex = 0; pointIndex < srcLine.size(); ++pointIndex)
-            {
-                const auto& srcPoint = srcLine[pointIndex];
-                dstLine.push_back(SRL::Math::Types::Vector3D(
-                    SRL::Math::Types::Fxp::BuildRaw(srcPoint.xRaw),
-                    SRL::Math::Types::Fxp::BuildRaw(srcPoint.yRaw),
-                    SRL::Math::Types::Fxp::BuildRaw(srcPoint.zRaw)));
-            }
+                              static_cast<unsigned>(guideLoad.byteCount));
         }
     }
 
-    void LogAutoLapGuideLoadSuccess(const PathNya::ParseResult& parsed,
-                                    const char* loadedCandidate) const
+    void LogAutoLapGuideLoadSuccess(
+        const AutoLapRouteDomain::AutoLapGuideLoadPacket& guideLoad) const
     {
         if constexpr (kEnableAutoPathLogs)
         {
             SRL::Debug::Print(1, 23, "AUTO PATH ok %s",
-                              loadedCandidate ? loadedCandidate : "none");
+                              guideLoad.loadedCandidate ? guideLoad.loadedCandidate : "none");
             SRL::Debug::Print(1, 24, "AUTO PATH v:%u l0:%u l1:%u l2:%u",
-                              static_cast<unsigned>(parsed.version),
-                              static_cast<unsigned>(autoLapRoute_.guideLines[0].size()),
-                              static_cast<unsigned>(autoLapRoute_.guideLines[1].size()),
-                              static_cast<unsigned>(autoLapRoute_.guideLines[2].size()));
+                              static_cast<unsigned>(guideLoad.parsedVersion),
+                              static_cast<unsigned>(guideLoad.parsedLinePointCounts[0]),
+                              static_cast<unsigned>(guideLoad.parsedLinePointCounts[1]),
+                              static_cast<unsigned>(guideLoad.parsedLinePointCounts[2]));
         }
     }
 
@@ -3203,20 +3166,29 @@ private:
 
         std::vector<uint8_t> bytes{};
         const char* loadedCandidate = nullptr;
-        if (!TryLoadAutoLapGuideBytes(bytes, loadedCandidate))
+        if (!AutoLapRouteDomain::TryLoadGuideBytes(bytes, loadedCandidate))
         {
-            LogAutoLapGuideLoadFailure();
+            LogAutoLapGuideLoadFailure(
+                AutoLapRouteDomain::BuildAutoLapGuideReadFailurePacket());
             return false;
         }
 
         PathNya::ParseResult parsed{};
-        if (!TryParseAutoLapGuideBytes(bytes, loadedCandidate, parsed))
+        if (!AutoLapRouteDomain::TryParseGuideBytes(bytes, parsed))
         {
+            LogAutoLapGuideParseFailure(
+                AutoLapRouteDomain::BuildAutoLapGuideParseFailurePacket(
+                    loadedCandidate,
+                    static_cast<uint32_t>(bytes.size())));
             return false;
         }
 
-        CopyParsedAutoLapGuideLines(parsed);
-        LogAutoLapGuideLoadSuccess(parsed, loadedCandidate);
+        AutoLapRouteDomain::CopyParsedGuideLines(autoLapRoute_, parsed);
+        LogAutoLapGuideLoadSuccess(
+            AutoLapRouteDomain::BuildAutoLapGuideLoadSuccessPacket(
+                loadedCandidate,
+                static_cast<uint32_t>(bytes.size()),
+                parsed));
         return true;
     }
 
@@ -3234,13 +3206,30 @@ private:
             LogAutoLapGuideLineEmpty();
             return false;
         }
-        const auto& routeLine = ResolveSelectedAutoLapRouteLine(context, selectedLineIndex);
+        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
+        const auto& routeLine = AutoLapRouteDomain::ResolveSelectedRouteLine(
+            autoLapRoute_,
+            selectedLineIndex,
+            segmentCount);
         if (routeLine == nullptr) return false;
-        if (!PopulateAutoLapRouteFromGuideLine(context, *routeLine)) return false;
-        NormalizeAutoLapRouteDirection(context);
-        LogAutoLapGuideRouteSelection(selectedLineIndex,
-                                      autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)].size(),
-                                      routeLine->size());
+        if (!AutoLapRouteDomain::PopulateRouteFromGuideLine(
+                autoLapRoute_,
+                *context.trackSystem,
+                context.trackSegOffset,
+                *routeLine)) return false;
+        const bool reversed = AutoLapRouteDomain::NormalizeRouteDirection(
+            autoLapRoute_,
+            segmentCount);
+        const auto routeTrace = AutoLapRouteDomain::BuildAutoLapGuideRouteTrace(
+            autoLapRoute_,
+            selectedLineIndex,
+            routeLine->size(),
+            reversed);
+        LogAutoLapGuideRouteSelection(routeTrace);
+        if constexpr (kEnableAutoPathLogs)
+        {
+            SRL::Debug::Print(1, 26, reversed ? "AUTO PATH dir:REV fix" : "AUTO PATH dir:FWD");
+        }
         RebuildAutoLapRouteYawData();
         return AutoLapRouteDomain::HasValidGuideBuildOutput(autoLapRoute_);
     }
@@ -3253,264 +3242,29 @@ private:
         }
     }
 
-    const TrackLowWorkVector<SRL::Math::Types::Vector3D>* ResolveSelectedAutoLapRouteLine(
-        const Context& context,
-        int32_t selectedLineIndex)
-    {
-        if (!AutoLapRouteDomain::HasValidGuideLineIndex(autoLapRoute_, selectedLineIndex))
-        {
-            return nullptr;
-        }
-
-        autoLapRoute_.selectedGuideLine = static_cast<int8_t>(selectedLineIndex);
-        const auto& selectedLine = autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)];
-
-        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
-        if (!AutoLapRouteDomain::HasPositiveSegmentCount(segmentCount))
-        {
-            return nullptr;
-        }
-
-        const auto simplifiedMiddleLine =
-            SimplifyAutoLapGuideLine(selectedLine, static_cast<size_t>(segmentCount));
-        if (AutoLapRouteDomain::HasMinimumPointCount(simplifiedMiddleLine.size()))
-        {
-            autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)] = simplifiedMiddleLine;
-        }
-
-        return &autoLapRoute_.guideLines[static_cast<size_t>(selectedLineIndex)];
-    }
-
-    SRL::Math::Types::Fxp ScoreAutoLapPointToSegment(const Context& context,
-                                                     const SRL::Math::Types::Vector3D& point,
-                                                     int32_t segmentId) const
-    {
-        SRL::Math::Types::Vector3D center{};
-        if (!context.trackSystem->FindSegmentCenterById(segmentId, context.trackSegOffset, center))
-        {
-            return SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
-        }
-        return (center.X - point.X).Abs() + (center.Z - point.Z).Abs();
-    }
-
-    int32_t FindBestAutoLapSegmentForPoint(const Context& context,
-                                           const SRL::Math::Types::Vector3D& routePoint,
-                                           int32_t mappedSegmentId,
-                                           int32_t segmentCount) const
-    {
-        int32_t bestSegmentId = -1;
-        SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
-        if (mappedSegmentId <= 0)
-        {
-            for (int32_t segmentId = 1; segmentId <= segmentCount; ++segmentId)
-            {
-                const auto score = ScoreAutoLapPointToSegment(context, routePoint, segmentId);
-                if (bestSegmentId > 0 && !(score < bestScore)) continue;
-                bestSegmentId = segmentId;
-                bestScore = score;
-            }
-            return bestSegmentId;
-        }
-
-        static constexpr int32_t kBackSearch = 0;
-        static constexpr int32_t kForwardSearch = 12;
-        for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
-        {
-            const int32_t segmentId =
-                AutoLapRouteDomain::WrapSegmentId(segmentCount, mappedSegmentId + delta);
-            const auto score = ScoreAutoLapPointToSegment(context, routePoint, segmentId);
-            if (bestSegmentId > 0 && !(score < bestScore)) continue;
-            bestSegmentId = segmentId;
-            bestScore = score;
-        }
-        return bestSegmentId;
-    }
-
-    bool PopulateAutoLapRouteFromGuideLine(const Context& context,
-                                           const TrackLowWorkVector<SRL::Math::Types::Vector3D>& routeLine)
-    {
-        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
-        if (!AutoLapRouteDomain::HasPositiveSegmentCount(segmentCount)) return false;
-
-        autoLapRoute_.centers.reserve(routeLine.size());
-        autoLapRoute_.ids.reserve(routeLine.size());
-
-        int32_t mappedSegmentId = -1;
-        for (size_t i = 0; i < routeLine.size(); ++i)
-        {
-            const SRL::Math::Types::Vector3D routePoint = routeLine[i] + context.trackSegOffset;
-            autoLapRoute_.centers.push_back(routePoint);
-
-            const int32_t bestSegmentId =
-                FindBestAutoLapSegmentForPoint(context, routePoint, mappedSegmentId, segmentCount);
-            if (bestSegmentId <= 0) return false;
-            mappedSegmentId = bestSegmentId;
-            autoLapRoute_.ids.push_back(static_cast<int16_t>(mappedSegmentId));
-        }
-        return true;
-    }
-
-    void NormalizeAutoLapRouteDirection(const Context& context)
-    {
-        const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
-        const int32_t directionScore = AutoLapRouteDomain::ScoreRouteDirection(
-            autoLapRoute_, segmentCount);
-        if (AutoLapRouteDomain::ShouldReverseRouteDirection(directionScore))
-        {
-            std::reverse(autoLapRoute_.centers.begin(), autoLapRoute_.centers.end());
-            std::reverse(autoLapRoute_.ids.begin(), autoLapRoute_.ids.end());
-            if constexpr (kEnableAutoPathLogs)
-            {
-                SRL::Debug::Print(1, 26, "AUTO PATH dir:REV fix");
-            }
-            return;
-        }
-
-        if constexpr (kEnableAutoPathLogs)
-        {
-            SRL::Debug::Print(1, 26, "AUTO PATH dir:FWD");
-        }
-    }
-
-    void LogAutoLapGuideRouteSelection(int32_t selectedLineIndex,
-                                       size_t rawPointCount,
-                                       size_t outputPointCount) const
+    void LogAutoLapGuideRouteSelection(
+        const AutoLapRouteDomain::AutoLapGuideRouteTrace& routeTrace) const
     {
         if constexpr (kEnableAutoPathLogs)
         {
             SRL::Debug::Print(1, 25, "AUTO PATH l:%d raw:%u out:%u",
-                              static_cast<int>(selectedLineIndex),
-                              static_cast<unsigned>(rawPointCount),
-                              static_cast<unsigned>(outputPointCount));
+                              static_cast<int>(routeTrace.selectedGuideLine),
+                              static_cast<unsigned>(routeTrace.rawPointCount),
+                              static_cast<unsigned>(routeTrace.outputPointCount));
         }
-    }
-
-    static double AutoLapPointSegmentDistanceSqXZ(const SRL::Math::Types::Vector3D& point,
-                                                  const SRL::Math::Types::Vector3D& a,
-                                                  const SRL::Math::Types::Vector3D& b)
-    {
-        const double px = static_cast<double>(point.X.RawValue());
-        const double pz = static_cast<double>(point.Z.RawValue());
-        const double ax = static_cast<double>(a.X.RawValue());
-        const double az = static_cast<double>(a.Z.RawValue());
-        const double bx = static_cast<double>(b.X.RawValue());
-        const double bz = static_cast<double>(b.Z.RawValue());
-
-        const double vx = bx - ax;
-        const double vz = bz - az;
-        const double wx = px - ax;
-        const double wz = pz - az;
-        const double vv = (vx * vx) + (vz * vz);
-        if (vv <= 0.0)
-        {
-            return (wx * wx) + (wz * wz);
-        }
-
-        double t = ((wx * vx) + (wz * vz)) / vv;
-        if (t < 0.0) t = 0.0;
-        if (t > 1.0) t = 1.0;
-
-        const double dx = px - (ax + (vx * t));
-        const double dz = pz - (az + (vz * t));
-        return (dx * dx) + (dz * dz);
-    }
-
-    static TrackLowWorkVector<SRL::Math::Types::Vector3D> SimplifyAutoLapGuideLine(
-        const TrackLowWorkVector<SRL::Math::Types::Vector3D>& input,
-        size_t segmentCount)
-    {
-        TrackLowWorkVector<SRL::Math::Types::Vector3D> output{};
-        if (input.size() <= 2u)
-        {
-            output = input;
-            return output;
-        }
-
-        const size_t targetMaxPoints = std::min<size_t>(
-            std::max<size_t>(segmentCount * 6u, 1536u),
-            2048u);
-        if (input.size() <= targetMaxPoints)
-        {
-            output = input;
-            return output;
-        }
-
-        constexpr double kEpsilonRaw = static_cast<double>(2 << 16);
-        const double epsilonSq = kEpsilonRaw * kEpsilonRaw;
-
-        std::vector<uint8_t> keep(input.size(), 0u);
-        keep.front() = 1u;
-        keep.back() = 1u;
-
-        std::vector<std::pair<size_t, size_t>> stack{};
-        stack.emplace_back(0u, input.size() - 1u);
-        while (!stack.empty())
-        {
-            const auto range = stack.back();
-            stack.pop_back();
-            if (range.second <= range.first + 1u) continue;
-
-            size_t farthestIndex = 0u;
-            double farthestDistSq = -1.0;
-            for (size_t i = range.first + 1u; i < range.second; ++i)
-            {
-                const double distSq =
-                    AutoLapPointSegmentDistanceSqXZ(input[i], input[range.first], input[range.second]);
-                if (distSq <= farthestDistSq) continue;
-                farthestDistSq = distSq;
-                farthestIndex = i;
-            }
-
-            if (farthestDistSq > epsilonSq)
-            {
-                keep[farthestIndex] = 1u;
-                stack.emplace_back(range.first, farthestIndex);
-                stack.emplace_back(farthestIndex, range.second);
-            }
-        }
-
-        output.reserve(std::min(targetMaxPoints, input.size()));
-        for (size_t i = 0; i < input.size(); ++i)
-        {
-            if (keep[i] == 0u) continue;
-            output.push_back(input[i]);
-        }
-
-        if (output.size() <= targetMaxPoints)
-        {
-            return output;
-        }
-
-        TrackLowWorkVector<SRL::Math::Types::Vector3D> capped{};
-        capped.reserve(targetMaxPoints);
-        const size_t lastIndex = output.size() - 1u;
-        for (size_t i = 0; i < targetMaxPoints; ++i)
-        {
-            const size_t srcIndex =
-                (i * lastIndex) / std::max<size_t>(1u, targetMaxPoints - 1u);
-            if (!capped.empty() &&
-                capped.back().X.RawValue() == output[srcIndex].X.RawValue() &&
-                capped.back().Y.RawValue() == output[srcIndex].Y.RawValue() &&
-                capped.back().Z.RawValue() == output[srcIndex].Z.RawValue())
-            {
-                continue;
-            }
-            capped.push_back(output[srcIndex]);
-        }
-
-        if (capped.size() >= 2u)
-        {
-            return capped;
-        }
-        return output;
     }
 
     void BuildFallbackAutoLapRoute(const Context& context)
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         LogAutoLapFallbackBuild();
-        PopulateFallbackAutoLapCenters(context, segmentCount);
-        FinalizeFallbackAutoLapBuild();
+        AutoLapRouteDomain::PopulateFallbackCenters(
+            autoLapRoute_,
+            *context.trackSystem,
+            context.trackSegOffset,
+            segmentCount);
+        RebuildAutoLapRouteYawData();
+        AutoLapRouteDomain::FinalizeAutoLapFallbackBuildState(autoLapRoute_);
     }
 
     void LogAutoLapFallbackBuild() const
@@ -3519,106 +3273,6 @@ private:
         {
             SRL::Debug::Print(1, 24, "AUTO PATH fallback seg centers");
         }
-    }
-
-    void PopulateFallbackAutoLapCenters(const Context& context, int32_t segmentCount)
-    {
-        SRL::Math::Types::Vector3D center{};
-        for (int32_t id = 1; id <= segmentCount; ++id)
-        {
-            if (!context.trackSystem->FindSegmentCenterById(id, context.trackSegOffset, center)) continue;
-            autoLapRoute_.ids.push_back(id);
-            autoLapRoute_.centers.push_back(center);
-        }
-    }
-
-    void FinalizeFallbackAutoLapBuild()
-    {
-        RebuildAutoLapRouteYawData();
-        autoLapRoute_.SetBuilt(!autoLapRoute_.ids.empty());
-        autoLapRoute_.SetInitialized(false);
-    }
-
-    void AdvanceObservedAutoLapSegmentToward(int32_t segmentCount, int32_t desiredSegmentId)
-    {
-        if (desiredSegmentId <= 0 || segmentCount <= 0)
-        {
-            latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
-            return;
-        }
-
-        desiredSegmentId = AutoLapRouteDomain::WrapSegmentId(segmentCount, desiredSegmentId);
-        if (latestActiveSegmentId_ <= 0)
-        {
-            latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
-            return;
-        }
-
-        const int32_t currentSegmentId =
-            AutoLapRouteDomain::WrapSegmentId(segmentCount, latestActiveSegmentId_);
-        if (currentSegmentId <= 0)
-        {
-            latestActiveSegmentId_ = static_cast<int16_t>(desiredSegmentId);
-            return;
-        }
-
-        int32_t forwardDistance = (desiredSegmentId - currentSegmentId) % segmentCount;
-        if (forwardDistance < 0) forwardDistance += segmentCount;
-        if (forwardDistance == 0)
-        {
-            latestActiveSegmentId_ = static_cast<int16_t>(currentSegmentId);
-            return;
-        }
-
-        if (forwardDistance < (segmentCount / 2))
-        {
-            latestActiveSegmentId_ =
-                static_cast<int16_t>(AutoLapRouteDomain::WrapSegmentId(segmentCount, currentSegmentId + 1));
-            return;
-        }
-
-        // Ignore backward/noisy remaps from the decimated PATH so the
-        // streaming window does not thrash or try to catch up by several
-        // segments in one frame.
-        latestActiveSegmentId_ = static_cast<int16_t>(currentSegmentId);
-    }
-
-    SRL::Math::Types::Fxp ResolveAutoLapRouteGroundYAt(const Context& context,
-                                                       size_t routeIndex,
-                                                       const SRL::Math::Types::Fxp& fallbackY) const
-    {
-        static constexpr uint16_t kAsphaltFamilyId = 1u; // F01064.tga
-
-        if (AutoLapRouteDomain::HasCenterAtIndex(autoLapRoute_, routeIndex))
-        {
-            SRL::Math::Types::Fxp asphaltY{};
-            if (context.trackSystem->FindSurfaceYByFamilyId(
-                    autoLapRoute_.centers[routeIndex],
-                    context.trackSegOffset,
-                    kAsphaltFamilyId,
-                    asphaltY))
-            {
-                return asphaltY;
-            }
-        }
-
-        if (AutoLapRouteDomain::HasMappedSegmentAtIndex(autoLapRoute_, routeIndex))
-        {
-            const int32_t routeSegmentId = static_cast<int32_t>(autoLapRoute_.ids[routeIndex]);
-            SRL::Math::Types::Vector3D segmentCenter{};
-            if (routeSegmentId > 0 &&
-                context.trackSystem->FindSegmentCenterById(
-                    routeSegmentId,
-                    context.trackSegOffset,
-                    segmentCenter))
-            {
-                return segmentCenter.Y;
-            }
-        }
-
-        return AutoLapRouteDomain::HasCenterAtIndex(autoLapRoute_, routeIndex)
-            ? autoLapRoute_.centers[routeIndex].Y
-            : fallbackY;
     }
 
     void UpdateAutoLapHeading(size_t currentIndex,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "path_nya_loader.hpp"
 #include "auto_lap_route_state_assembler.hpp"
 #include "auto_lap_route_runtime_state.hpp"
 
@@ -104,6 +105,51 @@ inline AutoLapGuideLoadPacket BuildAutoLapGuideLoadPacket(
     return packet;
 }
 
+inline AutoLapGuideLoadPacket BuildAutoLapGuideReadFailurePacket()
+{
+    std::array<uint16_t, 3> parsedLinePointCounts{};
+    return BuildAutoLapGuideLoadPacket(false,
+                                       false,
+                                       false,
+                                       nullptr,
+                                       0u,
+                                       0u,
+                                       parsedLinePointCounts);
+}
+
+inline AutoLapGuideLoadPacket BuildAutoLapGuideParseFailurePacket(const char* loadedCandidate,
+                                                                  uint32_t byteCount)
+{
+    std::array<uint16_t, 3> parsedLinePointCounts{};
+    return BuildAutoLapGuideLoadPacket(true,
+                                       true,
+                                       false,
+                                       loadedCandidate,
+                                       byteCount,
+                                       0u,
+                                       parsedLinePointCounts);
+}
+
+inline AutoLapGuideLoadPacket BuildAutoLapGuideLoadSuccessPacket(
+    const char* loadedCandidate,
+    uint32_t byteCount,
+    const PathNya::ParseResult& parsed)
+{
+    std::array<uint16_t, 3> parsedLinePointCounts{};
+    for (size_t i = 0; i < parsedLinePointCounts.size(); ++i)
+    {
+        parsedLinePointCounts[i] = static_cast<uint16_t>(parsed.lines[i].size());
+    }
+
+    return BuildAutoLapGuideLoadPacket(true,
+                                       true,
+                                       true,
+                                       loadedCandidate,
+                                       byteCount,
+                                       parsed.version,
+                                       parsedLinePointCounts);
+}
+
 inline AutoLapRouteBuildPacket BuildAutoLapRouteBuildPacket(bool valid,
                                                             bool usedGuidePath,
                                                             bool normalizedDirection,
@@ -133,6 +179,50 @@ inline AutoLapRouteBuildPacket BuildAutoLapRouteBuildPacket(const AutoLapRouteSt
                                         state.selectedGuideLine,
                                         static_cast<uint16_t>(state.centers.size()),
                                         static_cast<uint16_t>(state.ids.size()));
+}
+
+inline AutoLapGuideRouteTrace BuildAutoLapGuideRouteTrace(bool usedGuidePath,
+                                                          bool normalizedDirection,
+                                                          int8_t selectedGuideLine,
+                                                          uint16_t rawPointCount,
+                                                          uint16_t outputPointCount)
+{
+    AutoLapGuideRouteTrace trace{};
+    trace.usedGuidePath = usedGuidePath;
+    trace.normalizedDirection = normalizedDirection;
+    trace.selectedGuideLine = selectedGuideLine;
+    trace.rawPointCount = rawPointCount;
+    trace.outputPointCount = outputPointCount;
+    return trace;
+}
+
+inline AutoLapGuideRouteTrace BuildAutoLapGuideRouteTrace(const AutoLapRouteState& state,
+                                                          int32_t selectedLineIndex,
+                                                          size_t outputPointCount,
+                                                          bool normalizedDirection)
+{
+    uint16_t rawPointCount = 0u;
+    if (selectedLineIndex >= 0 &&
+        static_cast<size_t>(selectedLineIndex) < state.guideLines.size())
+    {
+        rawPointCount = static_cast<uint16_t>(
+            state.guideLines[static_cast<size_t>(selectedLineIndex)].size());
+    }
+
+    return BuildAutoLapGuideRouteTrace(true,
+                                       normalizedDirection,
+                                       static_cast<int8_t>(selectedLineIndex),
+                                       rawPointCount,
+                                       static_cast<uint16_t>(outputPointCount));
+}
+
+inline AutoLapGuideRouteTrace BuildFallbackAutoLapGuideRouteTrace(const AutoLapRouteState& state)
+{
+    return BuildAutoLapGuideRouteTrace(false,
+                                       false,
+                                       -1,
+                                       0u,
+                                       static_cast<uint16_t>(state.centers.size()));
 }
 
 inline AutoLapRouteStepPacket BuildAutoLapRouteStepPacket(

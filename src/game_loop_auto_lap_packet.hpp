@@ -11,6 +11,7 @@ struct AutoLapFramePacket
     AutoLapRouteDomain::AutoLapRouteStorageSnapshot storage{};
     AutoLapRouteDomain::AutoLapGuideLoadPacket guideLoad{};
     AutoLapRouteDomain::AutoLapRouteBuildPacket build{};
+    AutoLapRouteDomain::AutoLapGuideRouteTrace routeTrace{};
     AutoLapRouteDomain::AutoLapRouteStepPacket step{};
 
     bool Valid() const
@@ -19,6 +20,7 @@ struct AutoLapFramePacket
                storage.built ||
                guideLoad.attempted ||
                build.valid ||
+               routeTrace.outputPointCount > 0u ||
                step.valid;
     }
 };

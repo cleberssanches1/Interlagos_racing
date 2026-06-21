@@ -1,5 +1,6 @@
 #pragma once
 
+#include "memory_budget_runtime_bridge.hpp"
 #include "game_loop_track_render_packet.hpp"
 
 namespace GameLoopRuntime
@@ -14,6 +15,8 @@ inline void SeedTrackRenderFramePacket(
     outPacket.frameContext = frameContext;
     outPacket.renderPacket = renderPacket;
     outPacket.telemetry = telemetry;
+    outPacket.budgetPolicy = Game::MemoryBudgetRuntimeBridge::QueryCategoryPolicy(
+        Game::MemoryBudgetRuntimeBridge::ConsumerCategory::TrackRender);
 }
 
 } // namespace GameLoopRuntime

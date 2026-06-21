@@ -71,6 +71,15 @@ struct AutoLapRouteBuildPacket
     uint16_t mappedSegmentCount = 0u;
 };
 
+struct AutoLapGuideRouteTrace
+{
+    bool usedGuidePath = false;
+    bool normalizedDirection = false;
+    int8_t selectedGuideLine = -1;
+    uint16_t rawPointCount = 0u;
+    uint16_t outputPointCount = 0u;
+};
+
 struct AutoLapRouteStepPacket
 {
     bool valid = false;

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "memory_budget_contracts.hpp"
 #include "game_loop_memory_presentation_contracts.hpp"
 #include "game_loop_overlay_contracts.hpp"
 #include "game_loop_telemetry_contracts.hpp"
@@ -37,6 +38,21 @@ struct TelemetryPacketFlow
     GameLoopTelemetryDomain::RealtimeFpsPacket realtimeFps{};
 };
 
+struct RenderBudgetPolicyPacket
+{
+    bool valid = false;
+    MemoryBudgetDomain::CategoryBudgetPolicy budgetPolicy{};
+    bool shouldReducePressure = false;
+    bool shouldAvoidOptionalAllocations = false;
+};
+
+struct RenderBudgetPacketFlow
+{
+    bool valid = false;
+    RenderBudgetPolicyPacket track{};
+    RenderBudgetPolicyPacket car{};
+};
+
 struct MemoryPresentationPacketFlow
 {
     bool valid = false;
@@ -52,6 +68,7 @@ struct FrameObservabilityPacket
     uint32_t frameId = 0u;
     OverlayPacketFlow overlay{};
     TelemetryPacketFlow telemetry{};
+    RenderBudgetPacketFlow renderBudget{};
     MemoryPresentationPacketFlow memory{};
 };
 
