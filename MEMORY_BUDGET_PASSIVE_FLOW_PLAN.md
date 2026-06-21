@@ -379,11 +379,34 @@ That presenter-facing passive groundwork is now also consolidated one level high
 
 - `src/game_loop_presenter_input_contracts.hpp`
 - `src/game_loop_presenter_input_assembler.hpp`
+- `src/game_loop_presenter_render_debug_contracts.hpp`
+- `src/game_loop_presenter_render_debug_assembler.hpp`
+- `src/game_loop_presenter_overlay_debug_contracts.hpp`
+- `src/game_loop_presenter_overlay_debug_assembler.hpp`
+- `src/game_loop_presenter_input_summary_contracts.hpp`
+- `src/game_loop_presenter_input_summary_assembler.hpp`
+- `src/game_loop_presenter_facade_contracts.hpp`
+- `src/game_loop_presenter_facade_assembler.hpp`
+- `src/game_loop_presenter_facade_interface_contracts.hpp`
+- `src/game_loop_presenter_facade_interface_assembler.hpp`
+- `GAME_LOOP_PRESENTER_FACADE_PLAN.md`
 
 Current effect:
 
 - memory/debug presentation can now participate in one top-level presenter input
   alongside presentation/HUD and overlay/debug bundles
+- presenter-side render/debug consumption can also use a narrower summary packet
+  instead of walking the full render aggregate
+- presenter-side overlay/observability consumption can also use a narrower
+  summary packet instead of walking the full overlay + observability aggregates
+- presenter-side top-level flow control can now use one input summary packet
+  before touching the deeper passive presenter bundles
+- presenter-side facade handoff can now use one directly consumable facade packet
+  instead of rebuilding HUD/render/overlay slices at the call site
+- presenter-side integration order is now explicitly documented through a facade
+  request/decision contract before any live substitution is attempted
+- the full passive presenter inventory is now centralized in
+  `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
 - this reduces future host-side stitching before any runtime migration of the
   presenter path
 - allocator, audio, render and frame-loop behavior remain untouched

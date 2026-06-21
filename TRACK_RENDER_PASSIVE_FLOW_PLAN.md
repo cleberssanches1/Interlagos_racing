@@ -190,3 +190,16 @@ Current effect:
 - `TrackRenderFramePacket` can now be grouped off-path with `CarVisualFramePacket`
 - this prepares a future render/presenter facade without touching producer/sort ownership
 - runtime scheduling and `N-1` policy remain untouched
+
+An additional passive derived-debug slice is now also available for the track path:
+
+- `src/game_loop_track_render_debug_contracts.hpp`
+- `src/game_loop_track_render_debug_assembler.hpp`
+
+Current effect:
+
+- `TrackRenderFramePacket` can now be reduced off-path into a smaller
+  `TrackRenderDebugPacket`
+- future presenter/debug formatting can consume track scheduling/render state
+  without walking the full frame-context/render/telemetry packet structure
+- runtime scheduler ownership remains untouched

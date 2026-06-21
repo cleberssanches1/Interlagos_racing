@@ -2,12 +2,13 @@
 
 ## Objetivo
 
-Reintroduzir a consolidação de `CdAssetSystem` sem voltar a desestabilizar `src/main.cxx` e o bootstrap do jogo.
-
+Reintroduzir a consolidação de `CdAssetSystem` sem voltar a desestabilizar
+`src/main.cxx` e o bootstrap do jogo.
 
 ## Fato observado
 
-Uma delegação mínima de `FindExistingPath(...)` em `src/main.cxx` foi suficiente para voltar a provocar falha de boot no emulador, mesmo com:
+Uma delegação mínima de `FindExistingPath(...)` em `src/main.cxx` foi
+suficiente para voltar a provocar falha de boot no emulador, mesmo com:
 
 - build ok;
 - ISO em `4134912` bytes;
@@ -19,16 +20,14 @@ Conclusão prática:
 - a reintrodução de `CdAssetSystem` deve evitar tocar no bootstrap por enquanto;
 - os próximos passos precisam ser externos e passivos.
 
-
 ## Hipótese técnica
 
-Assim como no scheduler, o problema mais provável não foi a semântica do helper.
-O problema mais provável foi:
+Assim como no scheduler, o problema mais provável não foi a semântica do
+helper. O problema mais provável foi:
 
 - deslocamento de layout em arquivo crítico de bootstrap;
 - alteração de endereçamento/ordem no binário final;
 - sensibilidade do caminho de inicialização a mudanças muito pequenas.
-
 
 ## Regra nova para `main.cxx`
 
@@ -39,7 +38,6 @@ Evitar por enquanto:
 - wrappers inline substituindo utilitários locais;
 - unificações de parsing em runtime.
 
-
 ## Estratégia de reintrodução segura
 
 ### Nível 0 — preparação fora do bootstrap
@@ -49,13 +47,14 @@ Permitido:
 - contratos passivos;
 - ops externas passivas;
 - documentação operacional;
-- normalização de listas de candidatos em arquivos auxiliares não integrados.
+- normalização de listas de candidatos em arquivos auxiliares não integrados;
+- packets passivos estreitos derivados de `CdAssetFramePacket`;
+- packets estreitos específicos para `SBA` e `car anchors`.
 
 Proibido:
 
 - tocar em `src/main.cxx` nesta fase;
 - tocar em `src/game_loop_system.hpp` para CD nesta fase.
-
 
 ### Nível 1 — substituição textual 1:1
 
@@ -66,14 +65,12 @@ Quando a reentrada no bootstrap voltar a ser tentada:
 - não criar chamada indireta nova;
 - não mover grupos inteiros de função.
 
-
 ### Nível 2 — unificação por blocos menos sensíveis
 
 Antes de voltar ao bootstrap:
 
 - priorizar unificação em pontos menos sensíveis do domínio de CD;
 - manter `main.cxx` como último lugar a receber integração real.
-
 
 ## Ordem revisada de reentrada
 
@@ -82,9 +79,16 @@ Antes de voltar ao bootstrap:
    - path resolution;
    - binary read;
    - anchor parse;
-3. preparar equivalência documental entre utilitários locais e `CdAssetSystem`;
+   - bootstrap decision packets;
+   - SBA-only decision packet;
+   - anchor-fallback decision packet;
+3. preparar equivalência documental entre utilitários locais e
+   `CdAssetSystem`;
 4. só então considerar uma microetapa textual `1:1` no bootstrap.
 
+Para a ordem exata de retry com packets estreitos, ver:
+
+- `CD_ASSET_MINIMAL_BOOTSTRAP_SUBSTITUTION_PLAN.md`
 
 ## Critério de reentrada
 

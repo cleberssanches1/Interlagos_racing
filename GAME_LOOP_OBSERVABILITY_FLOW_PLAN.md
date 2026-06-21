@@ -311,6 +311,18 @@ The observability-specific compile-only hook now validates the passive include c
 - `src/game_loop_render_debug_assembler.hpp`
 - `src/game_loop_car_visual_debug_contracts.hpp`
 - `src/game_loop_car_visual_debug_assembler.hpp`
+- `src/game_loop_track_render_debug_contracts.hpp`
+- `src/game_loop_track_render_debug_assembler.hpp`
+- `src/game_loop_presenter_render_debug_contracts.hpp`
+- `src/game_loop_presenter_render_debug_assembler.hpp`
+- `src/game_loop_presenter_overlay_debug_contracts.hpp`
+- `src/game_loop_presenter_overlay_debug_assembler.hpp`
+- `src/game_loop_presenter_input_summary_contracts.hpp`
+- `src/game_loop_presenter_input_summary_assembler.hpp`
+- `src/game_loop_presenter_facade_contracts.hpp`
+- `src/game_loop_presenter_facade_assembler.hpp`
+- `src/game_loop_presenter_facade_interface_contracts.hpp`
+- `src/game_loop_presenter_facade_interface_assembler.hpp`
 - `src/game_loop_presenter_input_contracts.hpp`
 - `src/game_loop_presenter_input_assembler.hpp`
 - `src/game_loop_track_render_packet.hpp`
@@ -332,11 +344,96 @@ Current effect:
 - one off-path `PresenterInputBundle` can now carry:
   - `PresentationDebugBundle`
   - `RenderFrameDebugBundle`
+  - `PresenterRenderDebugPacket`
   - `OverlayDebugBundle`
+  - `PresenterOverlayDebugPacket`
   - `ObservabilityDebugBundle`
+  - `PresenterInputSummaryPacket`
 - future presenter/facade extraction can consume one stable aggregate input
   instead of rebuilding cross-domain debug/presentation dependencies at the host
 - runtime execution remains untouched
+
+The presenter-facing side now also exposes one reduced render summary:
+
+- `src/game_loop_presenter_render_debug_contracts.hpp`
+- `src/game_loop_presenter_render_debug_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterRenderDebugPacket` can now carry:
+  - `TrackRenderDebugPacket`
+  - `CarVisualDebugPacket`
+  - top-level `hasTrack` / `hasCar` / `hasRenderableWork`
+- the future presenter can consume a narrower render summary without walking the
+  full `RenderFrameDebugBundle`
+- runtime execution remains untouched
+
+The presenter-facing side now also exposes one reduced overlay/observability summary:
+
+- `src/game_loop_presenter_overlay_debug_contracts.hpp`
+- `src/game_loop_presenter_overlay_debug_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterOverlayDebugPacket` can now carry:
+  - overlay flow presence
+  - telemetry flow presence
+  - segment/window summary
+  - query/wall-query summary
+  - frame/memory debug presence flags
+- the future presenter can consume a narrower overlay/debug summary without
+  walking both `OverlayDebugBundle` and `ObservabilityDebugBundle`
+- runtime execution remains untouched
+
+The presenter-facing side now also exposes one top-level input summary:
+
+- `src/game_loop_presenter_input_summary_contracts.hpp`
+- `src/game_loop_presenter_input_summary_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterInputSummaryPacket` can now carry:
+  - presentation/HUD presence
+  - render/overlay/observability presence
+  - top-level speed/gear/rpm summary
+  - top-level face/query counters
+- the future presenter facade can branch on one narrow summary packet before
+  touching any deeper passive bundle
+- runtime execution remains untouched
+
+The presenter-facing side now also exposes one facade-ready packet:
+
+- `src/game_loop_presenter_facade_contracts.hpp`
+- `src/game_loop_presenter_facade_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterFacadePacket` can now carry:
+  - `PresenterInputSummaryPacket`
+  - `DrivingHudTextPacket`
+  - `PeriodicHudStatsPacket`
+  - `PresenterRenderDebugPacket`
+  - `PresenterOverlayDebugPacket`
+- the future passive presenter facade can receive one directly consumable packet
+  instead of branching first on the broader `PresenterInputBundle`
+- runtime execution remains untouched
+
+The presenter-facing side now also exposes one explicit facade interface contract:
+
+- `src/game_loop_presenter_facade_interface_contracts.hpp`
+- `src/game_loop_presenter_facade_interface_assembler.hpp`
+- `GAME_LOOP_PRESENTER_FACADE_PLAN.md`
+
+Current effect:
+
+- one off-path `PresenterFacadeRequestPacket` now describes the non-owning
+  handoff into a future facade
+- one off-path `PresenterFacadeDecisionPacket` now describes the first safe
+  decision surface for runtime-neutral facade integration
+- the safe substitution order for a future `GameLoopPresenterFacade` is now
+  documented independently from the broader observability plan
+- the full passive presenter inventory is now centralized in
+  `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
 
 The render-facing passive side now also exposes one aggregate bundle:
 
@@ -347,6 +444,7 @@ Current effect:
 
 - one off-path `RenderFrameDebugBundle` can now carry:
   - `TrackRenderFramePacket`
+  - `TrackRenderDebugPacket`
   - `CarVisualFramePacket`
   - `CarVisualDebugPacket`
 - the future presenter/render-facade path can consume one stable visual/render

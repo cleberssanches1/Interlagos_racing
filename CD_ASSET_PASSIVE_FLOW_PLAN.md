@@ -13,6 +13,12 @@ without changing the current boot sequence.
 - `src/cd_asset_system.hpp`
 - `src/game_loop_cd_asset_packet.hpp`
 - `src/game_loop_cd_asset_packet_assembler.hpp`
+- `src/game_loop_cd_asset_bootstrap_decision_contracts.hpp`
+- `src/game_loop_cd_asset_bootstrap_decision_assembler.hpp`
+- `src/game_loop_cd_asset_sba_decision_contracts.hpp`
+- `src/game_loop_cd_asset_sba_decision_assembler.hpp`
+- `src/game_loop_cd_asset_anchor_decision_contracts.hpp`
+- `src/game_loop_cd_asset_anchor_decision_assembler.hpp`
 
 These files already describe a passive CD asset path for:
 
@@ -52,6 +58,27 @@ This stays:
 - frame/bootstrap-local
 - non-owning
 - runtime-neutral until explicit integration is needed
+
+## Narrow bootstrap decision layer
+
+`CdAssetBootstrapDecisionPacket` now narrows `CdAssetFramePacket` down to the
+smallest bootstrap-facing decision surface currently worth keeping off-path:
+
+- request validity
+- asset kind
+- resolve/read/parse intent
+- resolved-path presence
+- read/parse success
+- car-anchor parse validity
+- candidate count
+- chunk size
+
+This exists to:
+
+- prepare a future bootstrap-local substitution without carrying the broader
+  request/read/parse packet structure into `src/main.cxx`
+- keep the first live retry focused on explicit CD bootstrap decisions only
+- avoid re-deriving the same resolve/read/parse booleans at bootstrap use sites
 
 ## Runtime-to-passive substitution map
 
@@ -176,6 +203,31 @@ Another safe passive step now available for this slice is:
 
 This means the passive CD side now has a complete request-to-frame-packet path
 ready for future substitutional bootstrap cuts.
+
+An additional safe passive step now also exists for this slice:
+
+- derive one `CdAssetBootstrapDecisionPacket` from `CdAssetFramePacket`
+- keep that decision packet compile-only for now
+
+This means a future bootstrap retry can target a narrow decision packet first,
+instead of pulling the broader CD asset packet structure into `src/main.cxx`.
+
+Two even narrower bootstrap-side cuts now also exist:
+
+- `CdAssetSbaBootstrapDecisionPacket`
+- `CdAssetAnchorBootstrapDecisionPacket`
+
+Current effect:
+
+- SBA shadow-model path/load intent can now be represented without carrying the
+  broader bootstrap packet into the future use site
+- car-anchor fallback availability can now be represented together with parsed
+  anchor data, without rebuilding fallback booleans at the future use site
+- both slices remain compile-only and off-path for now
+
+The exact future retry order for these narrow packets is now documented in:
+
+- `CD_ASSET_MINIMAL_BOOTSTRAP_SUBSTITUTION_PLAN.md`
 
 ## Applied safe runtime bridge
 
