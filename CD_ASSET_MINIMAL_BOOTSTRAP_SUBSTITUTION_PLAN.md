@@ -104,6 +104,10 @@ Do not reintroduce these directly into the bootstrap call site first:
 Those structures may remain upstream/off-path, but the live bootstrap boundary
 should consume only the narrow packet prepared for it.
 
+Preferred compile-only narrowing directly above those bootstrap boundaries:
+
+- `CdAssetBootstrapDecisionBridgePacket`
+
 ## Remove-first rule
 
 Each bootstrap patch must be substitutional.

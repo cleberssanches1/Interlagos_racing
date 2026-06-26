@@ -9,6 +9,8 @@ frame pacing behavior.
 Companion inventory:
 
 - `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
+- `PRESENTER_FACADE_CHAIN_FLOW_PLAN.md`
+- `PRESENTER_FACADE_LIVE_INTEGRATION_INVENTORY.md`
 - `GAME_LOOP_PRESENTER_RUNTIME_MINIMAL_INTEGRATION_PLAN.md`
 - `GAME_LOOP_PRESENTER_RUNTIME_ALTERNATIVES.md`
 - `GAME_LOOP_PRESENTER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
@@ -27,6 +29,10 @@ The presenter-facing passive groundwork now exists in:
 - `src/game_loop_presenter_input_summary_assembler.hpp`
 - `src/game_loop_presenter_facade_contracts.hpp`
 - `src/game_loop_presenter_facade_assembler.hpp`
+- `src/game_loop_presenter_facade_decision_input_contracts.hpp`
+- `src/game_loop_presenter_facade_decision_input_assembler.hpp`
+- `src/game_loop_presenter_facade_decision_bridge_contracts.hpp`
+- `src/game_loop_presenter_facade_decision_bridge_assembler.hpp`
 - `src/game_loop_presenter_facade_interface_contracts.hpp`
 - `src/game_loop_presenter_facade_interface_assembler.hpp`
 - `src/game_loop_presenter_facade_bridge_contracts.hpp`
@@ -80,6 +86,40 @@ This keeps the future facade:
 - frame-local
 - allocation-free
 - side-effect-free until explicitly connected
+
+### Minimal decision input
+
+`PresenterFacadeDecisionInputPacket` now defines the narrowest compile-only
+input required to derive `PresenterFacadeDecisionPacket`:
+
+- `hasDrivingHud`
+- `hasPeriodicHud`
+- `hasRenderDebug`
+- `hasOverlayDebug`
+- `hasMemoryDebug`
+
+It exists to:
+
+- narrow the future decision boundary below the full facade packet
+- let future live retries substitute decision booleans without dragging the
+  broader facade handoff into the same call site
+
+### Minimal decision bridge
+
+`PresenterFacadeDecisionBridgePacket` now groups the smallest compile-only
+decision chain needed by the two known live presenter boundaries:
+
+- `PresenterFacadeDecisionInputPacket`
+- `PresenterHudTelemetryDecisionInputPacket`
+- `PresenterFacadeDecisionPacket`
+- `PresenterFrameEndDecisionPacket`
+- `PresenterHudTelemetryDecisionPacket`
+
+It exists to:
+
+- prepare one narrow boundary-local bridge above the minimal decision input
+- let future live retries target `PresentFrameHudAndTelemetry(...)` and
+  `UpdateFrameEndOverlays()` without carrying the broader facade/request chain
 
 ### Compile-only bridge
 

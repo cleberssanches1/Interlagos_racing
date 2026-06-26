@@ -4,6 +4,10 @@
 
 #include "game_loop_debug_ops.hpp"
 #include "game_loop_runtime_state.hpp"
+#include "game_loop_scheduler_reuse_flow_observability_contracts.hpp"
+#include "game_loop_simulation_scheduler_telemetry_view_assembler.hpp"
+#include "game_loop_track_render_telemetry_view_assembler.hpp"
+#include "game_loop_track_render_telemetry_view_contracts.hpp"
 #include "simulation_scheduler_telemetry_assembler.hpp"
 #include "track_render_contracts.hpp"
 
@@ -24,8 +28,8 @@ inline FramePresentationSnapshot BuildFramePresentationSnapshot(uint32_t submitt
 }
 
 inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
-    const SimulationSchedulerDomain::SimulationSchedulerTelemetry& simTelemetry,
-    const TrackRenderDomain::TrackRenderTelemetry& trackTelemetry,
+    const SimulationSchedulerTelemetryViewPacket& simTelemetry,
+    const TrackRenderTelemetryViewPacket& trackTelemetry,
     bool includeQueryTelemetry)
 {
     Sh2SplitTelemetrySnapshot snapshot{};
@@ -42,6 +46,50 @@ inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
     }
     snapshot.SetValid(true);
     return snapshot;
+}
+
+inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
+    const SimulationSchedulerDomain::SimulationSchedulerTelemetry& simTelemetry,
+    const TrackRenderDomain::TrackRenderTelemetry& trackTelemetry,
+    bool includeQueryTelemetry)
+{
+    return BuildSh2SplitTelemetrySnapshot(
+        BuildSimulationSchedulerTelemetryViewPacket(simTelemetry),
+        BuildTrackRenderTelemetryViewPacket(trackTelemetry),
+        includeQueryTelemetry);
+}
+
+inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
+    const SimulationSchedulerDomain::SimulationSchedulerTelemetry& simTelemetry,
+    const TrackRenderTelemetryViewPacket& trackTelemetry,
+    bool includeQueryTelemetry)
+{
+    return BuildSh2SplitTelemetrySnapshot(
+        BuildSimulationSchedulerTelemetryViewPacket(simTelemetry),
+        trackTelemetry,
+        includeQueryTelemetry);
+}
+
+inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
+    const GameLoopObservabilityDomain::SimulationSchedulerLifecycleObservabilityPacket& lifecycle,
+    const TrackRenderTelemetryViewPacket& trackTelemetry,
+    bool includeQueryTelemetry)
+{
+    return BuildSh2SplitTelemetrySnapshot(
+        lifecycle.telemetry,
+        trackTelemetry,
+        includeQueryTelemetry);
+}
+
+inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
+    const GameLoopObservabilityDomain::SchedulerReuseFlowObservabilityPacket& observability,
+    const TrackRenderTelemetryViewPacket& trackTelemetry,
+    bool includeQueryTelemetry)
+{
+    return BuildSh2SplitTelemetrySnapshot(
+        observability.lifecycle,
+        trackTelemetry,
+        includeQueryTelemetry);
 }
 
 } // namespace GameLoopRuntime

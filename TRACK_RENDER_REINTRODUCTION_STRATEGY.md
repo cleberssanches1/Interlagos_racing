@@ -92,6 +92,10 @@ Se o modo espelho estiver estável:
 4. só depois considerar espelhamento local;
 5. por último, considerar substituição textual mínima.
 
+Para a ordem exata de retry com packet estreito de telemetria, ver:
+
+- `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+
 
 ## Critério de reentrada
 

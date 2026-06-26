@@ -26,10 +26,18 @@
 #include "frame_worker_tasks.hpp"
 #include "game_loop_debug_ops.hpp"
 #include "game_loop_debug_state.hpp"
+#include "game_loop_memory_debug_packet_assembler.hpp"
+#include "game_loop_memory_overlay_text_assembler.hpp"
+#include "game_loop_memory_overlay_text_view_assembler.hpp"
 #include "game_loop_memory_trace_ops.hpp"
+#include "game_loop_memory_trace_text_low_work_view_assembler.hpp"
+#include "game_loop_memory_trace_text_view_assembler.hpp"
 #include "game_loop_observability_contracts.hpp"
 #include "game_loop_presentation_ops.hpp"
+#include "game_loop_track_render_producer_hint_assembler.hpp"
 #include "game_loop_runtime_state.hpp"
+#include "game_loop_track_render_producer_state_assembler.hpp"
+#include "game_loop_track_render_telemetry_view_assembler.hpp"
 #include "hud_system.hpp"
 #include "interfaces.hpp"
 #include "memory_budget_transition_ops.hpp"
@@ -351,12 +359,62 @@ private:
             (snapshot.lowWorkTotal >= snapshot.lowWorkFree)
                 ? (snapshot.lowWorkTotal - snapshot.lowWorkFree)
                 : 0u);
+        PrintWorkRamUsageRealtime(packet);
+    }
+
+    void PrintWorkRamUsageRealtime(
+        const GameLoopMemoryPresentationDomain::WorkRamUsagePacket& packet) const
+    {
         SRL::Debug::Print(2, 14, "HWR u:%u f:%u        ",
                           static_cast<unsigned>(packet.highWorkUsed),
                           static_cast<unsigned>(packet.highWorkFree));
         SRL::Debug::Print(2, 15, "LWR u:%u f:%u        ",
                           static_cast<unsigned>(packet.lowWorkUsed),
                           static_cast<unsigned>(packet.lowWorkFree));
+    }
+
+    void PrintHighWorkTraceText(
+        const GameLoopMemoryPresentationDomain::HighWorkTraceTextViewPacket& packet) const
+    {
+        SRL::Debug::Print(2, 18, "GH3 a:%u f:%u r:%u x:%u ub:%u fb:%u   ",
+                          static_cast<unsigned>(packet.allocDelta),
+                          static_cast<unsigned>(packet.freeDelta),
+                          static_cast<unsigned>(packet.reallocDelta),
+                          static_cast<unsigned>(packet.failedDelta),
+                          static_cast<unsigned>(packet.usedBlocks),
+                          static_cast<unsigned>(packet.freeBlocks));
+        SRL::Debug::Print(2, 19, "GH4 fn:%d sy:%d free:%u       ",
+                          packet.finishAccum,
+                          packet.syncAccum,
+                          static_cast<unsigned>(packet.freeBytes));
+    }
+
+    void PrintLowWorkTraceText(
+        const GameLoopMemoryPresentationDomain::LowWorkTraceTextViewPacket& packet) const
+    {
+        SRL::Debug::Print(2, 26, "GLW1 gp:%d au:%d bg:%d hd:%d   ",
+                          packet.gameplayFreeDelta,
+                          packet.autoLapFreeDelta,
+                          packet.backgroundFreeDelta,
+                          packet.hudFreeDelta);
+        SRL::Debug::Print(2, 27, "GLW2 td:%d te:%d c:%d f:%d   ",
+                          packet.trackDrawFreeDelta,
+                          packet.trackEndFreeDelta,
+                          packet.carFreeDelta,
+                          packet.finishFreeDelta);
+        SRL::Debug::Print(2, 28, "GLW3 sy:%d fr:%d py:%d ov:%d ",
+                          packet.syncFreeDelta,
+                          packet.frameFreeDelta,
+                          packet.framePayloadDelta,
+                          packet.frameOverheadDelta);
+        SRL::Debug::Print(2, 29, "GLW4 dp:%d dx:%d do:%d df:%d ",
+                          packet.trackDrawPrepareDelta,
+                          packet.trackDrawExecuteDelta,
+                          packet.trackDrawOtherDelta,
+                          packet.trackDrawFrameDelta);
+        SRL::Debug::Print(2, 30, "GLW5 lf:%d fb:%d           ",
+                          packet.largestFreeDelta,
+                          packet.freeBlocksDelta);
     }
 
     void UpdateLowWorkFreeOverlay()
@@ -448,11 +506,18 @@ private:
         overlayHeader.slides = slides;
         overlayHeader.slideId = slideId;
 
+        GameLoopMemoryPresentationDomain::LowWorkOverlayTextBundle overlayTextBundle{};
+        overlayTextBundle.valid = true;
+        overlayTextBundle.header =
+            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayHeaderTextPacket(overlayHeader);
+        auto overlayTextView =
+            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextViewPacket(overlayTextBundle);
+
         SRL::Debug::Print(2, 15, "WLWR free:%u df:%d sl:%u id:%d    ",
-                          static_cast<unsigned>(overlayHeader.lowWorkFree),
-                          static_cast<int>(overlayHeader.freeDelta),
-                          static_cast<unsigned>(overlayHeader.slides),
-                          static_cast<int>(overlayHeader.slideId));
+                          static_cast<unsigned>(overlayTextView.lowWorkFree),
+                          static_cast<int>(overlayTextView.freeDelta),
+                          static_cast<unsigned>(overlayTextView.slides),
+                          static_cast<int>(overlayTextView.slideId));
 
         const uint32_t highInitUnknown =
             static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Init)) +
@@ -484,6 +549,8 @@ private:
         highOverlay.car = highCar;
         highOverlay.finishSync = highFinishSync;
         highOverlay.freeBytes = highFreeBytes;
+        overlayTextBundle.highWork =
+            GameLoopMemoryPresentationDomain::BuildHighWorkOverlayTextPacket(highOverlay);
 
         SRL::Debug::Print(2, 12, "HWT1 iu:%u ga:%u ui:%u     ",
                           static_cast<unsigned>(highOverlay.initUnknown),
@@ -510,6 +577,8 @@ private:
         overlayBreakdown.familyCache = breakdown.familyCache;
         overlayBreakdown.transient = breakdown.transient;
         overlayBreakdown.metadata = breakdown.metadata;
+        overlayTextBundle.breakdown =
+            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayBreakdownTextPacket(overlayBreakdown);
 
         SRL::Debug::Print(2, 16, "LWC1 r:%u s:%u w:%u       ",
                           static_cast<unsigned>(overlayBreakdown.renderers),
@@ -535,6 +604,10 @@ private:
             overlayTicks.prefetchBuildAttempts = prefetchBuildAttempts;
             overlayTicks.prefetchBuildBudget = prefetchBuildBudget;
             overlayTicks.prefetchBuildDrops = prefetchBuildDrops;
+            overlayTextBundle.ticks =
+                GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTicksTextPacket(overlayTicks);
+            overlayTextView =
+                GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextViewPacket(overlayTextBundle);
 
             SRL::Debug::Print(2, 18, "LTK st:%u mw:%u dr:%u fr:%u   ",
                               static_cast<unsigned>(overlayTicks.trackStreamTicks),
@@ -547,9 +620,9 @@ private:
                               static_cast<unsigned>(overlayTicks.trackLodTicks),
                               static_cast<unsigned>(overlayTicks.trackWorkingSetTicks));
             SRL::Debug::Print(2, 20, "PB b:%u/%u d:%u            ",
-                              static_cast<unsigned>(overlayTicks.prefetchBuildAttempts),
-                              static_cast<unsigned>(overlayTicks.prefetchBuildBudget),
-                              static_cast<unsigned>(overlayTicks.prefetchBuildDrops));
+                              static_cast<unsigned>(overlayTextView.prefetchBuildAttempts),
+                              static_cast<unsigned>(overlayTextView.prefetchBuildBudget),
+                              static_cast<unsigned>(overlayTextView.prefetchBuildDrops));
             return;
         }
 
@@ -704,11 +777,10 @@ private:
         tracePacket.frameAccum = frameAccum;
         tracePacket.finishAccum = finishAccum;
         tracePacket.syncAccum = syncAccum;
-
-        const uint32_t allocDelta = tracePacket.postSync.allocCalls - tracePacket.begin.allocCalls;
-        const uint32_t freeDelta = tracePacket.postSync.freeCalls - tracePacket.begin.freeCalls;
-        const uint32_t reallocDelta = tracePacket.postSync.reallocCalls - tracePacket.begin.reallocCalls;
-        const uint32_t failedDelta = tracePacket.postSync.failedAllocCalls - tracePacket.begin.failedAllocCalls;
+        const auto highTraceText =
+            GameLoopMemoryPresentationDomain::BuildHighWorkTraceTextPacket(tracePacket);
+        const auto highTraceTextView =
+            GameLoopMemoryPresentationDomain::BuildHighWorkTraceTextViewPacket(highTraceText);
         const uint32_t gameplayLiveBytesDirect = static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Gameplay));
         const uint32_t autoLapLiveBytesDirect = static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::AutoLap));
         const uint32_t backgroundLiveBytesDirect = static_cast<uint32_t>(SRL::Memory::HighWorkRam::GetUsedBytesByTag(SRL::Memory::DebugTag::Background));
@@ -731,16 +803,16 @@ private:
                           static_cast<unsigned>(finishLiveBytesDirect),
                           static_cast<unsigned>(syncLiveBytesDirect));
         SRL::Debug::Print(2, 18, "GH3 a:%u f:%u r:%u x:%u ub:%u fb:%u   ",
-                          static_cast<unsigned>(allocDelta),
-                          static_cast<unsigned>(freeDelta),
-                          static_cast<unsigned>(reallocDelta),
-                          static_cast<unsigned>(failedDelta),
-                          static_cast<unsigned>(tracePacket.postSync.usedBlocks),
-                          static_cast<unsigned>(tracePacket.postSync.freeBlocks));
+                          static_cast<unsigned>(highTraceTextView.allocDelta),
+                          static_cast<unsigned>(highTraceTextView.freeDelta),
+                          static_cast<unsigned>(highTraceTextView.reallocDelta),
+                          static_cast<unsigned>(highTraceTextView.failedDelta),
+                          static_cast<unsigned>(highTraceTextView.usedBlocks),
+                          static_cast<unsigned>(highTraceTextView.freeBlocks));
         SRL::Debug::Print(2, 19, "GH4 fn:%d sy:%d free:%u       ",
-                          tracePacket.finishAccum,
-                          tracePacket.syncAccum,
-                          static_cast<unsigned>(tracePacket.postSync.freeBytes));
+                          highTraceTextView.finishAccum,
+                          highTraceTextView.syncAccum,
+                          static_cast<unsigned>(highTraceTextView.freeBytes));
         const auto validation = SRL::Memory::LowWorkRam::Validate();
         const auto lwrReport = SRL::Memory::LowWorkRam::GetReport();
         const uint32_t lwrUsedBytesDirect = static_cast<uint32_t>(
@@ -848,31 +920,90 @@ private:
             trackDrawOtherDelta = context_.trackSystem->LowWorkDrawOtherDeltaThisFrame();
             trackDrawFrameDelta = context_.trackSystem->LowWorkDrawFrameDeltaThisFrame();
         }
+        GameLoopMemoryPresentationDomain::LowWorkTraceDeltaInputs lowWorkTraceDeltaInputs{};
+        lowWorkTraceDeltaInputs.trackDrawPrepareDelta = trackDrawPrepareDelta;
+        lowWorkTraceDeltaInputs.trackDrawExecuteDelta = trackDrawExecuteDelta;
+        lowWorkTraceDeltaInputs.trackDrawOtherDelta = trackDrawOtherDelta;
+        lowWorkTraceDeltaInputs.trackDrawFrameDelta = trackDrawFrameDelta;
+        const auto lowTraceText =
+            GameLoopMemoryPresentationDomain::BuildLowWorkTraceTextPacket(
+                tracePacket,
+                lowWorkTraceDeltaInputs);
+        const auto lowTraceTextView =
+            GameLoopMemoryPresentationDomain::BuildLowWorkTraceTextViewPacket(lowTraceText);
 
         SRL::Debug::Print(2, 26, "GLW1 gp:%d au:%d bg:%d hd:%d   ",
-                          gameplayFreeDelta,
-                          autoLapFreeDelta,
-                          backgroundFreeDelta,
-                          hudFreeDelta);
+                          lowTraceTextView.gameplayFreeDelta,
+                          lowTraceTextView.autoLapFreeDelta,
+                          lowTraceTextView.backgroundFreeDelta,
+                          lowTraceTextView.hudFreeDelta);
         SRL::Debug::Print(2, 27, "GLW2 td:%d te:%d c:%d f:%d   ",
-                          trackDrawFreeDelta,
-                          trackEndFreeDelta,
-                          carFreeDelta,
-                          finishFreeDelta);
+                          lowTraceTextView.trackDrawFreeDelta,
+                          lowTraceTextView.trackEndFreeDelta,
+                          lowTraceTextView.carFreeDelta,
+                          lowTraceTextView.finishFreeDelta);
         SRL::Debug::Print(2, 28, "GLW3 sy:%d fr:%d py:%d ov:%d ",
-                          syncFreeDelta,
-                          frameFreeDelta,
-                          framePayloadDelta,
-                          frameOverheadDelta);
+                          lowTraceTextView.syncFreeDelta,
+                          lowTraceTextView.frameFreeDelta,
+                          lowTraceTextView.framePayloadDelta,
+                          lowTraceTextView.frameOverheadDelta);
         SRL::Debug::Print(2, 29, "GLW4 dp:%d dx:%d do:%d df:%d ",
-                          trackDrawPrepareDelta,
-                          trackDrawExecuteDelta,
-                          trackDrawOtherDelta,
-                          trackDrawFrameDelta);
+                          lowTraceTextView.trackDrawPrepareDelta,
+                          lowTraceTextView.trackDrawExecuteDelta,
+                          lowTraceTextView.trackDrawOtherDelta,
+                          lowTraceTextView.trackDrawFrameDelta);
         SRL::Debug::Print(2, 30, "GLW5 lf:%d fb:%d           ",
-                          largestFreeDelta,
-                          freeBlocksDelta);
+                          lowTraceTextView.largestFreeDelta,
+                          lowTraceTextView.freeBlocksDelta);
 #endif
+    }
+
+    GameLoopMemoryPresentationDomain::MemoryDebugPresentationBundle
+    BuildFrameEndMemoryDebugPresentationBundle() const
+    {
+        const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
+        GameLoopMemoryPresentationDomain::LowWorkOverlayAssemblyInputs overlayPacketInputs{};
+        GameLoopMemoryPresentationDomain::MemoryDebugOverlayInputs overlayTextInputs{};
+        GameLoopMemoryPresentationDomain::MemoryDebugTraceInputs traceInputs{};
+        traceInputs.highWorkTrace = &hwrStageTrace_;
+        traceInputs.lowWorkTrace = &lwrStageTrace_;
+        if (context_.trackSystem)
+        {
+            traceInputs.lowWorkTraceDeltas.trackDrawPrepareDelta =
+                context_.trackSystem->LowWorkDrawPrepareDeltaThisFrame();
+            traceInputs.lowWorkTraceDeltas.trackDrawExecuteDelta =
+                context_.trackSystem->LowWorkDrawExecuteDeltaThisFrame();
+            traceInputs.lowWorkTraceDeltas.trackDrawOtherDelta =
+                context_.trackSystem->LowWorkDrawOtherDeltaThisFrame();
+            traceInputs.lowWorkTraceDeltas.trackDrawFrameDelta =
+                context_.trackSystem->LowWorkDrawFrameDeltaThisFrame();
+        }
+        return GameLoopMemoryPresentationDomain::BuildMemoryDebugPresentationBundle(
+            memorySnapshot,
+            overlayPacketInputs,
+            overlayTextInputs,
+            traceInputs);
+    }
+
+    void PresentMemoryDebugPresentationBundle(
+        const GameLoopMemoryPresentationDomain::MemoryDebugPresentationBundle& bundle) const
+    {
+        if (bundle.memoryFlow.workRamUsage.valid)
+        {
+            PrintWorkRamUsageRealtime(bundle.memoryFlow.workRamUsage);
+        }
+        if (bundle.highTraceText.valid)
+        {
+            PrintHighWorkTraceText(
+                GameLoopMemoryPresentationDomain::BuildHighWorkTraceTextViewPacket(
+                    bundle.highTraceText));
+        }
+        if (bundle.lowTraceText.valid)
+        {
+            PrintLowWorkTraceText(
+                GameLoopMemoryPresentationDomain::BuildLowWorkTraceTextViewPacket(
+                    bundle.lowTraceText));
+        }
     }
 
     // Validate world position before rendering to avoid invalid transform collapse.
@@ -1144,12 +1275,53 @@ private:
 
     bool IsTrackProducerJobInFlightHint() const
     {
+        GameLoopRuntime::TrackRenderProducerHintPacket producerHint{};
+        if (!TryBuildTrackRenderProducerHintPacket(producerHint))
+        {
+            return false;
+        }
+        return producerHint.producerJobInFlight;
+    }
+
+    bool TryBuildTrackRenderTelemetryView(
+        GameLoopRuntime::TrackRenderTelemetryViewPacket& outTelemetryView) const
+    {
         if (!context_.trackSystem || !context_.TrackSystemReady() || !context_.RenderTrack())
         {
             return false;
         }
+
         const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
-        return trackTelemetry.producerJobInFlight;
+        outTelemetryView = GameLoopRuntime::BuildTrackRenderTelemetryViewPacket(trackTelemetry);
+        return true;
+    }
+
+    bool TryBuildTrackRenderProducerStatePacket(
+        GameLoopRuntime::TrackRenderProducerStatePacket& outProducerState) const
+    {
+        GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
+        if (!TryBuildTrackRenderTelemetryView(trackTelemetryView))
+        {
+            return false;
+        }
+
+        outProducerState =
+            GameLoopRuntime::BuildTrackRenderProducerStatePacket(trackTelemetryView);
+        return true;
+    }
+
+    bool TryBuildTrackRenderProducerHintPacket(
+        GameLoopRuntime::TrackRenderProducerHintPacket& outProducerHint) const
+    {
+        GameLoopRuntime::TrackRenderProducerStatePacket producerState{};
+        if (!TryBuildTrackRenderProducerStatePacket(producerState))
+        {
+            return false;
+        }
+
+        outProducerHint =
+            GameLoopRuntime::BuildTrackRenderProducerHintPacket(producerState);
+        return true;
     }
 
     void BackoffSimulationSlaveDispatch()
@@ -2099,9 +2271,7 @@ private:
             }
             if (workRamOverlayDue)
             {
-                PrintWorkRamUsageRealtime();
-                MaybeLogHighWorkRamTrace();
-                MaybeLogLowWorkRamTrace();
+                PresentMemoryDebugPresentationBundle(BuildFrameEndMemoryDebugPresentationBundle());
             }
         }
         UpdateLowWorkFreeOverlay();
@@ -2311,13 +2481,12 @@ private:
 
     void PopulateOverlayQueryMetrics(OverlayDiagnosticsSnapshot& out) const
     {
-        if (!context_.trackSystem)
+        GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
+        if (!TryBuildTrackRenderTelemetryView(trackTelemetryView))
         {
             return;
         }
-
-        const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
-        GameLoopRuntime::PopulateOverlayQueryMetrics(trackTelemetry, out);
+        GameLoopRuntime::PopulateOverlayQueryMetrics(trackTelemetryView, out);
     }
 
     bool BuildOverlayDiagnosticsSnapshot(uint32_t submittedTrackFaces,
@@ -2429,14 +2598,14 @@ private:
 
     Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot() const
     {
-        if (!context_.TrackSystemReady() || !context_.trackSystem) return {};
+        GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
+        if (!TryBuildTrackRenderTelemetryView(trackTelemetryView)) return {};
 
         SimulationSchedulerDomain::SimulationSchedulerTelemetry simTelemetry{};
         SimulationSchedulerDomain::SeedSimulationSchedulerTelemetry(simState_, simTelemetry);
-        const auto trackTelemetry = TrackRenderDomain::BuildTrackRenderTelemetry(*context_.trackSystem);
         return GameLoopRuntime::BuildSh2SplitTelemetrySnapshot(
             simTelemetry,
-            trackTelemetry,
+            trackTelemetryView,
             kEnablePhysicsSafeTelemetry);
     }
 

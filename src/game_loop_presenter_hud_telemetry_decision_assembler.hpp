@@ -1,22 +1,19 @@
 #pragma once
 
 #include "game_loop_presenter_facade_bridge_contracts.hpp"
+#include "game_loop_presenter_facade_decision_bridge_contracts.hpp"
 #include "game_loop_presenter_facade_interface_contracts.hpp"
 #include "game_loop_presenter_hud_telemetry_decision_contracts.hpp"
+#include "game_loop_presenter_hud_telemetry_decision_input_contracts.hpp"
 
 namespace GameLoopRuntime
 {
 
-struct PresenterHudTelemetryDecisionInputs
-{
-    bool runtimeStatsEnabled = false;
-    bool avoidOptionalHudTelemetry = false;
-    bool avoidDebugTransientOptionalTelemetry = false;
-};
+using PresenterHudTelemetryDecisionInputs = PresenterHudTelemetryDecisionInputPacket;
 
 inline void SeedPresenterHudTelemetryDecisionPacket(
     const PresenterFacadeDecisionPacket& decision,
-    const PresenterHudTelemetryDecisionInputs& inputs,
+    const PresenterHudTelemetryDecisionInputPacket& inputs,
     PresenterHudTelemetryDecisionPacket& outPacket)
 {
     outPacket.valid = decision.valid || inputs.runtimeStatsEnabled;
@@ -30,7 +27,7 @@ inline void SeedPresenterHudTelemetryDecisionPacket(
 
 inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPacket(
     const PresenterFacadeDecisionPacket& decision,
-    const PresenterHudTelemetryDecisionInputs& inputs)
+    const PresenterHudTelemetryDecisionInputPacket& inputs)
 {
     PresenterHudTelemetryDecisionPacket packet{};
     SeedPresenterHudTelemetryDecisionPacket(decision, inputs, packet);
@@ -39,9 +36,15 @@ inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPac
 
 inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPacket(
     const PresenterFacadeBridgePacket& bridge,
-    const PresenterHudTelemetryDecisionInputs& inputs)
+    const PresenterHudTelemetryDecisionInputPacket& inputs)
 {
     return BuildPresenterHudTelemetryDecisionPacket(bridge.decision, inputs);
+}
+
+inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPacket(
+    const PresenterFacadeDecisionBridgePacket& bridge)
+{
+    return bridge.hudTelemetryDecision;
 }
 
 } // namespace GameLoopRuntime

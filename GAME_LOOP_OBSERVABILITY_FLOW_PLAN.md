@@ -279,6 +279,11 @@ Hook:
 - `tools/validate_game_loop_passive_headers.ps1`
 - `tools/validate_game_loop_observability_headers.ps1`
 
+Memory-debug presentation boundary inventory:
+
+- `MEMORY_BUDGET_MEMORY_DEBUG_PRESENTATION_BOUNDARY_INVENTORY.md`
+- `MEMORY_BUDGET_MEMORY_DEBUG_PRESENTATION_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+
 ## Next low-risk steps
 
 1. Isolate a narrower pure-data export layer if host tests become necessary
@@ -395,10 +400,28 @@ Current effect:
 - one off-path `PresenterInputSummaryPacket` can now carry:
   - presentation/HUD presence
   - render/overlay/observability presence
+  - scheduler/reuse debug presence
   - top-level speed/gear/rpm summary
   - top-level face/query counters
 - the future presenter facade can branch on one narrow summary packet before
   touching any deeper passive bundle
+- runtime execution remains untouched
+
+The presenter-facing side now also exposes one observability-side adapter:
+
+- `src/game_loop_presenter_observability_input_contracts.hpp`
+- `src/game_loop_presenter_observability_input_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterObservabilityInputPacket` can now carry:
+  - `OverlayDebugBundle`
+  - `PresenterOverlayDebugPacket`
+  - `ObservabilityDebugBundle`
+  - `SchedulerReuseDebugTelemetryPacket`
+- future presenter/debug input integration can attach scheduler/reuse debug
+  telemetry through one stable adapter instead of widening the broader
+  presenter input boundary
 - runtime execution remains untouched
 
 The presenter-facing side now also exposes one facade-ready packet:
@@ -434,6 +457,23 @@ Current effect:
   documented independently from the broader observability plan
 - the full passive presenter inventory is now centralized in
   `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
+
+The presenter-facing side now also exposes one narrower facade input adapter:
+
+- `src/game_loop_presenter_facade_input_contracts.hpp`
+- `src/game_loop_presenter_facade_input_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterFacadeInputPacket` can now carry:
+  - `PresenterInputSummaryPacket`
+  - `DrivingHudTextPacket`
+  - `PeriodicHudStatsPacket`
+  - `PresenterRenderDebugPacket`
+  - `PresenterObservabilityInputPacket`
+- future facade assembly can consume one narrower boundary above presenter input
+  and below the final facade packet
+- runtime execution remains untouched
 
 The render-facing passive side now also exposes one aggregate bundle:
 

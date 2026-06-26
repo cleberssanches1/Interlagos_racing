@@ -101,6 +101,12 @@ Do not reintroduce these directly into the runtime call site first:
 Those structures may remain upstream/off-path, but the live boundary should
 consume only the narrow packet prepared for it.
 
+Preferred compile-only narrowing directly above those boundary packets:
+
+- `PresenterFacadeDecisionInputPacket`
+- `PresenterHudTelemetryDecisionInputPacket`
+- `PresenterFacadeDecisionBridgePacket`
+
 ## Remove-first rule
 
 Each live patch must be substitutional.

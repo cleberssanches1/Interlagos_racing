@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game_loop_presenter_facade_decision_input_assembler.hpp"
 #include "game_loop_presenter_facade_interface_contracts.hpp"
 
 namespace GameLoopRuntime
@@ -37,6 +38,27 @@ inline PresenterFacadeDecisionPacket BuildPresenterFacadeDecisionPacket(
 {
     PresenterFacadeDecisionPacket packet{};
     SeedPresenterFacadeDecisionPacket(facade, packet);
+    return packet;
+}
+
+inline void SeedPresenterFacadeDecisionPacket(
+    const PresenterFacadeDecisionInputPacket& decisionInput,
+    PresenterFacadeDecisionPacket& outPacket)
+{
+    outPacket.valid = decisionInput.valid;
+    outPacket.phase = PresenterFacadePhase::Summary;
+    outPacket.shouldPresentHud = decisionInput.hasDrivingHud;
+    outPacket.shouldPresentPeriodicHud = decisionInput.hasPeriodicHud;
+    outPacket.shouldPresentRenderDebug = decisionInput.hasRenderDebug;
+    outPacket.shouldPresentOverlayDebug = decisionInput.hasOverlayDebug;
+    outPacket.shouldPresentMemoryDebug = decisionInput.hasMemoryDebug;
+}
+
+inline PresenterFacadeDecisionPacket BuildPresenterFacadeDecisionPacket(
+    const PresenterFacadeDecisionInputPacket& decisionInput)
+{
+    PresenterFacadeDecisionPacket packet{};
+    SeedPresenterFacadeDecisionPacket(decisionInput, packet);
     return packet;
 }
 

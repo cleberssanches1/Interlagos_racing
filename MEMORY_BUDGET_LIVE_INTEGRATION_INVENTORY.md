@@ -1,0 +1,252 @@
+# Memory Budget Live Integration Inventory
+
+## Objective
+
+Document the exact live integration status of the memory-budget chain and the
+only acceptable future runtime substitution shapes.
+
+This document is runtime-facing inventory only.
+
+It does not authorize a live patch by itself.
+
+## Stable baseline
+
+- ISO must remain exactly `4134912`
+- emulator boot must remain stable
+- allocator timing must remain unchanged
+- critical runtime ownership remains in:
+  - `src/game_loop_system.hpp`
+  - `src/main.cxx`
+  - `src/car_audio_system.hpp`
+
+## Current live status
+
+The memory-budget chain is partially live only through narrow bridge-level
+accessors.
+
+No broad memory packet is consumed live in critical runtime files:
+
+- `GameLoopRuntime::MemoryBudgetFramePacket`
+- `MemoryBudgetDomain::MemorySnapshotPacket`
+- `MemoryBudgetDomain::MemoryPressurePacket`
+- `MemoryBudgetDomain::MemoryBudgetPolicyPacket`
+- `MemoryBudgetDomain::CategoryBudgetPolicyPacket`
+
+Current live ownership remains local at the call sites.
+
+The bridge only supplies narrow category-policy queries.
+
+## Current live boundaries
+
+### Boundary A - PCM setup
+
+Live file:
+
+- `src/car_audio_system.hpp`
+
+Live accessor:
+
+- `MemoryBudgetRuntimeBridge::ConfigurePcmStreamingBudgetFromPolicy()`
+
+Current live timing:
+
+- called during `CarAudioSystem::Initialize()`
+
+Current ownership kept local:
+
+- PCM setup timing
+- audio-system initialization order
+- sample loading order
+
+### Boundary B - CD staging bootstrap hint
+
+Live file:
+
+- `src/main.cxx`
+
+Live accessor:
+
+- `MemoryBudgetRuntimeBridge::ShouldPreferCartForCdStaging()`
+
+Current live timing:
+
+- evaluated during bootstrap/setup flow in `main`
+
+Current ownership kept local:
+
+- bootstrap sequencing
+- staging fallback behavior
+- cart/high-work runtime ownership
+
+### Boundary C - optional HUD telemetry gate
+
+Live file:
+
+- `src/game_loop_system.hpp`
+
+Live accessor:
+
+- `MemoryBudgetRuntimeBridge::ShouldAvoidHudOptionalTelemetry()`
+
+Current live timing:
+
+- evaluated inside `PresentFrameHudAndTelemetry(...)`
+
+Current ownership kept local:
+
+- HUD submission ownership
+- periodic stats call order
+- frame presentation ownership
+
+### Boundary D - optional debug transient telemetry gate
+
+Live file:
+
+- `src/game_loop_system.hpp`
+
+Live accessor:
+
+- `MemoryBudgetRuntimeBridge::ShouldAvoidDebugTransientOptionalTelemetry()`
+
+Current live timing:
+
+- evaluated inside `PresentFrameHudAndTelemetry(...)`
+
+Current ownership kept local:
+
+- debug print ownership
+- telemetry print ordering
+- frame-end presentation ownership
+
+## Current passive-enriched consumers
+
+These consumers already receive memory category policy, but they remain passive
+enrichment only:
+
+- `src/game_loop_track_render_packet_assembler.hpp`
+- `src/game_loop_car_visual_packet_assembler.hpp`
+- `src/game_loop_render_budget_observability_view_assembler.hpp`
+- `src/game_loop_render_budget_presentation_view_assembler.hpp`
+- `src/game_loop_render_budget_overlay_text_view_assembler.hpp`
+- `src/game_loop_observability_state_assembler.hpp`
+
+Meaning:
+
+- `TrackRenderFramePacket` carries `TrackRender` budget policy
+- `CarVisualFramePacket` carries `CarRender` budget policy
+- observability/render-budget flows can summarize those policies
+- `RenderBudgetObservabilityViewPacket` narrows those policies for future
+  debug/presentation-only consumers
+- `RenderBudgetPresentationViewPacket` narrows them again to presentation/debug
+  boundary fields only
+- `RenderBudgetOverlayTextViewPacket` narrows them one level further to
+  printable/renderable overlay flags
+- no allocator ownership moved
+- no render scheduling ownership moved
+
+## Runtime boundaries already prepared
+
+### Narrow boundary family - bridge/category access
+
+Prepared surfaces:
+
+1. `MemoryBudgetRuntimeBridge::QueryCategoryPolicy(...)`
+2. `MemoryBudgetRuntimeBridge::PreferredPoolForCategory(...)`
+3. `MemoryBudgetRuntimeBridge::ShouldAvoidOptionalAllocationsForCategory(...)`
+
+Target type:
+
+- narrow category-policy query only
+
+Current allowed live use:
+
+- one boundary at a time
+- remove-first substitutions only
+
+### Broad boundary family - passive frame aggregation
+
+Prepared surfaces:
+
+1. `MemorySnapshotPacket`
+2. `MemoryPressurePacket`
+3. `MemoryBudgetPolicyPacket`
+4. `CategoryBudgetPolicyPacket`
+5. `MemoryTelemetryPacket`
+6. `MemoryBudgetFramePacket`
+
+Target type:
+
+- upstream/off-path aggregation only
+
+Current allowed live use:
+
+- none in critical runtime files
+
+## Explicitly non-live layers
+
+The following are prepared but must not be the first live consumer in critical
+runtime files:
+
+- `MemorySnapshotPacket`
+- `MemoryPressurePacket`
+- `MemoryBudgetPolicyPacket`
+- `CategoryBudgetPolicyPacket`
+- `MemoryTelemetryPacket`
+- `MemoryBudgetFramePacket`
+
+These remain useful upstream/off-path, but they are too broad for the first
+consumer on a critical runtime boundary.
+
+## Remove-first rule
+
+Any future live memory-budget patch must:
+
+1. target one boundary only
+2. consume only the narrowest bridge/category surface prepared for that boundary
+3. remove equivalent local gating or pool-choice logic in the same patch
+4. keep allocator timing unchanged
+5. avoid mixing memory live integration with unrelated scheduler/render/bootstrap
+   changes
+
+## Current prohibited live moves
+
+Do not do these in the first live retry:
+
+- consume `MemoryBudgetFramePacket` directly in `src/game_loop_system.hpp`
+- consume `MemoryBudgetFramePacket` directly in `src/main.cxx`
+- move `RunWorkRamMaintenance` ownership
+- move allocator trim/floor logic into a new host helper
+- replace multiple memory boundaries in one patch
+- mix memory live integration with loop-critical refactors
+
+## Acceptance criteria for a future live retry
+
+Every future memory-budget live patch must keep:
+
+- ISO exactly `4134912`
+- stable emulator startup
+- no invalid opcode
+- no silent close
+- no allocator timing drift
+- no HUD/debug ordering drift
+- no bootstrap sequencing drift
+
+## Validation ritual
+
+Required after every future live attempt:
+
+- `tools/validate_game_loop_passive_headers.ps1`
+- `tools/validate_game_loop_observability_headers.ps1`
+- `tools/validate_saturn_stable_build.ps1 -SkipHostTests`
+
+## Related documents
+
+- `MEMORY_BUDGET_CHAIN_FLOW_PLAN.md`
+- `MEMORY_BUDGET_CATEGORY_CONSUMER_MATRIX.md`
+- `MEMORY_BUDGET_RENDER_OBSERVABILITY_FLOW_PLAN.md`
+- `MEMORY_BUDGET_PRESENTER_DEBUG_BOUNDARY_PLAN.md`
+- `MEMORY_BUDGET_PRESENTATION_BOUNDARY_INVENTORY.md`
+- `MEMORY_BUDGET_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `MEMORY_BUDGET_PASSIVE_FLOW_PLAN.md`
+- `MEMORY_REINTRODUCTION_STRATEGY.md`
+- `PASSIVE_CONTRACTS_INVENTORY.md`

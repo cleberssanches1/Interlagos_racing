@@ -2,6 +2,7 @@
 
 #include "game_loop_car_visual_packet.hpp"
 #include "game_loop_observability_contracts.hpp"
+#include "game_loop_render_budget_observability_view_assembler.hpp"
 #include "game_loop_track_render_packet.hpp"
 
 namespace GameLoopObservabilityDomain

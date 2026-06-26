@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game_loop_presenter_facade_decision_bridge_contracts.hpp"
 #include "game_loop_presenter_facade_bridge_contracts.hpp"
 #include "game_loop_presenter_facade_interface_contracts.hpp"
 #include "game_loop_presenter_frame_end_decision_contracts.hpp"
@@ -29,6 +30,12 @@ inline PresenterFrameEndDecisionPacket BuildPresenterFrameEndDecisionPacket(
     const PresenterFacadeBridgePacket& bridge)
 {
     return BuildPresenterFrameEndDecisionPacket(bridge.decision);
+}
+
+inline PresenterFrameEndDecisionPacket BuildPresenterFrameEndDecisionPacket(
+    const PresenterFacadeDecisionBridgePacket& bridge)
+{
+    return bridge.frameEndDecision;
 }
 
 } // namespace GameLoopRuntime

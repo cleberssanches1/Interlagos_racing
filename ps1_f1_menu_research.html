@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pesquisa: menus estilo Formula One 99 (PS1)</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a31;
+      --panel-2: #182443;
+      --text: #e8edf7;
+      --muted: #a9b4cb;
+      --accent: #4cc3ff;
+      --accent-2: #ffd447;
+      --ok: #63d98a;
+      --border: #2d3a60;
+      --shadow: rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(76, 195, 255, 0.12), transparent 28%),
+        linear-gradient(180deg, #09101d 0%, #0b1020 100%);
+      line-height: 1.45;
+    }
+
+    .wrap {
+      width: min(1200px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    h1, h2, h3 { margin: 0 0 12px; line-height: 1.15; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 24px; margin-top: 28px; }
+    h3 { font-size: 18px; margin-top: 18px; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    ul { margin: 8px 0 16px 20px; color: var(--muted); }
+    li { margin: 6px 0; }
+    a { color: var(--accent); }
+    code {
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: #dff4ff;
+    }
+
+    .hero, .panel {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 10px 32px var(--shadow);
+    }
+
+    .hero {
+      padding: 24px;
+      margin-bottom: 22px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .badge {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(76, 195, 255, 0.12);
+      border: 1px solid rgba(76, 195, 255, 0.25);
+      color: #d8f5ff;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .fact {
+      border-left: 4px solid var(--ok);
+      padding-left: 12px;
+    }
+
+    .infer {
+      border-left: 4px solid var(--accent-2);
+      padding-left: 12px;
+    }
+
+    .menu-diagram {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .menu-box {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-top: 14px;
+    }
+
+    .arrow {
+      color: var(--accent);
+      font-size: 24px;
+      text-align: center;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(76, 195, 255, 0.12);
+      color: #dcf6ff;
+      text-align: left;
+    }
+
+    td { color: var(--muted); }
+
+    .small { font-size: 14px; }
+
+    .footer {
+      margin-top: 26px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .grid.cols-2, .grid.cols-3 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Pesquisa: como menus no estilo <em>Formula One 99</em> (PS1) eram montados</h1>
+      <p>
+        Este documento resume o que é possível afirmar a partir de fontes técnicas do PlayStation 1,
+        descrições públicas de <em>Formula One 99</em> e padrões típicos de front-end da época.
+        O foco é transformar essa pesquisa em uma proposta prática de <strong>menu inicial com opções
+        de jogo e configurações</strong>.
+      </p>
+      <div class="badge-row">
+        <div class="badge">Baseado em fontes de hardware/SDK do PS1</div>
+        <div class="badge">Com leitura funcional de Formula One 99</div>
+        <div class="badge">Orientado para implementação</div>
+      </div>
+    </section>
+
+    <section class="grid cols-2">
+      <article class="panel">
+        <h2>1. O que sabemos com boa confiança</h2>
+        <div class="fact">
+          <p><strong>Formula One 99</strong> expunha um front-end com múltiplos modos e várias opções de corrida.</p>
+        </div>
+        <ul>
+          <li>Havia <strong>Quick Race</strong>, <strong>Grand Prix</strong> e opções para <strong>2 jogadores</strong>.</li>
+          <li>O jogo deixava ajustar detalhes de simulação como <strong>pit stop</strong>, <strong>combustível</strong>, <strong>desgaste de pneus</strong>, <strong>dano</strong> e <strong>clima variável</strong>.</li>
+          <li>Também havia <strong>setup do carro</strong> e <strong>salvamento entre corridas</strong>.</li>
+          <li>Descrições públicas também citam <strong>comentários</strong>, <strong>engenheiro</strong> e personalização de grid.</li>
+        </ul>
+        <p class="small">
+          Isso indica um menu dividido por <strong>modo de jogo</strong>, <strong>opções globais</strong>,
+          <strong>setup</strong> e <strong>persistência</strong>.
+        </p>
+      </article>
+
+      <article class="panel">
+        <h2>2. Como o PS1 normalmente renderizava menus</h2>
+        <div class="fact">
+          <p>O GPU do PS1 desenhava <strong>retângulos, linhas e polígonos</strong>; retângulos eram adequados para <strong>2D, sprites e texto</strong>.</p>
+        </div>
+        <ul>
+          <li>Os menus normalmente eram feitos como <strong>telas 2D</strong> sobre VRAM.</li>
+          <li>As imagens de UI costumavam vir em <strong>TIM</strong>, com pixel data e CLUT no mesmo arquivo.</li>
+          <li>Era comum organizar elementos da interface em <strong>spritesheets</strong> e usar <strong>U/V</strong> para recortar regiões.</li>
+          <li>Música de menu e falas podiam usar <strong>CD-ROM XA ADPCM</strong>; efeitos curtos podiam vir como samples carregados em RAM.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="grid cols-2">
+      <article class="panel">
+        <h2>3. O que provavelmente acontecia internamente</h2>
+        <div class="infer">
+          <p>O detalhe exato do código de <em>Formula One 99</em> não é público. A arquitetura abaixo é uma inferência técnica forte para esse tipo de jogo.</p>
+        </div>
+        <ul>
+          <li><strong>Máquina de estados</strong> para cada tela: logo, intro, menu principal, opções, setup, carregar/salvar.</li>
+          <li><strong>Tabela de widgets</strong> por tela: item de lista, slider, toggle, picker, botão.</li>
+          <li><strong>Input polling por frame</strong> lendo pad e convertendo para eventos: subir, descer, confirmar, voltar, esquerda, direita.</li>
+          <li><strong>Render por camadas</strong>: fundo, moldura, lista, cursor, texto, ajuda no rodapé.</li>
+          <li><strong>Áudio de UI</strong> separado em 3 classes: mover cursor, confirmar, cancelar.</li>
+          <li><strong>Persistência</strong> de configuração e progresso via memory card.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>4. Restrições que moldavam o menu</h2>
+        <ul>
+          <li><strong>VRAM limitada</strong>: fundos, fontes, ícones e logo precisavam ser bem compactados/empacotados.</li>
+          <li><strong>RAM limitada</strong>: menu não podia manter muitos assets ativos ao mesmo tempo.</li>
+          <li><strong>Leitura de disco</strong>: telas pesadas podiam precisar de pré-carregamento ou transições com fade.</li>
+          <li><strong>Input serializado</strong>: controller e memory card compartilham barramento, então acesso precisava ser disciplinado.</li>
+          <li><strong>Texto bitmap</strong> era muito comum, porque evitava custo de layout vetorial.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>5. Como eu montaria um menu inicial nesse estilo</h2>
+      <p>
+        Para o seu projeto, o melhor caminho é fazer um front-end em estilo PS1/PS2 inicial:
+        <strong>rápido, state-driven, sem acoplamento com a corrida</strong>.
+      </p>
+
+      <div class="flow">
+        <div class="menu-box"><strong>Boot / Logo</strong><br />Inicializa vídeo, input, áudio e assets mínimos.</div>
+        <div class="arrow">→</div>
+        <div class="menu-box"><strong>Tela Título</strong><br />Logo + fundo + “Press Start”.</div>
+        <div class="arrow">→</div>
+        <div class="menu-box"><strong>Menu Principal</strong><br />Entradas de jogo, opções e sair.</div>
+      </div>
+
+      <div class="menu-diagram">
+        <div class="menu-box">
+          <strong>Menu principal sugerido</strong>
+          <ul>
+            <li>Corrida Rápida</li>
+            <li>Grande Prêmio</li>
+            <li>Time Trial</li>
+            <li>2 Jogadores</li>
+            <li>Configurações</li>
+            <li>Carregar / Salvar</li>
+            <li>Créditos</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid cols-2">
+      <article class="panel">
+        <h2>6. Submenus de configurações</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Grupo</th>
+              <th>Itens</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Jogo</strong></td>
+              <td>Dificuldade, número de voltas, clima, dano, combustível, desgaste, bandeiras, pit stop.</td>
+            </tr>
+            <tr>
+              <td><strong>Controles</strong></td>
+              <td>Digital/analógico, mapeamento, sensibilidade, deadzone, câmbio automático/manual, vibração.</td>
+            </tr>
+            <tr>
+              <td><strong>Áudio</strong></td>
+              <td>Música, efeitos, voz/comentário, engenheiro, estéreo/mono, volume master.</td>
+            </tr>
+            <tr>
+              <td><strong>Vídeo / HUD</strong></td>
+              <td>Câmera padrão, HUD completo/reduzido, espelho, unidade km/h, overlays de telemetria.</td>
+            </tr>
+            <tr>
+              <td><strong>Carro / Setup</strong></td>
+              <td>Asa, freio, suspensão, relação de marchas, pneus. Pode ficar bloqueado por modo de jogo.</td>
+            </tr>
+            <tr>
+              <td><strong>Sistema</strong></td>
+              <td>Idioma, perfil, carregar/salvar, restaurar padrão.</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="panel">
+        <h2>7. Estrutura técnica recomendada</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Camada</th>
+              <th>Responsabilidade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>MenuStateMachine</code></td>
+              <td>Troca de tela, foco, pilha de navegação e transições.</td>
+            </tr>
+            <tr>
+              <td><code>MenuScreen</code></td>
+              <td>Lista de itens, callbacks, renderização da tela atual.</td>
+            </tr>
+            <tr>
+              <td><code>MenuItem</code></td>
+              <td>Tipo do item: ação, toggle, slider, enum, submenu.</td>
+            </tr>
+            <tr>
+              <td><code>MenuConfig</code></td>
+              <td>Dados persistentes das opções do jogador.</td>
+            </tr>
+            <tr>
+              <td><code>MenuRenderer</code></td>
+              <td>Fundo, molduras, texto, cursor, ícones e animações simples.</td>
+            </tr>
+            <tr>
+              <td><code>MenuAudio</code></td>
+              <td>SFX de cursor/confirmar/voltar e música do front-end.</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+    </section>
+
+    <section class="grid cols-3">
+      <article class="panel">
+        <h2>8. Pipeline visual</h2>
+        <ul>
+          <li>1 fundo principal por tela.</li>
+          <li>1 atlas de fonte.</li>
+          <li>1 atlas de ícones/setas/cursor.</li>
+          <li>1 atlas de barras/sliders/molduras.</li>
+          <li>Fade e highlight por cor/alpha, não por assets extras.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>9. Comportamento de UX</h2>
+        <ul>
+          <li>Cursor sempre visível.</li>
+          <li>Rodapé com ajuda contextual.</li>
+          <li>Som curto ao mover e confirmar.</li>
+          <li>Alterações sensíveis pedem confirmação.</li>
+          <li>Salvar somente em telas próprias, não no fluxo de navegação básico.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>10. O que evitar</h2>
+        <ul>
+          <li>Acoplar menu diretamente ao loop da corrida.</li>
+          <li>Fazer cada tela carregar assets sozinha.</li>
+          <li>Duplicar lógica de input por submenu.</li>
+          <li>Deixar configuração solta em variáveis globais sem perfil central.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>11. Proposta concreta para o primeiro incremento</h2>
+      <ol class="small" style="color: var(--muted); margin-left: 20px;">
+        <li>Criar <code>MenuConfig</code> com opções de jogo, áudio e controles.</li>
+        <li>Criar <code>MenuStateMachine</code> com 3 telas: título, menu principal, configurações.</li>
+        <li>Implementar itens <code>action</code>, <code>toggle</code> e <code>enum</code>.</li>
+        <li>Renderizar tudo com fundo fixo + texto + cursor.</li>
+        <li>Adicionar SFX de cursor e confirmar.</li>
+        <li>Só depois adicionar setup do carro, save/load e transições mais ricas.</li>
+      </ol>
+      <p>
+        Em outras palavras: primeiro montar o <strong>front-end navegável</strong>; depois ligar isso
+        aos sistemas de corrida, áudio e persistência.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>12. Fontes usadas</h2>
+      <ul class="small">
+        <li><a href="https://problemkaputt.de/psx-spx.htm" target="_blank" rel="noreferrer">PSXSPX Specifications - GPU, VRAM, controller/memory card bus, CD-ROM XA</a></li>
+        <li><a href="https://problemkaputt.de/psxspx-cdrom-file-video-texture-image-tim-pxl-clt-sony.htm" target="_blank" rel="noreferrer">PSXSPX - TIM/PXL/CLT (formatos de textura do PS1)</a></li>
+        <li><a href="https://www.breck-mckye.com/psnoobsdk-docs/chapter1/3-textures.html" target="_blank" rel="noreferrer">PSn00bSDK docs - textures, TIM, CLUT, VRAM e sprite sheets</a></li>
+        <li><a href="https://www.copetti.org/writings/consoles/playstation/" target="_blank" rel="noreferrer">Copetti - arquitetura do PlayStation, BIOS, shell, CD-ROM XA e SDK</a></li>
+        <li><a href="https://psxdatacenter.com/games/P/F/SCES-02222.html" target="_blank" rel="noreferrer">PSX Data Center - Formula One 99 (modos, clima, setup, save, comentários)</a></li>
+        <li><a href="https://gamefaqs.gamespot.com/boards/916392-playstation/80398430" target="_blank" rel="noreferrer">GameFAQs discussion - observações públicas sobre áudio e setup de Formula One 99</a></li>
+        <li><a href="https://www.videogamemanual.com/ps1/Formula%20One%2099%20%28USA%29.pdf" target="_blank" rel="noreferrer">Manual scan indexado - confirmação pública de existência do Options Menu</a></li>
+      </ul>
+      <p class="small">
+        Observação: detalhes como estrutura interna do código de <em>Formula One 99</em> são
+        <strong>inferência técnica</strong> baseada nas capacidades do PS1, na organização típica de jogos
+        da época e nas funcionalidades públicas do jogo.
+      </p>
+    </section>
+
+    <div class="footer">
+      Arquivo gerado para uso como referência de arquitetura e UX de menu inicial.
+    </div>
+  </div>
+</body>
+</html>

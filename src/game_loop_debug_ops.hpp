@@ -8,6 +8,7 @@
 
 #include "game_loop_debug_state.hpp"
 #include "game_loop_runtime_state.hpp"
+#include "game_loop_track_render_telemetry_view_contracts.hpp"
 #include "track_render_contracts.hpp"
 
 namespace GameLoopRuntime
@@ -40,6 +41,17 @@ inline void PopulateOverlayFaceCounters(uint32_t submittedTrackFaces,
 }
 
 inline void PopulateOverlayQueryMetrics(const TrackRenderDomain::TrackRenderTelemetry& telemetry,
+                                        OverlayDiagnosticsSnapshot& out)
+{
+    out.queryCalls = ClampToU16(telemetry.queryCalls);
+    out.queryGlobalPasses = ClampToU16(telemetry.queryGlobal);
+    out.queryCacheHits = ClampToU16(telemetry.queryCacheHits);
+    out.queryCacheMisses = ClampToU16(telemetry.queryCacheMisses);
+    out.wallQueryCalls = ClampToU16(telemetry.wallQueryCalls);
+    out.wallQueryHits = ClampToU16(telemetry.wallQueryHits);
+}
+
+inline void PopulateOverlayQueryMetrics(const TrackRenderTelemetryViewPacket& telemetry,
                                         OverlayDiagnosticsSnapshot& out)
 {
     out.queryCalls = ClampToU16(telemetry.queryCalls);
@@ -84,6 +96,14 @@ inline void PopulateSh2BusyMetrics(Sh2SplitTelemetrySnapshot& out)
 }
 
 inline void PopulateSh2QueryTelemetry(const TrackRenderDomain::TrackRenderTelemetry& telemetry,
+                                      Sh2SplitTelemetrySnapshot& out)
+{
+    out.queryCalls = ClampToU16(telemetry.queryCalls);
+    out.queryGlobal = ClampToU16(telemetry.queryGlobal);
+    out.queryScmap = ClampToU16(telemetry.queryScmap);
+}
+
+inline void PopulateSh2QueryTelemetry(const TrackRenderTelemetryViewPacket& telemetry,
                                       Sh2SplitTelemetrySnapshot& out)
 {
     out.queryCalls = ClampToU16(telemetry.queryCalls);

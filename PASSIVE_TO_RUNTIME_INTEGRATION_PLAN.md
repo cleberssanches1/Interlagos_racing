@@ -15,6 +15,12 @@ Ele define:
 
 ## Premissas operacionais
 
+InventÃ¡rio consolidado de contratos passivos:
+
+- `PASSIVE_CONTRACTS_INVENTORY.md`
+- `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
+- `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+
 ### Envelope estável atual
 
 - ISO de referência: `4134912` bytes
@@ -315,3 +321,6 @@ A próxima integração real mais segura é:
 2. só depois `CdAssetSystem` para remover duplicações locais de leitura;
 3. só depois `MemoryBudgetSystem` em modo espelho;
 4. deixar `CarRenderSystem` e `TrackRenderScheduler` para quando houver margem maior de validação.
+
+
+

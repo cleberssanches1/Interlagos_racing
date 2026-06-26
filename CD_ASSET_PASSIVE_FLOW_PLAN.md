@@ -5,6 +5,10 @@
 Prepare the extraction of CD/bootstrap asset orchestration out of `src/main.cxx`
 without changing the current boot sequence.
 
+Consolidated chain document:
+
+- `CD_BOOTSTRAP_CHAIN_FLOW_PLAN.md`
+
 ## Current passive building blocks
 
 - `src/cd_asset_contracts.hpp`
@@ -19,6 +23,8 @@ without changing the current boot sequence.
 - `src/game_loop_cd_asset_sba_decision_assembler.hpp`
 - `src/game_loop_cd_asset_anchor_decision_contracts.hpp`
 - `src/game_loop_cd_asset_anchor_decision_assembler.hpp`
+- `src/game_loop_cd_asset_decision_bridge_contracts.hpp`
+- `src/game_loop_cd_asset_decision_bridge_assembler.hpp`
 
 These files already describe a passive CD asset path for:
 
@@ -217,6 +223,10 @@ Two even narrower bootstrap-side cuts now also exist:
 - `CdAssetSbaBootstrapDecisionPacket`
 - `CdAssetAnchorBootstrapDecisionPacket`
 
+One bridge-level compile-only cut now also exists above them:
+
+- `CdAssetBootstrapDecisionBridgePacket`
+
 Current effect:
 
 - SBA shadow-model path/load intent can now be represented without carrying the
@@ -224,6 +234,8 @@ Current effect:
 - car-anchor fallback availability can now be represented together with parsed
   anchor data, without rebuilding fallback booleans at the future use site
 - both slices remain compile-only and off-path for now
+- the future SBA and anchor bootstrap boundaries can share one narrow bridge
+  without carrying the broader CD asset frame packet into `src/main.cxx`
 
 The exact future retry order for these narrow packets is now documented in:
 

@@ -128,6 +128,8 @@ Files:
 
 - `src/game_loop_presenter_input_contracts.hpp`
 - `src/game_loop_presenter_input_assembler.hpp`
+- `src/game_loop_presenter_observability_input_contracts.hpp`
+- `src/game_loop_presenter_observability_input_assembler.hpp`
 
 Main packet:
 
@@ -142,11 +144,18 @@ Current contents:
 
 - `PresentationDebugBundle`
 - `RenderFrameDebugBundle`
+- `PresenterObservabilityInputPacket`
 - `PresenterRenderDebugPacket`
 - `OverlayDebugBundle`
 - `PresenterOverlayDebugPacket`
 - `ObservabilityDebugBundle`
 - `PresenterInputSummaryPacket`
+
+Additional purpose:
+
+- preserve one future-ready observability-side adapter for presenter input
+- keep scheduler/reuse debug telemetry attachable to presenter input without
+  widening ownership in runtime
 
 ### 7. Presenter top-level summary
 
@@ -168,6 +177,7 @@ Current summary fields:
 
 - presentation/HUD presence
 - render/overlay/observability presence
+- scheduler/reuse debug presence
 - memory debug presence
 - speed/gear/rpm
 - face counters
@@ -180,6 +190,12 @@ Files:
 
 - `src/game_loop_presenter_facade_contracts.hpp`
 - `src/game_loop_presenter_facade_assembler.hpp`
+- `src/game_loop_presenter_facade_input_contracts.hpp`
+- `src/game_loop_presenter_facade_input_assembler.hpp`
+- `src/game_loop_presenter_facade_decision_input_contracts.hpp`
+- `src/game_loop_presenter_facade_decision_input_assembler.hpp`
+- `src/game_loop_presenter_facade_decision_bridge_contracts.hpp`
+- `src/game_loop_presenter_facade_decision_bridge_assembler.hpp`
 
 Main packet:
 
@@ -196,6 +212,13 @@ Current contents:
 - `PeriodicHudStatsPacket`
 - `PresenterRenderDebugPacket`
 - `PresenterOverlayDebugPacket`
+
+Additional purpose:
+
+- provide one narrower facade-ready input path above
+  `PresenterObservabilityInputPacket`
+- let future facade assembly avoid depending on the full
+  `PresenterInputBundle`
 
 ### 9. Facade interface layer
 
@@ -223,6 +246,13 @@ Current decision surface:
 - `shouldPresentOverlayDebug`
 - `shouldPresentMemoryDebug`
 
+Additional purpose:
+
+- allow future facade decisions to be derived from a minimal packet without
+  carrying the full facade packet into the decision boundary
+- allow future HUD/frame-end boundaries to share one narrow compile-only bridge
+  above the minimal decision input
+
 ### 10. Facade bridge layer
 
 Files:
@@ -245,6 +275,11 @@ Current contents:
 - `PresenterFacadePacket`
 - `PresenterFacadeRequestPacket`
 - `PresenterFacadeDecisionPacket`
+
+Additional compile-only entry:
+
+- `PresenterFacadeDecisionInputPacket`
+- `PresenterFacadeDecisionBridgePacket`
 
 ### 11. Frame-end decision layer
 
@@ -276,6 +311,7 @@ Current contents:
 Files:
 
 - `src/game_loop_presenter_hud_telemetry_decision_contracts.hpp`
+- `src/game_loop_presenter_hud_telemetry_decision_input_contracts.hpp`
 - `src/game_loop_presenter_hud_telemetry_decision_assembler.hpp`
 
 Main packet:
@@ -294,6 +330,10 @@ Current contents:
 - `shouldPresentPeriodicHud`
 - `shouldPresentSegmentOverlapDiagnostics`
 - `shouldPresentSh2Telemetry`
+
+Input dependency packet:
+
+- `PresenterHudTelemetryDecisionInputPacket`
 
 ## Validation coverage
 

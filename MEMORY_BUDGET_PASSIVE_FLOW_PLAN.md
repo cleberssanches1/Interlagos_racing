@@ -157,6 +157,24 @@ The next safe step is:
 3. later try a tiny cut that routes PCM/bootstrap decisions through the
    category-policy packet without changing allocator behavior
 
+The passive chain is now also consolidated in:
+
+- `MEMORY_BUDGET_CHAIN_FLOW_PLAN.md`
+- `MEMORY_BUDGET_LIVE_INTEGRATION_INVENTORY.md`
+- `MEMORY_BUDGET_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `MEMORY_BUDGET_CATEGORY_CONSUMER_MATRIX.md`
+- `MEMORY_BUDGET_RENDER_OBSERVABILITY_FLOW_PLAN.md`
+- `MEMORY_BUDGET_PRESENTER_DEBUG_BOUNDARY_PLAN.md`
+- `MEMORY_BUDGET_PRESENTATION_BOUNDARY_INVENTORY.md`
+- `MEMORY_BUDGET_MEMORY_DEBUG_PRESENTATION_BOUNDARY_INVENTORY.md`
+- `MEMORY_BUDGET_MEMORY_DEBUG_PRESENTATION_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+
+That chain document should be treated as the primary broad-to-narrow inventory
+for future live retries.
+
+The live integration inventory should be treated as the boundary-by-boundary
+status map for already accepted neutral bridge uses.
+
 Another safe passive step now available for this slice is:
 
 - explicit `Thresholds` builder in `src/memory_budget_transition_ops.hpp`

@@ -5,6 +5,10 @@
 Prepare the extraction of track-side scheduling/consumption out of
 `src/game_loop_system.hpp` without changing the current lockstep runtime.
 
+Consolidated passive-contract index:
+
+- `PASSIVE_CONTRACTS_INVENTORY.md`
+
 ## Current passive building blocks
 
 - `src/track_render_contracts.hpp`
@@ -14,6 +18,8 @@ Prepare the extraction of track-side scheduling/consumption out of
 - `src/track_render_scheduler.hpp`
 - `src/game_loop_track_render_packet.hpp`
 - `src/game_loop_track_render_packet_assembler.hpp`
+- `src/game_loop_track_render_telemetry_view_contracts.hpp`
+- `src/game_loop_track_render_telemetry_view_assembler.hpp`
 
 These files already describe a passive track path for:
 
@@ -203,3 +209,136 @@ Current effect:
 - future presenter/debug formatting can consume track scheduling/render state
   without walking the full frame-context/render/telemetry packet structure
 - runtime scheduler ownership remains untouched
+
+Another narrow passive telemetry slice is now also available for the track path:
+
+- `src/game_loop_track_render_telemetry_view_contracts.hpp`
+- `src/game_loop_track_render_telemetry_view_assembler.hpp`
+
+Current effect:
+
+- `TrackRenderFramePacket` can now be reduced off-path into a smaller
+  `TrackRenderTelemetryViewPacket`
+- the exact telemetry fields currently repeated across:
+  - producer in-flight hint
+  - overlay query diagnostics
+  - SH2 query/busy presentation
+  are now available in one narrow packet
+- a future retry can target shared telemetry consumption first without pulling
+  the broader frame-context/render packet into the live call site
+
+The exact future retry order for this narrow packet is now documented in:
+
+- `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+
+## Current narrow boundary chain
+
+The live track boundary is now intentionally layered:
+
+1. `TrackRenderTelemetryViewPacket`
+2. `TrackRenderProducerStatePacket`
+3. `TrackRenderProducerHintPacket`
+
+Current purpose of each layer:
+
+- `TrackRenderTelemetryViewPacket`
+  - shared telemetry slice for overlay and SH2 presentation
+  - keeps repeated counters in one packet
+- `TrackRenderProducerStatePacket`
+  - isolates producer-only state from the broader telemetry slice
+  - preserves `producerSafeModeActive` for future non-scheduling decisions
+- `TrackRenderProducerHintPacket`
+  - narrows the live hint path to only `producerJobInFlight`
+  - keeps the actual live consumer surface minimal
+
+This means the runtime no longer needs to read the broader track telemetry
+shape at the final hint call site.
+
+## Next passive reuse groundwork
+
+The next low-risk passive target is the track reuse decision boundary, not the
+scheduler itself.
+
+That boundary should remain compile-only first and expose only the final
+decision shape needed by a future live caller, for example:
+
+- consume committed packet or not
+- kick producer or not
+- lockstep wait / synchronous fallback flags
+- selected consume/dispatch slots
+
+This keeps `TrackReuseDecisionPacket` available upstream while preparing a
+smaller presentation/runtime-facing packet for later use.
+
+That next reuse groundwork now has two passive layers:
+
+- `TrackReuseDecisionViewPacket`
+- `TrackReuseTelemetryViewPacket`
+
+Current split:
+
+- `TrackReuseDecisionViewPacket`
+  - final decision flags/slots
+- `TrackReuseTelemetryViewPacket`
+  - accumulated track reuse counters only
+
+This keeps future live retry options narrow on both the decision side and the
+telemetry side without pulling the full `FrameReuseTelemetry` object into a
+critical call site.
+
+## Reuse symmetry status
+
+The passive reuse groundwork is now structurally symmetric:
+
+- `TrackReuseDecisionViewPacket`
+- `TrackReuseTelemetryViewPacket`
+- `SimulationReuseDecisionViewPacket`
+- `SimulationReuseTelemetryViewPacket`
+
+Current intent:
+
+- keep track and simulation reuse boundaries parallel
+- reduce future live substitutions to equivalent narrow packets
+- avoid mixing one-sided reuse refactors with runtime scheduling changes
+
+## Reuse observability aggregation
+
+The reuse family can now also be grouped passively into one higher-level
+observability packet:
+
+- `ReuseObservabilityPacket`
+
+It groups only the narrow reuse views:
+
+- `SimulationReuseDecisionViewPacket`
+- `SimulationReuseTelemetryViewPacket`
+- `TrackReuseDecisionViewPacket`
+- `TrackReuseTelemetryViewPacket`
+
+This is intentionally still compile-only groundwork.
+
+Current benefit:
+
+- future presenter/debug consumers can accept one reuse bundle instead of
+  walking four separate packets
+- no runtime loop ownership or scheduling behavior changes
+
+## Scheduler / reuse observability aggregation
+
+One higher-level passive bundle can now sit above the reuse family:
+
+- `SimulationSchedulerTelemetryViewPacket`
+- `SchedulerReuseObservabilityPacket`
+
+Current intent:
+
+- join simulation-scheduler telemetry with track producer state and the full
+  reuse observability bundle
+- prepare a future debug/presenter consumer that reasons about scheduling
+  pressure and reuse behavior together
+- keep this aggregation compile-only until an explicit remove-first runtime cut
+  exists
+
+The dedicated hierarchy/order for this family is now documented in:
+
+- `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
