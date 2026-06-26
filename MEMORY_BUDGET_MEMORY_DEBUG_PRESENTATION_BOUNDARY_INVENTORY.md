@@ -190,6 +190,15 @@ Use:
 
 - `MemoryDebugPresentationBundle`
 
+Current status:
+
+- one local frame-end consumer is now active
+- one local low-work overlay consumer is now active
+- the low-work overlay consumer now covers `WLWR`, `HWT`, `LWC`, `LTX`,
+  `LFO`, full `LTK`, and both `PB` paths through the local bundle/text path
+- ownership still remains in `src/game_loop_system.hpp`
+- print/update ordering remains local
+
 ## First-live retry rule
 
 Any future live retry must choose only one of these entry points:

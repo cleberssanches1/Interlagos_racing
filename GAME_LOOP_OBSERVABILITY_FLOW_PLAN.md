@@ -245,6 +245,12 @@ Reason:
 - these are already presentation/debug-only paths;
 - they do not need to affect simulation, camera, input or audio.
 
+Current local runtime use now also includes:
+
+- one local `MemoryDebugPresentationBundle` assembly/consume step in
+  `UpdateFrameEndOverlays()`
+- ownership still remains inside `src/game_loop_system.hpp`
+
 ## Runtime guard rails for the next patch
 
 When the first runtime integration happens, keep all of the following true:

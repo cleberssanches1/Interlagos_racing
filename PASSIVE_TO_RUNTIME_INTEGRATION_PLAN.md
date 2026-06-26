@@ -20,6 +20,7 @@ InventÃ¡rio consolidado de contratos passivos:
 - `PASSIVE_CONTRACTS_INVENTORY.md`
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
 - `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
 
 ### Envelope estável atual
 
@@ -111,6 +112,20 @@ Critério de aceite:
 #### Motivo
 
 É o gargalo estrutural mais importante do Master/Slave.
+
+#### Boundary estreito recomendado antes de qualquer novo corte vivo maior
+
+Se o objetivo for voltar ao eixo `scheduler/reuse observability` com o menor
+risco possível, o primeiro boundary recomendado agora é:
+
+- `SimulationSchedulerTelemetryViewPacket`
+
+Forma aceitável:
+
+1. montagem local e stack-local;
+2. consumo em um único helper de debug/telemetria;
+3. remoção das leituras locais equivalentes no mesmo patch;
+4. nenhuma mudança de dispatch, drain, producer ou `N-1`.
 
 #### Primeira integração real permitida
 

@@ -108,6 +108,7 @@ Primary plans:
 - `SIMULATION_SCHEDULER_PLAN.md`
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
 - `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
 
 Main passive families:
 
@@ -144,6 +145,9 @@ Runtime status:
 - compile-only
 - prepared to keep future track/simulation reuse substitutions symmetric
 - no live scheduler ownership change has been introduced here
+- the preferred next narrow runtime-facing candidate is
+  `SimulationSchedulerTelemetryViewPacket` in one local observability-only
+  helper before any reuse aggregate is attempted
 
 ### CD Asset / Bootstrap
 
@@ -228,6 +232,14 @@ Runtime status:
 - allocator timing and ownership remain intentionally unchanged
 - future live retries should prefer bridge/category boundaries over broad frame
   packet ownership in critical runtime files
+- one local `MemoryDebugPresentationBundle` consumer is now active in the
+  frame-end debug path without moving ownership out of `src/game_loop_system.hpp`
+- one additional local `MemoryDebugPresentationBundle` consumer is now active
+  in the low-work overlay path without moving ownership out of
+  `src/game_loop_system.hpp`
+- that low-work overlay consumer now covers `WLWR`, `HWT`, `LWC`, `LTX`,
+  `LFO`, full `LTK`, and both `PB` paths through the same local bundle/text
+  boundary
 
 ### AutoLap Route
 
@@ -295,4 +307,6 @@ Prefer the next cut only if all are true:
 
 1. continue documentation-first consolidation before new live cuts
 2. prefer substitutional reuse/scheduler observability over broad scheduler moves
-3. keep bootstrap/presenter changes compile-only unless a remove-first patch is obvious
+3. start with `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md` Boundary A
+   (`SimulationSchedulerTelemetryViewPacket`) before touching reuse aggregates
+4. keep bootstrap/presenter changes compile-only unless a remove-first patch is obvious

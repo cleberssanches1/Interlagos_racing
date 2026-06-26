@@ -145,6 +145,18 @@ Must remain unchanged:
 - allocator timing
 - frame pacing
 
+Current status:
+
+- a local frame-end consumer is now active
+- a local low-work overlay consumer is now active
+- the low-work overlay consumer now drives `WLWR`, `HWT`, `LWC`, `LTX`,
+  `LFO`, full `LTK`, and both `PB` paths through the local bundle/text path
+- `MemoryDebugPresentationBundle` is assembled and consumed inside
+  `UpdateFrameEndOverlays()`
+- `MemoryDebugPresentationBundle` is also assembled and consumed locally inside
+  `UpdateLowWorkFreeOverlayEnabled()`
+- ownership still remains local to `src/game_loop_system.hpp`
+
 ## What must not be pulled into the first live boundary
 
 Do not pull these directly into the first live retry:

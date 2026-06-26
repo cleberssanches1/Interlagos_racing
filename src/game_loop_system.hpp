@@ -510,8 +510,11 @@ private:
         overlayTextBundle.valid = true;
         overlayTextBundle.header =
             GameLoopMemoryPresentationDomain::BuildLowWorkOverlayHeaderTextPacket(overlayHeader);
+        auto overlayDebugBundle =
+            BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
         auto overlayTextView =
-            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextViewPacket(overlayTextBundle);
+            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextViewPacket(
+                overlayDebugBundle.overlayText);
 
         SRL::Debug::Print(2, 15, "WLWR free:%u df:%d sl:%u id:%d    ",
                           static_cast<unsigned>(overlayTextView.lowWorkFree),
@@ -551,16 +554,18 @@ private:
         highOverlay.freeBytes = highFreeBytes;
         overlayTextBundle.highWork =
             GameLoopMemoryPresentationDomain::BuildHighWorkOverlayTextPacket(highOverlay);
+        overlayDebugBundle =
+            BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
 
         SRL::Debug::Print(2, 12, "HWT1 iu:%u ga:%u ui:%u     ",
-                          static_cast<unsigned>(highOverlay.initUnknown),
-                          static_cast<unsigned>(highOverlay.gameplayAuto),
-                          static_cast<unsigned>(highOverlay.ui));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.initUnknown),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.gameplayAuto),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.ui));
         SRL::Debug::Print(2, 13, "HWT2 tr:%u car:%u fs:%u hf:%u",
-                          static_cast<unsigned>(highOverlay.track),
-                          static_cast<unsigned>(highOverlay.car),
-                          static_cast<unsigned>(highOverlay.finishSync),
-                          static_cast<unsigned>(highOverlay.freeBytes));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.track),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.car),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.finishSync),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.highWork.freeBytes));
 
         overlay.lastBreakdown = breakdown;
         overlay.SetBreakdownValid(true);
@@ -579,35 +584,41 @@ private:
         overlayBreakdown.metadata = breakdown.metadata;
         overlayTextBundle.breakdown =
             GameLoopMemoryPresentationDomain::BuildLowWorkOverlayBreakdownTextPacket(overlayBreakdown);
+        overlayDebugBundle =
+            BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
 
         SRL::Debug::Print(2, 16, "LWC1 r:%u s:%u w:%u       ",
-                          static_cast<unsigned>(overlayBreakdown.renderers),
-                          static_cast<unsigned>(overlayBreakdown.slotState),
-                          static_cast<unsigned>(overlayBreakdown.workingSet));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.breakdown.renderers),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.breakdown.slotState),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.breakdown.workingSet));
         SRL::Debug::Print(2, 17, "LWC2 f:%u t:%u m:%u       ",
-                          static_cast<unsigned>(overlayBreakdown.familyCache),
-                          static_cast<unsigned>(overlayBreakdown.transient),
-                          static_cast<unsigned>(overlayBreakdown.metadata));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.breakdown.familyCache),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.breakdown.transient),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.breakdown.metadata));
+
+        GameLoopMemoryPresentationDomain::LowWorkOverlayTicksPacket overlayTicks{};
+        overlayTicks.valid = true;
+        overlayTicks.trackStreamTicks = trackStreamTicks;
+        overlayTicks.trackMaintenanceTicks = trackMaintenanceTicks;
+        overlayTicks.trackDrawTicks = trackDrawTicks;
+        overlayTicks.trackFrameTicks = trackFrameTicks;
+        overlayTicks.trackWindowTicks = trackWindowTicks;
+        overlayTicks.trackPrefetchTicks = trackPrefetchTicks;
+        overlayTicks.trackLodTicks = trackLodTicks;
+        overlayTicks.trackWorkingSetTicks = trackWorkingSetTicks;
+        overlayTicks.prefetchBuildAttempts = prefetchBuildAttempts;
+        overlayTicks.prefetchBuildBudget = prefetchBuildBudget;
+        overlayTicks.prefetchBuildDrops = prefetchBuildDrops;
 
         if constexpr (!kEnableLowWorkFreeOverlayFull)
         {
-            GameLoopMemoryPresentationDomain::LowWorkOverlayTicksPacket overlayTicks{};
-            overlayTicks.valid = true;
-            overlayTicks.trackStreamTicks = trackStreamTicks;
-            overlayTicks.trackMaintenanceTicks = trackMaintenanceTicks;
-            overlayTicks.trackDrawTicks = trackDrawTicks;
-            overlayTicks.trackFrameTicks = trackFrameTicks;
-            overlayTicks.trackWindowTicks = trackWindowTicks;
-            overlayTicks.trackPrefetchTicks = trackPrefetchTicks;
-            overlayTicks.trackLodTicks = trackLodTicks;
-            overlayTicks.trackWorkingSetTicks = trackWorkingSetTicks;
-            overlayTicks.prefetchBuildAttempts = prefetchBuildAttempts;
-            overlayTicks.prefetchBuildBudget = prefetchBuildBudget;
-            overlayTicks.prefetchBuildDrops = prefetchBuildDrops;
             overlayTextBundle.ticks =
                 GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTicksTextPacket(overlayTicks);
+            overlayDebugBundle =
+                BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
             overlayTextView =
-                GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextViewPacket(overlayTextBundle);
+                GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextViewPacket(
+                    overlayDebugBundle.overlayText);
 
             SRL::Debug::Print(2, 18, "LTK st:%u mw:%u dr:%u fr:%u   ",
                               static_cast<unsigned>(overlayTicks.trackStreamTicks),
@@ -677,15 +688,19 @@ private:
         tagGroupPacket.track = tagGroups.track;
         tagGroupPacket.car = tagGroups.car;
         tagGroupPacket.finishSync = tagGroups.finishSync;
+        overlayTextBundle.tagGroups =
+            GameLoopMemoryPresentationDomain::BuildLowWorkTagGroupTextPacket(tagGroupPacket);
+        overlayDebugBundle =
+            BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
 
         SRL::Debug::Print(2, 20, "LTX1 iu:%u ga:%u ui:%u    ",
-                          static_cast<unsigned>(tagGroupPacket.initUnknown),
-                          static_cast<unsigned>(tagGroupPacket.gameplayAuto),
-                          static_cast<unsigned>(tagGroupPacket.ui));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.tagGroups.initUnknown),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.tagGroups.gameplayAuto),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.tagGroups.ui));
         SRL::Debug::Print(2, 21, "LTX2 tr:%u car:%u fs:%u   ",
-                          static_cast<unsigned>(tagGroupPacket.track),
-                          static_cast<unsigned>(tagGroupPacket.car),
-                          static_cast<unsigned>(tagGroupPacket.finishSync));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.tagGroups.track),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.tagGroups.car),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.tagGroups.finishSync));
 
         const auto lwrReport = SRL::Memory::LowWorkRam::GetReport();
         const uint32_t usedBytes = static_cast<uint32_t>(
@@ -717,29 +732,37 @@ private:
         allocatorPacket.knownTaggedBytes = knownTaggedBytes;
         allocatorPacket.invalidTaggedBytes = invalidTaggedBytes;
         allocatorPacket.invalidTaggedBlocks = invalidTaggedBlocks;
+        overlayTextBundle.allocator =
+            GameLoopMemoryPresentationDomain::BuildLowWorkAllocatorTextPacket(allocatorPacket);
+        overlayDebugBundle =
+            BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
 
         SRL::Debug::Print(2, 22, "LFO1 py:%u ov:%u fb:%u    ",
-                          static_cast<unsigned>(allocatorPacket.payloadBytes),
-                          static_cast<unsigned>(allocatorPacket.overheadBytes),
-                          static_cast<unsigned>(allocatorPacket.freeBlocks));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.allocator.payloadBytes),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.allocator.overheadBytes),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.allocator.freeBlocks));
         SRL::Debug::Print(2, 23, "LFO2 kn:%u iv:%u ib:%u   ",
-                          static_cast<unsigned>(allocatorPacket.knownTaggedBytes),
-                          static_cast<unsigned>(allocatorPacket.invalidTaggedBytes),
-                          static_cast<unsigned>(allocatorPacket.invalidTaggedBlocks));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.allocator.knownTaggedBytes),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.allocator.invalidTaggedBytes),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.allocator.invalidTaggedBlocks));
+        overlayTextBundle.ticks =
+            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTicksTextPacket(overlayTicks);
+        overlayDebugBundle =
+            BuildLowWorkOverlayMemoryDebugPresentationBundle(overlayTextBundle);
         SRL::Debug::Print(2, 24, "LTK1 st:%u mw:%u dr:%u fr:%u   ",
-                          static_cast<unsigned>(trackStreamTicks),
-                          static_cast<unsigned>(trackMaintenanceTicks),
-                          static_cast<unsigned>(trackDrawTicks),
-                          static_cast<unsigned>(trackFrameTicks));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackStreamTicks),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackMaintenanceTicks),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackDrawTicks),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackFrameTicks));
         SRL::Debug::Print(2, 25, "LTK2 w:%u pf:%u ld:%u ws:%u   ",
-                          static_cast<unsigned>(trackWindowTicks),
-                          static_cast<unsigned>(trackPrefetchTicks),
-                          static_cast<unsigned>(trackLodTicks),
-                          static_cast<unsigned>(trackWorkingSetTicks));
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackWindowTicks),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackPrefetchTicks),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackLodTicks),
+                          static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.trackWorkingSetTicks));
             SRL::Debug::Print(2, 26, "PB b:%u/%u d:%u            ",
-                              static_cast<unsigned>(prefetchBuildAttempts),
-                              static_cast<unsigned>(prefetchBuildBudget),
-                              static_cast<unsigned>(prefetchBuildDrops));
+                              static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.prefetchBuildAttempts),
+                              static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.prefetchBuildBudget),
+                              static_cast<unsigned>(overlayDebugBundle.overlayText.ticks.prefetchBuildDrops));
         }
     }
 
@@ -983,6 +1006,17 @@ private:
             overlayPacketInputs,
             overlayTextInputs,
             traceInputs);
+    }
+
+    GameLoopMemoryPresentationDomain::MemoryDebugPresentationBundle
+    BuildLowWorkOverlayMemoryDebugPresentationBundle(
+        const GameLoopMemoryPresentationDomain::LowWorkOverlayTextBundle& overlayText) const
+    {
+        return GameLoopMemoryPresentationDomain::BuildMemoryDebugPresentationBundle(
+            GameLoopObservabilityDomain::MemoryPresentationPacketFlow{},
+            overlayText,
+            GameLoopMemoryPresentationDomain::HighWorkTraceTextPacket{},
+            GameLoopMemoryPresentationDomain::LowWorkTraceTextPacket{});
     }
 
     void PresentMemoryDebugPresentationBundle(

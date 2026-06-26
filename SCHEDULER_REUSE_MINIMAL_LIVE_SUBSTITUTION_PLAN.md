@@ -16,6 +16,13 @@ this area is close to Master/Slave timing and previous-frame reuse behavior.
 - no invalid opcode
 - no silent close
 
+## Current status
+
+- the full `scheduler/reuse observability` chain remains compile-only
+- no local live consumer is active yet in critical runtime files
+- the next recommended live candidate is Boundary A from
+  `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
+
 ## Runtime boundaries covered
 
 Only future observability-facing call sites are in scope.
@@ -215,6 +222,7 @@ Rollback immediately if:
 ## Related documents
 
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
+- `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
 - `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 - `PASSIVE_CONTRACTS_INVENTORY.md`

@@ -21,10 +21,12 @@ It does not authorize a live patch by itself.
 
 ## Current live status
 
-The memory-budget chain is partially live only through narrow bridge-level
-accessors.
+The memory-budget chain is partially live through:
 
-No broad memory packet is consumed live in critical runtime files:
+- narrow bridge-level category-policy accessors
+- local presentation-only consumption of `MemoryDebugPresentationBundle`
+
+No broad allocator/policy packet is consumed live in critical runtime files:
 
 - `GameLoopRuntime::MemoryBudgetFramePacket`
 - `MemoryBudgetDomain::MemorySnapshotPacket`
@@ -35,6 +37,9 @@ No broad memory packet is consumed live in critical runtime files:
 Current live ownership remains local at the call sites.
 
 The bridge only supplies narrow category-policy queries.
+
+The presentation-side bundle consumers remain local to
+`src/game_loop_system.hpp`.
 
 ## Current live boundaries
 
@@ -117,6 +122,57 @@ Current ownership kept local:
 - debug print ownership
 - telemetry print ordering
 - frame-end presentation ownership
+
+### Boundary E - frame-end memory debug presentation bundle
+
+Live file:
+
+- `src/game_loop_system.hpp`
+
+Live accessor:
+
+- `BuildFrameEndMemoryDebugPresentationBundle()`
+- `PresentMemoryDebugPresentationBundle(...)`
+
+Current live timing:
+
+- assembled and consumed inside `UpdateFrameEndOverlays()`
+
+Current ownership kept local:
+
+- frame-end debug update ownership
+- work-RAM usage print ordering
+- high/low trace print ordering
+
+### Boundary F - low-work overlay memory debug presentation bundle
+
+Live file:
+
+- `src/game_loop_system.hpp`
+
+Live accessor:
+
+- `BuildLowWorkOverlayMemoryDebugPresentationBundle(...)`
+
+Current live timing:
+
+- assembled and consumed locally inside `UpdateLowWorkFreeOverlayEnabled()`
+
+Current ownership kept local:
+
+- low-work overlay update ownership
+- overlay print ordering
+- allocator timing
+
+Current live text coverage:
+
+- `WLWR`
+- `HWT`
+- `LWC`
+- `LTX`
+- `LFO`
+- full `LTK`
+- both `PB` paths
 
 ## Current passive-enriched consumers
 

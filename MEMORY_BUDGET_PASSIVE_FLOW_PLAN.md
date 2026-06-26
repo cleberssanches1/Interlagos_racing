@@ -351,6 +351,10 @@ Current effect:
   - low-work trace text packet
 - future extraction can move from scattered builders to one passive assembly call
 - runtime ownership and print timing remain untouched
+- one local frame-end consumer is now active in `src/game_loop_system.hpp`
+- one local low-work overlay consumer is now active in `src/game_loop_system.hpp`
+- that low-work overlay consumer now drives `WLWR`, `HWT`, `LWC`, `LTX`,
+  `LFO`, full `LTK`, and both `PB` paths through the local bundle/text boundary
 
 That consolidated memory/debug slice is now also joinable with frame observability
 through one off-path bundle:
