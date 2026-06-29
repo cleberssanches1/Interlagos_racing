@@ -15,6 +15,7 @@ Only these runtime touch points are in scope:
 - `IsTrackProducerJobInFlightHint(...)`
 - overlay query diagnostics fed from track telemetry
 - SH2 query/busy presentation fed from track telemetry
+- HUD/debug producer-state presentation fed from the same narrow telemetry view
 
 No producer/sort ownership move is allowed in the same patch series.
 
@@ -116,6 +117,57 @@ Every live patch in this sequence must keep:
 - no visual pacing drift
 - no track telemetry drift
 
+## Accepted narrow live share
+
+One additional narrow live share is now accepted inside the same presentation
+path:
+
+1. assemble `TrackRenderTelemetryViewPacket` once in the local frame-presentation path
+2. reuse it for:
+   - `Sh2SplitTelemetrySnapshot`
+   - derived `TrackRenderProducerStatePacket`
+3. keep all consumption local to the same call path
+
+This does not authorize:
+
+- producer ownership changes
+- track scheduling changes
+- persistent telemetry caching
+- packet reuse across frames
+
+One further narrow local retry remains prepared, but should stay disabled until
+the current emulator-stable baseline is reconfirmed:
+
+- assemble `TrackRenderPresentationObservabilityPacket`
+- consume it only inside the same HUD/debug presentation helper
+- remove the equivalent local producer-state formatting reads in the same patch
+- prefer consuming `src/game_loop_track_render_presentation_observability_presenter_ops.hpp`
+  rather than open-coding the producer-state line again
+
+The currently accepted live form of that presenter helper is narrower:
+
+- `PresentTrackRenderProducerStatePacket(...)` only
+- `PresentTrackRenderSh2BusyLine(...)`
+- `PresentTrackRenderSh2SimSafeLine(...)`
+- `PresentTrackRenderSh2SimFallbackLine(...)`
+
+The higher `TrackRenderPresentationObservabilityPacket` path remains staged but
+disabled.
+
+The next compile-only staging packet for that same boundary is now:
+
+- `TrackRenderSh2PresentationPacket`
+
+This packet remains compile-only until the emulator-stable baseline is
+reconfirmed for another remove-first retry.
+
+It groups only:
+
+- `Sh2SplitTelemetrySnapshot`
+- `TrackRenderProducerStatePacket`
+- formatting mode flag for safe/fallback line selection
+- dispatch counters already read locally by the host
+
 ## Validation ritual
 
 Required after every live attempt:
@@ -157,3 +209,20 @@ For symmetry, the same compile-only preparation should exist on the simulation s
 
 This keeps any later live reuse retry comparable across Master/Slave simulation
 and track producer paths.
+
+Before any broader live presentation retry on the track side, the preferred
+compile-only staging packet is now:
+
+- `TrackRenderPresentationObservabilityPacket`
+
+It groups only:
+
+- `TrackRenderTelemetryViewPacket`
+- `TrackRenderProducerStatePacket`
+- `Sh2SplitTelemetrySnapshot`
+
+and intentionally excludes:
+
+- `TrackRenderFramePacket`
+- producer/sort scheduling ownership
+- any cross-frame cache or reuse state

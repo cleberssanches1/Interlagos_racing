@@ -1,15 +1,11 @@
 #pragma once
 
-#include "game_loop_presenter_facade_bridge_contracts.hpp"
-#include "game_loop_presenter_facade_decision_bridge_contracts.hpp"
 #include "game_loop_presenter_facade_interface_contracts.hpp"
 #include "game_loop_presenter_hud_telemetry_decision_contracts.hpp"
 #include "game_loop_presenter_hud_telemetry_decision_input_contracts.hpp"
 
 namespace GameLoopRuntime
 {
-
-using PresenterHudTelemetryDecisionInputs = PresenterHudTelemetryDecisionInputPacket;
 
 inline void SeedPresenterHudTelemetryDecisionPacket(
     const PresenterFacadeDecisionPacket& decision,
@@ -32,19 +28,6 @@ inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPac
     PresenterHudTelemetryDecisionPacket packet{};
     SeedPresenterHudTelemetryDecisionPacket(decision, inputs, packet);
     return packet;
-}
-
-inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPacket(
-    const PresenterFacadeBridgePacket& bridge,
-    const PresenterHudTelemetryDecisionInputPacket& inputs)
-{
-    return BuildPresenterHudTelemetryDecisionPacket(bridge.decision, inputs);
-}
-
-inline PresenterHudTelemetryDecisionPacket BuildPresenterHudTelemetryDecisionPacket(
-    const PresenterFacadeDecisionBridgePacket& bridge)
-{
-    return bridge.hudTelemetryDecision;
 }
 
 } // namespace GameLoopRuntime

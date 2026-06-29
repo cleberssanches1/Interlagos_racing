@@ -252,6 +252,10 @@ Preferred passive chain:
 - `src/game_loop_system.hpp` and `src/main.cxx` still own their critical runtime
   sequencing
 
+Companion consolidated bridge boundary:
+
+- `MEMORY_BUDGET_RUNTIME_BRIDGE_BOUNDARY_CONSOLIDATED.md`
+
 ## Remove-first rule for future live retries
 
 Any future live retry must:

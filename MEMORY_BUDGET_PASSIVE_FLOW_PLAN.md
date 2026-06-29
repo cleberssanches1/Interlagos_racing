@@ -58,6 +58,10 @@ This stays:
 
 ## Runtime-to-passive substitution map
 
+Companion consolidated bridge boundary:
+
+- `MEMORY_BUDGET_RUNTIME_BRIDGE_BOUNDARY_CONSOLIDATED.md`
+
 ### Snapshot and pressure
 
 Passive coverage already available:

@@ -193,9 +193,19 @@ Use:
 Current status:
 
 - one local frame-end consumer is now active
+- the consolidated frame-end boundary is documented in
+  `MEMORY_BUDGET_FRAME_END_BOUNDARY_CONSOLIDATED.md`
 - one local low-work overlay consumer is now active
+- the consolidated low-work overlay boundary is documented in
+  `MEMORY_BUDGET_LOW_WORK_OVERLAY_BOUNDARY_CONSOLIDATED.md`
 - the low-work overlay consumer now covers `WLWR`, `HWT`, `LWC`, `LTX`,
   `LFO`, full `LTK`, and both `PB` paths through the local bundle/text path
+- low-work overlay presentation formatting may now live in passive helper ops
+  while host update ownership stays local
+- low-work overlay capture for `LWT`, `tagGroups`, and `allocator` may now
+  live in passive helper ops while host state writes stay local
+- low-work overlay packet assembly for `header`, `high-work`, `breakdown`,
+  and `ticks` may now live in passive helper ops while host sequencing stays local
 - ownership still remains in `src/game_loop_system.hpp`
 - print/update ordering remains local
 

@@ -259,6 +259,8 @@ Files:
 
 - `src/game_loop_presenter_facade_bridge_contracts.hpp`
 - `src/game_loop_presenter_facade_bridge_assembler.hpp`
+- `src/game_loop_presenter_compile_only_preview_contracts.hpp`
+- `src/game_loop_presenter_compile_only_preview_assembler.hpp`
 
 Main packet:
 
@@ -281,12 +283,32 @@ Additional compile-only entry:
 - `PresenterFacadeDecisionInputPacket`
 - `PresenterFacadeDecisionBridgePacket`
 
-### 11. Frame-end decision layer
+### 11. Compile-only preview layer
+
+Files:
+
+- `src/game_loop_presenter_compile_only_preview_contracts.hpp`
+- `src/game_loop_presenter_compile_only_preview_assembler.hpp`
+
+Main packet:
+
+- `PresenterCompileOnlyPreviewPacket`
+
+Purpose:
+
+- validate one off-path passive preview that groups:
+  - `PresenterFacadeBridgePacket`
+  - `PresenterFacadeDecisionBridgePacket`
+- keep compile-only bridge coverage explicit before any runtime retry
+
+### 12. Frame-end decision layer
 
 Files:
 
 - `src/game_loop_presenter_frame_end_decision_contracts.hpp`
 - `src/game_loop_presenter_frame_end_decision_assembler.hpp`
+- `src/game_loop_presenter_frame_end_preview_contracts.hpp`
+- `src/game_loop_presenter_frame_end_preview_assembler.hpp`
 
 Main packet:
 
@@ -306,13 +328,19 @@ Current contents:
 - `shouldPresentOverlayDebug`
 - `shouldPresentMemoryDebug`
 
-### 12. HUD/telemetry decision layer
+Additional compile-only preview:
+
+- `PresenterFrameEndPreviewPacket`
+
+### 13. HUD/telemetry decision layer
 
 Files:
 
 - `src/game_loop_presenter_hud_telemetry_decision_contracts.hpp`
 - `src/game_loop_presenter_hud_telemetry_decision_input_contracts.hpp`
 - `src/game_loop_presenter_hud_telemetry_decision_assembler.hpp`
+- `src/game_loop_presenter_hud_telemetry_preview_contracts.hpp`
+- `src/game_loop_presenter_hud_telemetry_preview_assembler.hpp`
 
 Main packet:
 
@@ -334,6 +362,10 @@ Current contents:
 Input dependency packet:
 
 - `PresenterHudTelemetryDecisionInputPacket`
+
+Additional compile-only preview:
+
+- `PresenterHudTelemetryPreviewPacket`
 
 ## Validation coverage
 

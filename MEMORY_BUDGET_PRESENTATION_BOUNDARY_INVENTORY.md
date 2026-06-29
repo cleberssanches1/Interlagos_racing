@@ -10,6 +10,10 @@ This document is inventory-only.
 
 It does not authorize runtime integration by itself.
 
+The consolidated boundary summary now lives in:
+
+- `MEMORY_BUDGET_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+
 ## Stable baseline
 
 - ISO must remain exactly `4134912`

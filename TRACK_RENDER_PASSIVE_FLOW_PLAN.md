@@ -219,6 +219,44 @@ Current effect:
 
 - `TrackRenderFramePacket` can now be reduced off-path into a smaller
   `TrackRenderTelemetryViewPacket`
+- narrow live consumers can share one reduced telemetry surface without pulling
+  the full frame packet into the presentation path
+
+One additional compile-only presentation/observability aggregate now exists
+above the narrow telemetry/producer-state boundary:
+
+- `src/game_loop_track_render_presentation_observability_contracts.hpp`
+- `src/game_loop_track_render_presentation_observability_assembler.hpp`
+- `src/game_loop_track_render_presentation_observability_presenter_ops.hpp`
+- `src/game_loop_track_render_sh2_presentation_contracts.hpp`
+- `src/game_loop_track_render_sh2_presentation_assembler.hpp`
+
+Current effect:
+
+- `TrackRenderTelemetryViewPacket`
+- `TrackRenderProducerStatePacket`
+- `Sh2SplitTelemetrySnapshot`
+
+can now be grouped off-path into one local passive packet for future
+presentation/debug retries without touching producer/sort ownership
+- the producer-state print formatting can also be retried through one external
+  presenter helper instead of reintroducing inline formatting in the host
+
+Another compile-only packet now exists one level lower for the exact
+`PrintSh2SplitTelemetry(...)` boundary:
+
+- `TrackRenderSh2PresentationPacket`
+
+Current effect:
+
+- the SH2 snapshot
+- the optional producer-state view
+- the safe/fallback presentation mode
+- the two host-local dispatch counters
+
+can now be grouped for a future remove-first live retry without broadening the
+boundary beyond presentation/debug
+  `TrackRenderTelemetryViewPacket`
 - the exact telemetry fields currently repeated across:
   - producer in-flight hint
   - overlay query diagnostics

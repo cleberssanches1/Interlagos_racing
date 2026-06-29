@@ -39,8 +39,14 @@ The presenter-facing passive groundwork now exists in:
 - `src/game_loop_presenter_facade_bridge_assembler.hpp`
 - `src/game_loop_presenter_frame_end_decision_contracts.hpp`
 - `src/game_loop_presenter_frame_end_decision_assembler.hpp`
+- `src/game_loop_presenter_frame_end_preview_contracts.hpp`
+- `src/game_loop_presenter_frame_end_preview_assembler.hpp`
 - `src/game_loop_presenter_hud_telemetry_decision_contracts.hpp`
 - `src/game_loop_presenter_hud_telemetry_decision_assembler.hpp`
+- `src/game_loop_presenter_hud_telemetry_preview_contracts.hpp`
+- `src/game_loop_presenter_hud_telemetry_preview_assembler.hpp`
+- `src/game_loop_presenter_compile_only_preview_contracts.hpp`
+- `src/game_loop_presenter_compile_only_preview_assembler.hpp`
 
 ## Current passive model
 
@@ -137,6 +143,18 @@ It exists to:
 - keep the future live substitution smaller
 - avoid reconstructing request/decision glue inside `src/game_loop_system.hpp`
 
+### Compile-only preview
+
+`PresenterCompileOnlyPreviewPacket` now groups:
+
+- `PresenterFacadeBridgePacket`
+- `PresenterFacadeDecisionBridgePacket`
+
+It exists to:
+
+- validate one off-path preview above both known live presenter boundaries
+- keep compile-only bridge coverage explicit before any runtime retry
+
 ### Narrow frame-end decision
 
 `PresenterFrameEndDecisionPacket` now narrows the bridge down to the smallest
@@ -153,6 +171,19 @@ It exists to:
   facade/request/decision chain
 - reduce the amount of passive state that a live boundary would need to consume
 - keep the future runtime patch focused on direct presentation flags only
+
+### Frame-end compile-only preview
+
+`PresenterFrameEndPreviewPacket` now groups:
+
+- `PresenterFacadeDecisionInputPacket`
+- `PresenterFrameEndDecisionPacket`
+
+It exists to:
+
+- validate one off-path preview directly above the `UpdateFrameEndOverlays()`
+  boundary
+- keep future frame-end retries focused on the narrowest local packet family
 
 ### Narrow HUD/telemetry decision
 
@@ -171,6 +202,19 @@ It exists to:
 - keep optional HUD telemetry gating separate from runtime stats gating
 - mirror the current runtime branches with a small packet instead of ad hoc
   boolean recomputation
+
+### HUD/telemetry compile-only preview
+
+`PresenterHudTelemetryPreviewPacket` now groups:
+
+- `PresenterHudTelemetryDecisionInputPacket`
+- `PresenterHudTelemetryDecisionPacket`
+
+It exists to:
+
+- validate one off-path preview directly above the
+  `PresentFrameHudAndTelemetry(...)` boundary
+- keep future HUD/telemetry retries focused on the narrowest local packet family
 
 ## Safe runtime substitution order
 

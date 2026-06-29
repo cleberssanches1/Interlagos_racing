@@ -33,22 +33,4 @@ inline PresenterFacadeDecisionBridgePacket BuildPresenterFacadeDecisionBridgePac
     return packet;
 }
 
-inline PresenterFacadeDecisionBridgePacket BuildPresenterFacadeDecisionBridgePacket(
-    const PresenterFacadePacket& facade,
-    const PresenterHudTelemetryDecisionInputPacket& hudTelemetryInput)
-{
-    return BuildPresenterFacadeDecisionBridgePacket(
-        BuildPresenterFacadeDecisionInputPacket(facade),
-        hudTelemetryInput);
-}
-
-inline PresenterFacadeDecisionBridgePacket BuildPresenterFacadeDecisionBridgePacket(
-    const PresenterFacadeInputPacket& facadeInput,
-    const PresenterHudTelemetryDecisionInputPacket& hudTelemetryInput)
-{
-    return BuildPresenterFacadeDecisionBridgePacket(
-        BuildPresenterFacadeDecisionInputPacket(facadeInput),
-        hudTelemetryInput);
-}
-
 } // namespace GameLoopRuntime

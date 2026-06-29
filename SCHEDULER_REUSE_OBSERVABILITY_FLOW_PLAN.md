@@ -165,6 +165,24 @@ Files:
 - `src/game_loop_reuse_observability_contracts.hpp`
 - `src/game_loop_reuse_observability_assembler.hpp`
 
+Derived compile-only debug view:
+
+- `src/game_loop_reuse_observability_debug_contracts.hpp`
+- `src/game_loop_reuse_observability_debug_assembler.hpp`
+
+Derived compile-only presenter helper:
+
+- `src/game_loop_reuse_observability_debug_presenter_ops.hpp`
+
+Derived compile-only local bundle for Boundary D:
+
+- `src/game_loop_reuse_observability_debug_bundle_contracts.hpp`
+- `src/game_loop_reuse_observability_debug_bundle_assembler.hpp`
+
+Derived compile-only local bundle presenter:
+
+- `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`
+
 ### Level 3 - scheduler lifecycle aggregate
 
 #### `SimulationSchedulerLifecycleObservabilityPacket`
@@ -231,6 +249,20 @@ Derived compile-only helper for future HUD/debug use:
 - packet: `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
 - assembler: `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
 - source boundary: `SchedulerReuseFlowObservabilityPacket`
+
+Additional compile-only chain helper:
+
+- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+
+Current effect:
+
+- assembles `ReuseObservabilityPacket`
+- assembles `SimulationSchedulerLifecycleObservabilityPacket`
+- assembles `SchedulerReuseObservabilityPacket`
+- assembles `SchedulerReuseFlowObservabilityPacket`
+- assembles `SchedulerReuseDebugTelemetryPacket`
+
+from one stack-local input bundle without touching `src/game_loop_system.hpp`
 
 ## Hierarchy summary
 

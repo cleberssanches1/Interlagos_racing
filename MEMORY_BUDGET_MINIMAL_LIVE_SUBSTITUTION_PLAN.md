@@ -8,6 +8,10 @@ Define the smallest acceptable future live substitution order for
 This plan exists because memory policy is close to allocator timing, bootstrap
 sequencing, HUD/debug gating, and PCM setup timing.
 
+Companion consolidated boundary:
+
+- `MEMORY_BUDGET_RUNTIME_BRIDGE_BOUNDARY_CONSOLIDATED.md`
+
 ## Stable baseline
 
 - ISO must remain exactly `4134912`

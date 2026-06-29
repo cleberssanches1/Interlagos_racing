@@ -3192,7 +3192,7 @@ static PackedAssetCache sSdrPackCache{};
         if (SegmentDrawReady::Loader::Parse(outBlob, outView)) return true;
         const uint32_t m = (outBlob.bytes.size() >= 4) ? ReadLe32(outBlob.bytes.data()) : 0u;
         const uint16_t v = (outBlob.bytes.size() >= 6) ? ReadLe16(outBlob.bytes.data() + 4) : 0u;
-        SRL::Debug::Print(1, 15, "SDR parse fail %03d m:%lx v:%u s:%u",
+        SRL::Debug::Print(1, 15, "SDRp %03d m:%lx v:%u s:%u",
                           segmentId,
                           static_cast<unsigned long>(m),
                           static_cast<unsigned>(v),
@@ -3217,7 +3217,7 @@ static PackedAssetCache sSdrPackCache{};
     if (!quietMissLog)
     {
         const auto cart = SRL::Memory::CartRam::GetReport();
-        SRL::Debug::Print(1, 15, "SDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+        SRL::Debug::Print(1, 15, "SDRm id:%d c:%u e:%u t:%u f:%u",
                           segmentId,
                           static_cast<unsigned>(sSdrPackCache.size),
                           static_cast<unsigned>(sSdrPackCache.entries.size()),
@@ -3225,7 +3225,7 @@ static PackedAssetCache sSdrPackCache{};
                           static_cast<unsigned>(cart.FreeSize));
         if (sSdrPackCache.sourcePath[0] != '\0')
         {
-            SRL::Debug::Print(1, 16, "SDR src:%s", sSdrPackCache.sourcePath);
+            SRL::Debug::Print(1, 16, "SDRs %s", sSdrPackCache.sourcePath);
         }
     }
     (void)segmentId;
@@ -3516,7 +3516,7 @@ static bool LoadRdrForSegment(int segmentId,
         if (SegmentRuntimeDraw::Loader::Parse(outBlob, outView)) return true;
         const uint32_t m = (outBlob.bytes.size() >= 4) ? ReadLe32(outBlob.bytes.data()) : 0u;
         const uint16_t v = (outBlob.bytes.size() >= 6) ? ReadLe16(outBlob.bytes.data() + 4) : 0u;
-        SRL::Debug::Print(1, 15, "RDR parse fail %03d m:%lx v:%u s:%u",
+        SRL::Debug::Print(1, 15, "RDRp %03d m:%lx v:%u s:%u",
                           segmentId,
                           static_cast<unsigned long>(m),
                           static_cast<unsigned>(v),
@@ -3539,7 +3539,7 @@ static bool LoadRdrForSegment(int segmentId,
     if (!quietMissLog)
     {
         const auto cart = SRL::Memory::CartRam::GetReport();
-        SRL::Debug::Print(1, 15, "RDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+        SRL::Debug::Print(1, 15, "RDRm id:%d c:%u e:%u t:%u f:%u",
                           segmentId,
                           static_cast<unsigned>(sRdrPackCache.size),
                           static_cast<unsigned>(sRdrPackCache.entries.size()),
@@ -3547,7 +3547,7 @@ static bool LoadRdrForSegment(int segmentId,
                           static_cast<unsigned>(cart.FreeSize));
         if (sRdrPackCache.sourcePath[0] != '\0')
         {
-            SRL::Debug::Print(1, 16, "RDR src:%s", sRdrPackCache.sourcePath);
+            SRL::Debug::Print(1, 16, "RDRs %s", sRdrPackCache.sourcePath);
         }
     }
 
@@ -3625,7 +3625,7 @@ static bool LoadRdrMappedForSegment(int segmentId,
 
             const uint32_t m = (blobSize >= 4) ? ReadLe32(blobData + 0) : 0u;
             const uint16_t v = (blobSize >= 6) ? ReadLe16(blobData + 4) : 0u;
-            SRL::Debug::Print(1, 15, "TRKRDR parse fail %03d m:%lx v:%u s:%u",
+            SRL::Debug::Print(1, 15, "TRp %03d m:%lx v:%u s:%u",
                               segmentId,
                               static_cast<unsigned long>(m),
                               static_cast<unsigned>(v),
@@ -3650,7 +3650,7 @@ static bool LoadRdrMappedForSegment(int segmentId,
     if (!quietMissLog)
     {
         const auto cart = SRL::Memory::CartRam::GetReport();
-        SRL::Debug::Print(1, 15, "RDR miss id:%d cache:%u entries:%u tr:%u cfree:%u",
+        SRL::Debug::Print(1, 15, "RDRm id:%d c:%u e:%u t:%u f:%u",
                           segmentId,
                           static_cast<unsigned>(sTrackRdrPackCache.size),
                           directPackLoaded
@@ -3662,7 +3662,7 @@ static bool LoadRdrMappedForSegment(int segmentId,
                           static_cast<unsigned>(cart.FreeSize));
         if (sTrackRdrPackCache.sourcePath[0] != '\0')
         {
-            SRL::Debug::Print(1, 16, "RDR src:%s", sTrackRdrPackCache.sourcePath);
+            SRL::Debug::Print(1, 16, "RDRs %s", sTrackRdrPackCache.sourcePath);
         }
     }
     return false;
@@ -5042,7 +5042,7 @@ static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t cou
     uint32_t readBytes = 0;
     if (!ReadCdFileFully(f, bytes, static_cast<uint8_t*>(mem), readBytes))
     {
-        SRL::Debug::Print(1, 15, "PAK read short %s got:%u exp:%u",
+        SRL::Debug::Print(1, 15, "PAK rd %s g:%u e:%u",
                           foundPath ? foundPath : "?",
                           static_cast<unsigned>(readBytes),
                           static_cast<unsigned>(bytes));
@@ -12458,14 +12458,14 @@ void TrackSystem::ValidateStabilizedWindowInvariants()
     if (!badWindowCount && !badBands && !badPrefetch && !badFamilies) return;
     if (!runtimeDiagnostics_.RuntimeStatsLogsEnabled()) return;
 
-    SRL::Debug::Print(1, 18, "TRK inv n:%u pf:%u ex:%u    ",
+    SRL::Debug::Print(1, 18, "TI n:%u pf:%u ex:%u ",
                       static_cast<unsigned>(activeReadySegments),
                       static_cast<unsigned>(prefetchHasMetadata ? 1u : 0u),
                       static_cast<unsigned>(extraFamilies));
-    SRL::Debug::Print(1, 19, "TRK band 32:%u 64:%u",
+    SRL::Debug::Print(1, 19, "TB 32:%u 64:%u",
                       static_cast<unsigned>(bandCounts[2]),
                       static_cast<unsigned>(bandCounts[3]));
-    SRL::Debug::Print(1, 20, "TRK pf md:%u live:%u sz:%u",
+    SRL::Debug::Print(1, 20, "TP m:%u l:%u s:%u",
                       static_cast<unsigned>(prefetchHasMetadata ? 1u : 0u),
                       static_cast<unsigned>(prefetchHasLiveState ? 1u : 0u),
                       static_cast<unsigned>(slidePrefetchFamilyIds_.size()));
@@ -12506,17 +12506,17 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
         if (familyActive) ++activeFamilies;
     }
 
-    SRL::Debug::Print(1, 18, "TRK ws fam:%u s:%u l32:%u/%u l64:%u/%u",
+    SRL::Debug::Print(1, 18, "TW f:%u s:%u 32:%u/%u 64:%u/%u",
                       static_cast<unsigned>(activeFamilies),
                       static_cast<unsigned>(liveSlots),
                       static_cast<unsigned>(lodFamilies[2]),
                       static_cast<unsigned>(lodRefs[2]),
                       static_cast<unsigned>(lodFamilies[3]),
                       static_cast<unsigned>(lodRefs[3]));
-    SRL::Debug::Print(1, 16, "TRK band 32:%u 64:%u",
+    SRL::Debug::Print(1, 16, "TB 32:%u 64:%u",
                       static_cast<unsigned>(segmentBands[2]),
                       static_cast<unsigned>(segmentBands[3]));
-    SRL::Debug::Print(1, 17, "TRK pal 16:%u 64:%u 128:%u 256:%u",
+    SRL::Debug::Print(1, 17, "TP 16:%u 64:%u 128:%u 256:%u",
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal16)),
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal64)),
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal128)),
@@ -13304,10 +13304,10 @@ void TrackSystem::LogInitialSegmentDiagnostics() const
 {
     if (!SegmentsReady())
     {
-        SRL::Debug::Print(1, 28, "Track rendering skipped: segments missing");
+        SRL::Debug::Print(1, 28, "TRK skip: seg miss");
         if (lastSegmentPath_[0] != '\0')
         {
-            SRL::Debug::Print(1, 29, "Last segment path tested: %s", lastSegmentPath_);
+            SRL::Debug::Print(1, 29, "TRK last:%s", lastSegmentPath_);
         }
     }
 
@@ -13334,10 +13334,10 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
         SetFullTrackFamilyCacheReady(false);
         if (!RebuildTrackTextureResidencyForWindow())
         {
-            SRL::Debug::Print(1, 19, "SDR lod build fail");
+            SRL::Debug::Print(1, 19, "SDR lod fail");
             return;
         }
-        SRL::Debug::Print(1, 20, "SDR ok:%u fail:%u fam:%u full:%u",
+        SRL::Debug::Print(1, 20, "SDR ok:%u fl:%u fam:%u fu:%u",
                           static_cast<unsigned>(segmentRenderers_.size()),
                           0u,
                           static_cast<unsigned>(seg1FamilySlots_.size()),
@@ -13348,7 +13348,7 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
     FamilySlotVector familyLodSlots{};
     if (!BuildTrackFamilyLodSlots(familyLodSlots))
     {
-        SRL::Debug::Print(1, 19, "SDR lod build fail");
+        SRL::Debug::Print(1, 19, "SDR lod fail");
         return;
     }
 
@@ -13415,7 +13415,7 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
     seg1FamilySlots_ = familyLodSlots;
     InvalidateFamilySlotIndex();
     RefreshFamilyWorkingSet(false);
-    SRL::Debug::Print(1, 20, "SDR ok:%u fail:%u fam:%u full:%u",
+    SRL::Debug::Print(1, 20, "SDR ok:%u fl:%u fam:%u fu:%u",
                       matOk,
                       matFail,
                       static_cast<unsigned>(familyLodSlots.size()),
@@ -13596,18 +13596,18 @@ bool TrackSystem::Initialize(const Config& config)
                             seg1SingleFaceSwapBaseSlot_ = chosenBase;
                             seg1SingleFaceSwapAltSlot_ = chosenBase; // same slot overwrite mode
                             SetSeg1SingleFaceSwapReady(true);
-                            SRL::Debug::Print(1, 20, "S1 OVR ready f:%u s:%u",
+                            SRL::Debug::Print(1, 20, "S1O ok f:%u s:%u",
                                               (unsigned)seg1SingleFaceSwapFace_,
                                               (unsigned)seg1SingleFaceSwapBaseSlot_);
                         }
                         else
                         {
-                            SRL::Debug::Print(1, 20, "S1 OVR skip");
+                            SRL::Debug::Print(1, 20, "S1O skip");
                         }
                     }
                     else
                     {
-                        SRL::Debug::Print(1, 20, "S1 OVR no-face");
+                        SRL::Debug::Print(1, 20, "S1O noface");
                     }
                 }
             }
@@ -13630,7 +13630,7 @@ bool TrackSystem::Initialize(const Config& config)
         constexpr bool kShowSeg1ComponentProbeLogs = false;
         if (kShowSeg1ComponentProbeLogs)
         {
-            SRL::Debug::Print(1, 24, "CMP SEG001 GEO:%d(%u) MAT:%d(%u)",
+            SRL::Debug::Print(1, 24, "C1 G:%d(%u) M:%d(%u)",
                               geoOk ? 1 : 0, (unsigned)geoBlob.size,
                               matOk ? 1 : 0, (unsigned)matBlob.size);
         }
@@ -13675,7 +13675,7 @@ bool TrackSystem::Initialize(const Config& config)
                 const int fOk = (rf == geoView.header.faceCount) ? 1 : 0;
                 if (kShowSeg1ComponentProbeLogs)
                 {
-                    SRL::Debug::Print(1, 28, "CMP SEG001 vs NYA v:%u/%u(%d) f:%u/%u(%d)",
+                    SRL::Debug::Print(1, 28, "C1 N v:%u/%u(%d) f:%u/%u(%d)",
                                       (unsigned)geoView.header.vertexCount, (unsigned)rv, vOk,
                                       (unsigned)geoView.header.faceCount, (unsigned)rf, fOk);
                 }
@@ -13904,16 +13904,16 @@ bool TrackSystem::Initialize(const Config& config)
                             }
                             if (anyLoaded) ++texLoaded; else ++texFail;
                         }
-                        SRL::Debug::Print(1, 28, "S1 RMAP ok:%u c:%u", renOk ? 1u : 0u, (unsigned)renMap.entries.size());
+                        SRL::Debug::Print(1, 28, "S1R ok:%u c:%u", renOk ? 1u : 0u, (unsigned)renMap.entries.size());
                         if (!renOk)
                         {
-                            SRL::Debug::Print(1, 18, "S1 RMAP miss");
+                            SRL::Debug::Print(1, 18, "S1R miss");
                         }
                     }
                 }
-                SRL::Debug::Print(1, 30, "S1 TEX ok:%u fl:%u fm:%u",
+                SRL::Debug::Print(1, 30, "S1T ok:%u fl:%u fm:%u",
                                   (unsigned)texLoaded, (unsigned)texFail, (unsigned)familyIdsUsedCount);
-                SRL::Debug::Print(1, 18, "S1 TEX miss:%u dec:%u up:%u",
+                SRL::Debug::Print(1, 18, "S1T ms:%u de:%u up:%u",
                                   (unsigned)texMissFamily, (unsigned)texDecodeFail, (unsigned)texUploadFail);
 
                 // Build fallback remap tables for TrackRenderer path (global face order).
@@ -14045,7 +14045,7 @@ bool TrackSystem::Initialize(const Config& config)
                             }
                         }
                         const int lodDbg[4] = { 32, 64, 32, 64 };
-                        SRL::Debug::Print(1, 18, "S1 M%d:%u mp:%u", lodDbg[li], (unsigned)mappedFaces, map1ForSegOk ? 1u : 0u);
+                        SRL::Debug::Print(1, 18, "S1M%d:%u mp:%u", lodDbg[li], (unsigned)mappedFaces, map1ForSegOk ? 1u : 0u);
                     }
                     SetSeg1RendererLodReady((rendererFaces > 0));
                     if (Seg1RendererLodReady())
@@ -14053,18 +14053,18 @@ bool TrackSystem::Initialize(const Config& config)
                         // Apply initial LOD map immediately.
                         (void)seg1Renderer->ApplyFaceTextureSlotsGlobal(seg1RendererFaceSlotsByLod_[seg1CurrentLodIndex_]);
                     }
-                    SRL::Debug::Print(1, 20, "S1 RDY:%d f:%u fm:%u",
+                    SRL::Debug::Print(1, 20, "S1Rdy:%d f:%u fm:%u",
                                       Seg1RendererLodReady() ? 1 : 0,
                                       (unsigned)rendererFaces,
                                       (unsigned)familyIdsUsedCount);
                     if (texLoaded == 0)
                     {
-                        SRL::Debug::Print(1, 18, "S1MISS c:%u u:%u", (unsigned)texLoaded, (unsigned)texUploadFail);
+                        SRL::Debug::Print(1, 18, "S1Ms c:%u u:%u", (unsigned)texLoaded, (unsigned)texUploadFail);
                     }
                 }
                 else
                 {
-                    SRL::Debug::Print(1, 20, "S1 RDY:0 f:0 fm:%u", (unsigned)familyIdsUsedCount);
+                    SRL::Debug::Print(1, 20, "S1Rdy:0 f:0 fm:%u", (unsigned)familyIdsUsedCount);
                 }
 
                 seg1FaceFamilyIds_.clear();
@@ -14148,7 +14148,7 @@ bool TrackSystem::Initialize(const Config& config)
                     seg1Entry->center = seg1ComponentCenter_;
                     if (kShowSeg1ComponentProbeLogs)
                     {
-                        SRL::Debug::Print(1, 29, "CMP SEG001 renderer: component ON v:%u f:%u",
+                        SRL::Debug::Print(1, 29, "C1 rdr:on v:%u f:%u",
                                           (unsigned)seg1ComponentVerts_.size(),
                                           (unsigned)seg1ComponentFaces_.size());
                     }
@@ -14158,7 +14158,7 @@ bool TrackSystem::Initialize(const Config& config)
                     SetSeg1ComponentEnabled(false);
                     if (kShowSeg1ComponentProbeLogs)
                     {
-                        SRL::Debug::Print(1, 29, "CMP SEG001 renderer: component OFF");
+                        SRL::Debug::Print(1, 29, "C1 rdr:off");
                     }
                 }
             }
@@ -14309,14 +14309,14 @@ bool TrackSystem::Initialize(const Config& config)
                 }
                 if (!seg1Renderer)
                 {
-                    SRL::Debug::Print(1, 23, "SEG001 renderer missing");
+                    SRL::Debug::Print(1, 23, "S1 no rdr");
                 }
                 else
                 {
                     const size_t seg1FaceCount = static_cast<size_t>(seg1Renderer->FaceCount());
                     if (seg1FaceCount == 0)
                     {
-                        SRL::Debug::Print(1, 23, "SEG001 facecount zero");
+                        SRL::Debug::Print(1, 23, "S1 face 0");
                     }
                     else
                     {
@@ -14331,7 +14331,7 @@ bool TrackSystem::Initialize(const Config& config)
                         const size_t mapCount = std::min(map1.faceFamily.size(), std::min(faceSlots.size(), seg1FaceCount));
                         if (mapCount == 0)
                         {
-                            SRL::Debug::Print(1, 23, "SEG001 no face map");
+                            SRL::Debug::Print(1, 23, "S1 no fmap");
                         }
                         else
                         {
@@ -14379,7 +14379,7 @@ bool TrackSystem::Initialize(const Config& config)
                                     ++failCount;
                                 }
                             }
-                            SRL::Debug::Print(1, 23, "SEG001 slot-upgrade ok:%u fail:%u fam:%u",
+                            SRL::Debug::Print(1, 23, "S1 up ok:%u fl:%u fam:%u",
                                               (unsigned)okCount, (unsigned)failCount, (unsigned)famCount);
                         }
                     }
@@ -14387,12 +14387,12 @@ bool TrackSystem::Initialize(const Config& config)
             }
             else
             {
-                SRL::Debug::Print(1, 23, "segments_map.json parse fail for SEG001");
+                SRL::Debug::Print(1, 23, "segmap parse S1");
             }
         }
         else
         {
-            SRL::Debug::Print(1, 23, "segments_map.json not found");
+            SRL::Debug::Print(1, 23, "segmap miss");
         }
     }
 
@@ -14459,11 +14459,11 @@ bool TrackSystem::Initialize(const Config& config)
             }
         }
 
-        SRL::Debug::Print(1, 20, "S1 MAP ok:%u f:%u fm:%u",
+        SRL::Debug::Print(1, 20, "S1Map ok:%u f:%u fm:%u",
                           mapOk ? 1u : 0u,
                           mapOk ? (unsigned)faceFamily.size() : 0u,
                           (unsigned)famCount);
-        SRL::Debug::Print(1, 21, "S1 TBK ok:%u/4", (unsigned)banksOk);
+        SRL::Debug::Print(1, 21, "S1Bk ok:%u/4", (unsigned)banksOk);
     }
 
     // Keep track rendering available even when coordinator allocation fails.
@@ -15293,7 +15293,7 @@ void TrackSystem::RunSeg1DiagnosticsForFrame()
                 ok = TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "asfalto_32.tga") ||
                      TryOverwriteTextureSlotFromCd(seg1SingleFaceSwapBaseSlot_, "ASFALTO_32.TGA");
             }
-            SRL::Debug::Print(1, 21, "S1 OVR sw:%u ok:%u",
+            SRL::Debug::Print(1, 21, "S1O sw:%u ok:%u",
                               Seg1SingleFaceSwapUseAlt() ? 1u : 0u,
                               ok ? 1u : 0u);
         }
@@ -15357,12 +15357,12 @@ void TrackSystem::RunSeg1DiagnosticsForFrame()
                 }
                 if (kEnableSeg1LodCycleLogs)
                 {
-                    SRL::Debug::Print(1, 21, "S1 AP rdr:%u", (unsigned)appliedRenderer);
+                    SRL::Debug::Print(1, 21, "S1A rdr:%u", (unsigned)appliedRenderer);
                 }
             }
             else if (kEnableSeg1LodCycleLogs)
             {
-                SRL::Debug::Print(1, 21, "S1 AP rdr:off");
+                SRL::Debug::Print(1, 21, "S1A rdr:off");
             }
             if (kEnableSeg1LodCycleLogs)
             {
@@ -17042,21 +17042,21 @@ void TrackSystem::PresentVdp1FpsTelemetry()
         }
     }
 
-    SRL::Debug::Print(1, 14, "VDP1 trk s:%u f:%u cmd:%u%%",
+    SRL::Debug::Print(1, 14, "V1 t s:%u f:%u c:%u%%",
                       static_cast<unsigned>(trackSegments),
                       static_cast<unsigned>(trackFaces),
                       static_cast<unsigned>(cmdPct));
-    SRL::Debug::Print(1, 15, "VDP1 hp u:%u f:%u %u%% tx:%u",
+    SRL::Debug::Print(1, 15, "V1 h u:%u f:%u %u%% t:%u",
                       static_cast<unsigned>(heapUsed),
                       static_cast<unsigned>(heapFree),
                       static_cast<unsigned>(heapPct),
                       static_cast<unsigned>(texCount));
-    SRL::Debug::Print(1, 16, "VDP1 pk f:%u c:%u h:%u tx:%u",
+    SRL::Debug::Print(1, 16, "V1 p f:%u c:%u h:%u t:%u",
                       static_cast<unsigned>(sPeakTrackFaces),
                       static_cast<unsigned>(sPeakCmdPct),
                       static_cast<unsigned>(sPeakHeapPct),
                       static_cast<unsigned>(sPeakTexCount));
-    SRL::Debug::Print(1, 17, "VDP1 av f:%u c:%u h:%u n:%u FPS:%u.%u ms:%u.%u d30:%u d60:%u",
+    SRL::Debug::Print(1, 17, "V1 a f:%u c:%u h:%u n:%u F:%u.%u m:%u.%u d3:%u d6:%u",
                       static_cast<unsigned>(avgTrackFaces),
                       static_cast<unsigned>(avgCmdPct),
                       static_cast<unsigned>(avgHeapPct),
@@ -17067,9 +17067,9 @@ void TrackSystem::PresentVdp1FpsTelemetry()
                       static_cast<unsigned>(sFrameMsX10 % 10u),
                       static_cast<unsigned>(sDrop30Pct),
                       static_cast<unsigned>(sDrop60Pct));
-    SRL::Debug::Print(1, 18, "                                   ");
-    SRL::Debug::Print(1, 19, "                                   ");
-    SRL::Debug::Print(1, 20, "                                   ");
+    SRL::Debug::Print(1, 18, "                         ");
+    SRL::Debug::Print(1, 19, "                         ");
+    SRL::Debug::Print(1, 20, "                         ");
 
     if ((frameIdThisFrame_ & 0x3Fu) == 0u)
     {
@@ -17093,7 +17093,7 @@ void TrackSystem::PresentPerFrameDebugOverlay()
     const auto lwr = SRL::Memory::LowWorkRam::GetReport();
     if (hwr.TotalSize == 0 || hwr.FreeSize > hwr.TotalSize)
     {
-        SRL::Debug::Print(1, 30, "WR H CORRUPT free:%lu tot:%lu",
+        SRL::Debug::Print(1, 30, "WR bad f:%lu t:%lu",
                           static_cast<unsigned long>(hwr.FreeSize),
                           static_cast<unsigned long>(hwr.TotalSize));
         return;
@@ -17103,15 +17103,15 @@ void TrackSystem::PresentPerFrameDebugOverlay()
     const unsigned long lwrUsed = static_cast<unsigned long>(lwr.TotalSize - lwr.FreeSize);
     const unsigned long lwrTotal = static_cast<unsigned long>(lwr.TotalSize);
     SRL::Debug::Print(1, 30, "WR H:%lu/%lu L:%lu/%lu", hwrUsed, hwrTotal, lwrUsed, lwrTotal);
-    SRL::Debug::Print(1, 4, "TGA c:%u a:%u f:%u j:%u                    ",
+    SRL::Debug::Print(1, 4, "TG c:%u a:%u f:%u j:%u ",
                       (unsigned)seg1TgaPreloadCount_,
                       (unsigned)seg1TgaAttemptCount_,
                       (unsigned)seg1TgaFailCount_,
                       (unsigned)seg1TgaJsonOk_);
-    SRL::Debug::Print(1, 24, "SMAP b:%u sig:%s                         ", (unsigned)g_smapBytes, g_smapSig);
-    SRL::Debug::Print(1, 25, "TGA last name:%s                         ", g_tgaLastName);
-    SRL::Debug::Print(1, 26, "TGA last try:%s                          ", g_tgaLastTry);
-    SRL::Debug::Print(1, 27, "TGA last res:%s                          ", g_tgaLastResult);
+    SRL::Debug::Print(1, 24, "SM b:%u s:%s ", (unsigned)g_smapBytes, g_smapSig);
+    SRL::Debug::Print(1, 25, "TG n:%s ", g_tgaLastName);
+    SRL::Debug::Print(1, 26, "TG t:%s ", g_tgaLastTry);
+    SRL::Debug::Print(1, 27, "TG r:%s ", g_tgaLastResult);
     if (!seg1FamilySlots_.empty())
     {
         const Seg1FamilySlotEntry* fam1 = nullptr;
@@ -17125,7 +17125,7 @@ void TrackSystem::PresentPerFrameDebugOverlay()
         }
         if (fam1)
         {
-            SRL::Debug::Print(1, 28, "F1 s32:%u s64:%u                         ",
+            SRL::Debug::Print(1, 28, "F1 s32:%u s64:%u ",
                               (unsigned)fam1->lodSlots[2],
                               (unsigned)fam1->lodSlots[3]);
             auto texDim = [&](uint16_t slot, char* out, size_t outSize)
@@ -17143,18 +17143,18 @@ void TrackSystem::PresentPerFrameDebugOverlay()
             char d32[12]{}, d64[12]{};
             texDim(fam1->lodSlots[2], d32, sizeof(d32));
             texDim(fam1->lodSlots[3], d64, sizeof(d64));
-            SRL::Debug::Print(1, 29, "F1 d32:%s d64:%s                       ", d32, d64);
+            SRL::Debug::Print(1, 29, "F1 d32:%s d64:%s ", d32, d64);
         }
         else
         {
-            SRL::Debug::Print(1, 28, "F1 slots:none                           ");
-            SRL::Debug::Print(1, 29, "F1 dims:none                            ");
+            SRL::Debug::Print(1, 28, "F1 s:none");
+            SRL::Debug::Print(1, 29, "F1 d:none");
         }
     }
     else
     {
-        SRL::Debug::Print(1, 28, "F1 slots:empty                          ");
-        SRL::Debug::Print(1, 29, "F1 dims:empty                           ");
+        SRL::Debug::Print(1, 28, "F1 s:empty");
+        SRL::Debug::Print(1, 29, "F1 d:empty");
     }
 }
 
@@ -17252,39 +17252,39 @@ void TrackSystem::PresentSh2UsageOverlay()
         TrackSlaveDepthSortRequestedFlag() &&
         !sort.slaveDisabledByTimeout &&
         !sort.safeModeActive;
-    SRL::Debug::Print(0, 17, "SH2 cfg:%s p:%u s:%u lk:%u ac:%u/%u      ",
+    SRL::Debug::Print(0, 17, "S2 c:%s p:%u s:%u l:%u a:%u/%u ",
                       TrackSlaveModeRequestedFlag() ? "DUAL" : "SINGLE",
                       TrackSlaveProducerRequestedFlag() ? 1u : 0u,
                       TrackSlaveDepthSortRequestedFlag() ? 1u : 0u,
                       TrackSlaveBarrierLockstepFlag() ? 1u : 0u,
                       producerSlaveActive ? 1u : 0u,
                       sortSlaveActive ? 1u : 0u);
-    SRL::Debug::Print(0, 18, "SH2 avg 1S m:%u p:%u s:%u | 2S m:%u p:%u s:%u      ",
+    SRL::Debug::Print(0, 18, "S2 a1:%u/%u/%u a2:%u/%u/%u ",
                       static_cast<unsigned>(s1MasterAvg),
                       static_cast<unsigned>(s1ProducerAvg),
                       static_cast<unsigned>(s1SortAvg),
                       static_cast<unsigned>(s2MasterAvg),
                       static_cast<unsigned>(s2ProducerAvg),
                       static_cast<unsigned>(s2SortAvg));
-    SRL::Debug::Print(0, 19, "SH2M s:%u d:%u f:%u      ",
+    SRL::Debug::Print(0, 19, "SM s:%u d:%u f:%u ",
                       static_cast<unsigned>(sh2MasterStreamTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterDrawTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterFrameTicksThisFrame_));
-    SRL::Debug::Print(0, 20, "SH2M m:%u w:%u p:%u pl:%u l:%u ws:%u      ",
+    SRL::Debug::Print(0, 20, "SM m:%u w:%u p:%u pl:%u l:%u ws:%u ",
                       static_cast<unsigned>(sh2MasterMaintenanceTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterWindowTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterPrefetchTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterPlanTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterLodTicksThisFrame_),
                       static_cast<unsigned>(sh2MasterWorkingSetTicksThisFrame_));
-    SRL::Debug::Print(0, 21, "SH2P t:%u jf:%u l:%u to:%u u:%u fb:%u      ",
+    SRL::Debug::Print(0, 21, "SP t:%u j:%u l:%u to:%u u:%u fb:%u ",
                       static_cast<unsigned>(prod.slaveLastJobTicks),
                       prod.jobInFlight ? 1u : 0u,
                       static_cast<unsigned>(prod.lastLatencyFrames),
                       static_cast<unsigned>(prod.timeoutFallbacks),
                       static_cast<unsigned>(sh2ProducerListUsedThisFrame_),
                       static_cast<unsigned>(sh2ProducerListFallbacksThisFrame_));
-    SRL::Debug::Print(0, 22, "SH2S t:%u pl:%u jf:%u l:%u to:%u      ",
+    SRL::Debug::Print(0, 22, "SS t:%u pl:%u j:%u l:%u to:%u ",
                       static_cast<unsigned>(sh2SlaveSortTicksThisFrame_),
                       static_cast<unsigned>(sh2SlavePlanTicksThisFrame_),
                       sort.jobInFlight ? 1u : 0u,
@@ -17313,12 +17313,12 @@ void TrackSystem::RunEndFrameResourceMaintenance()
     }
     if constexpr (kEnableLegacyTrackOverlayTelemetry)
     {
-        SRL::Debug::Print(1, 19, "RT rdr:%u sdr:%u rm:%u lod:%u",
+        SRL::Debug::Print(1, 19, "RT r:%u s:%u m:%u l:%u",
                           static_cast<unsigned>(runtimeRdrBuildsThisFrame_),
                           static_cast<unsigned>(runtimeSdrBuildsThisFrame_),
                           static_cast<unsigned>(runtimeFaceRemapsThisFrame_),
                           static_cast<unsigned>(runtimeLodSegmentUpdatesThisFrame_));
-        SRL::Debug::Print(1, 20, "RT sl:%u st:%u ph:%u pm:%u sr:%u sk:%u nd:%u ra:%u",
+        SRL::Debug::Print(1, 20, "RS l:%u st:%u h:%u m:%u r:%u k:%u n:%u a:%u",
                           static_cast<unsigned>(runtimeSlidesThisFrame_),
                           static_cast<unsigned>(runtimeSlideStallsThisFrame_),
                           static_cast<unsigned>(runtimePrefetchHitsThisFrame_),
@@ -17327,7 +17327,7 @@ void TrackSystem::RunEndFrameResourceMaintenance()
                           static_cast<unsigned>(runtimeSafeSkippedThisFrame_),
                           static_cast<unsigned>(runtimeSafeNoDrawThisFrame_),
                           static_cast<unsigned>(runtimeSafeReappliedThisFrame_));
-        SRL::Debug::Print(1, 21, "RT mem b:%u s:%u d:%u e:%u bk:%u",
+        SRL::Debug::Print(1, 21, "RM b:%u s:%u d:%u e:%u k:%u",
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseHwrBeforeStream),
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseHwrAfterStream),
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseHwrAfterDraw),
@@ -17335,17 +17335,17 @@ void TrackSystem::RunEndFrameResourceMaintenance()
                           static_cast<unsigned>(kEnableTrackRuntimeStabilization && kEnableSafeModeSingleRenderBackend
                               ? kSafeModeRenderBackendId
                               : 0u));
-        SRL::Debug::Print(1, 22, "RT lwr b:%u s:%u d:%u e:%u",
+        SRL::Debug::Print(1, 22, "RL b:%u s:%u d:%u e:%u",
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseLwrBeforeStream),
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseLwrAfterStream),
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseLwrAfterDraw),
                           static_cast<unsigned>(frameMemoryTelemetry_.phaseLwrEnd));
-        SRL::Debug::Print(1, 23, "REL p:%u rn:%u re:%u pf:%u",
+        SRL::Debug::Print(1, 23, "RP p:%u n:%u e:%u pf:%u",
                           static_cast<unsigned>(workRamMaintenance_.memoryPressureLevelThisFrame),
                           static_cast<unsigned>(workRamMaintenance_.releasedNowSlotsThisFrame),
                           static_cast<unsigned>(workRamMaintenance_.releasedEndFrameSlotsThisFrame),
                           static_cast<unsigned>(workRamMaintenance_.releasedPrefetchNowThisFrame));
-        SRL::Debug::Print(1, 24, "REL up n:%u r:%u rq:%u rf:%u rs:%u ps:%u",
+        SRL::Debug::Print(1, 24, "RU n:%u r:%u q:%u f:%u s:%u p:%u",
                           static_cast<unsigned>(g_trackUploadsFreshThisFrame),
                           static_cast<unsigned>(g_trackUploadsReusedThisFrame),
                           static_cast<unsigned>(g_trackRetiredQueuedThisFrame),
@@ -17357,27 +17357,27 @@ void TrackSystem::RunEndFrameResourceMaintenance()
         if constexpr (kEnableLegacyTrackOverlaySh2Telemetry)
         {
             const auto& prod = coordinator_.Telemetry().producer;
-            SRL::Debug::Print(1, 24, "SH2 ms:%u md:%u mf:%u ss:%u ds:%u lf:%u",
+            SRL::Debug::Print(1, 24, "S2 ms:%u md:%u mf:%u ss:%u ds:%u lf:%u",
                               static_cast<unsigned>(sh2MasterStreamTicksThisFrame_),
                               static_cast<unsigned>(sh2MasterDrawTicksThisFrame_),
                               static_cast<unsigned>(sh2MasterFrameTicksThisFrame_),
                               static_cast<unsigned>(prod.slaveLastJobTicks),
                               static_cast<unsigned>(sh2SlaveSortTicksThisFrame_),
                               static_cast<unsigned>(prod.lastLatencyFrames));
-            SRL::Debug::Print(1, 25, "SH2 up mw:%u wu:%u pf:%u ld:%u ws:%u",
+            SRL::Debug::Print(1, 25, "S2 u mw:%u wu:%u pf:%u ld:%u ws:%u",
                               static_cast<unsigned>(sh2MasterMaintenanceTicksThisFrame_),
                               static_cast<unsigned>(sh2MasterWindowTicksThisFrame_),
                               static_cast<unsigned>(sh2MasterPrefetchTicksThisFrame_),
                               static_cast<unsigned>(sh2MasterLodTicksThisFrame_),
                               static_cast<unsigned>(sh2MasterWorkingSetTicksThisFrame_));
         }
-        SRL::Debug::Print(1, 26, "RT h1 i:%d c:%u t:%u r:%u p:%u",
+        SRL::Debug::Print(1, 26, "RH1 i:%d c:%u t:%u r:%u p:%u",
                           static_cast<int>(slideHwrTrace_.segmentId),
                           static_cast<unsigned>(slideHwrTrace_.check),
                           static_cast<unsigned>(slideHwrTrace_.afterTrim),
                           static_cast<unsigned>(slideHwrTrace_.afterResetPrefetch),
                           static_cast<unsigned>(slideHwrTrace_.afterBuildPrefetch));
-        SRL::Debug::Print(1, 27, "RT h2 a:%u m:%u f:%u",
+        SRL::Debug::Print(1, 27, "RH2 a:%u m:%u f:%u",
                           static_cast<unsigned>(slideHwrTrace_.afterPrepare),
                           static_cast<unsigned>(slideHwrTrace_.afterCommit),
                           static_cast<unsigned>(slideHwrTrace_.flags));

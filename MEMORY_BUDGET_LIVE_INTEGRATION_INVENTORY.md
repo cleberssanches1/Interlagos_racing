@@ -38,8 +38,15 @@ Current live ownership remains local at the call sites.
 
 The bridge only supplies narrow category-policy queries.
 
+The consolidated runtime-bridge boundary is documented in:
+
+- `MEMORY_BUDGET_RUNTIME_BRIDGE_BOUNDARY_CONSOLIDATED.md`
+
 The presentation-side bundle consumers remain local to
 `src/game_loop_system.hpp`.
+
+Presentation formatting may be extracted into passive helpers if runtime call
+sites and ordering remain owned by `src/game_loop_system.hpp`.
 
 ## Current live boundaries
 
@@ -143,6 +150,7 @@ Current ownership kept local:
 - frame-end debug update ownership
 - work-RAM usage print ordering
 - high/low trace print ordering
+- memory-debug presentation call site
 
 ### Boundary F - low-work overlay memory debug presentation bundle
 
@@ -163,6 +171,7 @@ Current ownership kept local:
 - low-work overlay update ownership
 - overlay print ordering
 - allocator timing
+- runtime call-site ownership
 
 Current live text coverage:
 
@@ -301,7 +310,10 @@ Required after every future live attempt:
 - `MEMORY_BUDGET_CATEGORY_CONSUMER_MATRIX.md`
 - `MEMORY_BUDGET_RENDER_OBSERVABILITY_FLOW_PLAN.md`
 - `MEMORY_BUDGET_PRESENTER_DEBUG_BOUNDARY_PLAN.md`
+- `MEMORY_BUDGET_RUNTIME_BRIDGE_BOUNDARY_CONSOLIDATED.md`
 - `MEMORY_BUDGET_PRESENTATION_BOUNDARY_INVENTORY.md`
+- `MEMORY_BUDGET_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+- `MEMORY_BUDGET_FRAME_END_BOUNDARY_CONSOLIDATED.md`
 - `MEMORY_BUDGET_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `MEMORY_BUDGET_PASSIVE_FLOW_PLAN.md`
 - `MEMORY_REINTRODUCTION_STRATEGY.md`

@@ -9,6 +9,10 @@ This document is boundary-only.
 
 It does not authorize live presenter/debug integration.
 
+Companion consolidated boundary:
+
+- `MEMORY_BUDGET_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+
 ## Stable baseline
 
 - ISO must remain exactly `4134912`

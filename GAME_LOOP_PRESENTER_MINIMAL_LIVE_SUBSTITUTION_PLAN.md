@@ -106,6 +106,8 @@ Preferred compile-only narrowing directly above those boundary packets:
 - `PresenterFacadeDecisionInputPacket`
 - `PresenterHudTelemetryDecisionInputPacket`
 - `PresenterFacadeDecisionBridgePacket`
+- `PresenterHudTelemetryPreviewPacket`
+- `PresenterFrameEndPreviewPacket`
 
 ## Remove-first rule
 

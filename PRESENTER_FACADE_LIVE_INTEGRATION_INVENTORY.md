@@ -19,6 +19,15 @@ It does not authorize a live patch by itself.
 
 The presenter/facade chain is still compile-only.
 
+One compile-only preview packet now groups the broad facade bridge and the
+narrow decision bridge for off-path validation only.
+
+One narrower compile-only HUD/telemetry preview also now exists for the
+`PresentFrameHudAndTelemetry(...)` boundary only.
+
+One narrower compile-only frame-end preview also now exists for the
+`UpdateFrameEndOverlays()` boundary only.
+
 No passive presenter packet is consumed live in:
 
 - `src/game_loop_system.hpp`
@@ -45,6 +54,9 @@ The chain now exists in these narrowing layers:
 9. `PresenterFrameEndDecisionPacket`
 10. `PresenterHudTelemetryDecisionInputPacket`
 11. `PresenterHudTelemetryDecisionPacket`
+12. `PresenterCompileOnlyPreviewPacket`
+13. `PresenterHudTelemetryPreviewPacket`
+14. `PresenterFrameEndPreviewPacket`
 
 ## Runtime boundaries already prepared
 
@@ -101,6 +113,9 @@ The following are prepared but must not be the first runtime consumer:
 - `PresenterFacadePacket`
 - `PresenterFacadeRequestPacket`
 - `PresenterFacadeBridgePacket`
+- `PresenterCompileOnlyPreviewPacket`
+- `PresenterHudTelemetryPreviewPacket`
+- `PresenterFrameEndPreviewPacket`
 
 These remain useful upstream/off-path, but they are too broad for the first
 retry on a critical boundary.

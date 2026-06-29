@@ -228,13 +228,13 @@ inline TrackLoadResult LoadTrackToCart(const char* const* paths, size_t pathCoun
 
     if (res.loaded)
     {
-        SRL::Debug::Print(1, 5, "Track counts m:%u f:%u v:%u smooth:%d", (unsigned)res.meshCount, (unsigned)res.faceCount, (unsigned)res.vertexCount, res.isSmooth ? 1 : 0);
-        SRL::Debug::Print(1, 6, "Track HWR delta:%d bytes:%u", res.hwrDelta, (unsigned)res.estBytes);
-        SRL::Debug::Print(1, 7, "Track cart ok free:%d", (int)res.freeAfter);
+        SRL::Debug::Print(1, 5, "TRK cnt m:%u f:%u v:%u sm:%d", (unsigned)res.meshCount, (unsigned)res.faceCount, (unsigned)res.vertexCount, res.isSmooth ? 1 : 0);
+        SRL::Debug::Print(1, 6, "TRK hwr d:%d b:%u", res.hwrDelta, (unsigned)res.estBytes);
+        SRL::Debug::Print(1, 7, "TRK cart ok f:%d", (int)res.freeAfter);
     }
     else
     {
-        SRL::Debug::Print(1, 4, "Track nao carregada (load falhou)");
+        SRL::Debug::Print(1, 4, "TRK load fail");
     }
 
     return res;
@@ -360,31 +360,31 @@ inline TrackSerializedCopy SerializeTrackToCart(const char* path, size_t chunkSi
         result.cartPtr = copy.cartPtr;
         result.size = copy.written;
         result.hwrDelta = copy.hwrDelta;
-        SRL::Debug::Print(1, 4, "Track serialized OK: %s cart:%08lx copied:%u delta:%d",
+        SRL::Debug::Print(1, 4, "TRK ser ok:%s c:%08lx cp:%u d:%d",
                           path, (unsigned long)copy.cartPtr, (unsigned)copy.written, copy.hwrDelta);
         return result;
     case CartCopyError::Missing:
-        SRL::Debug::Print(1, 3, "Track serialize fail (missing): %s", path);
+        SRL::Debug::Print(1, 3, "TRK ser miss:%s", path);
         return result;
     case CartCopyError::OpenFail:
-        SRL::Debug::Print(1, 3, "Track serialize fail (open): %s", path);
+        SRL::Debug::Print(1, 3, "TRK ser open:%s", path);
         return result;
     case CartCopyError::NoSpace:
-        SRL::Debug::Print(1, 3, "Track serialize fail (no cart space) %s desired:%u free:%u",
+        SRL::Debug::Print(1, 3, "TRK ser nospc %s d:%u f:%u",
                           path, (unsigned)copy.desiredSize, (unsigned)copy.freeBefore);
         return result;
     case CartCopyError::MallocFail:
-        SRL::Debug::Print(1, 3, "Track serialize fail (malloc): %s sz:%u", path, (unsigned)copy.allocSize);
+        SRL::Debug::Print(1, 3, "TRK ser malloc:%s s:%u", path, (unsigned)copy.allocSize);
         return result;
     case CartCopyError::ReadError:
-        SRL::Debug::Print(1, 3, "Track serialize fail (read error): %s", path);
+        SRL::Debug::Print(1, 3, "TRK ser read:%s", path);
         return result;
     case CartCopyError::ShortRead:
-        SRL::Debug::Print(1, 3, "Track serialize fail (short read): %s read:%u expected:%u",
+        SRL::Debug::Print(1, 3, "TRK ser short:%s r:%u e:%u",
                           path, (unsigned)copy.written, (unsigned)copy.allocSize);
         return result;
     case CartCopyError::Overflow:
-        SRL::Debug::Print(1, 3, "Track serialize fail (overflow): %s desired:%u alloc:%u",
+        SRL::Debug::Print(1, 3, "TRK ser ovf:%s d:%u a:%u",
                           path, (unsigned)copy.desiredSize, (unsigned)copy.allocSize);
         return result;
     }
@@ -400,31 +400,31 @@ inline TrackSegmentCopy CopyTrackSegmentToCart(const char* path, size_t chunkSiz
     case CartCopyError::None:
         result.cartPtr = copy.cartPtr;
         result.size = copy.written;
-        SRL::Debug::Print(1, 4, "Segment copied: %s cart:%08lx size:%u",
+        SRL::Debug::Print(1, 4, "SEG cp:%s c:%08lx s:%u",
                           path, (unsigned long)copy.cartPtr, (unsigned)copy.written);
         return result;
     case CartCopyError::Missing:
-        SRL::Debug::Print(1, 3, "Segment copy fail (missing): %s", path);
+        SRL::Debug::Print(1, 3, "SEG miss:%s", path);
         return result;
     case CartCopyError::OpenFail:
-        SRL::Debug::Print(1, 3, "Segment copy fail (open): %s", path);
+        SRL::Debug::Print(1, 3, "SEG open:%s", path);
         return result;
     case CartCopyError::NoSpace:
-        SRL::Debug::Print(1, 3, "Segment copy fail (no cart space) %s desired:%u free:%u",
+        SRL::Debug::Print(1, 3, "SEG nospc %s d:%u f:%u",
                           path, (unsigned)copy.desiredSize, (unsigned)copy.freeBefore);
         return result;
     case CartCopyError::MallocFail:
-        SRL::Debug::Print(1, 3, "Segment copy fail (malloc): %s sz:%u", path, (unsigned)copy.allocSize);
+        SRL::Debug::Print(1, 3, "SEG malloc:%s s:%u", path, (unsigned)copy.allocSize);
         return result;
     case CartCopyError::ReadError:
-        SRL::Debug::Print(1, 3, "Segment copy fail (read error): %s", path);
+        SRL::Debug::Print(1, 3, "SEG read:%s", path);
         return result;
     case CartCopyError::ShortRead:
-        SRL::Debug::Print(1, 3, "Segment copy fail (short read): %s read:%u expected:%u",
+        SRL::Debug::Print(1, 3, "SEG short:%s r:%u e:%u",
                           path, (unsigned)copy.written, (unsigned)copy.allocSize);
         return result;
     case CartCopyError::Overflow:
-        SRL::Debug::Print(1, 3, "Segment copy fail (overflow): %s desired:%u alloc:%u",
+        SRL::Debug::Print(1, 3, "SEG ovf:%s d:%u a:%u",
                           path, (unsigned)copy.desiredSize, (unsigned)copy.allocSize);
         return result;
     }

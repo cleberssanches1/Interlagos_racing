@@ -16,11 +16,41 @@ this area is close to Master/Slave timing and previous-frame reuse behavior.
 - no invalid opcode
 - no silent close
 
+## Current live retry blocker
+
+The first narrow live retry of `Boundary D` was attempted after the compile-only
+groundwork was prepared.
+
+Observed result:
+
+- runtime integration shape was technically valid
+- final ISO became `4139008`
+- baseline delta was exactly `4096` bytes
+
+So the current blocker is code-size budget, not boundary semantics.
+
+Use:
+
+- `DEBUG_TELEMETRY_SIZE_REDUCTION_PLAN.md`
+
+before reopening the first live retry for `Boundary D`.
+
+Latest measured result:
+
+- a decision-first retry was reattempted after the first three size-reduction
+  passes
+- cumulative telemetry remained excluded
+- ISO still became `4139008`
+- the `4096` byte blocker remains unchanged
+
 ## Current status
 
-- the full `scheduler/reuse observability` chain remains compile-only
-- no local live consumer is active yet in critical runtime files
-- the next recommended live candidate is Boundary A from
+- two narrow local live substitutions are now active in `src/game_loop_system.hpp`
+- `SimulationSchedulerTelemetryViewPacket` is now assembled in
+  `BuildSh2SplitTelemetrySnapshot()`
+- `TrackRenderProducerStatePacket` is now consumed in a separate local
+  presentation/debug helper without changing `Sh2SplitTelemetrySnapshot`
+- the next recommended live candidate is Boundary D from
   `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
 
 ## Runtime boundaries covered
@@ -113,6 +143,15 @@ Must remain unchanged:
 - `N-1` policy behavior
 - simulation/track orchestration
 
+Preferred compile-only staging directly above Boundary D:
+
+- `src/game_loop_reuse_observability_debug_contracts.hpp`
+- `src/game_loop_reuse_observability_debug_assembler.hpp`
+- `src/game_loop_reuse_observability_debug_presenter_ops.hpp`
+- `src/game_loop_reuse_observability_debug_bundle_contracts.hpp`
+- `src/game_loop_reuse_observability_debug_bundle_assembler.hpp`
+- `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`
+
 ### Step 4 - scheduler/reuse aggregate last
 
 Only after the lower layers have each been proven stable independently:
@@ -162,6 +201,8 @@ Good compile-only follow-up work before that retry:
   lifecycle-oriented and narrow
 - prefer `SimulationSchedulerLifecycleObservabilityPacket` for any future
   scheduler-only observability consumer before mixing it with reuse
+- prefer `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp` to
+  assemble the lower-to-higher chain off-path before any new live retry
 
 ## Remove-first rule
 
