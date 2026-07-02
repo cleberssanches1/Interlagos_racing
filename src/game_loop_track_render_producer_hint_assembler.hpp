@@ -1,23 +1,22 @@
 #pragma once
 
 #include "game_loop_track_render_producer_hint_contracts.hpp"
-#include "game_loop_track_render_producer_state_contracts.hpp"
+#include "game_loop_track_render_telemetry_view_contracts.hpp"
 
 namespace GameLoopRuntime
 {
 
-inline void SeedTrackRenderProducerHintPacket(const TrackRenderProducerStatePacket& producerState,
+inline void SeedTrackRenderProducerHintPacket(const TrackRenderTelemetryViewPacket& telemetryView,
                                               TrackRenderProducerHintPacket& outPacket)
 {
-    outPacket.valid = producerState.valid;
-    outPacket.producerJobInFlight = producerState.producerJobInFlight;
+    outPacket.producerJobInFlight = telemetryView.producerJobInFlight;
 }
 
 inline TrackRenderProducerHintPacket BuildTrackRenderProducerHintPacket(
-    const TrackRenderProducerStatePacket& producerState)
+    const TrackRenderTelemetryViewPacket& telemetryView)
 {
     TrackRenderProducerHintPacket packet{};
-    SeedTrackRenderProducerHintPacket(producerState, packet);
+    SeedTrackRenderProducerHintPacket(telemetryView, packet);
     return packet;
 }
 

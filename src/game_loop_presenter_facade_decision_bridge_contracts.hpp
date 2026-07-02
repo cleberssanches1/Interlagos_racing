@@ -14,7 +14,6 @@ struct PresenterFacadeDecisionBridgePacket
     bool valid = false;
     PresenterFacadeDecisionInputPacket decisionInput{};
     PresenterHudTelemetryDecisionInputPacket hudTelemetryInput{};
-    PresenterFacadeDecisionPacket facadeDecision{};
     PresenterFrameEndDecisionPacket frameEndDecision{};
     PresenterHudTelemetryDecisionPacket hudTelemetryDecision{};
 };

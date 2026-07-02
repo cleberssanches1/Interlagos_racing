@@ -1067,22 +1067,48 @@ private:
         return true;
     }
 
-    bool TryBuildTrackRenderProducerStatePacket(
+    bool TryBuildTrackRenderProducerStateFlags(
         const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView,
-        GameLoopRuntime::TrackRenderProducerStatePacket& outProducerState) const
+        bool& outHasProducerState,
+        bool& outProducerJobInFlight,
+        bool& outProducerSafeModeActive) const
     {
         if (!trackTelemetryView.valid)
         {
+            outHasProducerState = false;
+            outProducerJobInFlight = false;
+            outProducerSafeModeActive = false;
             return false;
         }
 
-        outProducerState =
-            GameLoopRuntime::BuildTrackRenderProducerStatePacket(trackTelemetryView);
+        outHasProducerState = true;
+        outProducerJobInFlight = trackTelemetryView.producerJobInFlight;
+        outProducerSafeModeActive = trackTelemetryView.producerSafeModeActive;
         return true;
     }
 
-    bool TryBuildTrackRenderProducerStatePacket(
-        GameLoopRuntime::TrackRenderProducerStatePacket& outProducerState) const
+    bool TryBuildTrackRenderProducerStateFlags(
+        bool& outHasProducerState,
+        bool& outProducerJobInFlight,
+        bool& outProducerSafeModeActive) const
+    {
+        GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
+        if (!TryBuildTrackRenderTelemetryView(trackTelemetryView))
+        {
+            outHasProducerState = false;
+            outProducerJobInFlight = false;
+            outProducerSafeModeActive = false;
+            return false;
+        }
+
+        return TryBuildTrackRenderProducerStateFlags(trackTelemetryView,
+                                                     outHasProducerState,
+                                                     outProducerJobInFlight,
+                                                     outProducerSafeModeActive);
+    }
+
+    bool TryBuildTrackRenderProducerHintPacket(
+        GameLoopRuntime::TrackRenderProducerHintPacket& outProducerHint) const
     {
         GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
         if (!TryBuildTrackRenderTelemetryView(trackTelemetryView))
@@ -1090,20 +1116,8 @@ private:
             return false;
         }
 
-        return TryBuildTrackRenderProducerStatePacket(trackTelemetryView, outProducerState);
-    }
-
-    bool TryBuildTrackRenderProducerHintPacket(
-        GameLoopRuntime::TrackRenderProducerHintPacket& outProducerHint) const
-    {
-        GameLoopRuntime::TrackRenderProducerStatePacket producerState{};
-        if (!TryBuildTrackRenderProducerStatePacket(producerState))
-        {
-            return false;
-        }
-
         outProducerHint =
-            GameLoopRuntime::BuildTrackRenderProducerHintPacket(producerState);
+            GameLoopRuntime::BuildTrackRenderProducerHintPacket(trackTelemetryView);
         return true;
     }
 
@@ -2013,12 +2027,21 @@ private:
 
         PrintSegmentOverlapDiagnostics(framePresentation.submittedTrackFaces,
                                        framePresentation.submittedCarFaces);
-        GameLoopRuntime::TrackRenderProducerStatePacket producerState{};
-        const bool hasProducerState = (trackTelemetryView && trackTelemetryView->valid)
-            ? TryBuildTrackRenderProducerStatePacket(*trackTelemetryView, producerState)
-            : TryBuildTrackRenderProducerStatePacket(producerState);
+        bool hasProducerState = false;
+        bool producerJobInFlight = false;
+        bool producerSafeModeActive = false;
+        const bool builtProducerStateFlags = (trackTelemetryView && trackTelemetryView->valid)
+            ? TryBuildTrackRenderProducerStateFlags(*trackTelemetryView,
+                                                    hasProducerState,
+                                                    producerJobInFlight,
+                                                    producerSafeModeActive)
+            : TryBuildTrackRenderProducerStateFlags(hasProducerState,
+                                                    producerJobInFlight,
+                                                    producerSafeModeActive);
         PrintSh2SplitTelemetry(framePresentation.sh2,
-                               hasProducerState ? &producerState : nullptr);
+                               builtProducerStateFlags && hasProducerState,
+                               producerJobInFlight,
+                               producerSafeModeActive);
     }
 
     void SynchronizeFrameCore()
@@ -2418,7 +2441,9 @@ private:
 
     void PrintSh2SplitTelemetry(
         const Sh2SplitTelemetrySnapshot& snapshot,
-        const GameLoopRuntime::TrackRenderProducerStatePacket* producerState = nullptr)
+        bool hasProducerState = false,
+        bool producerJobInFlight = false,
+        bool producerSafeModeActive = false)
     {
         if (!snapshot.Valid()) return;
 
@@ -2434,9 +2459,12 @@ private:
                 static_cast<uint32_t>(simState_.slaveDispatchCount),
                 static_cast<uint32_t>(simState_.slaveDispatchSkipsTrackBusy));
         }
-        if (producerState && producerState->valid)
+        if (hasProducerState)
         {
-            GameLoopObservabilityDomain::PresentTrackRenderProducerStatePacket(*producerState);
+            GameLoopObservabilityDomain::PresentTrackRenderProducerStateFlags(
+                hasProducerState,
+                producerJobInFlight,
+                producerSafeModeActive);
         }
     }
 

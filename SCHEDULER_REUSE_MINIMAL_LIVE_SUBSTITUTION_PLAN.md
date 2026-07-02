@@ -152,6 +152,14 @@ Preferred compile-only staging directly above Boundary D:
 - `src/game_loop_reuse_observability_debug_bundle_assembler.hpp`
 - `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`
 
+Current narrowing status for that staging:
+
+- `ReuseObservabilityDebugPacket` is now decision-only
+- cumulative reuse counters stay outside the first Boundary D live retry
+- the first live return should therefore consume only:
+  - simulation reuse decision flags
+  - track reuse decision flags
+
 ### Step 4 - scheduler/reuse aggregate last
 
 Only after the lower layers have each been proven stable independently:

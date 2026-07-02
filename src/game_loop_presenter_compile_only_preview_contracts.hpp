@@ -1,7 +1,7 @@
 #pragma once
 
-#include "game_loop_presenter_facade_bridge_contracts.hpp"
-#include "game_loop_presenter_facade_decision_bridge_contracts.hpp"
+#include "game_loop_presenter_frame_end_preview_contracts.hpp"
+#include "game_loop_presenter_hud_telemetry_preview_contracts.hpp"
 
 namespace GameLoopRuntime
 {
@@ -9,8 +9,8 @@ namespace GameLoopRuntime
 struct PresenterCompileOnlyPreviewPacket
 {
     bool valid = false;
-    PresenterFacadeBridgePacket facadeBridge{};
-    PresenterFacadeDecisionBridgePacket decisionBridge{};
+    PresenterFrameEndPreviewPacket frameEnd{};
+    PresenterHudTelemetryPreviewPacket hudTelemetry{};
 };
 
 } // namespace GameLoopRuntime

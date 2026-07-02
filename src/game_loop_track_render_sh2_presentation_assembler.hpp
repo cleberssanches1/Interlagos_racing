@@ -10,15 +10,19 @@ inline void SeedTrackRenderSh2PresentationPacket(
     bool useSafeTelemetryFormat,
     uint32_t slaveDispatchCount,
     uint32_t slaveDispatchSkipsTrackBusy,
-    const GameLoopRuntime::TrackRenderProducerStatePacket& producerState,
+    bool hasProducerState,
+    bool producerJobInFlight,
+    bool producerSafeModeActive,
     TrackRenderSh2PresentationPacket& outPacket)
 {
-    outPacket.valid = sh2.Valid() || producerState.valid;
+    outPacket.valid = sh2.Valid() || hasProducerState;
     outPacket.useSafeTelemetryFormat = useSafeTelemetryFormat;
     outPacket.slaveDispatchCount = slaveDispatchCount;
     outPacket.slaveDispatchSkipsTrackBusy = slaveDispatchSkipsTrackBusy;
     outPacket.sh2 = sh2;
-    outPacket.producerState = producerState;
+    outPacket.hasProducerState = hasProducerState;
+    outPacket.producerJobInFlight = producerJobInFlight;
+    outPacket.producerSafeModeActive = producerSafeModeActive;
 }
 
 inline TrackRenderSh2PresentationPacket BuildTrackRenderSh2PresentationPacket(
@@ -26,14 +30,18 @@ inline TrackRenderSh2PresentationPacket BuildTrackRenderSh2PresentationPacket(
     bool useSafeTelemetryFormat,
     uint32_t slaveDispatchCount,
     uint32_t slaveDispatchSkipsTrackBusy,
-    const GameLoopRuntime::TrackRenderProducerStatePacket& producerState)
+    bool hasProducerState,
+    bool producerJobInFlight,
+    bool producerSafeModeActive)
 {
     TrackRenderSh2PresentationPacket packet{};
     SeedTrackRenderSh2PresentationPacket(sh2,
                                          useSafeTelemetryFormat,
                                          slaveDispatchCount,
                                          slaveDispatchSkipsTrackBusy,
-                                         producerState,
+                                         hasProducerState,
+                                         producerJobInFlight,
+                                         producerSafeModeActive,
                                          packet);
     return packet;
 }
@@ -48,7 +56,9 @@ inline TrackRenderSh2PresentationPacket BuildTrackRenderSh2PresentationPacket(
                                                  useSafeTelemetryFormat,
                                                  slaveDispatchCount,
                                                  slaveDispatchSkipsTrackBusy,
-                                                 GameLoopRuntime::TrackRenderProducerStatePacket{});
+                                                 false,
+                                                 false,
+                                                 false);
 }
 
 } // namespace GameLoopObservabilityDomain

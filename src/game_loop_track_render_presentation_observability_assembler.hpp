@@ -1,20 +1,22 @@
 #pragma once
 
 #include "game_loop_track_render_presentation_observability_contracts.hpp"
-#include "game_loop_track_render_producer_state_assembler.hpp"
 
 namespace GameLoopObservabilityDomain
 {
 
 inline void SeedTrackRenderPresentationObservabilityPacket(
     const GameLoopRuntime::TrackRenderTelemetryViewPacket& telemetry,
-    const GameLoopRuntime::TrackRenderProducerStatePacket& producerState,
+    bool hasProducerState,
+    bool producerJobInFlight,
+    bool producerSafeModeActive,
     const GameLoopRuntime::Sh2SplitTelemetrySnapshot& sh2,
     TrackRenderPresentationObservabilityPacket& outPacket)
 {
-    outPacket.valid = telemetry.valid || producerState.valid || sh2.Valid();
-    outPacket.telemetry = telemetry;
-    outPacket.producerState = producerState;
+    outPacket.valid = telemetry.valid || hasProducerState || sh2.Valid();
+    outPacket.hasProducerState = hasProducerState;
+    outPacket.producerJobInFlight = producerJobInFlight;
+    outPacket.producerSafeModeActive = producerSafeModeActive;
     outPacket.sh2 = sh2;
 }
 
@@ -25,22 +27,27 @@ inline void SeedTrackRenderPresentationObservabilityPacket(
 {
     SeedTrackRenderPresentationObservabilityPacket(
         telemetry,
-        GameLoopRuntime::BuildTrackRenderProducerStatePacket(telemetry),
+        telemetry.valid,
+        telemetry.producerJobInFlight,
+        telemetry.producerSafeModeActive,
         sh2,
         outPacket);
 }
 
 inline TrackRenderPresentationObservabilityPacket BuildTrackRenderPresentationObservabilityPacket(
     const GameLoopRuntime::TrackRenderTelemetryViewPacket& telemetry,
-    const GameLoopRuntime::TrackRenderProducerStatePacket& producerState,
+    bool hasProducerState,
+    bool producerJobInFlight,
+    bool producerSafeModeActive,
     const GameLoopRuntime::Sh2SplitTelemetrySnapshot& sh2)
 {
     TrackRenderPresentationObservabilityPacket packet{};
-    SeedTrackRenderPresentationObservabilityPacket(
-        telemetry,
-        producerState,
-        sh2,
-        packet);
+    SeedTrackRenderPresentationObservabilityPacket(telemetry,
+                                                   hasProducerState,
+                                                   producerJobInFlight,
+                                                   producerSafeModeActive,
+                                                   sh2,
+                                                   packet);
     return packet;
 }
 

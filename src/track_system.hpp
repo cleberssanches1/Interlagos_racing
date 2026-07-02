@@ -600,6 +600,19 @@ private:
     void ResetPendingStabilizedLodRanks();
     void QueuePendingStabilizedLodRank(size_t logicalRank);
     void SeedPendingStabilizedLodRanksForWindow();
+    template <typename FaceFamilyVecT, typename FaceSlotsVecT>
+    bool ResolveFaceSlotsForFixedLodFromFamilies(const FaceFamilyVecT& faceFamilyIds,
+                                                 uint8_t lodIndex,
+                                                 FamilySlotVector& familySlots,
+                                                 FaceSlotsVecT& outFaceSlots,
+                                                 bool bypassUploadBudget = false);
+    template <typename FaceFamilyVecT, typename RankOffsetVecT, typename FaceSlotsVecT>
+    bool ResolveFaceSlotsForBaseRankFromFamilies(const FaceFamilyVecT& faceFamilyIds,
+                                                 const RankOffsetVecT& faceRankOffsets,
+                                                 size_t baseRank,
+                                                 FamilySlotVector& familySlots,
+                                                 FaceSlotsVecT& outFaceSlots,
+                                                 bool bypassUploadBudget = false);
     template <typename FaceSlotsVecT>
     bool ResolvePreparedFaceSlotsForLod(const SegmentRenderEntry& entry,
                                         uint8_t lodIndex,

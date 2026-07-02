@@ -2,6 +2,7 @@
 
 #include "game_loop_presenter_observability_input_contracts.hpp"
 #include "game_loop_presenter_overlay_debug_assembler.hpp"
+#include "game_loop_scheduler_reuse_debug_telemetry_contracts.hpp"
 
 namespace GameLoopRuntime
 {
@@ -13,10 +14,9 @@ inline void SeedPresenterObservabilityInputPacket(
     PresenterObservabilityInputPacket& outPacket)
 {
     outPacket.valid = overlay.valid || observability.valid || schedulerReuse.valid;
-    outPacket.overlay = overlay;
     outPacket.overlayDebug = BuildPresenterOverlayDebugPacket(overlay, observability);
-    outPacket.observability = observability;
-    outPacket.schedulerReuse = schedulerReuse;
+    outPacket.hasObservability = observability.valid;
+    outPacket.hasSchedulerReuseDebug = schedulerReuse.valid;
 }
 
 inline PresenterObservabilityInputPacket BuildPresenterObservabilityInputPacket(

@@ -4,7 +4,6 @@
 #include <cstdint>
 
 #include "car_system.hpp"
-#include "game_loop_runtime_state.hpp"
 #include "game_loop_telemetry_contracts.hpp"
 
 namespace GameLoopRuntime
@@ -48,10 +47,8 @@ struct PeriodicHudStatsPacket
 struct PresentationDebugBundle
 {
     bool valid = false;
-    FramePresentationSnapshot frame{};
     DrivingHudTextPacket drivingHud{};
     PeriodicHudStatsPacket periodicHud{};
-    GameLoopTelemetryDomain::RealtimeFpsPacket realtimeFps{};
 };
 
 } // namespace GameLoopRuntime

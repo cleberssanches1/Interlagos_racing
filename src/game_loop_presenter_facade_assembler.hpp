@@ -11,11 +11,9 @@ inline void SeedPresenterFacadePacket(const PresenterInputBundle& inputBundle,
                                       PresenterFacadePacket& outPacket)
 {
     outPacket.valid = inputBundle.valid;
-    outPacket.summary = inputBundle.summary;
     outPacket.drivingHud = inputBundle.presentation.drivingHud;
     outPacket.periodicHud = inputBundle.presentation.periodicHud;
-    outPacket.render = inputBundle.renderDebug;
-    outPacket.overlay = inputBundle.overlayDebug;
+    outPacket.overlay = inputBundle.observabilityInput.overlayDebug;
 }
 
 inline PresenterFacadePacket BuildPresenterFacadePacket(const PresenterInputBundle& inputBundle)
@@ -29,11 +27,9 @@ inline void SeedPresenterFacadePacket(const PresenterFacadeInputPacket& facadeIn
                                       PresenterFacadePacket& outPacket)
 {
     outPacket.valid = facadeInput.valid;
-    outPacket.summary = facadeInput.summary;
     outPacket.drivingHud = facadeInput.drivingHud;
     outPacket.periodicHud = facadeInput.periodicHud;
-    outPacket.render = facadeInput.render;
-    outPacket.overlay = facadeInput.observability.overlayDebug;
+    outPacket.overlay = facadeInput.overlay;
 }
 
 inline PresenterFacadePacket BuildPresenterFacadePacket(

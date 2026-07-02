@@ -10,8 +10,15 @@
 #include <string.h>
 #include <vector>
 #include <utility>
-#include <errno.h>
 #include <limits>
+
+#ifndef TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK
+#define TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK 0
+#endif
+
+#if TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK
+#include <errno.h>
+#endif
 
 extern "C" uint32_t SRL_AppGetVblankCounter();
 
@@ -800,6 +807,9 @@ static void InvalidatePackedAssetCache(PackedAssetCache& cache);
 static void InvalidateTrackRuntimePackCache(TrackRuntimePackCache& cache);
 static void UpdatePackedAssetCacheTrackedBytes(PackedAssetCache& cache);
 static bool ReadCdFileFully(SRL::Cd::File& file, uint32_t totalBytes, uint8_t* dst, uint32_t& outReadBytes);
+static bool ParseRenTextureCopyMap(const char* json, RenTextureMap& out);
+static bool ParseFaceFamilyArrayForSegment1(const char* json, Segment1TextureJson& out);
+static bool ParseSegment1TextureJson(const char* json, Segment1TextureJson& out);
 static bool LoadTrackRuntimePackToCart(const char* const* candidates, size_t count, TrackRuntimePackCache& cache);
 static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out);
@@ -995,31 +1005,29 @@ static bool ReadCdFileText(const char* const* names, size_t count, std::vector<c
     auto tryReadOne = [&](const char* path) -> bool
     {
         if (!path || path[0] == '\0') return false;
-        SRL::Debug::Print(1, 3, "TGA map cd candidate:%s", path);
+        SRL::Debug::Print(1, 3, "TGA cd cand:%s", path);
         SRL::Cd::File f(path);
         if (!f.Exists() || f.Size.Bytes <= 0) return false;
         if (!f.Open()) return false;
         const size_t size = static_cast<size_t>(f.Size.Bytes);
-        outText.clear();
-        outText.reserve(size + 1);
-        std::vector<char> chunk(2048);
-        size_t totalRead = 0;
-        while (totalRead < size)
+        outText.assign(size + 1, '\0');
+        uint32_t readBytes = 0;
+        if (!ReadCdFileFully(f,
+                             static_cast<uint32_t>(size),
+                             reinterpret_cast<uint8_t*>(outText.data()),
+                             readBytes) ||
+            readBytes == 0)
         {
-            const int32_t want = static_cast<int32_t>(std::min<size_t>(chunk.size(), size - totalRead));
-            const int32_t got = f.Read(want, chunk.data());
-            if (got <= 0) break;
-            outText.insert(outText.end(), chunk.begin(), chunk.begin() + got);
-            totalRead += static_cast<size_t>(got);
-            if (got < want) break;
+            outText.clear();
+            return false;
         }
-        if (outText.empty()) return false;
+        outText.resize(readBytes);
         outText.push_back('\0');
         NormalizeLoadedTextEncoding(outText);
         char key[96]{};
         BuildTextCacheKey(path, key, sizeof(key));
         StoreCachedTextByKey(key, outText);
-        SRL::Debug::Print(1, 3, "TGA map cd ok:%s", path);
+        SRL::Debug::Print(1, 3, "TGA cd ok:%s", path);
         return true;
     };
 
@@ -1043,10 +1051,11 @@ static bool ReadCdFileText(const char* const* names, size_t count, std::vector<c
             }
         }
     }
-    SRL::Debug::Print(1, 3, "TGA map local not found");
+    SRL::Debug::Print(1, 3, "TGA map miss");
     return false;
 }
 
+#if TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK
 static bool ReadLocalSegmentsMap(std::vector<char>& outText)
 {
     const char* names[] = {
@@ -1085,11 +1094,11 @@ static bool ReadLocalSegmentsMap(std::vector<char>& outText)
             {
                 std::snprintf(path, sizeof(path), "%s/%s", dir, base);
             }
-            SRL::Debug::Print(1, 3, "TGA map candidate:%s", path);
+            SRL::Debug::Print(1, 3, "TGA cand:%s", path);
             FILE* f = std::fopen(path, "rb");
             if (!f)
             {
-                SRL::Debug::Print(1, 6, "TGA map local miss:%s errno:%d", path, errno);
+                SRL::Debug::Print(1, 6, "TGA miss:%s e:%d", path, errno);
                 continue;
             }
             std::fseek(f, 0, SEEK_END);
@@ -1097,7 +1106,7 @@ static bool ReadLocalSegmentsMap(std::vector<char>& outText)
             if (size <= 0)
             {
                 std::fclose(f);
-                SRL::Debug::Print(1, 6, "TGA map local empty:%s", path);
+                SRL::Debug::Print(1, 6, "TGA emp:%s", path);
                 continue;
             }
             std::fseek(f, 0, SEEK_SET);
@@ -1106,18 +1115,19 @@ static bool ReadLocalSegmentsMap(std::vector<char>& outText)
             std::fclose(f);
             if (read == 0)
             {
-                SRL::Debug::Print(1, 6, "TGA map local read fail:%s", path);
+                SRL::Debug::Print(1, 6, "TGA rd fail:%s", path);
                 continue;
             }
             outText.resize(read);
             outText.push_back('\0');
             NormalizeLoadedTextEncoding(outText);
-            SRL::Debug::Print(1, 3, "TGA map local ok:%s", path);
+            SRL::Debug::Print(1, 3, "TGA loc ok:%s", path);
             return true;
         }
     }
     return false;
 }
+#endif
 
 static bool ReadCdFileBinary(const char* const* names, size_t count, std::vector<uint8_t>& outData)
 {
@@ -1128,20 +1138,18 @@ static bool ReadCdFileBinary(const char* const* names, size_t count, std::vector
         if (!f.Exists() || f.Size.Bytes <= 0) return false;
         if (!f.Open()) return false;
         const size_t size = static_cast<size_t>(f.Size.Bytes);
-        outData.clear();
-        outData.reserve(size);
-        std::vector<uint8_t> chunk(2048);
-        size_t totalRead = 0;
-        while (totalRead < size)
+        outData.resize(size);
+        uint32_t readBytes = 0;
+        if (!ReadCdFileFully(f,
+                             static_cast<uint32_t>(size),
+                             outData.data(),
+                             readBytes) ||
+            readBytes == 0)
         {
-            const int32_t want = static_cast<int32_t>(std::min<size_t>(chunk.size(), size - totalRead));
-            const int32_t got = f.Read(want, chunk.data());
-            if (got <= 0) break;
-            outData.insert(outData.end(), chunk.begin(), chunk.begin() + got);
-            totalRead += static_cast<size_t>(got);
-            if (got < want) break;
+            outData.clear();
+            return false;
         }
-        if (outData.empty()) return false;
+        outData.resize(readBytes);
         return true;
     };
 
@@ -1162,6 +1170,178 @@ static bool ReadCdFileBinary(const char* const* names, size_t count, std::vector
         }
     }
     return false;
+}
+
+static constexpr const char* kSeg1RenMapCandidates[] = {
+    "CD/DATA/RTMAP.TXT",
+    "CD/DATA/RTMAP.TXT;1",
+    "DATA/RTMAP.TXT",
+    "DATA/RTMAP.TXT;1",
+    "RTMAP.TXT",
+    "RTMAP.TXT;1",
+    "CD/DATA/ren_textures_copy_map.json",
+    "CD/DATA/ren_textures_copy_map.json;1",
+    "DATA/ren_textures_copy_map.json",
+    "DATA/ren_textures_copy_map.json;1",
+    "CD/DATA/REN_TEXTURES_COPY_MAP.JSON",
+    "CD/DATA/REN_TEXTURES_COPY_MAP.JSON;1",
+    "DATA/REN_TEXTURES_COPY_MAP.JSON",
+    "DATA/REN_TEXTURES_COPY_MAP.JSON;1",
+    "ren_textures_copy_map.json",
+    "ren_textures_copy_map.json;1"
+};
+
+static constexpr const char* kSeg1SmapCandidates[] = {
+    "SMAP.TXT",
+    "SMAP.TXT;1",
+    "CD/DATA/SMAP.TXT",
+    "CD/DATA/SMAP.TXT;1",
+    "DATA/SMAP.TXT",
+    "DATA/SMAP.TXT;1"
+};
+
+static constexpr const char* kSeg1LegacySegmentsMapCandidates[] = {
+    "CD/DATA/segments_map.json",
+    "CD/DATA/segments_map.json;1",
+    "DATA/segments_map.json",
+    "DATA/segments_map.json;1",
+    "segments_map.json",
+    "segments_map.json;1"
+};
+
+static constexpr const char* kSeg1AnyTextureMapCandidates[] = {
+    "CD/DATA/segments_map.json",
+    "CD/DATA/segments_map.json;1",
+    "DATA/segments_map.json",
+    "DATA/segments_map.json;1",
+    "segments_map.json",
+    "segments_map.json;1",
+    "SMAP.TXT;1",
+    "CD/DATA/SMAP.TXT",
+    "CD/DATA/SMAP.TXT;1",
+    "DATA/SMAP.TXT",
+    "DATA/SMAP.TXT;1",
+    "SMAP.TXT"
+};
+
+static constexpr const char* kSeg1FaceFamilyMapCandidates[] = {
+    "CD/DATA/S001FAM.BIN",
+    "CD/DATA/S001FAM.BIN;1",
+    "DATA/S001FAM.BIN",
+    "DATA/S001FAM.BIN;1",
+    "S001FAM.BIN",
+    "S001FAM.BIN;1",
+    "s001fam.bin",
+    "s001fam.bin;1"
+};
+
+static constexpr int kSeg1FamilyLodValues[4] = { 32, 64, 32, 64 };
+
+static void SetSeg1TgaLastName(const char* name);
+template <typename Catalog>
+static bool HasSeg1TgaCartEntry(const Catalog& catalog, const char* name);
+
+static bool ReadSeg1RenMapText(std::vector<char>& outText)
+{
+    return ReadCdFileText(kSeg1RenMapCandidates, std::size(kSeg1RenMapCandidates), outText);
+}
+
+static bool ReadSeg1SmapText(std::vector<char>& outText)
+{
+    return ReadCdFileText(kSeg1SmapCandidates, std::size(kSeg1SmapCandidates), outText);
+}
+
+static bool ReadSeg1LegacySegmentsMapText(std::vector<char>& outText)
+{
+    return ReadCdFileText(kSeg1LegacySegmentsMapCandidates,
+                          std::size(kSeg1LegacySegmentsMapCandidates),
+                          outText);
+}
+
+static bool ReadSeg1AnyTextureMapText(std::vector<char>& outText)
+{
+    return ReadCdFileText(kSeg1AnyTextureMapCandidates,
+                          std::size(kSeg1AnyTextureMapCandidates),
+                          outText);
+}
+
+static bool LoadSeg1RenTextureCopyMapFromCd(std::vector<char>& outText, RenTextureMap& out)
+{
+    return ReadSeg1RenMapText(outText) && ParseRenTextureCopyMap(outText.data(), out);
+}
+
+static bool LoadSeg1TextureJsonFromSmapCd(std::vector<char>& outText, Segment1TextureJson& out)
+{
+    return ReadSeg1SmapText(outText) && ParseSegment1TextureJson(outText.data(), out);
+}
+
+static bool LoadSeg1TextureJsonFromLegacyMapCd(std::vector<char>& outText, Segment1TextureJson& out)
+{
+    return ReadSeg1LegacySegmentsMapText(outText) && ParseSegment1TextureJson(outText.data(), out);
+}
+
+static bool LoadSeg1TextureJsonFromAnyMapCd(std::vector<char>& outText, Segment1TextureJson& out)
+{
+    return ReadSeg1AnyTextureMapText(outText) && ParseSegment1TextureJson(outText.data(), out);
+}
+
+static bool LoadSeg1FaceFamilyArrayFromAnyMapCd(std::vector<char>& outText, Segment1TextureJson& out)
+{
+    return ReadSeg1AnyTextureMapText(outText) && ParseFaceFamilyArrayForSegment1(outText.data(), out);
+}
+
+template <typename Catalog, typename Loader>
+static size_t ScanSeg1TgaTokensAndLoad(const Catalog& catalog,
+                                       const std::vector<char>& text,
+                                       Loader&& loadNameToCart,
+                                       size_t& outTokenHits,
+                                       char* firstToken,
+                                       size_t firstTokenSize)
+{
+    outTokenHits = 0;
+    if (firstToken && firstTokenSize > 0) firstToken[0] = '\0';
+    auto isTgaNameChar = [](char c) -> bool
+    {
+        return (c >= '0' && c <= '9') ||
+               (c >= 'a' && c <= 'z') ||
+               (c >= 'A' && c <= 'Z') ||
+               c == '_' || c == '-' || c == '.';
+    };
+
+    const char* scan = text.data();
+    size_t extracted = 0;
+    while (scan && *scan)
+    {
+        const char* dot = ::strstr(scan, ".tga");
+        if (!dot) dot = ::strstr(scan, ".TGA");
+        if (!dot) break;
+
+        const char* begin = dot;
+        while (begin > text.data() && isTgaNameChar(*(begin - 1))) --begin;
+
+        char name[64]{};
+        size_t nameLen = static_cast<size_t>((dot - begin) + 4);
+        if (nameLen >= sizeof(name)) nameLen = sizeof(name) - 1;
+        ::memcpy(name, begin, nameLen);
+        name[nameLen] = '\0';
+        SetSeg1TgaLastName(name);
+        ++outTokenHits;
+
+        if (firstToken && firstTokenSize > 0 && firstToken[0] == '\0')
+        {
+            ::strncpy(firstToken, name, firstTokenSize - 1);
+            firstToken[firstTokenSize - 1] = '\0';
+        }
+
+        if (name[0] != '\0' && !HasSeg1TgaCartEntry(catalog, name))
+        {
+            if (loadNameToCart(name)) ++extracted;
+            else SRL::Debug::Print(1, 7, "TGA miss:%s", name);
+        }
+        scan = dot + 4;
+    }
+
+    return extracted;
 }
 
 static bool ParseIntAfterKey(const char* p, const char* key, int& out)
@@ -1926,6 +2106,38 @@ static uint32_t ReadLe32(const uint8_t* p)
            (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) |
            (static_cast<uint32_t>(p[3]) << 24);
+}
+
+static bool LoadSeg1FaceFamilyMapFromCd(Segment1TextureJson& outMap)
+{
+    std::vector<uint8_t> mapBin{};
+    if (!ReadCdFileBinary(kSeg1FaceFamilyMapCandidates,
+                          std::size(kSeg1FaceFamilyMapCandidates),
+                          mapBin) ||
+        mapBin.size() < 12)
+    {
+        return false;
+    }
+
+    const uint32_t magic = ReadLe32(mapBin.data() + 0);
+    const uint16_t ver = ReadLe16(mapBin.data() + 4);
+    const uint16_t segId = ReadLe16(mapBin.data() + 8);
+    const uint16_t faceCount = ReadLe16(mapBin.data() + 10);
+    const size_t need = static_cast<size_t>(12) + static_cast<size_t>(faceCount) * sizeof(uint16_t);
+    if (magic != 0x4D463153 || ver != 1 || segId != 1 || mapBin.size() < need)
+    {
+        return false;
+    }
+
+    outMap.faceFamily.clear();
+    outMap.faceFamily.reserve(faceCount);
+    for (uint16_t i = 0; i < faceCount; ++i)
+    {
+        const size_t off = 12 + static_cast<size_t>(i) * 2;
+        outMap.faceFamily.push_back(static_cast<int>(ReadLe16(mapBin.data() + off)));
+    }
+
+    return !outMap.faceFamily.empty();
 }
 
 struct TrackedPaletteBankState
@@ -4736,8 +4948,261 @@ static bool NameEqualsIgnoreCase(const char* a, const char* b)
     return (*a == '\0' && *b == '\0');
 }
 
+template <typename Catalog>
+static int32_t TryUploadPalettedTgaFromCatalogByName(const Catalog& catalog, const char* name)
+{
+    if (!name || name[0] == '\0') return -1;
+
+    char norm[64]{};
+    NormalizeTextureFileName(name, norm, sizeof(norm));
+    if (norm[0] == '\0') return -1;
+
+    for (const auto& t : catalog)
+    {
+        if (!t.cartPtr || t.size == 0) continue;
+        if (!NameEqualsIgnoreCase(t.name, norm)) continue;
+        DecodedTgaTexture decoded{};
+        if (!DecodePalettedTgaMemory(static_cast<const uint8_t*>(t.cartPtr), t.size, decoded)) continue;
+        return UploadDecodedTextureToVdp1(decoded);
+    }
+
+    return -1;
+}
+
+template <typename Catalog>
+static int32_t TryUploadSeg1FamilyLodFromCatalog(const Catalog& catalog,
+                                                 int familyId,
+                                                 const char* sourceName,
+                                                 int lodValue,
+                                                 const RenTextureMap* renMap)
+{
+    if (!sourceName || sourceName[0] == '\0') return -1;
+
+    char candA[64]{};
+    char candB[64]{};
+    char mapped[64]{};
+    BuildLodTextureName(sourceName, lodValue, false, candA, sizeof(candA));
+    BuildLodTextureName(sourceName, lodValue, true, candB, sizeof(candB));
+
+    char famA[32]{};
+    char famB[32]{};
+    std::snprintf(famA, sizeof(famA), "F%03d_%d.TGA", familyId, lodValue);
+    std::snprintf(famB, sizeof(famB), "F%03d%d.TGA", familyId, lodValue);
+
+    int32_t slot = TryUploadPalettedTgaFromCatalogByName(catalog, famA);
+    if (slot < 0) slot = TryUploadPalettedTgaFromCatalogByName(catalog, famB);
+
+    if (slot < 0 && renMap && FindRenamedTarget(*renMap, candA, lodValue, mapped, sizeof(mapped)))
+    {
+        slot = TryUploadPalettedTgaFromCatalogByName(catalog, mapped);
+    }
+    if (slot < 0 && renMap && FindRenamedTarget(*renMap, candB, lodValue, mapped, sizeof(mapped)))
+    {
+        slot = TryUploadPalettedTgaFromCatalogByName(catalog, mapped);
+    }
+
+    return slot;
+}
+
 namespace
 {
+static void SetSeg1TgaDebugString(char* dst, size_t dstSize, const char* src)
+{
+    if (!dst || dstSize == 0) return;
+    ::strncpy(dst, (src && src[0] != '\0') ? src : "none", dstSize - 1);
+    dst[dstSize - 1] = '\0';
+}
+
+static void ResetSeg1TgaPreloadDebugState(uint16_t& preloadCount,
+                                          uint16_t& attemptCount,
+                                          uint16_t& failCount,
+                                          uint8_t& jsonOk)
+{
+    preloadCount = 0;
+    attemptCount = 0;
+    failCount = 0;
+    jsonOk = 0;
+    SetSeg1TgaDebugString(g_tgaLastTry, sizeof(g_tgaLastTry), "none");
+    SetSeg1TgaDebugString(g_tgaLastResult, sizeof(g_tgaLastResult), "preload_start");
+    SetSeg1TgaDebugString(g_tgaLastName, sizeof(g_tgaLastName), "none");
+    g_smapBytes = 0;
+    SetSeg1TgaDebugString(g_smapSig, sizeof(g_smapSig), "none");
+    SetSeg1TgaDebugString(g_smapHead, sizeof(g_smapHead), "none");
+}
+
+static void SetSeg1TgaLastName(const char* name)
+{
+    SetSeg1TgaDebugString(g_tgaLastName, sizeof(g_tgaLastName), name);
+}
+
+static void CopyAsciiUpper(char* dst, size_t dstSize, const char* src)
+{
+    if (!dst || dstSize == 0) return;
+    dst[0] = '\0';
+    if (!src) return;
+    ::strncpy(dst, src, dstSize - 1);
+    dst[dstSize - 1] = '\0';
+    for (size_t i = 0; dst[i] != '\0'; ++i)
+    {
+        if (dst[i] >= 'a' && dst[i] <= 'z') dst[i] = static_cast<char>(dst[i] - 'a' + 'A');
+    }
+}
+
+static void BuildIso83UpperName(char* outName, size_t outSize, const char* inName)
+{
+    if (!outName || outSize == 0) return;
+    outName[0] = '\0';
+    if (!inName || inName[0] == '\0') return;
+
+    char upper[80]{};
+    CopyAsciiUpper(upper, sizeof(upper), inName);
+    const char* dot = ::strrchr(upper, '.');
+    if (!dot)
+    {
+        ::strncpy(outName, upper, outSize - 1);
+        outName[outSize - 1] = '\0';
+        return;
+    }
+
+    char base[16]{};
+    size_t baseLen = static_cast<size_t>(dot - upper);
+    if (baseLen > 8) baseLen = 8;
+    for (size_t i = 0; i < baseLen; ++i) base[i] = upper[i];
+    base[baseLen] = '\0';
+
+    const char* ext = dot + 1;
+    char ext3[8]{};
+    size_t extLen = 0;
+    while (ext[extLen] != '\0' && extLen < 3)
+    {
+        ext3[extLen] = ext[extLen];
+        ++extLen;
+    }
+    ext3[extLen] = '\0';
+
+    if (base[0] != '\0' && ext3[0] != '\0')
+    {
+        std::snprintf(outName, outSize, "%s.%s", base, ext3);
+    }
+}
+
+template <typename Catalog>
+static bool HasSeg1TgaCartEntry(const Catalog& catalog, const char* name)
+{
+    if (!name || name[0] == '\0') return false;
+    for (const auto& entry : catalog)
+    {
+        if (NameEqualsIgnoreCase(entry.name, name)) return true;
+    }
+    return false;
+}
+
+static void UpdateSeg1SmapDebugSnapshot(const std::vector<char>& text, bool printHead)
+{
+    g_smapBytes = static_cast<uint32_t>(text.size());
+    const uint8_t b0 = (text.size() > 0) ? static_cast<uint8_t>(text[0]) : 0;
+    const uint8_t b1 = (text.size() > 1) ? static_cast<uint8_t>(text[1]) : 0;
+    const uint8_t b2 = (text.size() > 2) ? static_cast<uint8_t>(text[2]) : 0;
+    const uint8_t b3 = (text.size() > 3) ? static_cast<uint8_t>(text[3]) : 0;
+    std::snprintf(g_smapSig, sizeof(g_smapSig), "%02X%02X%02X%02X", b0, b1, b2, b3);
+
+    char head[48]{};
+    const size_t headSize = (text.size() > 40) ? 40 : text.size();
+    if (headSize > 0)
+    {
+        memcpy(head, text.data(), headSize);
+        head[headSize] = '\0';
+        for (size_t i = 0; head[i] != '\0'; ++i)
+        {
+            if (head[i] < 32 || head[i] > 126) head[i] = '.';
+        }
+    }
+
+    SetSeg1TgaDebugString(g_smapHead, sizeof(g_smapHead), head);
+    if (printHead)
+    {
+        SRL::Debug::Print(1, 24, "SMAP head:%s", g_smapHead);
+    }
+}
+
+static size_t BuildSeg1TgaCandidatePaths(
+    const char* normalizedName,
+    std::array<std::array<char, 96>, 18>& storage,
+    const char** outPaths)
+{
+    if (!normalizedName || normalizedName[0] == '\0' || !outPaths) return 0;
+
+    char upper[64]{};
+    CopyAsciiUpper(upper, sizeof(upper), normalizedName);
+
+    char iso83[80]{};
+    BuildIso83UpperName(iso83, sizeof(iso83), upper);
+
+    size_t count = 0;
+    auto addCandidate = [&](const char* fmt, const char* value)
+    {
+        if (!fmt || !value || value[0] == '\0' || count >= storage.size()) return;
+        std::snprintf(storage[count].data(), storage[count].size(), fmt, value);
+        outPaths[count] = storage[count].data();
+        ++count;
+    };
+
+    addCandidate("CD/DATA/%s", normalizedName);
+    addCandidate("CD/DATA/%s;1", normalizedName);
+    addCandidate("DATA/%s", normalizedName);
+    addCandidate("DATA/%s;1", normalizedName);
+    addCandidate("%s", normalizedName);
+    addCandidate("%s;1", normalizedName);
+
+    addCandidate("CD/DATA/%s", upper);
+    addCandidate("CD/DATA/%s;1", upper);
+    addCandidate("DATA/%s", upper);
+    addCandidate("DATA/%s;1", upper);
+    addCandidate("%s", upper);
+    addCandidate("%s;1", upper);
+
+    addCandidate("CD/DATA/%s", iso83);
+    addCandidate("CD/DATA/%s;1", iso83);
+    addCandidate("DATA/%s", iso83);
+    addCandidate("DATA/%s;1", iso83);
+    addCandidate("%s", iso83);
+    addCandidate("%s;1", iso83);
+
+    return count;
+}
+
+static bool LoadCdFileToCart(const char* path, void*& outCartPtr, uint32_t& outSize)
+{
+    outCartPtr = nullptr;
+    outSize = 0;
+    if (!path || path[0] == '\0') return false;
+
+    SRL::Cd::File file(path);
+    if (!file.Exists() || file.Size.Bytes <= 0 || !file.Open()) return false;
+
+    const uint32_t bytes = static_cast<uint32_t>(file.Size.Bytes);
+    void* mem = SRL::Memory::CartRam::Malloc(bytes);
+    if (!mem) return false;
+
+    uint32_t readBytes = 0;
+    if (!ReadCdFileFully(file, bytes, static_cast<uint8_t*>(mem), readBytes) || readBytes == 0)
+    {
+        SRL::Memory::CartRam::Free(mem);
+        return false;
+    }
+
+    outCartPtr = mem;
+    outSize = readBytes;
+    return true;
+}
+
+template <typename Catalog>
+static bool FinalizeSeg1TgaPreloadCatalog(const Catalog& catalog, uint16_t& preloadCount)
+{
+    preloadCount = static_cast<uint16_t>(catalog.size());
+    return !catalog.empty();
+}
+
 static void UpdatePackedAssetCacheTrackedBytes(PackedAssetCache& cache)
 {
     const uint32_t current = VectorCapacityBytesSafe(cache.entries);
@@ -5296,63 +5761,15 @@ static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entr
 }
 } // namespace
 
-static void BuildIso83UpperName(const char* inName, char* outName, size_t outSize)
-{
-    if (!outName || outSize == 0) return;
-    outName[0] = '\0';
-    if (!inName || inName[0] == '\0') return;
-
-    char upper[80]{};
-    ::strncpy(upper, inName, sizeof(upper) - 1);
-    for (size_t i = 0; upper[i] != '\0'; ++i)
-    {
-        if (upper[i] >= 'a' && upper[i] <= 'z') upper[i] = static_cast<char>(upper[i] - 'a' + 'A');
-    }
-    const char* dot = ::strrchr(upper, '.');
-    if (!dot)
-    {
-        ::strncpy(outName, upper, outSize - 1);
-        return;
-    }
-
-    char base[16]{};
-    size_t baseLen = static_cast<size_t>(dot - upper);
-    if (baseLen > 8) baseLen = 8;
-    for (size_t i = 0; i < baseLen; ++i) base[i] = upper[i];
-    base[baseLen] = '\0';
-
-    const char* ext = dot + 1;
-    char ext3[8]{};
-    size_t e = 0;
-    while (ext[e] != '\0' && e < 3) { ext3[e] = ext[e]; ++e; }
-    ext3[e] = '\0';
-
-    if (base[0] != '\0' && ext3[0] != '\0')
-    {
-        std::snprintf(outName, outSize, "%s.%s", base, ext3);
-    }
-}
-
 bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
 {
     ReleaseSeg1TgaCatalog();
     g_seg1MapCache = {};
     g_seg1MapCacheValid = false;
-    seg1TgaPreloadCount_ = 0;
-    seg1TgaAttemptCount_ = 0;
-    seg1TgaFailCount_ = 0;
-    seg1TgaJsonOk_ = 0;
-    ::strncpy(g_tgaLastTry, "none", sizeof(g_tgaLastTry) - 1);
-    g_tgaLastTry[sizeof(g_tgaLastTry) - 1] = '\0';
-    ::strncpy(g_tgaLastResult, "preload_start", sizeof(g_tgaLastResult) - 1);
-    g_tgaLastResult[sizeof(g_tgaLastResult) - 1] = '\0';
-    ::strncpy(g_tgaLastName, "none", sizeof(g_tgaLastName) - 1);
-    g_tgaLastName[sizeof(g_tgaLastName) - 1] = '\0';
-    g_smapBytes = 0;
-    ::strncpy(g_smapSig, "none", sizeof(g_smapSig) - 1);
-    g_smapSig[sizeof(g_smapSig) - 1] = '\0';
-    ::strncpy(g_smapHead, "none", sizeof(g_smapHead) - 1);
-    g_smapHead[sizeof(g_smapHead) - 1] = '\0';
+    ResetSeg1TgaPreloadDebugState(seg1TgaPreloadCount_,
+                                  seg1TgaAttemptCount_,
+                                  seg1TgaFailCount_,
+                                  seg1TgaJsonOk_);
 
     auto loadNameToCart = [&](const char* inName) -> bool
     {
@@ -5361,79 +5778,32 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
         char name[64]{};
         NormalizeTextureFileName(inName, name, sizeof(name));
         if (name[0] == '\0') return false;
-        ::strncpy(g_tgaLastName, name, sizeof(g_tgaLastName) - 1);
-        g_tgaLastName[sizeof(g_tgaLastName) - 1] = '\0';
+        SetSeg1TgaLastName(name);
 
-        bool already = false;
-        for (const auto& ex : seg1TgaCatalog_)
-        {
-            if (NameEqualsIgnoreCase(ex.name, name)) { already = true; break; }
-        }
-        if (already) return true;
+        if (HasSeg1TgaCartEntry(seg1TgaCatalog_, name)) return true;
 
         ++seg1TgaAttemptCount_;
-        char upper[64]{};
-        ::strncpy(upper, name, sizeof(upper) - 1);
-        for (size_t i = 0; upper[i] != '\0'; ++i)
-        {
-            if (upper[i] >= 'a' && upper[i] <= 'z') upper[i] = static_cast<char>(upper[i] - 'a' + 'A');
-        }
-
-        char iso83[80]{};
-        BuildIso83UpperName(upper, iso83, sizeof(iso83));
-
-        char c0[96]{}, c1[96]{}, c2[96]{}, c3[96]{}, c4[80]{}, c5[80]{};
-        char u0[96]{}, u1[96]{}, u2[96]{}, u3[96]{}, u4[80]{}, u5[80]{};
-        char i0[96]{}, i1[96]{}, i2[96]{}, i3[96]{}, i4[80]{}, i5[80]{};
-        std::snprintf(c0, sizeof(c0), "CD/DATA/%s", name);
-        std::snprintf(c1, sizeof(c1), "CD/DATA/%s;1", name);
-        std::snprintf(c2, sizeof(c2), "DATA/%s", name);
-        std::snprintf(c3, sizeof(c3), "DATA/%s;1", name);
-        std::snprintf(c4, sizeof(c4), "%s", name);
-        std::snprintf(c5, sizeof(c5), "%s;1", name);
-        std::snprintf(u0, sizeof(u0), "CD/DATA/%s", upper);
-        std::snprintf(u1, sizeof(u1), "CD/DATA/%s;1", upper);
-        std::snprintf(u2, sizeof(u2), "DATA/%s", upper);
-        std::snprintf(u3, sizeof(u3), "DATA/%s;1", upper);
-        std::snprintf(u4, sizeof(u4), "%s", upper);
-        std::snprintf(u5, sizeof(u5), "%s;1", upper);
-        if (iso83[0] != '\0')
-        {
-            std::snprintf(i0, sizeof(i0), "CD/DATA/%s", iso83);
-            std::snprintf(i1, sizeof(i1), "CD/DATA/%s;1", iso83);
-            std::snprintf(i2, sizeof(i2), "DATA/%s", iso83);
-            std::snprintf(i3, sizeof(i3), "DATA/%s;1", iso83);
-            std::snprintf(i4, sizeof(i4), "%s", iso83);
-            std::snprintf(i5, sizeof(i5), "%s;1", iso83);
-        }
-        const char* paths[] = { c0, c1, c2, c3, c4, c5, u0, u1, u2, u3, u4, u5, i0, i1, i2, i3, i4, i5 };
+        std::array<std::array<char, 96>, 18> candidateStorage{};
+        const char* paths[18]{};
+        const size_t pathCount = BuildSeg1TgaCandidatePaths(name, candidateStorage, paths);
         const char* loadedPath = nullptr;
-        for (size_t p = 0; p < sizeof(paths) / sizeof(paths[0]); ++p)
+        for (size_t p = 0; p < pathCount; ++p)
         {
             ::strncpy(g_tgaLastTry, paths[p], sizeof(g_tgaLastTry) - 1);
             g_tgaLastTry[sizeof(g_tgaLastTry) - 1] = '\0';
             SRL::Debug::Print(1, 26, "TGA cart try:%s", paths[p]);
-            SRL::Cd::File f(paths[p]);
-            if (!f.Exists() || f.Size.Bytes <= 0 || !f.Open()) continue;
-            const uint32_t bytes = static_cast<uint32_t>(f.Size.Bytes);
-            void* mem = SRL::Memory::CartRam::Malloc(bytes);
-            if (!mem) continue;
-            const int32_t read = f.Read(static_cast<int32_t>(bytes), mem);
-            if (read <= 0 || static_cast<uint32_t>(read) > bytes)
-            {
-                SRL::Memory::CartRam::Free(mem);
-                continue;
-            }
+            void* mem = nullptr;
+            uint32_t read = 0;
+            if (!LoadCdFileToCart(paths[p], mem, read)) continue;
             Seg1TgaCartEntry e{};
             ::strncpy(e.name, name, sizeof(e.name) - 1);
             e.cartPtr = mem;
-            e.size = static_cast<uint32_t>(read);
+            e.size = read;
             seg1TgaCatalog_.push_back(e);
-            seg1TgaPreloadCount_ = static_cast<uint16_t>(seg1TgaCatalog_.size());
             loadedPath = paths[p];
             ::strncpy(g_tgaLastResult, "ok", sizeof(g_tgaLastResult) - 1);
             g_tgaLastResult[sizeof(g_tgaLastResult) - 1] = '\0';
-            SRL::Debug::Print(1, 27, "TGA cart ok:%s path:%s size:%u", name, loadedPath, e.size);
+            SRL::Debug::Print(1, 27, "TGA ok:%s p:%s s:%u", name, loadedPath, e.size);
             return true;
         }
         ++seg1TgaFailCount_;
@@ -5443,28 +5813,9 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
     };
 
     // Preferred source: deterministic rename map used by runtime lookup.
-    const char* renCandidates[] = {
-        "CD/DATA/RTMAP.TXT",
-        "CD/DATA/RTMAP.TXT;1",
-        "DATA/RTMAP.TXT",
-        "DATA/RTMAP.TXT;1",
-        "RTMAP.TXT",
-        "RTMAP.TXT;1",
-        "CD/DATA/ren_textures_copy_map.json",
-        "CD/DATA/ren_textures_copy_map.json;1",
-        "DATA/ren_textures_copy_map.json",
-        "DATA/ren_textures_copy_map.json;1",
-        "CD/DATA/REN_TEXTURES_COPY_MAP.JSON",
-        "CD/DATA/REN_TEXTURES_COPY_MAP.JSON;1",
-        "DATA/REN_TEXTURES_COPY_MAP.JSON",
-        "DATA/REN_TEXTURES_COPY_MAP.JSON;1",
-        "ren_textures_copy_map.json",
-        "ren_textures_copy_map.json;1"
-    };
     std::vector<char> renText{};
     RenTextureMap renMap{};
-    if (ReadCdFileText(renCandidates, sizeof(renCandidates) / sizeof(renCandidates[0]), renText) &&
-        ParseRenTextureCopyMap(renText.data(), renMap))
+    if (LoadSeg1RenTextureCopyMapFromCd(renText, renMap))
     {
         seg1TgaJsonOk_ = 2;
         for (size_t i = 0; i < renMap.entries.size(); ++i)
@@ -5472,78 +5823,19 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
             (void)loadNameToCart(renMap.entries[i].targetName);
         }
         std::vector<char> smapText{};
-        const char* smapCandidates[] = {
-            "SMAP.TXT",
-            "SMAP.TXT;1",
-            "CD/DATA/SMAP.TXT",
-            "CD/DATA/SMAP.TXT;1",
-            "DATA/SMAP.TXT",
-            "DATA/SMAP.TXT;1"
-        };
-        if (ReadCdFileText(smapCandidates, sizeof(smapCandidates) / sizeof(smapCandidates[0]), smapText))
-        {
-            g_seg1MapCache = {};
-            g_seg1MapCacheValid = ParseSegment1TextureJson(smapText.data(), g_seg1MapCache);
-            if (g_seg1MapCacheValid)
-            {
-                g_smapBytes = static_cast<uint32_t>(smapText.size());
-                const uint8_t b0 = (smapText.size() > 0) ? static_cast<uint8_t>(smapText[0]) : 0;
-                const uint8_t b1 = (smapText.size() > 1) ? static_cast<uint8_t>(smapText[1]) : 0;
-                const uint8_t b2 = (smapText.size() > 2) ? static_cast<uint8_t>(smapText[2]) : 0;
-                const uint8_t b3 = (smapText.size() > 3) ? static_cast<uint8_t>(smapText[3]) : 0;
-                std::snprintf(g_smapSig, sizeof(g_smapSig), "%02X%02X%02X%02X", b0, b1, b2, b3);
-                const size_t hn = (smapText.size() > 40) ? 40 : smapText.size();
-                char head[48]{};
-                if (hn > 0)
-                {
-                    memcpy(head, smapText.data(), hn);
-                    head[hn] = '\0';
-                    for (size_t hi = 0; head[hi] != '\0'; ++hi)
-                    {
-                        if (head[hi] < 32 || head[hi] > 126) head[hi] = '.';
-                    }
-                }
-                ::strncpy(g_smapHead, head, sizeof(g_smapHead) - 1);
-                g_smapHead[sizeof(g_smapHead) - 1] = '\0';
-            }
-        }
-        return !seg1TgaCatalog_.empty();
+        g_seg1MapCache = {};
+        g_seg1MapCacheValid = LoadSeg1TextureJsonFromSmapCd(smapText, g_seg1MapCache);
+        if (g_seg1MapCacheValid) UpdateSeg1SmapDebugSnapshot(smapText, false);
+        return FinalizeSeg1TgaPreloadCatalog(seg1TgaCatalog_, seg1TgaPreloadCount_);
     }
 
-    const char* jsonCandidates[] = {
-     //   "CD/DATA/segments_map.json",
-     //   "CD/DATA/segments_map.json;1",
-     //   "DATA/segments_map.json",
-       // "DATA/segments_map.json;1",
-     //   "CD/DATA/SEGMENTS_MAP.JSON",
-     //   "CD/DATA/SEGMENTS_MAP.JSON;1",
-    //    "DATA/SEGMENTS_MAP.JSON",
-     //   "DATA/SEGMENTS_MAP.JSON;1",
-     //   "SEGMENTS_MAP.JSON",
-      //  "SEGMENTS_MAP.JSON;1",
-      //  "segments_map.json",
-      //  "segments_map.json;1",
-      //  "SEG_MAP.TXT",
-      // "SEGMAP.TXT",
-        "SMAP.TXT",
-        "CD/DATA/SMAP.TXT",
-        "CD/DATA/SMAP.TXT;1",
-        "DATA/SMAP.TXT",
-        "DATA/SMAP.TXT;1",
-        "SMAP.TXT;1"
-       // "CD/DATA/SEGMAP.TXT",
-       // "CD/DATA/SEGMAP.TXT;1",
-      //  "DATA/SEGMAP.TXT",
-      //  "DATA/SEGMAP.TXT;1",
-      //  "CD/DATA/SEG_MAP.TXT",
-      //  "CD/DATA/SEG_MAP.TXT;1",
-      //  "DATA/SEG_MAP.TXT",
-      //  "DATA/SEG_MAP.TXT;1"
-    };
-
     std::vector<char> jsonText{};
-    const bool cdLoaded = ReadCdFileText(jsonCandidates, sizeof(jsonCandidates) / sizeof(jsonCandidates[0]), jsonText);
+    const bool cdLoaded = ReadSeg1SmapText(jsonText);
+#if TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK
     if (!cdLoaded && !ReadLocalSegmentsMap(jsonText))
+#else
+    if (!cdLoaded)
+#endif
     {
         ::strncpy(g_tgaLastResult, "map_open_fail", sizeof(g_tgaLastResult) - 1);
         g_tgaLastResult[sizeof(g_tgaLastResult) - 1] = '\0';
@@ -5556,30 +5848,7 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
     }
     seg1TgaJsonOk_ = cdLoaded ? 1 : 3;
     std::snprintf(g_tgaLastResult, sizeof(g_tgaLastResult), "map_ok bytes:%u", (unsigned)jsonText.size());
-    g_smapBytes = static_cast<uint32_t>(jsonText.size());
-    {
-        const uint8_t b0 = (jsonText.size() > 0) ? static_cast<uint8_t>(jsonText[0]) : 0;
-        const uint8_t b1 = (jsonText.size() > 1) ? static_cast<uint8_t>(jsonText[1]) : 0;
-        const uint8_t b2 = (jsonText.size() > 2) ? static_cast<uint8_t>(jsonText[2]) : 0;
-        const uint8_t b3 = (jsonText.size() > 3) ? static_cast<uint8_t>(jsonText[3]) : 0;
-        std::snprintf(g_smapSig, sizeof(g_smapSig), "%02X%02X%02X%02X", b0, b1, b2, b3);
-    }
-    {
-        char head[48]{};
-        const size_t hn = (jsonText.size() > 40) ? 40 : jsonText.size();
-        if (hn > 0)
-        {
-            memcpy(head, jsonText.data(), hn);
-            head[hn] = '\0';
-            for (size_t i = 0; head[i] != '\0'; ++i)
-            {
-                if (head[i] < 32 || head[i] > 126) head[i] = '.';
-            }
-        }
-        ::strncpy(g_smapHead, head, sizeof(g_smapHead) - 1);
-        g_smapHead[sizeof(g_smapHead) - 1] = '\0';
-        SRL::Debug::Print(1, 24, "SMAP head:%s", g_smapHead);
-    }
+    UpdateSeg1SmapDebugSnapshot(jsonText, true);
 
     char variantNames[1024][64]{};
     const size_t variantCount = CollectAllVariantTextureNames(jsonText.data(), variantNames, 1024);
@@ -5589,61 +5858,23 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
     {
         for (size_t i = 0; i < variantCount; ++i)
         {
-            ::strncpy(g_tgaLastName, variantNames[i], sizeof(g_tgaLastName) - 1);
-            g_tgaLastName[sizeof(g_tgaLastName) - 1] = '\0';
+            SetSeg1TgaLastName(variantNames[i]);
             if (loadNameToCart(variantNames[i])) ++extracted;
         }
         std::snprintf(g_tgaLastResult, sizeof(g_tgaLastResult), "variants:%u ok:%u",
                       (unsigned)variantCount, (unsigned)extracted);
         SRL::Debug::Print(1, 8, "TGA pre ok:%u", (unsigned)extracted);
-        seg1TgaPreloadCount_ = static_cast<uint16_t>(seg1TgaCatalog_.size());
-        return !seg1TgaCatalog_.empty();
+        return FinalizeSeg1TgaPreloadCatalog(seg1TgaCatalog_, seg1TgaPreloadCount_);
     }
 
-    const char* s = jsonText.data();
     size_t tokenHits = 0;
     char firstToken[64]{};
-    while (s && *s)
-    {
-        const char* p = strstr(s, ".tga");
-        if (!p) p = strstr(s, ".TGA");
-        if (!p) break;
-
-        const char* b = p;
-        while (b > jsonText.data() && IsTgaNameChar(*(b - 1))) --b;
-
-        char name[64]{};
-        size_t n = static_cast<size_t>((p - b) + 4);
-        if (n >= sizeof(name)) n = sizeof(name) - 1;
-        memcpy(name, b, n);
-        name[n] = '\0';
-        ::strncpy(g_tgaLastName, name, sizeof(g_tgaLastName) - 1);
-        g_tgaLastName[sizeof(g_tgaLastName) - 1] = '\0';
-        ++tokenHits;
-        if (firstToken[0] == '\0')
-        {
-            ::strncpy(firstToken, name, sizeof(firstToken) - 1);
-            firstToken[sizeof(firstToken) - 1] = '\0';
-        }
-
-        bool already = false;
-        for (const auto& ex : seg1TgaCatalog_)
-        {
-            if (NameEqualsIgnoreCase(ex.name, name)) { already = true; break; }
-        }
-        if (name[0] != '\0' && !already)
-        {
-            if (loadNameToCart(name))
-            {
-                ++extracted;
-            }
-            else
-            {
-                SRL::Debug::Print(1, 7, "TGA miss:%s", name);
-            }
-        }
-        s = p + 4;
-    }
+    extracted += ScanSeg1TgaTokensAndLoad(seg1TgaCatalog_,
+                                          jsonText,
+                                          loadNameToCart,
+                                          tokenHits,
+                                          firstToken,
+                                          sizeof(firstToken));
 
     if (tokenHits == 0)
     {
@@ -5656,8 +5887,7 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
                       (unsigned)tokenHits, firstToken, (unsigned)extracted);
     }
     SRL::Debug::Print(1, 8, "TGA pre ok:%u", (unsigned)extracted);
-    seg1TgaPreloadCount_ = static_cast<uint16_t>(seg1TgaCatalog_.size());
-    return !seg1TgaCatalog_.empty();
+    return FinalizeSeg1TgaPreloadCatalog(seg1TgaCatalog_, seg1TgaPreloadCount_);
 }
 
 bool TrackSystem::BuildSeg1TexbankCandidatePaths(int lodValue,
@@ -5818,7 +6048,7 @@ const char* TrackSystem::FindExistingPath(const char* const* paths, size_t count
         const bool exists = f.Exists() && f.Size.Bytes > 0;
         ::strncpy(lastSegmentPath_, paths[i], sizeof(lastSegmentPath_));
         lastSegmentPath_[sizeof(lastSegmentPath_) - 1] = '\0';
-        SRL::Debug::Print(1, 6, "Check cd path: %s -> %d", paths[i], exists ? 1 : 0);
+        SRL::Debug::Print(1, 6, "CD p:%s -> %d", paths[i], exists ? 1 : 0);
         if (exists) return paths[i];
     }
     return nullptr;
@@ -5910,13 +6140,13 @@ TrackSystem::SegmentEntryVector TrackSystem::CopyAllTrackSegments(size_t maxSegm
         TrackSegmentCopy copy = CopySegmentById(i);
         if (!copy.cartPtr || copy.size == 0)
         {
-            SRL::Debug::Print(1, 12, "Segment %03u path missing (%u variants)", unsigned(i), unsigned(kSegmentPathTemplates_.size()));
+            SRL::Debug::Print(1, 12, "SEG%03u p miss (%u)", unsigned(i), unsigned(kSegmentPathTemplates_.size()));
             break;
         }
         segments.push_back({ static_cast<int32_t>(i), copy });
         if (copy.cartPtr)
         {
-            SRL::Debug::Print(1, 11, "Segment %03u copied (%u bytes)", unsigned(i), unsigned(copy.size));
+            SRL::Debug::Print(1, 11, "SEG%03u cpy (%u)", unsigned(i), unsigned(copy.size));
         }
         else
         {
@@ -5930,7 +6160,7 @@ TrackSystem::SegmentEntryVector TrackSystem::CopyAllTrackSegments(size_t maxSegm
     {
         if (segment.copy.cartPtr && segment.copy.size > 0) ++valid;
     }
-    SRL::Debug::Print(1, 13, "Track segments copied %u/%u", unsigned(valid), unsigned(segments.size()));
+    SRL::Debug::Print(1, 13, "TRK seg cpy %u/%u", unsigned(valid), unsigned(segments.size()));
     return segments;
 }
 
@@ -6920,31 +7150,31 @@ bool TrackSystem::ResolveBestEffortFaceSlots(const FamilyIdVector& faceFamilyIds
 }
 
 // Rebuild one segment face slot table on demand for the selected lod band.
-bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
-                                                uint8_t lodIndex,
-                                                FamilySlotVector& familySlots,
-                                                bool bypassUploadBudget)
+template <typename FaceFamilyVecT, typename FaceSlotsVecT>
+bool TrackSystem::ResolveFaceSlotsForFixedLodFromFamilies(const FaceFamilyVecT& faceFamilyIds,
+                                                          uint8_t lodIndex,
+                                                          FamilySlotVector& familySlots,
+                                                          FaceSlotsVecT& outFaceSlots,
+                                                          bool bypassUploadBudget)
 {
-    if (!entry.renderer) return false;
     if (lodIndex > 3) return false;
-    lodIndex = NormalizeTrackTextureLodIndex(lodIndex);
-    if (entry.lodState.faceFamilyIds.empty()) return false;
+    const size_t faceCount = faceFamilyIds.size();
+    if (faceCount == 0) return false;
 
-    const size_t faceCount = entry.lodState.faceFamilyIds.size();
-    entry.lodState.currentFaceSlots.assign(faceCount, -1);
+    outFaceSlots.assign(faceCount, -1);
     std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
     std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
     size_t seenCount = 0;
 
     for (size_t fi = 0; fi < faceCount; ++fi)
     {
-        const uint16_t fam = entry.lodState.faceFamilyIds[fi];
+        const uint16_t fam = faceFamilyIds[fi];
         if (fam == 0) continue;
 
         const size_t cached = FindScratchKeyIndex(seenFamilies, seenCount, fam);
         if (cached != kSegmentFamilyDedupScratchCap)
         {
-            entry.lodState.currentFaceSlots[fi] = seenSlots[cached];
+            outFaceSlots[fi] = seenSlots[cached];
             continue;
         }
 
@@ -6954,7 +7184,7 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
         if (TryGetFamilyLodSlot(familySlots, fam, lodIndex, slot))
         {
             resolved = static_cast<int16_t>(slot);
-            entry.lodState.currentFaceSlots[fi] = resolved;
+            outFaceSlots[fi] = resolved;
         }
         if (seenCount < kSegmentFamilyDedupScratchCap)
         {
@@ -6967,33 +7197,35 @@ bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
     return true;
 }
 
-bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
-                                                     size_t baseRank,
-                                                     FamilySlotVector& familySlots,
-                                                     bool bypassUploadBudget)
+template <typename FaceFamilyVecT, typename RankOffsetVecT, typename FaceSlotsVecT>
+bool TrackSystem::ResolveFaceSlotsForBaseRankFromFamilies(const FaceFamilyVecT& faceFamilyIds,
+                                                          const RankOffsetVecT& faceRankOffsets,
+                                                          size_t baseRank,
+                                                          FamilySlotVector& familySlots,
+                                                          FaceSlotsVecT& outFaceSlots,
+                                                          bool bypassUploadBudget)
 {
-    if (!entry.renderer) return false;
-    if (entry.lodState.faceFamilyIds.empty()) return false;
+    const size_t faceCount = faceFamilyIds.size();
+    if (faceCount == 0) return false;
 
-    const size_t faceCount = entry.lodState.faceFamilyIds.size();
-    entry.lodState.currentFaceSlots.assign(faceCount, -1);
+    outFaceSlots.assign(faceCount, -1);
     std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
     std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
     size_t seenCount = 0;
 
-    const bool hasRankOffsets = entry.lodState.faceRankOffsets.size() == faceCount;
+    const bool hasRankOffsets = faceRankOffsets.size() == faceCount;
     for (size_t fi = 0; fi < faceCount; ++fi)
     {
-        const uint16_t fam = entry.lodState.faceFamilyIds[fi];
+        const uint16_t fam = faceFamilyIds[fi];
         if (fam == 0) continue;
 
-        const size_t rank = baseRank + (hasRankOffsets ? static_cast<size_t>(entry.lodState.faceRankOffsets[fi]) : 0u);
+        const size_t rank = baseRank + (hasRankOffsets ? static_cast<size_t>(faceRankOffsets[fi]) : 0u);
         const uint8_t lodIndex = ResolveSegmentLodIndexByRank(rank);
         const uint16_t key = static_cast<uint16_t>((static_cast<uint16_t>(lodIndex) << 12) | (fam & 0x0FFFu));
         const size_t cached = FindScratchKeyIndex(seenFamilies, seenCount, key);
         if (cached != kSegmentFamilyDedupScratchCap)
         {
-            entry.lodState.currentFaceSlots[fi] = seenSlots[cached];
+            outFaceSlots[fi] = seenSlots[cached];
             continue;
         }
 
@@ -7003,7 +7235,7 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
         if (TryGetFamilyLodSlot(familySlots, fam, lodIndex, slot))
         {
             resolved = static_cast<int16_t>(slot);
-            entry.lodState.currentFaceSlots[fi] = resolved;
+            outFaceSlots[fi] = resolved;
         }
         if (seenCount < kSegmentFamilyDedupScratchCap)
         {
@@ -7014,6 +7246,35 @@ bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
     }
 
     return true;
+}
+
+bool TrackSystem::RebuildSegmentFaceSlotsForLod(SegmentRenderEntry& entry,
+                                                uint8_t lodIndex,
+                                                FamilySlotVector& familySlots,
+                                                bool bypassUploadBudget)
+{
+    if (!entry.renderer) return false;
+    if (lodIndex > 3) return false;
+    lodIndex = NormalizeTrackTextureLodIndex(lodIndex);
+    return ResolveFaceSlotsForFixedLodFromFamilies(entry.lodState.faceFamilyIds,
+                                                   lodIndex,
+                                                   familySlots,
+                                                   entry.lodState.currentFaceSlots,
+                                                   bypassUploadBudget);
+}
+
+bool TrackSystem::RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
+                                                     size_t baseRank,
+                                                     FamilySlotVector& familySlots,
+                                                     bool bypassUploadBudget)
+{
+    if (!entry.renderer) return false;
+    return ResolveFaceSlotsForBaseRankFromFamilies(entry.lodState.faceFamilyIds,
+                                                   entry.lodState.faceRankOffsets,
+                                                   baseRank,
+                                                   familySlots,
+                                                   entry.lodState.currentFaceSlots,
+                                                   bypassUploadBudget);
 }
 
 bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
@@ -7657,43 +7918,11 @@ bool TrackSystem::ResolvePreparedFaceSlotsForLod(const SegmentRenderEntry& entry
 {
     if (!entry.renderer) return false;
     if (lodIndex > 3) return false;
-    if (entry.lodState.faceFamilyIds.empty()) return false;
-
-    const size_t faceCount = entry.lodState.faceFamilyIds.size();
-    outFaceSlots.assign(faceCount, -1);
-    std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
-    std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
-    size_t seenCount = 0;
-
-    for (size_t fi = 0; fi < faceCount; ++fi)
-    {
-        const uint16_t fam = entry.lodState.faceFamilyIds[fi];
-        if (fam == 0) continue;
-
-        const size_t cached = FindScratchKeyIndex(seenFamilies, seenCount, fam);
-        if (cached != kSegmentFamilyDedupScratchCap)
-        {
-            outFaceSlots[fi] = seenSlots[cached];
-            continue;
-        }
-
-        (void)EnsureFamilyLodSlotLoaded(familySlots, fam, lodIndex, bypassUploadBudget);
-        int16_t resolved = -1;
-        uint16_t slot = No_Texture;
-        if (TryGetFamilyLodSlot(familySlots, fam, lodIndex, slot))
-        {
-            resolved = static_cast<int16_t>(slot);
-            outFaceSlots[fi] = resolved;
-        }
-        if (seenCount < kSegmentFamilyDedupScratchCap)
-        {
-            seenFamilies[seenCount] = fam;
-            seenSlots[seenCount] = resolved;
-            ++seenCount;
-        }
-    }
-
-    return true;
+    return ResolveFaceSlotsForFixedLodFromFamilies(entry.lodState.faceFamilyIds,
+                                                   lodIndex,
+                                                   familySlots,
+                                                   outFaceSlots,
+                                                   bypassUploadBudget);
 }
 
 template <typename FaceSlotsVecT>
@@ -7704,47 +7933,12 @@ bool TrackSystem::ResolvePreparedFaceSlotsForBaseRank(const SegmentRenderEntry& 
                                                       bool bypassUploadBudget)
 {
     if (!entry.renderer) return false;
-    if (entry.lodState.faceFamilyIds.empty()) return false;
-
-    const size_t faceCount = entry.lodState.faceFamilyIds.size();
-    outFaceSlots.assign(faceCount, -1);
-    std::array<uint16_t, kSegmentFamilyDedupScratchCap> seenFamilies{};
-    std::array<int16_t, kSegmentFamilyDedupScratchCap> seenSlots{};
-    size_t seenCount = 0;
-
-    const bool hasRankOffsets = entry.lodState.faceRankOffsets.size() == faceCount;
-    for (size_t fi = 0; fi < faceCount; ++fi)
-    {
-        const uint16_t fam = entry.lodState.faceFamilyIds[fi];
-        if (fam == 0) continue;
-
-        const size_t rank = baseRank + (hasRankOffsets ? static_cast<size_t>(entry.lodState.faceRankOffsets[fi]) : 0u);
-        const uint8_t lodIndex = ResolveSegmentLodIndexByRank(rank);
-        const uint16_t key = static_cast<uint16_t>((static_cast<uint16_t>(lodIndex) << 12) | (fam & 0x0FFFu));
-        const size_t cached = FindScratchKeyIndex(seenFamilies, seenCount, key);
-        if (cached != kSegmentFamilyDedupScratchCap)
-        {
-            outFaceSlots[fi] = seenSlots[cached];
-            continue;
-        }
-
-        (void)EnsureFamilyLodSlotLoaded(familySlots, fam, lodIndex, bypassUploadBudget);
-        int16_t resolved = -1;
-        uint16_t slot = No_Texture;
-        if (TryGetFamilyLodSlot(familySlots, fam, lodIndex, slot))
-        {
-            resolved = static_cast<int16_t>(slot);
-            outFaceSlots[fi] = resolved;
-        }
-        if (seenCount < kSegmentFamilyDedupScratchCap)
-        {
-            seenFamilies[seenCount] = key;
-            seenSlots[seenCount] = resolved;
-            ++seenCount;
-        }
-    }
-
-    return true;
+    return ResolveFaceSlotsForBaseRankFromFamilies(entry.lodState.faceFamilyIds,
+                                                   entry.lodState.faceRankOffsets,
+                                                   baseRank,
+                                                   familySlots,
+                                                   outFaceSlots,
+                                                   bypassUploadBudget);
 }
 
 bool TrackSystem::HasPendingStabilizedWindowLodChanges() const
@@ -8540,7 +8734,7 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
 
     if (runtimeDiagnostics_.RuntimeStatsLogsEnabled())
     {
-        SRL::Debug::Print(1, 13, "Track pkg built %u segs:%u start:%d tot:%u",
+        SRL::Debug::Print(1, 13, "TRK pkg %u s:%u st:%d t:%u",
                           static_cast<unsigned>(builtCount),
                           static_cast<unsigned>(segmentEntries_.size()),
                           activeWindowStartId_,
@@ -13132,7 +13326,7 @@ void TrackSystem::ConfigureCoordinatorAndBudget(const Config& config)
     SetCoordinatorReady(coordinator_.Initialize(coordinatorConfig));
     if (!CoordinatorReady())
     {
-        SRL::Debug::Print(1, 31, "TrackRenderCoordinator HWR alloc failed");
+        SRL::Debug::Print(1, 31, "TRK HWR alloc fail");
     }
     SetTrackSlaveModeRequestedFlag(config.useSlave);
     ApplyTrackSlaveMode();
@@ -13439,7 +13633,7 @@ bool TrackSystem::Initialize(const Config& config)
     ResetInitializationState();
     if (!BuildSegmentCenterCatalog())
     {
-        SRL::Debug::Print(1, 28, "Track catalog missing");
+        SRL::Debug::Print(1, 28, "TRK cat miss");
         return false;
     }
     LoadSurfaceCollisionMaps();
@@ -13512,18 +13706,8 @@ bool TrackSystem::Initialize(const Config& config)
         {
             int32_t slot = -1;
             bool asfaltoFromCart = false;
-            for (const auto& t : seg1TgaCatalog_)
-            {
-                if (!NameEqualsIgnoreCase(t.name, "asfalto_32.tga")) continue;
-                if (!t.cartPtr || t.size == 0) continue;
-                DecodedTgaTexture decoded{};
-                if (DecodePalettedTgaMemory(static_cast<const uint8_t*>(t.cartPtr), t.size, decoded))
-                {
-                    slot = UploadDecodedTextureToVdp1(decoded);
-                    if (slot > 0) asfaltoFromCart = true;
-                }
-                break;
-            }
+            slot = TryUploadPalettedTgaFromCatalogByName(seg1TgaCatalog_, "asfalto_32.tga");
+            asfaltoFromCart = (slot > 0);
             SRL::Debug::Print(1, 19, "S1 FORCE cart hit:%u cat:%u", asfaltoFromCart ? 1u : 0u, (unsigned)seg1TgaCatalog_.size());
             if (slot < 0) slot = TryLoadTextureFromCd("asfalto_32.tga");
             if (slot < 0) slot = TryLoadTextureFromCd("ASFALTO_32.TGA");
@@ -13716,7 +13900,6 @@ bool TrackSystem::Initialize(const Config& config)
                 }
 
                 // Load texture catalogs from TEXBANK_{8,16,32,64}.BIN into cart RAM and upload to VDP1.
-                const int lodValues[4] = { 32, 64, 32, 64 };
                 int familyIdsUsed[512]{};
                 size_t familyIdsUsedCount = 0;
 
@@ -13752,7 +13935,7 @@ bool TrackSystem::Initialize(const Config& config)
 
                 auto loadTexbankToCart = [&](size_t li) -> bool
                 {
-                    return LoadSeg1TexbankIndexToCart(li, lodValues[li]);
+                    return LoadSeg1TexbankIndexToCart(li, kSeg1FamilyLodValues[li]);
                 };
 
                 for (size_t li = 0; li < 4; ++li)
@@ -13782,10 +13965,10 @@ bool TrackSystem::Initialize(const Config& config)
                         if (loadedForRequestedLod)
                         {
                             ++texLoaded;
-                            if (loadedFromLodValue != lodValues[li])
+                            if (loadedFromLodValue != kSeg1FamilyLodValues[li])
                             {
                                 ++texFallbackRecovered;
-                                texLastRecoveredDstLod = lodValues[li];
+                                texLastRecoveredDstLod = kSeg1FamilyLodValues[li];
                                 texLastRecoveredSrcLod = loadedFromLodValue;
                             }
                         }
@@ -13793,7 +13976,7 @@ bool TrackSystem::Initialize(const Config& config)
                         {
                             ++texFail;
                             texLastUnresolvedFam = fam;
-                            texLastUnresolvedLod = lodValues[li];
+                            texLastUnresolvedLod = kSeg1FamilyLodValues[li];
                             if (sawDecodeFail) ++texDecodeFail;
                             else if (sawUploadFail) ++texUploadFail;
                             else if (sawMissingFamily) ++texMissFamily;
@@ -13811,34 +13994,12 @@ bool TrackSystem::Initialize(const Config& config)
                 // Fallback path from preloaded cart catalog only (no direct CD reads).
                 if (texLoaded == 0 && !seg1FamilySlots_.empty())
                 {
-                    const char* jsonCandidates[] = {
-                        "CD/DATA/segments_map.json",
-                        "CD/DATA/segments_map.json;1",
-                        "DATA/segments_map.json",
-                        "DATA/segments_map.json;1",
-                        "segments_map.json",
-                        "segments_map.json;1"
-                    };
                     std::vector<char> jsonText{};
                     Segment1TextureJson map1{};
-                    const bool jsonOk = ReadCdFileText(jsonCandidates, sizeof(jsonCandidates) / sizeof(jsonCandidates[0]), jsonText) &&
-                                        ParseSegment1TextureJson(jsonText.data(), map1);
-                    const char* renCandidates[] = {
-                        "CD/DATA/ren_textures_copy_map.json",
-                        "CD/DATA/ren_textures_copy_map.json;1",
-                        "DATA/ren_textures_copy_map.json",
-                        "DATA/ren_textures_copy_map.json;1",
-                        "CD/DATA/REN_TEXTURES_COPY_MAP.JSON",
-                        "CD/DATA/REN_TEXTURES_COPY_MAP.JSON;1",
-                        "DATA/REN_TEXTURES_COPY_MAP.JSON",
-                        "DATA/REN_TEXTURES_COPY_MAP.JSON;1",
-                        "ren_textures_copy_map.json",
-                        "ren_textures_copy_map.json;1"
-                    };
+                    const bool jsonOk = LoadSeg1TextureJsonFromLegacyMapCd(jsonText, map1);
                     std::vector<char> renText{};
                     RenTextureMap renMap{};
-                    const bool renOk = ReadCdFileText(renCandidates, sizeof(renCandidates) / sizeof(renCandidates[0]), renText) &&
-                                       ParseRenTextureCopyMap(renText.data(), renMap);
+                    const bool renOk = LoadSeg1RenTextureCopyMapFromCd(renText, renMap);
                     if (jsonOk)
                     {
                         char fileNorm[64]{};
@@ -13850,47 +14011,15 @@ bool TrackSystem::Initialize(const Config& config)
                             if (fi < 0) continue;
 
                             NormalizeTextureFileName(map1.familyTex64[fi], fileNorm, sizeof(fileNorm));
-                            const int lodVals[4] = { 32, 64, 32, 64 };
                             bool anyLoaded = false;
-                            auto tryLoadFromCartCatalog = [&](const char* name) -> int32_t
-                            {
-                                if (!name || name[0] == '\0') return -1;
-                                char norm[64]{};
-                                NormalizeTextureFileName(name, norm, sizeof(norm));
-                                for (const auto& t : seg1TgaCatalog_)
-                                {
-                                    if (!t.cartPtr || t.size == 0) continue;
-                                    if (!NameEqualsIgnoreCase(t.name, norm)) continue;
-                                    DecodedTgaTexture decoded{};
-                                    if (!DecodePalettedTgaMemory(static_cast<const uint8_t*>(t.cartPtr), t.size, decoded)) continue;
-                                    return UploadDecodedTextureToVdp1(decoded);
-                                }
-                                return -1;
-                            };
                             for (size_t li = 0; li < 4; ++li)
                             {
-                                char candA[64]{};
-                                char candB[64]{};
-                                char mapped[64]{};
-                                BuildLodTextureName(fileNorm, lodVals[li], false, candA, sizeof(candA));
-                                BuildLodTextureName(fileNorm, lodVals[li], true, candB, sizeof(candB));
-                                int32_t slot = -1;
-                                // Deterministic short-name path by familyId: F###_LOD.TGA / F###LOD.TGA
-                                char famA[32]{};
-                                char famB[32]{};
-                                std::snprintf(famA, sizeof(famA), "F%03d_%d.TGA", fam, lodVals[li]);
-                                std::snprintf(famB, sizeof(famB), "F%03d%d.TGA", fam, lodVals[li]);
-                                slot = tryLoadFromCartCatalog(famA);
-                                if (slot < 0) slot = tryLoadFromCartCatalog(famB);
-
-                                if (renOk && FindRenamedTarget(renMap, candA, lodVals[li], mapped, sizeof(mapped)))
-                                {
-                                    if (slot < 0) slot = tryLoadFromCartCatalog(mapped);
-                                }
-                                if (slot < 0 && renOk && FindRenamedTarget(renMap, candB, lodVals[li], mapped, sizeof(mapped)))
-                                {
-                                    slot = tryLoadFromCartCatalog(mapped);
-                                }
+                                const int32_t slot =
+                                    TryUploadSeg1FamilyLodFromCatalog(seg1TgaCatalog_,
+                                                                      fam,
+                                                                      fileNorm,
+                                                                      kSeg1FamilyLodValues[li],
+                                                                      renOk ? &renMap : nullptr);
                                 if (slot >= 0)
                                 {
                                     seg1FamilySlots_[u].lodSlots[li] = static_cast<uint16_t>(slot);
@@ -13899,7 +14028,7 @@ bool TrackSystem::Initialize(const Config& config)
                                 else if (!firstMapMissLogged)
                                 {
                                     firstMapMissLogged = true;
-                                    SRL::Debug::Print(1, 16, "S1MM f:%d l:%d", fam, lodVals[li]);
+                                    SRL::Debug::Print(1, 16, "S1MM f:%d l:%d", fam, kSeg1FamilyLodValues[li]);
                                 }
                             }
                             if (anyLoaded) ++texLoaded; else ++texFail;
@@ -13931,60 +14060,14 @@ bool TrackSystem::Initialize(const Config& config)
                     }
                     else
                     {
-                        const char* famCandidates[] = {
-                            "CD/DATA/S001FAM.BIN",
-                            "CD/DATA/S001FAM.BIN;1",
-                            "DATA/S001FAM.BIN",
-                            "DATA/S001FAM.BIN;1",
-                            "S001FAM.BIN",
-                            "S001FAM.BIN;1",
-                            "s001fam.bin",
-                            "s001fam.bin;1"
-                        };
-                        std::vector<uint8_t> famBin{};
-                        if (ReadCdFileBinary(famCandidates, sizeof(famCandidates) / sizeof(famCandidates[0]), famBin) &&
-                            famBin.size() >= 12)
-                        {
-                            const uint32_t magic = ReadLe32(famBin.data() + 0);
-                            const uint16_t ver = ReadLe16(famBin.data() + 4);
-                            const uint16_t segId = ReadLe16(famBin.data() + 8);
-                            const uint16_t faceCount = ReadLe16(famBin.data() + 10);
-                            const size_t need = static_cast<size_t>(12) + static_cast<size_t>(faceCount) * sizeof(uint16_t);
-                            if (magic == 0x4D463153 && ver == 1 && segId == 1 && famBin.size() >= need)
-                            {
-                                map1ForSeg.faceFamily.clear();
-                                map1ForSeg.faceFamily.reserve(faceCount);
-                                for (uint16_t i = 0; i < faceCount; ++i)
-                                {
-                                    const size_t off = 12 + static_cast<size_t>(i) * 2;
-                                    map1ForSeg.faceFamily.push_back(static_cast<int>(ReadLe16(famBin.data() + off)));
-                                }
-                                map1ForSegOk = !map1ForSeg.faceFamily.empty();
-                            }
-                        }
+                        map1ForSegOk = LoadSeg1FaceFamilyMapFromCd(map1ForSeg);
                     }
 
                     if (!map1ForSegOk)
                     {
-                        const char* jsonCandidates[] = {
-                            "SMAP.TXT",
-                            "SMAP.TXT;1",
-                            "CD/DATA/SMAP.TXT",
-                            "CD/DATA/SMAP.TXT;1",
-                            "DATA/SMAP.TXT",
-                            "DATA/SMAP.TXT;1",
-                            "segments_map.json",
-                            "segments_map.json;1",
-                            "CD/DATA/segments_map.json",
-                            "CD/DATA/segments_map.json;1",
-                            "DATA/segments_map.json",
-                            "DATA/segments_map.json;1"
-                        };
                         std::vector<char> jsonText{};
-                        map1ForSegOk =
-                            ReadCdFileText(jsonCandidates, sizeof(jsonCandidates) / sizeof(jsonCandidates[0]), jsonText) &&
-                            ParseSegment1TextureJson(jsonText.data(), map1ForSeg) &&
-                            !map1ForSeg.faceFamily.empty();
+                        map1ForSegOk = LoadSeg1TextureJsonFromAnyMapCd(jsonText, map1ForSeg) &&
+                                       !map1ForSeg.faceFamily.empty();
                     }
 
                     const size_t rendererFaces = static_cast<size_t>(seg1Renderer->FaceCount());
@@ -14044,8 +14127,7 @@ bool TrackSystem::Initialize(const Config& config)
                                 mappedFaces = rendererFaces;
                             }
                         }
-                        const int lodDbg[4] = { 32, 64, 32, 64 };
-                        SRL::Debug::Print(1, 18, "S1M%d:%u mp:%u", lodDbg[li], (unsigned)mappedFaces, map1ForSegOk ? 1u : 0u);
+                        SRL::Debug::Print(1, 18, "S1M%d:%u mp:%u", kSeg1FamilyLodValues[li], (unsigned)mappedFaces, map1ForSegOk ? 1u : 0u);
                     }
                     SetSeg1RendererLodReady((rendererFaces > 0));
                     if (Seg1RendererLodReady())
@@ -14175,28 +14257,12 @@ bool TrackSystem::Initialize(const Config& config)
             }
             if (seg1Renderer)
             {
-                const char* jsonCandidates[] = {
-                    "CD/DATA/segments_map.json",
-                    "CD/DATA/segments_map.json;1",
-                    "DATA/segments_map.json",
-                    "DATA/segments_map.json;1",
-                    "segments_map.json",
-                    "segments_map.json;1",
-                    "SMAP.TXT;1",
-                    "CD/DATA/SMAP.TXT",
-                    "CD/DATA/SMAP.TXT;1",
-                    "DATA/SMAP.TXT",
-                    "DATA/SMAP.TXT;1",
-                    "SMAP.TXT"
-                };
                 std::vector<char> jsonText{};
                 Segment1TextureJson map1{};
-                const bool jsonOk = ReadCdFileText(jsonCandidates, sizeof(jsonCandidates) / sizeof(jsonCandidates[0]), jsonText) &&
-                                    ParseFaceFamilyArrayForSegment1(jsonText.data(), map1);
+                const bool jsonOk = LoadSeg1FaceFamilyArrayFromAnyMapCd(jsonText, map1);
 
                 if (jsonOk && !map1.faceFamily.empty())
                 {
-                    const int lodValues[4] = { 32, 64, 32, 64 };
                     int familyIdsUsed[512]{};
                     const size_t familyIdsUsedCount = BuildUniqueUsedFamilies(map1.faceFamily, familyIdsUsed, 512);
 
@@ -14204,7 +14270,7 @@ bool TrackSystem::Initialize(const Config& config)
 
                     auto loadTexbankToCart = [&](size_t li) -> bool
                     {
-                        return LoadSeg1TexbankIndexToCart(li, lodValues[li]);
+                        return LoadSeg1TexbankIndexToCart(li, kSeg1FamilyLodValues[li]);
                     };
 
                     size_t texLoaded = 0;
@@ -14249,11 +14315,11 @@ bool TrackSystem::Initialize(const Config& config)
 
                     for (auto& v : seg1RendererFaceSlotsByLod_) v.clear();
                     const size_t rendererFaces = static_cast<size_t>(seg1Renderer->FaceCount());
-                    const size_t nFaces = std::min(rendererFaces, map1.faceFamily.size());
                     for (size_t li = 0; li < 4; ++li)
                     {
                         auto& slots = seg1RendererFaceSlotsByLod_[li];
                         slots.assign(rendererFaces, -1);
+                        const size_t nFaces = std::min(rendererFaces, map1.faceFamily.size());
                         for (size_t fi = 0; fi < nFaces; ++fi)
                         {
                             const uint16_t fam = static_cast<uint16_t>(map1.faceFamily[fi] < 0 ? 0 : map1.faceFamily[fi]);
@@ -14288,16 +14354,8 @@ bool TrackSystem::Initialize(const Config& config)
     constexpr bool kEnableSeg1JsonTextureUpgrade = false;
     if (kEnableSeg1JsonTextureUpgrade && !segmentRenderers_.empty())
     {
-        const char* jsonCandidates[] = {
-            "CD/DATA/segments_map.json",
-            "CD/DATA/segments_map.json;1",
-            "DATA/segments_map.json",
-            "DATA/segments_map.json;1",
-            "segments_map.json",
-            "segments_map.json;1"
-        };
         std::vector<char> jsonText;
-        if (ReadCdFileText(jsonCandidates, sizeof(jsonCandidates) / sizeof(jsonCandidates[0]), jsonText))
+        if (ReadSeg1LegacySegmentsMapText(jsonText))
         {
             Segment1TextureJson map1{};
             if (ParseSegment1TextureJson(jsonText.data(), map1))
@@ -14402,40 +14460,9 @@ bool TrackSystem::Initialize(const Config& config)
     constexpr size_t kSeg1WarmupTexbankCount = 1; // incremental: 8 only
     if (kEnableSeg1Warmup)
     {
-        const char* mapCandidates[] = {
-            "CD/DATA/S001FAM.BIN",
-            "CD/DATA/S001FAM.BIN;1",
-            "DATA/S001FAM.BIN",
-            "DATA/S001FAM.BIN;1",
-            "S001FAM.BIN",
-            "S001FAM.BIN;1",
-            "s001fam.bin",
-            "s001fam.bin;1"
-        };
-        std::vector<uint8_t> mapBin{};
-        bool mapOk = false;
-        std::vector<int> faceFamily{};
-        if (ReadCdFileBinary(mapCandidates, sizeof(mapCandidates) / sizeof(mapCandidates[0]), mapBin) && mapBin.size() >= 12)
-        {
-            const uint32_t magic = ReadLe32(mapBin.data() + 0);
-            const uint16_t ver = ReadLe16(mapBin.data() + 4);
-            const uint16_t segId = ReadLe16(mapBin.data() + 8);
-            const uint16_t faceCount = ReadLe16(mapBin.data() + 10);
-            if (magic == 0x4D463153 && ver == 1 && segId == 1)
-            {
-                const size_t need = static_cast<size_t>(12) + static_cast<size_t>(faceCount) * sizeof(uint16_t);
-                if (mapBin.size() >= need)
-                {
-                    faceFamily.reserve(faceCount);
-                    for (uint16_t i = 0; i < faceCount; ++i)
-                    {
-                        const size_t off = 12 + static_cast<size_t>(i) * 2;
-                        faceFamily.push_back(static_cast<int>(ReadLe16(mapBin.data() + off)));
-                    }
-                    mapOk = true;
-                }
-            }
-        }
+        Segment1TextureJson warmupMap{};
+        const bool mapOk = LoadSeg1FaceFamilyMapFromCd(warmupMap);
+        const auto& faceFamily = warmupMap.faceFamily;
 
         size_t famCount = 0;
         if (mapOk && !faceFamily.empty())
@@ -14451,11 +14478,10 @@ bool TrackSystem::Initialize(const Config& config)
         size_t banksOk = 0;
         if (kEnableSeg1WarmupTexbank)
         {
-            const int lodValues[4] = { 32, 64, 32, 64 };
             const size_t loadCount = std::min<size_t>(kSeg1WarmupTexbankCount, 4);
             for (size_t li = 0; li < loadCount; ++li)
             {
-                if (LoadSeg1TexbankIndexToCart(li, lodValues[li])) ++banksOk;
+                if (LoadSeg1TexbankIndexToCart(li, kSeg1FamilyLodValues[li])) ++banksOk;
             }
         }
 
@@ -15161,7 +15187,7 @@ std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(
         }
         if (orderedHandles.size() != windowCount)
         {
-            SRL::Debug::Print(1, 23, "TRK vis hole start:%d head:%u n:%u ok:%u",
+            SRL::Debug::Print(1, 23, "TRK hole st:%d h:%u n:%u ok:%u",
                               activeWindowStartId_,
                               static_cast<unsigned>(activeWindowHead_),
                               static_cast<unsigned>(windowCount),
@@ -15366,12 +15392,11 @@ void TrackSystem::RunSeg1DiagnosticsForFrame()
             }
             if (kEnableSeg1LodCycleLogs)
             {
-                const int lodDbg[4] = { 32, 64, 32, 64 };
                 const unsigned rdrFaces = Seg1RendererLodReady() ? (unsigned)seg1RendererFaceSlotsByLod_[seg1CurrentLodIndex_].size() : 0u;
                 SRL::Debug::Print(1, 22, "S1L c:%u j:%u l:%d r:%u",
                                   (unsigned)seg1TgaPreloadCount_,
                                   (unsigned)seg1TgaJsonOk_,
-                                  lodDbg[seg1CurrentLodIndex_], rdrFaces);
+                                  kSeg1FamilyLodValues[seg1CurrentLodIndex_], rdrFaces);
             }
         }
         else

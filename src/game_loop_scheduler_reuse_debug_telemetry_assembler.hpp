@@ -14,34 +14,8 @@ inline void SeedSchedulerReuseDebugTelemetryPacket(
     bool includeQueryTelemetry,
     SchedulerReuseDebugTelemetryPacket& outPacket)
 {
+    (void)includeQueryTelemetry;
     outPacket.valid = observability.valid || trackTelemetry.valid;
-    outPacket.sh2 = GameLoopRuntime::BuildSh2SplitTelemetrySnapshot(
-        observability,
-        trackTelemetry,
-        includeQueryTelemetry);
-
-    outPacket.producerJobInFlight = observability.schedulerReuse.trackProducerState.producerJobInFlight;
-    outPacket.producerSafeModeActive = observability.schedulerReuse.trackProducerState.producerSafeModeActive;
-    outPacket.simulationJobInFlight = observability.lifecycle.completion.jobInFlight;
-    outPacket.simulationHasCompleted = observability.lifecycle.completion.hasCompleted;
-
-    outPacket.simulationShouldDispatchNextFrame =
-        observability.schedulerReuse.reuse.simulationDecision.shouldDispatchNextFrame;
-    outPacket.simulationRequiresLockstepWait =
-        observability.schedulerReuse.reuse.simulationDecision.requiresLockstepWait;
-    outPacket.simulationRequiresSynchronousFallback =
-        observability.schedulerReuse.reuse.simulationDecision.requiresSynchronousFallback;
-    outPacket.trackShouldKickProducer =
-        observability.schedulerReuse.reuse.trackDecision.shouldKickProducer;
-    outPacket.trackRequiresLockstepWait =
-        observability.schedulerReuse.reuse.trackDecision.requiresLockstepWait;
-    outPacket.trackRequiresSynchronousFallback =
-        observability.schedulerReuse.reuse.trackDecision.requiresSynchronousFallback;
-
-    outPacket.simulationReuseMode = observability.schedulerReuse.reuse.simulationDecision.mode;
-    outPacket.trackReuseMode = observability.schedulerReuse.reuse.trackDecision.mode;
-    outPacket.simulationFallbacks = observability.schedulerReuse.reuse.simulationTelemetry.simulationFallbacks;
-    outPacket.trackFallbacks = observability.schedulerReuse.reuse.trackTelemetry.trackFallbacks;
 }
 
 inline SchedulerReuseDebugTelemetryPacket BuildSchedulerReuseDebugTelemetryPacket(

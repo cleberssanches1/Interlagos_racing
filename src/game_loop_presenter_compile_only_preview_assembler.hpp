@@ -1,31 +1,31 @@
 #pragma once
 
 #include "game_loop_presenter_compile_only_preview_contracts.hpp"
-#include "game_loop_presenter_facade_assembler.hpp"
-#include "game_loop_presenter_facade_bridge_assembler.hpp"
 #include "game_loop_presenter_facade_decision_bridge_assembler.hpp"
 #include "game_loop_presenter_facade_decision_input_assembler.hpp"
+#include "game_loop_presenter_frame_end_preview_assembler.hpp"
+#include "game_loop_presenter_hud_telemetry_preview_assembler.hpp"
 #include "game_loop_presenter_input_contracts.hpp"
 
 namespace GameLoopRuntime
 {
 
 inline void SeedPresenterCompileOnlyPreviewPacket(
-    const PresenterFacadeBridgePacket& facadeBridge,
-    const PresenterFacadeDecisionBridgePacket& decisionBridge,
+    const PresenterFrameEndPreviewPacket& frameEnd,
+    const PresenterHudTelemetryPreviewPacket& hudTelemetry,
     PresenterCompileOnlyPreviewPacket& outPacket)
 {
-    outPacket.valid = facadeBridge.valid || decisionBridge.valid;
-    outPacket.facadeBridge = facadeBridge;
-    outPacket.decisionBridge = decisionBridge;
+    outPacket.valid = frameEnd.valid || hudTelemetry.valid;
+    outPacket.frameEnd = frameEnd;
+    outPacket.hudTelemetry = hudTelemetry;
 }
 
 inline PresenterCompileOnlyPreviewPacket BuildPresenterCompileOnlyPreviewPacket(
-    const PresenterFacadeBridgePacket& facadeBridge,
-    const PresenterFacadeDecisionBridgePacket& decisionBridge)
+    const PresenterFrameEndPreviewPacket& frameEnd,
+    const PresenterHudTelemetryPreviewPacket& hudTelemetry)
 {
     PresenterCompileOnlyPreviewPacket packet{};
-    SeedPresenterCompileOnlyPreviewPacket(facadeBridge, decisionBridge, packet);
+    SeedPresenterCompileOnlyPreviewPacket(frameEnd, hudTelemetry, packet);
     return packet;
 }
 
@@ -33,24 +33,26 @@ inline PresenterCompileOnlyPreviewPacket BuildPresenterCompileOnlyPreviewPacket(
     const PresenterInputBundle& inputBundle,
     const PresenterHudTelemetryDecisionInputPacket& hudTelemetryInput)
 {
-    const PresenterFacadePacket facade = BuildPresenterFacadePacket(inputBundle);
-    return BuildPresenterCompileOnlyPreviewPacket(
-        BuildPresenterFacadeBridgePacket(facade),
+    const PresenterFacadeDecisionBridgePacket decisionBridge =
         BuildPresenterFacadeDecisionBridgePacket(
-            BuildPresenterFacadeDecisionInputPacket(facade),
-            hudTelemetryInput));
+            BuildPresenterFacadeDecisionInputPacket(inputBundle),
+            hudTelemetryInput);
+    return BuildPresenterCompileOnlyPreviewPacket(
+        BuildPresenterFrameEndPreviewPacket(decisionBridge),
+        BuildPresenterHudTelemetryPreviewPacket(decisionBridge));
 }
 
 inline PresenterCompileOnlyPreviewPacket BuildPresenterCompileOnlyPreviewPacket(
     const PresenterFacadeInputPacket& facadeInput,
     const PresenterHudTelemetryDecisionInputPacket& hudTelemetryInput)
 {
-    const PresenterFacadePacket facade = BuildPresenterFacadePacket(facadeInput);
-    return BuildPresenterCompileOnlyPreviewPacket(
-        BuildPresenterFacadeBridgePacket(facade),
+    const PresenterFacadeDecisionBridgePacket decisionBridge =
         BuildPresenterFacadeDecisionBridgePacket(
             BuildPresenterFacadeDecisionInputPacket(facadeInput),
-            hudTelemetryInput));
+            hudTelemetryInput);
+    return BuildPresenterCompileOnlyPreviewPacket(
+        BuildPresenterFrameEndPreviewPacket(decisionBridge),
+        BuildPresenterHudTelemetryPreviewPacket(decisionBridge));
 }
 
 } // namespace GameLoopRuntime

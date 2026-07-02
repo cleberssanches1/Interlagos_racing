@@ -14,7 +14,9 @@ struct SchedulerReuseObservabilityAssemblyInputs
     GameLoopRuntime::SimulationDrainViewPacket drain{};
     GameLoopRuntime::SimulationCompletionViewPacket completion{};
     GameLoopRuntime::SimulationSchedulerTelemetryViewPacket simulationTelemetry{};
-    GameLoopRuntime::TrackRenderProducerStatePacket trackProducerState{};
+    bool hasTrackProducerState = false;
+    bool trackProducerJobInFlight = false;
+    bool trackProducerSafeModeActive = false;
     GameLoopRuntime::SimulationReuseDecisionViewPacket simulationReuseDecision{};
     GameLoopRuntime::SimulationReuseTelemetryViewPacket simulationReuseTelemetry{};
     GameLoopRuntime::TrackReuseDecisionViewPacket trackReuseDecision{};
@@ -47,7 +49,9 @@ inline void SeedSchedulerReuseObservabilityAssemblyBundle(
                                                              inputs.simulationTelemetry);
     outBundle.schedulerReuse =
         BuildSchedulerReuseObservabilityPacket(inputs.simulationTelemetry,
-                                               inputs.trackProducerState,
+                                               inputs.hasTrackProducerState,
+                                               inputs.trackProducerJobInFlight,
+                                               inputs.trackProducerSafeModeActive,
                                                outBundle.reuse);
     outBundle.flow =
         BuildSchedulerReuseFlowObservabilityPacket(outBundle.lifecycle,

@@ -147,6 +147,41 @@ Current status:
 - the compile-only presenter preview path was kept valid by switching
   `src/game_loop_presenter_compile_only_preview_assembler.hpp` to explicit
   packet construction instead of the removed wrapper chain
+- a map-driven `track_system` cut removed the host-only local segments-map
+  fallback from `src/track_system.cxx` behind
+  `TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK=0`, which dropped
+  `src/track_system.o` `.text` from `0x31678` to `0x31034`
+- a follow-up CD/TGA reader cleanup in `src/track_system.cxx` removed the
+  duplicated chunked read loops in `ReadCdFileText(...)` and
+  `ReadCdFileBinary(...)` by reusing `ReadCdFileFully(...)`, which dropped
+  `src/track_system.o` `.text` again from `0x31034` to `0x30e94`
+- a follow-up preload cleanup split repeated reset, SMAP snapshot, last-name,
+  catalog-check, and finalize blocks out of
+  `TrackSystem::PreloadTgaCatalogFromSegmentsMap()` in `src/track_system.cxx`,
+  dropping `src/track_system.o` `.text` again from `0x30e94` to `0x30db0`
+- a follow-up TGA cart-load cleanup replaced the inline candidate-path
+  construction and inline CD-to-cart read block inside
+  `TrackSystem::PreloadTgaCatalogFromSegmentsMap()` with shared helpers in
+  `src/track_system.cxx`, dropping `src/track_system.o` `.text` again from
+  `0x30db0` to `0x30b04`
+- a follow-up consolidation pass extracted the fallback `.tga` token scan and
+  the repeated `SMAP/RTMAP` text-load call sites into shared helpers in
+  `src/track_system.cxx`, dropping `src/track_system.o` `.text` again from
+  `0x30b04` to `0x30a2c`
+- a follow-up SEG1 catalog cleanup centralized repeated cart-catalog upload
+  and LOD-name selection logic in `src/track_system.cxx`; this preserved the
+  stable build and kept `src/track_system.o` `.text` at `0x30a2c`, so the
+  next effective cut likely needs to remove a larger duplicated SEG1 fallback
+  block instead of only reshaping helper glue
+- a follow-up face-slot dedup pass unified the four fixed/base-rank rebuild and
+  resolve loops behind shared family-to-slot helpers in `src/track_system.cxx`,
+  dropping `src/track_system.o` `.text` again from `0x30a2c` to `0x306b0`
+- a follow-up debug-string compaction pass shortened non-critical
+  `track_system` diagnostics in `src/track_system.cxx`, dropping
+  `src/track_system.o` `.text` again from `0x306b0` to `0x304a4`
+- `cd/data/ISO_PAD_4K.BIN` is now a `6144`-byte inert pad used only to keep
+  the stable Saturn image at the required `4134912` bytes while preserving
+  the accumulated code-side reductions
 
 ### Phase 3 - prefer compile-only aggregation over live helper layering
 
@@ -199,6 +234,91 @@ Current status:
 - stable ISO still moved from `4134912` to `4139008`
 - the exact blocker therefore remains `4096` bytes even after the first three
   reduction passes
+- a later map-driven pass recovered `0x644` bytes of real code from
+  `src/track_system.o`, but the stable-build gate still remains the fixed ISO
+  size check, so the image is currently padded back to `4134912`
+- `ReuseObservabilityDebugPacket` was narrowed again to decision-only so the
+  future Boundary D retry does not carry dead cumulative counters in its debug
+  payload
+- live SH2 observability overlay labels were compacted again in
+  `src/game_loop_track_render_presentation_observability_presenter_ops.hpp`
+  to keep reducing always-live debug string weight before reopening Boundary D
+- the passive debug siblings in `scheduler/reuse` also dropped dead mode /
+  fallback payload fields that were not consumed by any presenter path
+- `SchedulerReuseDebugTelemetryPacket` was then narrowed to a `valid`-only
+  compile-only marker because downstream presenter summary code did not consume
+  any of its other fields
+- the presenter observability boundary now stores only a boolean scheduler/reuse
+  presence marker instead of carrying the whole scheduler/reuse debug packet
+- the facade input boundary above it now carries only `PresenterOverlayDebugPacket`
+  instead of the whole presenter observability input packet
+- `PresenterInputBundle` also dropped duplicated `overlay` / `observability`
+  storage and now derives those summary bits from `observabilityInput` plus
+  `overlayDebug`
+- presenter bridge packets also dropped dead intermediate fields (`request`,
+  `decision`, `facadeDecision`) that were not consumed by the compile-only
+  preview chain
+- `TrackRenderPresentationObservabilityPacket` and
+  `TrackRenderSh2PresentationPacket` already use flattened producer-state flags
+  instead of caching nested producer-state packets
+- `SchedulerReuseObservabilityPacket` now follows the same pattern and stores
+  only explicit producer-state flags above the scheduler/reuse boundary
+- the host helper path for `TrackRenderProducerHintPacket` now builds straight
+  from `TrackRenderTelemetryViewPacket`, removing one local producer-state hop
+- `SchedulerReuseObservabilityAssemblyInputs` now also carries only producer
+  flags on its local boundary and uses a bool-based overload of
+  `BuildSchedulerReuseObservabilityPacket(...)`, keeping the older
+  producer-state overload only as a compatibility adapter
+- the local host debug path in `src/game_loop_system.hpp` now mirrors the same
+  narrowing: `PresentFrameHudAndTelemetry(...)` and `PrintSh2SplitTelemetry(...)`
+  pass explicit producer flags instead of a `TrackRenderProducerStatePacket`
+- the remaining Track Render presentation assemblers now also prefer direct
+  bool/telemetry inputs, and dead host/presenter wrappers around
+  `TrackRenderProducerStatePacket` were removed where no live consumer remained
+- the last dead compatibility overloads in Track Render presentation/hint
+  assemblers were removed once all live callers had already moved to direct
+  telemetry/flag inputs
+- the compile-only presenter preview packet now stores only frame-end and
+  HUD/telemetry preview payloads instead of the larger bridge packets
+- the presenter facade decision path also dropped dead facade-interface
+  payloads (`PresenterFacadeRequestPacket`, `PresenterFacadePhase`,
+  `shouldPresentRenderDebug`, `hasRenderDebug`) that were not consumed outside
+  the local decision assembly chain
+- the facade bridge layer is no longer consumed by the compile-only preview
+  path; its headers remain only as passive compatibility surface
+  (`src/game_loop_presenter_facade_bridge_contracts.hpp`,
+  `src/game_loop_presenter_facade_bridge_assembler.hpp`)
+- the compile-only preview path also stopped building a full
+  `PresenterFacadePacket` from `PresenterInputBundle` when it only needed the
+  facade decision input, by deriving `PresenterFacadeDecisionInputPacket`
+  directly from the input bundle
+- `PresenterFacadePacket` and `PresenterFacadeInputPacket` also dropped dead
+  transit payloads (`summary`, `render`) because that boundary only still
+  consumes driving HUD, periodic HUD, and overlay decisions
+- `PresenterInputBundle` also dropped its duplicated `overlayDebug` cache and
+  now reads the same payload directly from `observabilityInput.overlayDebug`
+  across summary and facade decision assembly
+- `PresenterObservabilityInputPacket` also dropped dead raw payload copies
+  (`overlay`, `observability`) and now keeps only the consumed derived overlay
+  packet plus boolean observability/scheduler-reuse markers
+- `PresenterInputBundle` also dropped its dead raw `render` copy and now
+  derives `hasRender` from `PresenterRenderDebugPacket.valid`
+- `PresenterInputBundle` also dropped its dead cached `summary`, which no
+  longer had any readers after the presenter boundary was narrowed
+- `PresentationDebugBundle` also dropped the dead stored `realtimeFps` payload
+  on the presenter path; builder signatures stay compatible for now, but the
+  boundary no longer caches that telemetry
+- `PresentationDebugBundle` also dropped the dead stored `frame` snapshot on
+  the presenter path; the remaining submitted-face summary now reads from
+  `periodicHud`
+- `TrackRenderPresentationObservabilityPacket` also dropped its dead cached
+  `telemetry` payload and now keeps only the consumed producer-state plus SH2
+  presentation data
+- `TrackRenderProducerHintPacket` also dropped its dead `valid` flag, and
+  `TrackRenderSh2PresentationPacket` flattened the consumed producer-state
+  booleans instead of carrying the full producer-state packet
+- `TrackRenderPresentationObservabilityPacket` also flattened the consumed
+  producer-state booleans instead of carrying the full producer-state packet
 
 ## Recommended execution order
 

@@ -1,13 +1,16 @@
 #pragma once
 
 #include "game_loop_scheduler_reuse_observability_contracts.hpp"
+#include "game_loop_track_render_producer_state_contracts.hpp"
 
 namespace GameLoopObservabilityDomain
 {
 
 inline void SeedSchedulerReuseObservabilityPacket(
     const GameLoopRuntime::SimulationSchedulerTelemetryViewPacket& simulationScheduler,
-    const GameLoopRuntime::TrackRenderProducerStatePacket& trackProducerState,
+    bool hasTrackProducerState,
+    bool trackProducerJobInFlight,
+    bool trackProducerSafeModeActive,
     const ReuseObservabilityPacket& reuse,
     SchedulerReuseObservabilityPacket& outPacket)
 {
@@ -22,12 +25,45 @@ inline void SeedSchedulerReuseObservabilityPacket(
                       simulationScheduler.slaveBackoffFrames > 0u ||
                       simulationScheduler.jobInFlight ||
                       simulationScheduler.hasCompleted ||
-                      trackProducerState.valid ||
-                      trackProducerState.producerJobInFlight ||
-                      trackProducerState.producerSafeModeActive;
+                      hasTrackProducerState ||
+                      trackProducerJobInFlight ||
+                      trackProducerSafeModeActive;
     outPacket.simulationScheduler = simulationScheduler;
-    outPacket.trackProducerState = trackProducerState;
+    outPacket.hasTrackProducerState = hasTrackProducerState;
+    outPacket.trackProducerJobInFlight = trackProducerJobInFlight;
+    outPacket.trackProducerSafeModeActive = trackProducerSafeModeActive;
     outPacket.reuse = reuse;
+}
+
+inline void SeedSchedulerReuseObservabilityPacket(
+    const GameLoopRuntime::SimulationSchedulerTelemetryViewPacket& simulationScheduler,
+    const GameLoopRuntime::TrackRenderProducerStatePacket& trackProducerState,
+    const ReuseObservabilityPacket& reuse,
+    SchedulerReuseObservabilityPacket& outPacket)
+{
+    SeedSchedulerReuseObservabilityPacket(simulationScheduler,
+                                          trackProducerState.valid,
+                                          trackProducerState.producerJobInFlight,
+                                          trackProducerState.producerSafeModeActive,
+                                          reuse,
+                                          outPacket);
+}
+
+inline SchedulerReuseObservabilityPacket BuildSchedulerReuseObservabilityPacket(
+    const GameLoopRuntime::SimulationSchedulerTelemetryViewPacket& simulationScheduler,
+    bool hasTrackProducerState,
+    bool trackProducerJobInFlight,
+    bool trackProducerSafeModeActive,
+    const ReuseObservabilityPacket& reuse)
+{
+    SchedulerReuseObservabilityPacket packet{};
+    SeedSchedulerReuseObservabilityPacket(simulationScheduler,
+                                          hasTrackProducerState,
+                                          trackProducerJobInFlight,
+                                          trackProducerSafeModeActive,
+                                          reuse,
+                                          packet);
+    return packet;
 }
 
 inline SchedulerReuseObservabilityPacket BuildSchedulerReuseObservabilityPacket(

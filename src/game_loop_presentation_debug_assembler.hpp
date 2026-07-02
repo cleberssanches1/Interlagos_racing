@@ -101,11 +101,11 @@ inline void SeedPresentationDebugBundle(const FramePresentationSnapshot& frame,
                                         const GameLoopTelemetryDomain::RealtimeFpsPacket& realtimeFps,
                                         PresentationDebugBundle& outBundle)
 {
+    (void)frame;
+    (void)realtimeFps;
     outBundle.valid = true;
-    outBundle.frame = frame;
     outBundle.drivingHud = drivingHud;
     outBundle.periodicHud = periodicHud;
-    outBundle.realtimeFps = realtimeFps;
 }
 
 inline PresentationDebugBundle BuildPresentationDebugBundle(

@@ -17,10 +17,11 @@ inline void SeedPresenterFacadeDecisionBridgePacket(
     outPacket.valid = decisionInput.valid || hudTelemetryInput.runtimeStatsEnabled;
     outPacket.decisionInput = decisionInput;
     outPacket.hudTelemetryInput = hudTelemetryInput;
-    outPacket.facadeDecision = BuildPresenterFacadeDecisionPacket(decisionInput);
-    outPacket.frameEndDecision = BuildPresenterFrameEndDecisionPacket(outPacket.facadeDecision);
+    const PresenterFacadeDecisionPacket facadeDecision =
+        BuildPresenterFacadeDecisionPacket(decisionInput);
+    outPacket.frameEndDecision = BuildPresenterFrameEndDecisionPacket(facadeDecision);
     outPacket.hudTelemetryDecision = BuildPresenterHudTelemetryDecisionPacket(
-        outPacket.facadeDecision,
+        facadeDecision,
         hudTelemetryInput);
 }
 
