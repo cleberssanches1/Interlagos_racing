@@ -258,6 +258,12 @@ Current status:
 - presenter bridge packets also dropped dead intermediate fields (`request`,
   `decision`, `facadeDecision`) that were not consumed by the compile-only
   preview chain
+- `BuildFrameEndMemoryDebugPresentationBundle()` in `src/game_loop_system.hpp`
+  no longer repopulates low-work trace deltas inline; it now reuses the shared
+  `CaptureLowWorkTraceDeltaInputs(...)` helper from
+  `src/game_loop_memory_trace_packet_assembler.hpp`, which also keeps
+  `MaybeLogLowWorkRamTrace()` and frame-end memory presentation on the same
+  passive delta-capture path
 - `TrackRenderPresentationObservabilityPacket` and
   `TrackRenderSh2PresentationPacket` already use flattened producer-state flags
   instead of caching nested producer-state packets
@@ -278,8 +284,31 @@ Current status:
 - the last dead compatibility overloads in Track Render presentation/hint
   assemblers were removed once all live callers had already moved to direct
   telemetry/flag inputs
-- the compile-only presenter preview packet now stores only frame-end and
-  HUD/telemetry preview payloads instead of the larger bridge packets
+- the same cleanup was then completed in `Scheduler/Reuse`: dead
+  `TrackRenderProducerStatePacket` overloads were removed from the observability
+  assembler once the assembly boundary had already moved to explicit flags
+- with no live consumers left, the last runtime include of the passive
+  `TrackRenderProducerStatePacket` pair was removed from `src/game_loop_system.hpp`;
+  the headers themselves stay as compatibility shims because the passive/
+  observability header smoke validations still compile them as public surface
+- the current passive-surface inventory and removal rules are tracked in
+  `PASSIVE_COMPATIBILITY_SURFACES.md`
+- the presenter facade bridge pair was later confirmed to be shim-only as well:
+  no live consumer remains and current references come from passive/observability
+  smoke validation includes
+- the compile-only presenter preview path was then narrowed again and no longer
+  assembles through `PresenterFacadeDecisionBridgePacket`; that bridge pair now
+  joins the shim-only compatibility bucket
+- the preview packets themselves were then narrowed as well, dropping redundant
+  stored decision-input payloads and keeping only the final preview decisions
+- the top-level compile-only preview packet was then narrowed too, replacing
+  nested preview subpackets with direct stored frame-end/HUD-telemetry
+  decision payloads
+- with that narrowing complete, the obsolete frame-end/HUD preview subpacket
+  contracts and assemblers were removed entirely because they had no remaining
+  runtime, compile-only, or smoke-validation consumers
+- the top-level compile-only preview packet/assembler pair then also became
+  completely orphaned and was removed for the same reason
 - the presenter facade decision path also dropped dead facade-interface
   payloads (`PresenterFacadeRequestPacket`, `PresenterFacadePhase`,
   `shouldPresentRenderDebug`, `hasRenderDebug`) that were not consumed outside
@@ -311,6 +340,64 @@ Current status:
 - `PresentationDebugBundle` also dropped the dead stored `frame` snapshot on
   the presenter path; the remaining submitted-face summary now reads from
   `periodicHud`
+- after the preview packet removal, the remaining presenter facade/decision
+  chain (`PresenterFacade*`, `PresenterFrameEndDecision*`,
+  `PresenterHudTelemetryDecision*`) was audited again and is currently
+  shim-only as well: no live runtime consumer remains, and the surviving
+  includes are self-contained plus the passive/observability smoke-validation
+  surface
+- that shim-only presenter chain was then split out of the generic
+  passive/observability smoke scripts into
+  `tools/validate_game_loop_presenter_shim_headers.ps1`, reducing coupling
+  between the generic header checks and the removable presenter compatibility
+  surface
+- with that isolation in place and still no runtime, compile-only, or
+  remaining smoke-only consumers, the whole presenter facade/decision shim
+  chain and its dedicated smoke script were then removed entirely
+- the dead packet-only `TrackRenderPresentationObservability` wrapper was then
+  removed as well, leaving only the still-live SH2 presentation path in
+  `src/game_loop_track_render_presentation_observability_presenter_ops.hpp`
+- the shim-only `TrackRenderProducerState` pair was then split out of the same
+  generic smoke scripts into a temporary dedicated validation surface, leaving
+  the shared passive/observability checks focused on still-mixed
+  runtime-adjacent surfaces
+- with that isolation in place and still no runtime consumers, the
+  `TrackRenderProducerState` shim pair and its dedicated smoke script were then
+  removed entirely
+- the orphan `SchedulerReuseObservability` / `SchedulerReuseFlowObservability`
+  packet chain and its dead assembly bundle were then removed too; the
+  remaining debug-telemetry path now reads directly from lifecycle telemetry
+  plus track telemetry
+- the host `FinishFrame()` path then dropped its duplicated local fallbacks for
+  track telemetry / producer-state extraction and now threads one
+  `TrackRenderTelemetryViewPacket` through frame presentation plus HUD
+  telemetry
+- the dead `SchedulerReuseDebugTelemetry` packet/builder and the unused
+  `hasSchedulerReuseDebug` presenter-summary flag were then removed as well
+- the overlay presentation printers were split into
+  `src/game_loop_overlay_debug_presenter_ops.hpp`, and the segment/query
+  snapshot assembly was split into
+  `src/game_loop_overlay_runtime_assembler.hpp`, reducing the size of
+  `src/game_loop_system.hpp` without changing the frame-end overlay flow
+- the low-work overlay path also dropped its redundant local
+  `MemoryDebugPresentationBundle` wrapping for overlay-only prints and now
+  reads directly from the local `LowWorkOverlayTextBundle` through narrow
+  presenter helpers in `src/game_loop_low_work_overlay_presenter_ops.hpp`
+- the same low-work overlay path now also centralizes `trackSystem`/memory
+  capture into `LowWorkOverlayRuntimePacket` inside
+  `src/game_loop_low_work_overlay_capture_ops.hpp`, reducing local variable
+  fan-out in `src/game_loop_system.hpp`
+- the remaining low-work overlay breakdown/tag-group/allocator state updates
+  were then folded into narrow capture/apply helpers in
+  `src/game_loop_low_work_overlay_capture_ops.hpp`, shrinking the host-side
+  full overlay branch without changing presentation order
+- the detailed `HighWorkRamTrace` host path also dropped its local
+  H1/H2/H3/H4/L7/L8/L9/L10 assembly by routing through
+  `src/game_loop_memory_trace_runtime_debug_ops.hpp`, keeping host gating local
+  while moving debug-only capture/presentation out of `src/game_loop_system.hpp`
+- the same runtime-debug helper file now also absorbs the local
+  `LowWorkRamTrace` text/view assembly and track-draw delta capture, leaving
+  `MaybeLogLowWorkRamTrace()` with host gating only
 - `TrackRenderPresentationObservabilityPacket` also dropped its dead cached
   `telemetry` payload and now keeps only the consumed producer-state plus SH2
   presentation data

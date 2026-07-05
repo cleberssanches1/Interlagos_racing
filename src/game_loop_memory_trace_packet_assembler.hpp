@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game_loop_memory_presentation_state_assembler.hpp"
+#include "track_system.hpp"
 
 namespace GameLoopMemoryPresentationDomain
 {
@@ -12,6 +13,21 @@ struct LowWorkTraceDeltaInputs
     int32_t trackDrawOtherDelta = 0;
     int32_t trackDrawFrameDelta = 0;
 };
+
+inline LowWorkTraceDeltaInputs CaptureLowWorkTraceDeltaInputs(const TrackSystem* trackSystem)
+{
+    LowWorkTraceDeltaInputs inputs{};
+    if (trackSystem == nullptr)
+    {
+        return inputs;
+    }
+
+    inputs.trackDrawPrepareDelta = trackSystem->LowWorkDrawPrepareDeltaThisFrame();
+    inputs.trackDrawExecuteDelta = trackSystem->LowWorkDrawExecuteDeltaThisFrame();
+    inputs.trackDrawOtherDelta = trackSystem->LowWorkDrawOtherDeltaThisFrame();
+    inputs.trackDrawFrameDelta = trackSystem->LowWorkDrawFrameDeltaThisFrame();
+    return inputs;
+}
 
 inline void SeedHighWorkTraceDeltaPacket(const HighWorkTracePacket& trace,
                                          HighWorkTraceDeltaPacket& outPacket)

@@ -3,6 +3,7 @@
 #include <srl.hpp>
 
 #include "game_loop_memory_overlay_text_contracts.hpp"
+#include "game_loop_memory_overlay_text_view_assembler.hpp"
 #include "game_loop_memory_overlay_text_view_contracts.hpp"
 
 namespace GameLoopMemoryPresentationDomain
@@ -15,6 +16,11 @@ inline void PresentLowWorkOverlayTextViewPacket(const LowWorkOverlayTextViewPack
                       static_cast<int>(packet.freeDelta),
                       static_cast<unsigned>(packet.slides),
                       static_cast<int>(packet.slideId));
+}
+
+inline void PresentLowWorkOverlayHeaderBundle(const LowWorkOverlayTextBundle& bundle)
+{
+    PresentLowWorkOverlayTextViewPacket(BuildLowWorkOverlayTextViewPacket(bundle));
 }
 
 inline void PresentHighWorkOverlayTextPacket(const HighWorkOverlayTextPacket& packet)
@@ -59,6 +65,12 @@ inline void PresentLowWorkOverlayTicksCompact(const LowWorkOverlayTicksTextPacke
                       static_cast<unsigned>(viewPacket.prefetchBuildAttempts),
                       static_cast<unsigned>(viewPacket.prefetchBuildBudget),
                       static_cast<unsigned>(viewPacket.prefetchBuildDrops));
+}
+
+inline void PresentLowWorkOverlayTicksCompactBundle(const LowWorkOverlayTextBundle& bundle)
+{
+    PresentLowWorkOverlayTicksCompact(bundle.ticks,
+                                      BuildLowWorkOverlayTextViewPacket(bundle));
 }
 
 inline void PresentLowWorkTagGroupTextPacket(const LowWorkTagGroupTextPacket& packet)

@@ -83,6 +83,57 @@ Current local runtime coverage already integrated:
 - memory trace packets assembled locally in:
   - `MaybeLogHighWorkRamTrace()`
   - `MaybeLogLowWorkRamTrace()`
+- SH2/track-render presentation packet assembled locally in:
+  - `PresentFrameHudAndTelemetry(...)`
+  - consumed through `TrackRenderSh2PresentationPacket` instead of ad hoc
+    producer-flag branching in `src/game_loop_system.hpp`
+- track-render observability runtime helpers now live behind:
+  - `src/game_loop_track_render_runtime_observability_ops.hpp`
+  - this consolidates the local telemetry-view, producer-hint, and SH2
+    presentation packet assembly without changing runtime ownership
+
+Current scheduler/reuse status:
+
+- `ReuseObservabilityPacket` and its debug bundle remain passive-only
+- no live runtime producer/history state is wired through
+  `src/game_loop_system.hpp` yet
+- the next safe step there is still a local passive assembly point first, not a
+  live retry
+- that passive assembly point is now prepared in:
+  - `src/game_loop_reuse_runtime_observability_ops.hpp`
+  - it adapts raw `frame_reuse` runtime packets/telemetry into
+    `ReuseObservabilityPacket` and `ReuseObservabilityDebugBundle`
+  - host runtime ownership is still intentionally unchanged
+- `src/game_loop_system.hpp` now has a first local assembly point for this
+  boundary:
+  - `TryBuildReuseObservabilityDebugBundle(...)`
+  - `CaptureReuseObservabilityAssemblyInputs()`
+  - `CaptureReuseObservabilitySourceState()`
+  - it is currently wired with null/default inputs only, so runtime behavior is
+    unchanged while the host capture seam and assembly seam are established
+- current repo status:
+  - no live `SimulationFrameHistoryState`
+  - no live `TrackFrameHistoryState`
+  - no live `FrameReuseTelemetry`
+  - so the host seam is now explicitly split into source-state capture first
+    and packet assembly second, awaiting a future safe runtime source
+- the future safe source is now prepared outside the critical loop as:
+  - `src/frame_reuse_runtime_owner_contracts.hpp`
+  - `src/frame_reuse_runtime_owner_assembler.hpp`
+  - `src/frame_reuse_runtime_observability_owner_assembler.hpp`
+  - `src/frame_reuse_observability_source_contracts.hpp`
+  - `src/frame_reuse_observability_source_assembler.hpp`
+  - `src/frame_reuse_observability_source_owner_contracts.hpp`
+  - `src/frame_reuse_observability_source_owner_assembler.hpp`
+  - `src/frame_reuse_observability_capture_ops.hpp`
+  - `src/game_loop_reuse_source_state_contracts.hpp`
+  - `src/game_loop_reuse_source_state_assembler.hpp`
+  - `src/game_loop_reuse_source_owner_contracts.hpp`
+  - `src/game_loop_reuse_source_owner_assembler.hpp`
+  - the runtime owner packet is currently prepared as passive-only compile-time
+    surface
+  - the host still captures the frame-reuse-domain owner packet directly, then
+    adapts it to the observability owner/source boundary
 
 ## Recommended future runtime fit
 

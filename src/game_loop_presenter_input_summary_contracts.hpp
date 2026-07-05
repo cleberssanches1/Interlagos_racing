@@ -17,7 +17,6 @@ struct PresenterInputSummaryPacket
     bool hasCar = false;
     bool hasOverlay = false;
     bool hasObservability = false;
-    bool hasSchedulerReuseDebug = false;
     bool hasMemoryDebug = false;
     int16_t speedKmh = 0;
     char gearChar = 'N';

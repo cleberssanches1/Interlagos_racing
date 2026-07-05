@@ -2,7 +2,6 @@
 
 #include <srl.hpp>
 
-#include "game_loop_track_render_presentation_observability_contracts.hpp"
 #include "game_loop_track_render_sh2_presentation_contracts.hpp"
 
 namespace GameLoopObservabilityDomain
@@ -69,20 +68,6 @@ inline void PresentTrackRenderProducerStateFlags(bool hasProducerState,
     SRL::Debug::Print(1, 26, "S2 p:%u s:%u",
                       static_cast<unsigned>(producerJobInFlight ? 1u : 0u),
                       static_cast<unsigned>(producerSafeModeActive ? 1u : 0u));
-}
-
-inline void PresentTrackRenderPresentationObservabilityPacket(
-    const TrackRenderPresentationObservabilityPacket& packet)
-{
-    if (!packet.valid)
-    {
-        return;
-    }
-
-    PresentTrackRenderSh2BusyLine(packet.sh2);
-    PresentTrackRenderProducerStateFlags(packet.hasProducerState,
-                                         packet.producerJobInFlight,
-                                         packet.producerSafeModeActive);
 }
 
 inline void PresentTrackRenderSh2PresentationPacket(

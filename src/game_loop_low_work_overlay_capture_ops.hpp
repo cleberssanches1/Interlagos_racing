@@ -8,6 +8,51 @@
 namespace GameLoopMemoryPresentationDomain
 {
 
+struct LowWorkOverlayRuntimePacket
+{
+    bool valid = false;
+    uint32_t freeBytes = 0u;
+    uint32_t highFreeBytes = 0u;
+    uint8_t slides = 0u;
+    int16_t slideId = -1;
+    TrackSystem::LowWorkCategoryBreakdown breakdown{};
+    LowWorkOverlayTicksPacket ticks{};
+};
+
+inline LowWorkOverlayRuntimePacket CaptureLowWorkOverlayRuntimePacket(
+    const TrackSystem* trackSystem,
+    bool trackSystemReady,
+    const MemoryBudgetDomain::MemorySnapshotPacket& memorySnapshot)
+{
+    LowWorkOverlayRuntimePacket packet{};
+    packet.valid = true;
+    packet.highFreeBytes = memorySnapshot.snapshot.highWorkFree;
+
+    if (trackSystem != nullptr && trackSystemReady)
+    {
+        packet.freeBytes = trackSystem->LowWorkEndFreeBytesThisFrame();
+        packet.slides = trackSystem->SlidesThisFrame();
+        packet.slideId = static_cast<int16_t>(trackSystem->SlideSegmentIdThisFrame());
+        packet.breakdown = trackSystem->LowWorkBreakdownThisFrame();
+        packet.ticks.valid = true;
+        packet.ticks.trackStreamTicks = trackSystem->StreamTicksThisFrame();
+        packet.ticks.trackMaintenanceTicks = trackSystem->MaintenanceTicksThisFrame();
+        packet.ticks.trackDrawTicks = trackSystem->DrawTicksThisFrame();
+        packet.ticks.trackFrameTicks = trackSystem->FrameTicksThisFrame();
+        packet.ticks.trackWindowTicks = trackSystem->WindowTicksThisFrame();
+        packet.ticks.trackPrefetchTicks = trackSystem->PrefetchTicksThisFrame();
+        packet.ticks.trackLodTicks = trackSystem->LodTicksThisFrame();
+        packet.ticks.trackWorkingSetTicks = trackSystem->WorkingSetTicksThisFrame();
+        packet.ticks.prefetchBuildAttempts = trackSystem->PrefetchBuildAttemptsThisFrame();
+        packet.ticks.prefetchBuildBudget = trackSystem->PrefetchBuildBudgetThisFrame();
+        packet.ticks.prefetchBuildDrops = trackSystem->PrefetchBuildBudgetDropsThisFrame();
+        return packet;
+    }
+
+    packet.freeBytes = memorySnapshot.snapshot.lowWorkFree;
+    return packet;
+}
+
 struct LowWorkTrackTagBytesPacket
 {
     uint32_t trackCoreBytes = 0u;
@@ -15,6 +60,14 @@ struct LowWorkTrackTagBytesPacket
     uint32_t trackLodBytes = 0u;
     uint32_t trackTextureBytes = 0u;
     uint32_t trackBackendBytes = 0u;
+};
+
+struct LowWorkOverlayMemoryDebugPacket
+{
+    bool valid = false;
+    LowWorkTrackTagBytesPacket trackBytes{};
+    LowWorkTagGroupPacket tagGroups{};
+    LowWorkAllocatorPacket allocator{};
 };
 
 inline LowWorkTrackTagBytesPacket CaptureLowWorkTrackTagBytesPacket()
@@ -84,6 +137,26 @@ inline GameLoopRuntime::LowWorkTagGroupOverlay BuildLowWorkTagGroupOverlay(
     return overlay;
 }
 
+inline void ApplyLowWorkOverlayBreakdownState(
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const TrackSystem::LowWorkCategoryBreakdown& breakdown)
+{
+    overlay.lastBreakdown = breakdown;
+    overlay.SetBreakdownValid(true);
+}
+
+inline void ApplyLowWorkOverlayMemoryDebugState(
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const LowWorkOverlayMemoryDebugPacket& packet)
+{
+    overlay.lastTagGroup = BuildLowWorkTagGroupOverlay(packet.tagGroups);
+    overlay.SetTagGroupValid(true);
+    overlay.lastPayloadBytes = packet.allocator.payloadBytes;
+    overlay.lastOverheadBytes = packet.allocator.overheadBytes;
+    overlay.lastFreeBlocks = packet.allocator.freeBlocks;
+    overlay.SetAllocatorValid(true);
+}
+
 inline LowWorkAllocatorPacket CaptureLowWorkAllocatorPacket(const LowWorkTagGroupPacket& tagGroups)
 {
     const auto lwrReport = SRL::Memory::LowWorkRam::GetReport();
@@ -107,6 +180,16 @@ inline LowWorkAllocatorPacket CaptureLowWorkAllocatorPacket(const LowWorkTagGrou
         static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBytesWithInvalidTag());
     packet.invalidTaggedBlocks =
         static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetUsedBlockCountWithInvalidTag());
+    return packet;
+}
+
+inline LowWorkOverlayMemoryDebugPacket CaptureLowWorkOverlayMemoryDebugPacket()
+{
+    LowWorkOverlayMemoryDebugPacket packet{};
+    packet.valid = true;
+    packet.trackBytes = CaptureLowWorkTrackTagBytesPacket();
+    packet.tagGroups = CaptureLowWorkTagGroupPacket(packet.trackBytes);
+    packet.allocator = CaptureLowWorkAllocatorPacket(packet.tagGroups);
     return packet;
 }
 

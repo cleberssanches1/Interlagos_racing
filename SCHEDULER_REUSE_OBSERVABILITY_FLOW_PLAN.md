@@ -38,6 +38,92 @@ So the safe strategy is:
 
 The current passive hierarchy is:
 
+### Level 0 - future source origin
+
+#### `FrameReuseRuntimeOwnerPacket`
+
+Purpose:
+
+- define the narrow passive runtime-side owner packet that can later live next
+  to real reuse producer/history ownership
+- stage raw reuse runtime state before it is narrowed again into observability
+  source capture
+
+Files:
+
+- `src/frame_reuse_runtime_owner_contracts.hpp`
+- `src/frame_reuse_runtime_owner_assembler.hpp`
+- `src/frame_reuse_runtime_observability_owner_assembler.hpp`
+- `src/frame_reuse_observability_capture_ops.hpp`
+
+#### `ReuseObservabilitySourceSnapshot`
+
+Purpose:
+
+- define the domain-level passive snapshot for future real `frame_reuse`
+  ownership outside `src/game_loop_system.hpp`
+- let a non-critical future owner snapshot raw:
+  - `SimulationReuseDecisionPacket`
+  - `TrackReuseDecisionPacket`
+  - `FrameReuseTelemetry`
+- keep the first real source handoff out of the observability host seam
+
+Files:
+
+- `src/frame_reuse_observability_source_contracts.hpp`
+- `src/frame_reuse_observability_source_assembler.hpp`
+- `src/frame_reuse_observability_capture_ops.hpp`
+
+#### `ReuseObservabilitySourceOwnerPacket`
+
+Purpose:
+
+- define the frame-reuse-domain owner boundary that can become the future real
+  non-critical origin for reuse observability
+- keep ownership of the raw source snapshot out of
+  `src/game_loop_system.hpp` and out of the observability-domain adapters
+
+Files:
+
+- `src/frame_reuse_observability_source_owner_contracts.hpp`
+- `src/frame_reuse_observability_source_owner_assembler.hpp`
+- `src/frame_reuse_observability_capture_ops.hpp`
+
+#### `ReuseObservabilitySourcePacket`
+
+Purpose:
+
+- define the future owned source boundary for `frame_reuse` data outside
+  `src/game_loop_system.hpp`
+- allow a non-critical future owner to snapshot:
+  - `SimulationReuseDecisionPacket`
+  - `TrackReuseDecisionPacket`
+  - `FrameReuseTelemetry`
+- avoid the first real runtime source being introduced as direct pointer walking
+  across multiple owners inside the critical loop
+
+Files:
+
+- `src/game_loop_reuse_source_state_contracts.hpp`
+- `src/game_loop_reuse_source_state_assembler.hpp`
+- `src/game_loop_reuse_source_owner_contracts.hpp`
+- `src/game_loop_reuse_source_owner_assembler.hpp`
+
+Bridge to the already prepared host seam:
+
+- `FrameReuseRuntimeOwnerPacket`
+  -> `FrameReuseDomain::ReuseObservabilitySourceOwnerPacket`
+- `ReuseObservabilitySourceSnapshot`
+  -> `FrameReuseDomain::ReuseObservabilitySourceOwnerPacket`
+- `FrameReuseDomain::ReuseObservabilitySourceOwnerPacket`
+  -> `GameLoopObservabilityDomain::ReuseObservabilitySourceOwnerPacket`
+- `GameLoopObservabilityDomain::ReuseObservabilitySourceOwnerPacket`
+  -> `ReuseObservabilitySourcePacket`
+- `ReuseObservabilitySourcePacket`
+  -> `ReuseObservabilitySourceState`
+  -> `ReuseObservabilityAssemblyInputs`
+  -> `ReuseObservabilityPacket`
+
 ### Level 1 - narrow raw views
 
 #### `SimulationDrainViewPacket`

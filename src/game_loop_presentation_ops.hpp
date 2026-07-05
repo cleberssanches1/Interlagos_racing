@@ -4,7 +4,7 @@
 
 #include "game_loop_debug_ops.hpp"
 #include "game_loop_runtime_state.hpp"
-#include "game_loop_scheduler_reuse_flow_observability_contracts.hpp"
+#include "game_loop_simulation_scheduler_lifecycle_observability_contracts.hpp"
 #include "game_loop_simulation_scheduler_telemetry_view_assembler.hpp"
 #include "game_loop_track_render_telemetry_view_assembler.hpp"
 #include "game_loop_track_render_telemetry_view_contracts.hpp"
@@ -77,17 +77,6 @@ inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
 {
     return BuildSh2SplitTelemetrySnapshot(
         lifecycle.telemetry,
-        trackTelemetry,
-        includeQueryTelemetry);
-}
-
-inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
-    const GameLoopObservabilityDomain::SchedulerReuseFlowObservabilityPacket& observability,
-    const TrackRenderTelemetryViewPacket& trackTelemetry,
-    bool includeQueryTelemetry)
-{
-    return BuildSh2SplitTelemetrySnapshot(
-        observability.lifecycle,
         trackTelemetry,
         includeQueryTelemetry);
 }
