@@ -10,6 +10,7 @@ struct PresenterObservabilityInputPacket
     bool valid = false;
     PresenterOverlayDebugPacket overlayDebug{};
     bool hasObservability = false;
+    bool hasSchedulerReuseDebug = false;
 };
 
 } // namespace GameLoopRuntime

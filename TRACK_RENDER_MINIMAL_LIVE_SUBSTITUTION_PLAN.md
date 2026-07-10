@@ -196,6 +196,28 @@ derived from `TrackReuseDecisionPacket`, so a future retry can consume reuse
 decisions without taking the full history/decision structure into the live
 call site first.
 
+That staging is now one level broader on the track side too:
+
+- `TrackReuseDecisionViewPacket`
+- `TrackReuseTelemetryViewPacket`
+- `TrackReuseObservabilityPacket`
+- `TrackReusePreviewPacket`
+
+The first live retry anchored at that lower track-only seam is now documented
+and accepted in:
+
+- `TRACK_REUSE_OBSERVABILITY_FIRST_LIVE_RETRY_PLAN.md`
+
+The compile-only bridge aligned to the same host seam remains:
+
+- `BuildTrackReuseRuntimeObservabilityPacket(...)`
+- `BuildTrackReuseRuntimePreviewPacket(...)`
+- `PresentTrackReuseRuntimePreviewPacket(...)`
+
+The exact accepted runtime patch at that seam is now recorded in:
+
+- `TRACK_REUSE_OBSERVABILITY_FIRST_LIVE_RETRY_PATCH_PLAN.md`
+
 The same rule also applies to accumulated reuse counters:
 
 - derive a narrow `TrackReuseTelemetryViewPacket`
@@ -226,3 +248,10 @@ and intentionally excludes:
 - `TrackRenderFramePacket`
 - producer/sort scheduling ownership
 - any cross-frame cache or reuse state
+
+Before any broader live track-reuse retry, prefer completing the remaining
+symmetric simulation-side branch before jumping from the accepted track-only
+seam into the broader cross-domain `ReuseObservabilityPacket`.
+
+Keep `TrackReusePreviewPacket` compile-only as the guard rail immediately above
+that staging path.

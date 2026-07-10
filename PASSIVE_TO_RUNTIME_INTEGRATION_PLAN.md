@@ -116,21 +116,51 @@ Critério de aceite:
 #### Boundary estreito recomendado antes de qualquer novo corte vivo maior
 
 Se o objetivo for voltar ao eixo `scheduler/reuse observability` com o menor
-risco possível, o próximo boundary recomendado agora é:
+risco possível, o boundary baixo já aceito agora é:
 
-- `ReuseObservabilityPacket`
+- seam local `track-only` de `TryBuildReuseObservabilityDebugBundle(...)`
 
-Forma aceitável:
+Estado atual desse seam:
+
+1. `src/game_loop_system.hpp` mantém um `TrackReuseRuntimeState` estreito;
+2. `RenderTrackFrame(...)` captura request-side e histórico comitado da pista;
+3. o host já substituiu o empty capture por um `FrameReuseRuntimeOwnerPacket`
+   real somente da pista;
+4. o ramo de simulação continua neutro;
+5. telemetria cumulativa continua fora do caminho live.
+
+Próximo boundary recomendado acima dele:
+
+- completar apenas o ramo simétrico de simulação no mesmo seam local;
+- só depois reconsiderar `ReuseObservabilityPacket` amplo.
+
+Documento exato desse ramo faltante:
+
+- `SIMULATION_REUSE_SEAM_COMPLETION_PLAN.md`
+
+Forma aceitável da próxima microintegração nesse eixo:
 
 1. montagem local e stack-local;
-2. consumo em um único helper de debug/telemetria;
-3. remoção das leituras locais equivalentes de reuse no mesmo patch;
+2. consumo no mesmo seam local já existente;
+3. remoção das leituras locais equivalentes do ramo de simulação no mesmo patch;
 4. nenhuma mudança de dispatch, drain, producer ou `N-1`.
 
-#### Primeira integração real permitida
+#### Primeira integração real permitida neste eixo
 
 Não mover toda a lógica de uma vez.
-Integrar apenas uma redução estrutural por microetapa:
+
+Para `scheduler/reuse`, o próximo passo real permitido não é reabrir o
+aggregate amplo do zero.
+
+É:
+
+- completar apenas a metade ainda passiva do seam `scheduler/reuse`, isto é,
+  o ramo de simulação acima do track-only seam já aceito;
+- manter o aggregate mais amplo como consequência dessa substituição, não como
+  primeiro alvo.
+
+Para a redução estrutural do `SimulationScheduler`, integrar apenas uma redução
+por microetapa:
 
 1. substituir duplicação de marcação de completion por helper já existente em `SimulationRuntimeState`;
 2. só depois consolidar materialização de packet de dispatch;
@@ -149,6 +179,9 @@ Integrar apenas uma redução estrutural por microetapa:
 - não introduzir novo objeto persistente;
 - não criar façade runtime dedicada;
 - não mover `ExecuteGameplayFrame` inteiro.
+- não reabrir `ReuseObservabilityPacket` amplo como retry aditivo;
+- não misturar o completion do ramo de simulação com agregado
+  `SchedulerReuseObservabilityPacket` no mesmo patch.
 
 Critério de aceite:
 
@@ -332,10 +365,13 @@ Rollback sem investigação longa se ocorrer qualquer um:
 
 A próxima integração real mais segura é:
 
-1. `SimulationScheduler` microetapa mínima de redução líquida;
-2. só depois `CdAssetSystem` para remover duplicações locais de leitura;
-3. só depois `MemoryBudgetSystem` em modo espelho;
-4. deixar `CarRenderSystem` e `TrackRenderScheduler` para quando houver margem maior de validação.
+1. no eixo `scheduler/reuse`, completar apenas o ramo simétrico de simulação
+   no seam local já aceito;
+2. em paralelo de planejamento, manter `SimulationScheduler` em microetapas de
+   redução líquida;
+3. só depois `CdAssetSystem` para remover duplicações locais de leitura;
+4. só depois `MemoryBudgetSystem` em modo espelho;
+5. deixar `CarRenderSystem` e `TrackRenderScheduler` para quando houver margem maior de validação.
 
 
 

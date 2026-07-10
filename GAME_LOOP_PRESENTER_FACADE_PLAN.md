@@ -6,6 +6,15 @@ Prepare a future passive `GameLoopPresenterFacade` extraction out of
 `src/game_loop_system.hpp` without changing current HUD, overlay, debug, or
 frame pacing behavior.
 
+Branch status note:
+
+- this document is historical planning material for a facade chain that is not
+  currently present under `src/` in this branch
+- the current highest presenter compile-only boundary still present in source is
+  `PresenterSummaryObservabilityPacket`
+- do not reintroduce the removed facade/frame-end/hud-telemetry shim chain as a
+  "next safe step" without an explicit reason
+
 Companion inventory:
 
 - `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`

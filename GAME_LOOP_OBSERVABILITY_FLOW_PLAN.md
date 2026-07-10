@@ -91,6 +91,30 @@ Current local runtime coverage already integrated:
   - `src/game_loop_track_render_runtime_observability_ops.hpp`
   - this consolidates the local telemetry-view, producer-hint, and SH2
     presentation packet assembly without changing runtime ownership
+- one compile-only preview now also exists directly above that local live seam:
+  - `src/game_loop_track_render_presentation_preview_contracts.hpp`
+  - `src/game_loop_track_render_presentation_preview_assembler.hpp`
+  - it groups:
+    - `TrackRenderTelemetryViewPacket`
+    - `TrackRenderProducerHintPacket`
+    - `TrackRenderSh2PresentationPacket`
+- the SH2/track-render presentation subflow is now documented as a
+  consolidated passive boundary in:
+  - `SH2_TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+- the simulation scheduler lifecycle subflow is now documented as a
+  consolidated passive boundary in:
+  - `SIMULATION_SCHEDULER_LIFECYCLE_BOUNDARY_CONSOLIDATED.md`
+- one compile-only preview now also exists directly above lifecycle +
+  track-render reuse:
+  - `src/game_loop_scheduler_track_render_preview_contracts.hpp`
+  - `src/game_loop_scheduler_track_render_preview_assembler.hpp`
+  - it groups:
+    - `SimulationSchedulerLifecycleObservabilityPacket`
+    - `TrackRenderTelemetryViewPacket`
+    - `TrackRenderSh2PresentationPacket`
+- the full combined map for scheduler lifecycle + track-render + reuse is now
+  documented in:
+  - `SCHEDULER_TRACK_RENDER_REUSE_FLOW_CONSOLIDATED.md`
 
 Current scheduler/reuse status:
 
@@ -101,14 +125,32 @@ Current scheduler/reuse status:
   live retry
 - that passive assembly point is now prepared in:
   - `src/game_loop_reuse_runtime_observability_ops.hpp`
+  - `src/game_loop_reuse_runtime_owner_assembler.hpp`
+  - `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
   - it adapts raw `frame_reuse` runtime packets/telemetry into
     `ReuseObservabilityPacket` and `ReuseObservabilityDebugBundle`
   - host runtime ownership is still intentionally unchanged
+- one level above that, the scheduler/reuse aggregate is now also prepared as a
+  compile-only boundary in:
+  - `src/game_loop_scheduler_reuse_observability_contracts.hpp`
+  - `src/game_loop_scheduler_reuse_observability_assembler.hpp`
+  - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
+  - `src/game_loop_scheduler_reuse_flow_observability_assembler.hpp`
+  - `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  - `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
+  - `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
+  - `src/game_loop_scheduler_reuse_runtime_debug_bridge_assembler.hpp`
+  - `src/game_loop_scheduler_reuse_preview_contracts.hpp`
+  - `src/game_loop_scheduler_reuse_preview_assembler.hpp`
+  - it joins scheduler telemetry, explicit producer flags, and the future
+    `frame_reuse` runtime owner path without reopening `src/game_loop_system.hpp`
+  - and now exposes the narrow `SchedulerReuseDebugTelemetryPacket` marker above
+    `SchedulerReuseFlowObservabilityPacket` for future presenter/debug consumers
+  - plus one compile-only `SchedulerReusePreviewPacket` that groups the current
+    flow packet with that debug marker
 - `src/game_loop_system.hpp` now has a first local assembly point for this
   boundary:
   - `TryBuildReuseObservabilityDebugBundle(...)`
-  - `CaptureReuseObservabilityAssemblyInputs()`
-  - `CaptureReuseObservabilitySourceState()`
   - it is currently wired with null/default inputs only, so runtime behavior is
     unchanged while the host capture seam and assembly seam are established
 - current repo status:
@@ -120,7 +162,13 @@ Current scheduler/reuse status:
 - the future safe source is now prepared outside the critical loop as:
   - `src/frame_reuse_runtime_owner_contracts.hpp`
   - `src/frame_reuse_runtime_owner_assembler.hpp`
+  - `src/frame_reuse_runtime_observability_source_assembler.hpp`
   - `src/frame_reuse_runtime_observability_owner_assembler.hpp`
+  - `src/game_loop_reuse_runtime_preview_contracts.hpp`
+  - `src/game_loop_reuse_runtime_preview_assembler.hpp`
+  - `src/game_loop_reuse_runtime_source_assembler.hpp`
+  - `src/game_loop_reuse_runtime_owner_assembler.hpp`
+  - `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
   - `src/frame_reuse_observability_source_contracts.hpp`
   - `src/frame_reuse_observability_source_assembler.hpp`
   - `src/frame_reuse_observability_source_owner_contracts.hpp`
@@ -130,8 +178,13 @@ Current scheduler/reuse status:
   - `src/game_loop_reuse_source_state_assembler.hpp`
   - `src/game_loop_reuse_source_owner_contracts.hpp`
   - `src/game_loop_reuse_source_owner_assembler.hpp`
+  - `src/game_loop_reuse_runtime_observability_contracts.hpp`
+  - `src/game_loop_reuse_runtime_packet_assembler.hpp`
+  - `src/game_loop_reuse_runtime_debug_bundle_assembler.hpp`
   - the runtime owner packet is currently prepared as passive-only compile-time
     surface
+  - one compile-only `ReuseRuntimePreviewPacket` now groups that raw owner
+    packet with the current `ReuseObservabilityDebugBundle`
   - the host still captures the frame-reuse-domain owner packet directly, then
     adapts it to the observability owner/source boundary
 
@@ -314,6 +367,12 @@ When the first runtime integration happens, keep all of the following true:
 - no audio, HUD or drivetrain behavior changes in the same patch;
 - validate clean build and stable ISO immediately after the change.
 
+One narrow exception now exists and is accepted on the reuse axis:
+
+- one local track-only `TrackReuseRuntimeState` was added in the host
+- it feeds the already existing reuse debug seam only
+- it does not widen scheduler, audio, or render ownership
+
 ## Hard constraints
 
 - do not grow `src/game_loop_system.hpp` unless equivalent runtime code is removed
@@ -345,6 +404,8 @@ Memory-debug presentation boundary inventory:
 
 1. Isolate a narrower pure-data export layer if host tests become necessary
 2. Only then consider a second local observability assembly point in `GameLoopSystem`
+3. Keep broader scheduler/reuse aggregation above the now-live track-only reuse
+   seam compile-only until the symmetric simulation-side replacement is obvious
 
 ## Validation coverage closed in this step
 
@@ -411,6 +472,11 @@ Current effect:
   - `PresenterOverlayDebugPacket`
   - `ObservabilityDebugBundle`
   - `PresenterInputSummaryPacket`
+- one compile-only overload path now also accepts:
+  - `OverlayDebugBundle`
+  - `ObservabilityDebugBundle`
+  - `SchedulerReuseDebugTelemetryPacket`
+  and narrows them directly into `PresenterObservabilityInputPacket`
 - future presenter/facade extraction can consume one stable aggregate input
   instead of rebuilding cross-domain debug/presentation dependencies at the host
 - runtime execution remains untouched
@@ -460,14 +526,47 @@ Current effect:
   - scheduler/reuse debug presence
   - top-level speed/gear/rpm summary
   - top-level face/query counters
+- current summary packet shape now includes:
+  - `hasSchedulerReuseDebug`
 - the future presenter facade can branch on one narrow summary packet before
   touching any deeper passive bundle
 - runtime execution remains untouched
+
+The presenter-facing side now also exposes one current top boundary that still
+exists in this branch:
+
+- `src/game_loop_presenter_summary_observability_contracts.hpp`
+- `src/game_loop_presenter_summary_observability_assembler.hpp`
+- `src/game_loop_presenter_presence_decision_contracts.hpp`
+- `src/game_loop_presenter_presence_decision_assembler.hpp`
+- `src/game_loop_presenter_presence_preview_contracts.hpp`
+- `src/game_loop_presenter_presence_preview_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterSummaryObservabilityPacket` can now carry:
+  - `PresenterInputSummaryPacket`
+  - `PresenterObservabilityInputPacket`
+- one off-path `PresenterPresenceDecisionPacket` can now narrow that further to:
+  - HUD presence decisions
+  - render/overlay/observability presence decisions
+  - scheduler/reuse debug presence decision
+  - memory debug presence decision
+- one off-path `PresenterPresencePreviewPacket` now groups:
+  - `PresenterSummaryObservabilityPacket`
+  - `PresenterPresenceDecisionPacket`
+- this is the current highest compile-only presenter packet still backed by
+  source files in `src/`
+- future presenter work can branch here without reintroducing the removed
+  facade/frame-end shim chain
 
 The presenter-facing side now also exposes one observability-side adapter:
 
 - `src/game_loop_presenter_observability_input_contracts.hpp`
 - `src/game_loop_presenter_observability_input_assembler.hpp`
+- `src/game_loop_presenter_scheduler_reuse_bridge_assembler.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_assembler.hpp`
 
 Current effect:
 
@@ -476,9 +575,103 @@ Current effect:
   - `PresenterOverlayDebugPacket`
   - `ObservabilityDebugBundle`
   - `SchedulerReuseDebugTelemetryPacket`
+- one compile-only sibling adapter can now derive that scheduler/reuse debug
+  input directly from:
+  - `SimulationSchedulerTelemetryViewPacket`
+  - producer flags
+  - `FrameReuseRuntimeOwnerPacket`
+  - optional lifecycle aggregate
 - future presenter/debug input integration can attach scheduler/reuse debug
   telemetry through one stable adapter instead of widening the broader
   presenter input boundary
+- current packet shape stays narrow:
+  - `overlayDebug`
+  - `hasObservability`
+  - `hasSchedulerReuseDebug`
+- runtime execution remains untouched
+
+One compile-only preview now also exists directly above that bridge:
+
+- `PresenterInputSummaryPacket`
+- `PresenterObservabilityInputPacket`
+- `SchedulerReuseDebugTelemetryPacket`
+
+Current effect:
+
+- one off-path `PresenterSchedulerReusePreviewPacket` can validate the local
+  attach point where scheduler/reuse debug reaches the presenter-facing summary
+  side
+- the preview can be built either from:
+  - direct `SchedulerReuseDebugTelemetryPacket`
+  - scheduler telemetry + producer flags + `frame_reuse` runtime-owner state
+  - optional lifecycle aggregate
+- runtime execution remains untouched
+
+One compile-only preview now also exists one level above that bridge:
+
+- `src/game_loop_presenter_summary_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_preview_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterSummarySchedulerReusePreviewPacket` can validate the
+  alignment between:
+  - `PresenterSummaryObservabilityPacket`
+  - `PresenterSchedulerReusePreviewPacket`
+- this keeps the scheduler/reuse attach path visible at the same presenter
+  summary level where later presence decisions branch
+- runtime execution remains untouched
+
+One compile-only top presenter preview now also exists above both current local
+presenter branches:
+
+- `src/game_loop_presenter_boundary_preview_contracts.hpp`
+- `src/game_loop_presenter_boundary_preview_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterBoundaryPreviewPacket` can validate the alignment
+  between:
+  - `PresenterPresencePreviewPacket`
+  - `PresenterSummarySchedulerReusePreviewPacket`
+- this creates one compile-only top presenter boundary that still stays fully
+  outside `src/game_loop_system.hpp`
+- runtime execution remains untouched
+
+One minimal presenter-side view now also exists above that preview:
+
+- `src/game_loop_presenter_boundary_view_contracts.hpp`
+- `src/game_loop_presenter_boundary_view_assembler.hpp`
+
+Current effect:
+
+- one off-path `PresenterBoundaryViewPacket` can narrow the current top preview
+  to:
+  - direct presence decisions
+  - `hasObservability`
+  - `hasSchedulerReuseDebug`
+  - speed/gear/rpm
+  - frame id
+- this is the next safe compile-only attach for a future non-critical textual
+  presenter helper
+- runtime execution remains untouched
+
+One compile-only textual presenter helper now also exists above that view:
+
+- `src/game_loop_presenter_boundary_text_contracts.hpp`
+- `src/game_loop_presenter_boundary_text_assembler.hpp`
+- `src/game_loop_presenter_boundary_view_presenter_ops.hpp`
+
+Current effect:
+
+- one off-path `PresenterBoundaryTextPacket` can narrow the current top view to:
+  - compact status text payload
+  - compact decision text payload
+- one off-path helper can print:
+  - compact speed/gear/rpm + observability/scheduler flags
+  - compact presenter decision flags
+- this keeps the first future retry localized to a narrow presenter-side view
+  consumer instead of the broader preview chain
 - runtime execution remains untouched
 
 The presenter-facing side now also exposes one facade-ready packet:

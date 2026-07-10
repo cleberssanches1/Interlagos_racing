@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game_loop_reuse_observability_contracts.hpp"
+#include "game_loop_track_reuse_observability_assembler.hpp"
 
 namespace GameLoopObservabilityDomain
 {
@@ -24,6 +25,8 @@ inline void SeedReuseObservabilityPacket(
                       trackTelemetry.trackFallbacks > 0u;
     outPacket.simulationDecision = simulationDecision;
     outPacket.simulationTelemetry = simulationTelemetry;
+    outPacket.track =
+        GameLoopRuntime::BuildTrackReuseObservabilityPacket(trackDecision, trackTelemetry);
     outPacket.trackDecision = trackDecision;
     outPacket.trackTelemetry = trackTelemetry;
 }

@@ -2,12 +2,13 @@
 
 ## Objective
 
-Document the passive hierarchy that now exists around scheduler-side telemetry,
-track producer state, and reuse observability before any new live runtime retry.
+Document the hierarchy that now exists around scheduler-side telemetry, track
+producer state, and reuse observability, including the newly accepted low live
+track-only reuse seam.
 
-This document is intentionally preparatory.
+This document remains primarily structural.
 
-It does not introduce runtime ownership changes.
+It does not authorize broader runtime ownership changes by itself.
 
 ## Stable baseline
 
@@ -34,18 +35,18 @@ So the safe strategy is:
 3. document the hierarchy explicitly
 4. only later consider a substitutional runtime consumer
 
-## Passive hierarchy
+## Hierarchy
 
-The current passive hierarchy is:
+The current hierarchy is:
 
-### Level 0 - future source origin
+### Level 0 - source origin and runtime-owner staging
 
 #### `FrameReuseRuntimeOwnerPacket`
 
 Purpose:
 
-- define the narrow passive runtime-side owner packet that can later live next
-  to real reuse producer/history ownership
+- define the narrow runtime-side owner packet that can live next to real reuse
+  producer/history ownership
 - stage raw reuse runtime state before it is narrowed again into observability
   source capture
 
@@ -53,14 +54,18 @@ Files:
 
 - `src/frame_reuse_runtime_owner_contracts.hpp`
 - `src/frame_reuse_runtime_owner_assembler.hpp`
+- `src/frame_reuse_runtime_observability_source_assembler.hpp`
 - `src/frame_reuse_runtime_observability_owner_assembler.hpp`
+- `src/game_loop_reuse_runtime_source_assembler.hpp`
+- `src/game_loop_reuse_runtime_owner_assembler.hpp`
+- `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
 - `src/frame_reuse_observability_capture_ops.hpp`
 
 #### `ReuseObservabilitySourceSnapshot`
 
 Purpose:
 
-- define the domain-level passive snapshot for future real `frame_reuse`
+- define the domain-level snapshot for future real `frame_reuse`
   ownership outside `src/game_loop_system.hpp`
 - let a non-critical future owner snapshot raw:
   - `SimulationReuseDecisionPacket`
@@ -112,7 +117,11 @@ Files:
 Bridge to the already prepared host seam:
 
 - `FrameReuseRuntimeOwnerPacket`
+  -> `FrameReuseDomain::ReuseObservabilitySourceSnapshot`
+- `FrameReuseRuntimeOwnerPacket`
   -> `FrameReuseDomain::ReuseObservabilitySourceOwnerPacket`
+- `FrameReuseRuntimeOwnerPacket`
+  -> `GameLoopObservabilityDomain::ReuseObservabilitySourcePacket`
 - `ReuseObservabilitySourceSnapshot`
   -> `FrameReuseDomain::ReuseObservabilitySourceOwnerPacket`
 - `FrameReuseDomain::ReuseObservabilitySourceOwnerPacket`
@@ -218,7 +227,8 @@ Track side:
 Purpose:
 
 - split final reuse decisions from accumulated reuse counters
-- keep simulation and track reuse surfaces symmetric
+- keep simulation and track reuse surfaces symmetric above the accepted low
+  live track-only seam
 
 Files:
 
@@ -260,12 +270,12 @@ Derived compile-only presenter helper:
 
 - `src/game_loop_reuse_observability_debug_presenter_ops.hpp`
 
-Derived compile-only local bundle for Boundary D:
+Derived local bundle for Boundary D:
 
 - `src/game_loop_reuse_observability_debug_bundle_contracts.hpp`
 - `src/game_loop_reuse_observability_debug_bundle_assembler.hpp`
 
-Derived compile-only local bundle presenter:
+Derived local bundle presenter:
 
 - `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`
 
@@ -308,6 +318,7 @@ Files:
 
 - `src/game_loop_scheduler_reuse_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_observability_assembler.hpp`
+- `src/game_loop_scheduler_reuse_runtime_debug_bridge_assembler.hpp`
 
 ### Level 5 - scheduler/reuse flow aggregate
 
@@ -329,26 +340,73 @@ Files:
 
 - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_flow_observability_assembler.hpp`
+- `src/game_loop_scheduler_reuse_runtime_debug_bridge_assembler.hpp`
 
 Derived compile-only helper for future HUD/debug use:
 
 - packet: `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
 - assembler: `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
 - source boundary: `SchedulerReuseFlowObservabilityPacket`
+- current payload shape: valid-only marker
+
+Current compile-only preview above that helper:
+
+- packet: `src/game_loop_scheduler_reuse_preview_contracts.hpp`
+- assembler: `src/game_loop_scheduler_reuse_preview_assembler.hpp`
+- contents:
+  - `SchedulerReuseFlowObservabilityPacket`
+  - `SchedulerReuseDebugTelemetryPacket`
 
 Additional compile-only chain helper:
 
 - `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+- `src/game_loop_simulation_scheduler_lifecycle_runtime_assembler.hpp`
 
-Current effect:
+Current structural effect:
 
 - assembles `ReuseObservabilityPacket`
+- exposes reuse source/assembly contracts
+- isolates reuse packet assembly from reuse debug-bundle assembly
+- exposes a compile-only bridge from scheduler runtime packets into
+  `SimulationSchedulerLifecycleObservabilityPacket`
+- exposes a compile-only bridge from scheduler telemetry + explicit producer
+  flags + `FrameReuseRuntimeOwnerPacket` into
+  `SchedulerReuseObservabilityPacket`
+- exposes a compile-only bridge from lifecycle + scheduler telemetry + explicit
+  producer flags + `FrameReuseRuntimeOwnerPacket` into
+  `SchedulerReuseFlowObservabilityPacket`
 - assembles `SimulationSchedulerLifecycleObservabilityPacket`
 - assembles `SchedulerReuseObservabilityPacket`
 - assembles `SchedulerReuseFlowObservabilityPacket`
 - assembles `SchedulerReuseDebugTelemetryPacket`
+- assembles `SchedulerReusePreviewPacket`
 
-from one stack-local input bundle without touching `src/game_loop_system.hpp`
+from one stack-local input bundle without touching the broader critical host
+path beyond the already accepted narrow seam
+
+## Current live cut below the aggregate hierarchy
+
+One low live reuse cut now exists below the broader symmetric reuse aggregate:
+
+- `src/game_loop_system.hpp` now keeps one narrow
+  `GameLoopRuntime::TrackReuseRuntimeState`
+- `RenderTrackFrame(...)` captures request-side track reuse inputs and commits
+  track history locally
+- `TryBuildReuseObservabilityDebugBundle(...)` now builds one real track-only
+  `FrameReuseRuntimeOwnerPacket` on demand
+- simulation-side reuse remains neutral in that seam
+- cumulative reuse telemetry remains outside the live path
+
+This means:
+
+- the hierarchy above remains valid
+- but the lowest track-side source activation is no longer purely compile-only
+- the next symmetric retry should add only the missing simulation-side branch,
+  not restart the full reuse boundary from scratch
+
+The exact missing branch at that seam is documented in:
+
+- `SIMULATION_REUSE_SEAM_COMPLETION_PLAN.md`
 
 ## Hierarchy summary
 
@@ -382,6 +440,8 @@ Expanded dependency chain:
   - ? `TrackReuseDecisionViewPacket`
 - `FrameReuseTelemetry`
   - ? `TrackReuseTelemetryViewPacket`
+- `ReuseObservabilitySourceState`
+  - ? `ReuseObservabilityAssemblyInputs`
 - narrow reuse views
   - ? `ReuseObservabilityPacket`
 - drain view + completion view + scheduler telemetry view
@@ -418,9 +478,9 @@ Before any live retry, keep all of this unchanged:
 - `N-1` reuse policy ownership
 - current Master/Slave orchestration
 
-## Rules for the first future live retry
+## Rules for the next future live retry
 
-The first live retry using this hierarchy must:
+The next broad symmetric live retry using this hierarchy must:
 
 1. consume an already existing passive packet
 2. remove equivalent local logic in the same patch
@@ -428,16 +488,24 @@ The first live retry using this hierarchy must:
 4. avoid changing scheduling policy
 5. keep ISO at `4134912`
 
-Good first candidate shapes:
+Good next candidate shapes:
 
-- debug/presenter-only read of `SchedulerReuseObservabilityPacket`
-- local observability assembly point that replaces equivalent scattered reads
+- one local completion of the symmetric simulation-side branch in the same
+  reuse seam
+- only after that, a debug/presenter-only read of `ReuseObservabilityPacket`
+  with equivalent local simulation-side reads removed
 
 Bad first candidate shapes:
 
 - changing dispatch/drain policy
 - changing producer kick/fallback logic
 - mixing scheduler/reuse aggregation with audio, render, or bootstrap work
+
+## Current accepted envelope/result
+
+- stable build remains `4134912`
+- the code-side retry still consumed the known `4096`-byte budget
+- the inert ISO pad was reduced to preserve the stable final envelope
 
 ## Validation hooks
 
@@ -452,9 +520,12 @@ Stable build validation:
 
 ## Related documents
 
+- `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
+- `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 - `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `PASSIVE_CONTRACTS_INVENTORY.md`
 - `PASSIVE_TO_RUNTIME_INTEGRATION_PLAN.md`
 - `SIMULATION_SCHEDULER_PLAN.md`
+- `SCHEDULER_TRACK_RENDER_REUSE_FLOW_CONSOLIDATED.md`

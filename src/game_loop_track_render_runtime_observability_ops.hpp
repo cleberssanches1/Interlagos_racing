@@ -3,6 +3,7 @@
 #include "game_loop_runtime_state.hpp"
 #include "game_loop_track_render_producer_hint_assembler.hpp"
 #include "game_loop_track_render_sh2_presentation_assembler.hpp"
+#include "game_loop_track_render_sh2_presentation_runtime_assembler.hpp"
 #include "game_loop_track_render_telemetry_view_assembler.hpp"
 #include "track_render_transition_ops.hpp"
 #include "track_system.hpp"
@@ -53,21 +54,13 @@ inline bool TryBuildTrackRenderSh2PresentationPacket(
     uint32_t slaveDispatchSkipsTrackBusy,
     GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket& outPacket)
 {
-    if (!trackTelemetryView.valid)
-    {
-        outPacket = {};
-        return false;
-    }
-
-    outPacket = GameLoopObservabilityDomain::BuildTrackRenderSh2PresentationPacket(
+    return TryBuildTrackRenderSh2PresentationFromTelemetry(
         sh2Snapshot,
+        trackTelemetryView,
         useSafeTelemetryFormat,
         slaveDispatchCount,
         slaveDispatchSkipsTrackBusy,
-        true,
-        trackTelemetryView.producerJobInFlight,
-        trackTelemetryView.producerSafeModeActive);
-    return outPacket.valid;
+        outPacket);
 }
 
 } // namespace GameLoopRuntime

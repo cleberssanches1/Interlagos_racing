@@ -16,10 +16,10 @@ this area is close to Master/Slave timing and previous-frame reuse behavior.
 - no invalid opcode
 - no silent close
 
-## Current live retry blocker
+## Current broader live retry blocker
 
-The first narrow live retry of `Boundary D` was attempted after the compile-only
-groundwork was prepared.
+The first broader symmetric live retry of `Boundary D` was attempted after the
+compile-only groundwork was prepared.
 
 Observed result:
 
@@ -29,29 +29,25 @@ Observed result:
 
 So the current blocker is code-size budget, not boundary semantics.
 
-Use:
-
-- `DEBUG_TELEMETRY_SIZE_REDUCTION_PLAN.md`
-
-before reopening the first live retry for `Boundary D`.
-
 Latest measured result:
 
 - a decision-first retry was reattempted after the first three size-reduction
   passes
 - cumulative telemetry remained excluded
 - ISO still became `4139008`
-- the `4096` byte blocker remains unchanged
+- the `4096` byte blocker remains unchanged for the broader symmetric retry
 
 ## Current status
 
-- two narrow local live substitutions are now active in `src/game_loop_system.hpp`
+- three narrow local live substitutions are now active in `src/game_loop_system.hpp`
 - `SimulationSchedulerTelemetryViewPacket` is now assembled in
   `BuildSh2SplitTelemetrySnapshot()`
 - `TrackRenderProducerStatePacket` is now consumed in a separate local
   presentation/debug helper without changing `Sh2SplitTelemetrySnapshot`
-- the next recommended live candidate is Boundary D from
-  `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
+- the track-only reuse seam is now also active in
+  `TryBuildReuseObservabilityDebugBundle(...)`
+- the next recommended live candidate is the missing symmetric simulation-side
+  branch above that accepted track-only seam
 
 ## Runtime boundaries covered
 
@@ -126,15 +122,32 @@ Must remain unchanged:
 - safe mode behavior
 - render submission order
 
-### Step 3 - reuse family aggregate third
+### Step 3 - track-only reuse seam third
 
-Only after repeated stable runs from Steps 1 and 2:
+This step is now accepted.
+
+Applied shape:
+
+1. replace the empty runtime-owner capture in the local reuse seam
+2. capture only track-side reuse request state and committed history
+3. build the track-only runtime owner packet on demand
+4. keep simulation-side reuse neutral
+5. keep cumulative telemetry outside the live path
+
+Must remain unchanged:
+
+- reuse ownership
+- `N-1` policy behavior
+- simulation/track orchestration
+
+### Step 4 - symmetric reuse family aggregate fourth
+
+Only after repeated stable runs from Steps 1, 2, and 3:
 
 1. consume `ReuseObservabilityPacket` in one local debug/presenter-facing
    assembly point
 2. replace equivalent scattered reads of:
-   - simulation reuse view inputs
-   - track reuse view inputs
+   - the remaining simulation reuse view inputs
 3. keep the packet local to the same scope
 
 Must remain unchanged:
@@ -155,12 +168,13 @@ Preferred compile-only staging directly above Boundary D:
 Current narrowing status for that staging:
 
 - `ReuseObservabilityDebugPacket` is now decision-only
-- cumulative reuse counters stay outside the first Boundary D live retry
-- the first live return should therefore consume only:
+- cumulative reuse counters stay outside the first broad symmetric Boundary D
+  live retry
+- the accepted track-only retry already consumes only track-side decision data
+- the next broad symmetric return should therefore add only:
   - simulation reuse decision flags
-  - track reuse decision flags
 
-### Step 4 - scheduler/reuse aggregate last
+### Step 5 - scheduler/reuse aggregate last
 
 Only after the lower layers have each been proven stable independently:
 
@@ -174,7 +188,7 @@ This step should only happen when:
 - the integration is substitutional, not additive
 - no scheduling behavior moves in the same patch
 
-### Step 5 - flow aggregate only after lower observability is proven
+### Step 6 - flow aggregate only after lower observability is proven
 
 Only after the lifecycle and scheduler/reuse layers have each been proven
 stable independently:

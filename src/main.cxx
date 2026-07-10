@@ -9,6 +9,7 @@
 #include "render_pipeline.hpp"
 #include "runtime_null_systems.hpp"
 #include "car_audio_system.hpp"
+#include "cd_asset_bootstrap_runtime_bridge.hpp"
 #include "cd_asset_transition_ops.hpp"
 #include "memory_budget_runtime_bridge.hpp"
 #include "project_voice_router.hpp"
@@ -961,10 +962,17 @@ static int RunPhysicsPocMode()
     constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
-        const char* sbaPath = CdAssetDomain::ResolveSbaShadowModelPath();
-        if (sbaPath)
+        const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
+        if (sbaDecision.shouldAttemptSbaModelLoad)
         {
-            sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
+            sbaModel = std::make_unique<ModelObject>(
+                sbaDecision.resolvedSbaPath,
+                0,
+                false,
+                0,
+                false,
+                false,
+                false);
             if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
             {
                 // Configure SBA as a shadow-only model.
@@ -1207,10 +1215,17 @@ int GameApp::Run()
     constexpr bool kEnableSbaShadowModelLoad = true;
     if (renderCar && kEnableSbaShadowModelLoad)
     {
-        const char* sbaPath = CdAssetDomain::ResolveSbaShadowModelPath();
-        if (sbaPath)
+        const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
+        if (sbaDecision.shouldAttemptSbaModelLoad)
         {
-            sbaModel = std::make_unique<ModelObject>(sbaPath, 0, false, 0, false, false, false);
+            sbaModel = std::make_unique<ModelObject>(
+                sbaDecision.resolvedSbaPath,
+                0,
+                false,
+                0,
+                false,
+                false,
+                false);
             if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
             {
                 // Configure SBA as a shadow-only model.
@@ -1457,13 +1472,14 @@ int GameApp::Run()
             markerVerts,
             markerFaces);
 
-        const CarAnchorPoints anchors = CdAssetDomain::LoadCarAnchorPointsAsset();
+        const auto anchorDecision = Game::CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision();
+        const CarAnchorPoints& anchors = anchorDecision.anchors;
         int32_t anchorYawDeg = 0;
         bool anchorOffsetValid = false;
-        if (!markerOffsetValid)
+        if (!markerOffsetValid && anchorDecision.shouldUseAnchorFallback)
         {
             anchorOffsetValid = ComputeCarVisualYawOffsetFromAnchors(anchors, visualYawOffsetDeg);
-            if (anchors.valid)
+            if (anchorDecision.hasValidAnchors)
             {
                 const int32_t dxRaw = (anchors.front.X - anchors.rear.X).RawValue();
                 const int32_t dzRaw = (anchors.front.Z - anchors.rear.Z).RawValue();

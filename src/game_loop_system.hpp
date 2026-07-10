@@ -27,6 +27,7 @@
 #include "frame_reuse_observability_capture_ops.hpp"
 #include "game_loop_debug_ops.hpp"
 #include "game_loop_debug_state.hpp"
+#include "game_loop_car_shadow_runtime_assembler.hpp"
 #include "game_loop_low_work_overlay_assembly_ops.hpp"
 #include "game_loop_low_work_overlay_capture_ops.hpp"
 #include "game_loop_memory_debug_packet_assembler.hpp"
@@ -41,10 +42,15 @@
 #include "game_loop_observability_contracts.hpp"
 #include "game_loop_overlay_debug_presenter_ops.hpp"
 #include "game_loop_overlay_runtime_assembler.hpp"
+#include "game_loop_presentation_debug_assembler.hpp"
+#include "game_loop_presentation_debug_presenter_ops.hpp"
 #include "game_loop_presentation_ops.hpp"
+#include "game_loop_presenter_boundary_text_driving_hud_bridge_assembler.hpp"
+#include "game_loop_presenter_boundary_text_hud_presenter_ops.hpp"
 #include "game_loop_reuse_observability_debug_bundle_presenter_ops.hpp"
 #include "game_loop_reuse_source_owner_assembler.hpp"
-#include "game_loop_reuse_runtime_observability_ops.hpp"
+#include "game_loop_reuse_runtime_debug_bridge_assembler.hpp"
+#include "game_loop_track_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_render_presentation_observability_presenter_ops.hpp"
 #include "game_loop_track_render_producer_hint_assembler.hpp"
 #include "game_loop_track_render_runtime_observability_ops.hpp"
@@ -196,6 +202,7 @@ public:
             if (!ValidateFramePreconditions()) continue;
             ResetPerFrameStageTraces();
             ResetPerFrameSimulationTelemetry();
+            ResetPerFrameTrackRenderHintCache();
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
             CaptureBeginStageTraces();
 
@@ -328,6 +335,12 @@ private:
     {
         simState_.masterWaitTicksThisFrame = 0u;
         simState_.slaveLastJobTicksThisFrame = 0u;
+    }
+
+    void ResetPerFrameTrackRenderHintCache()
+    {
+        trackProducerHintCached_ = false;
+        trackProducerJobInFlightHint_ = false;
     }
 
     void CaptureBeginStageTraces()
@@ -817,17 +830,26 @@ private:
                                 simOut.frameState.carYawDeg);
     }
 
-    bool IsTrackProducerJobInFlightHint() const
+    bool IsTrackProducerJobInFlightHint()
     {
+        if (trackProducerHintCached_)
+        {
+            return trackProducerJobInFlightHint_;
+        }
+
         GameLoopRuntime::TrackRenderProducerHintPacket producerHint{};
         if (!GameLoopRuntime::TryBuildTrackRenderProducerHintPacket(context_.trackSystem,
                                                                     context_.TrackSystemReady(),
                                                                     context_.RenderTrack(),
                                                                     producerHint))
         {
+            trackProducerHintCached_ = true;
+            trackProducerJobInFlightHint_ = false;
             return false;
         }
-        return producerHint.producerJobInFlight;
+        trackProducerHintCached_ = true;
+        trackProducerJobInFlightHint_ = producerHint.producerJobInFlight;
+        return trackProducerJobInFlightHint_;
     }
 
     bool TryBuildTrackRenderTelemetryView(
@@ -856,42 +878,9 @@ private:
     bool TryBuildReuseObservabilityDebugBundle(
         GameLoopObservabilityDomain::ReuseObservabilityDebugBundle& outBundle) const
     {
-        const auto reuseSourceState = CaptureReuseObservabilitySourceState();
-        const auto reuseInputs =
-            GameLoopObservabilityDomain::CaptureReuseObservabilityAssemblyInputs(reuseSourceState);
         return GameLoopObservabilityDomain::TryBuildReuseObservabilityDebugBundle(
-            reuseInputs,
+            GameLoopRuntime::BuildTrackReuseRuntimeOwnerPacket(trackReuseState_),
             outBundle);
-    }
-
-    GameLoopObservabilityDomain::ReuseObservabilitySourceState
-    CaptureReuseObservabilitySourceState() const
-    {
-        return GameLoopObservabilityDomain::CaptureReuseObservabilitySourceState(
-            CaptureReuseObservabilitySourceOwnerPacket());
-    }
-
-    GameLoopObservabilityDomain::ReuseObservabilitySourceOwnerPacket
-    CaptureReuseObservabilitySourceOwnerPacket() const
-    {
-        return GameLoopObservabilityDomain::BuildReuseObservabilitySourceOwnerPacket(
-            CaptureFrameReuseObservabilitySourceOwnerPacket());
-    }
-
-    FrameReuseDomain::ReuseObservabilitySourceOwnerPacket
-    CaptureFrameReuseObservabilitySourceOwnerPacket() const
-    {
-        return FrameReuseDomain::CaptureReuseObservabilitySourceOwnerPacket(
-            nullptr,
-            nullptr,
-            nullptr);
-    }
-
-    GameLoopObservabilityDomain::ReuseObservabilityAssemblyInputs
-    CaptureReuseObservabilityAssemblyInputs() const
-    {
-        return GameLoopObservabilityDomain::CaptureReuseObservabilityAssemblyInputs(
-            CaptureReuseObservabilitySourceState());
     }
 
     void BackoffSimulationSlaveDispatch()
@@ -1388,7 +1377,7 @@ private:
         shadowDebug_.yawDeg = shadowYawDeg;
     }
 
-    void DrawCarShadowBlob(const CarRenderFrameState& carFrame)
+    void DrawCarShadowBlob(const Game::CarRenderSystem::ShadowPacket& shadowPacket)
     {
         using SRL::Math::Types::Angle;
         using SRL::Math::Types::Fxp;
@@ -1397,19 +1386,12 @@ private:
 
         constexpr Fxp kShadowHalfLength = Fxp::BuildRaw(0x002C0000); // 44.0 (+~30%)
         constexpr Fxp kShadowHalfWidth = Fxp::BuildRaw(0x00150000);  // 21.0 (+~30%)
-        constexpr Fxp kShadowGroundBias = Fxp::BuildRaw(10 << 16);   // +10.0 over sampled ground Y
         // Scene2D sort bias: positive pushes farther back in the VDP1 order used here.
         constexpr Fxp kShadowSortBias = Fxp::BuildRaw(0x00100000);   // force shadow behind car
         constexpr SRL::Types::HighColor kShadowColor = SRL::Types::HighColor::FromRGB555(0, 0, 0);
 
-        Vector3D center = carFrame.renderPosition;
-        if (carFrame.runtimeDebug.groundMask != 0u)
-        {
-            center.Y = Fxp::BuildRaw(static_cast<int32_t>(carFrame.runtimeDebug.groundTargetY) << 16);
-        }
-        center.Y += kShadowGroundBias;
-
-        const int32_t shadowYawDeg = carFrame.renderYawDeg;
+        Vector3D center = shadowPacket.shadowPosition;
+        const int32_t shadowYawDeg = shadowPacket.shadowYawDeg;
         StoreShadowDebugState(center, shadowYawDeg);
         const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
         const Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
@@ -1491,22 +1473,15 @@ private:
         SRL::Scene2D::SetEffect(SRL::Scene2D::SpriteEffect::HalfTransparency, prevHalfTrans ? 1 : 0);
     }
 
-    void DrawCarShadowModel(const CarRenderFrameState& carFrame)
+    void DrawCarShadowModel(const Game::CarRenderSystem::ShadowPacket& shadowPacket)
     {
         using SRL::Math::Types::Angle;
         using SRL::Math::Types::Fxp;
-        using SRL::Math::Types::Vector3D;
 
         if (!context_.carShadowRenderer) return;
 
-        Vector3D shadowPos = carFrame.renderPosition;
-        if (carFrame.runtimeDebug.groundMask != 0u)
-        {
-            shadowPos.Y = Fxp::BuildRaw(static_cast<int32_t>(carFrame.runtimeDebug.groundTargetY) << 16);
-        }
-        shadowPos.Y += Fxp::BuildRaw(1 << 16);
-
-        const int32_t shadowYawDeg = carFrame.renderYawDeg;
+        const SRL::Math::Types::Vector3D& shadowPos = shadowPacket.shadowPosition;
+        const int32_t shadowYawDeg = shadowPacket.shadowYawDeg;
         StoreShadowDebugState(shadowPos, shadowYawDeg);
         const Angle yaw =
             Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
@@ -1574,11 +1549,19 @@ private:
 
         if constexpr (kUseBlobShadow)
         {
-            DrawCarShadowBlob(carFrame);
+            constexpr int32_t kShadowGroundBiasUnitsBlob = 10;
+            DrawCarShadowBlob(GameLoopRuntime::BuildCarShadowPrepPacket(carFrame,
+                                                                        true,
+                                                                        false,
+                                                                        kShadowGroundBiasUnitsBlob));
         }
         if (context_.RenderCarShadowModel() && context_.carShadowRenderer)
         {
-            DrawCarShadowModel(carFrame);
+            constexpr int32_t kShadowGroundBiasUnitsModel = 1;
+            DrawCarShadowModel(GameLoopRuntime::BuildCarShadowPrepPacket(carFrame,
+                                                                         false,
+                                                                         true,
+                                                                         kShadowGroundBiasUnitsModel));
         }
     }
 
@@ -1663,6 +1646,16 @@ private:
     {
         if (!IsTrackFrameEnabled())
         {
+            lastSubmittedTrackFacesThisFrame_ = 0u;
+            GameLoopRuntime::CaptureTrackReuseRuntimeRequest(frameCounter_,
+                                                             latestActiveSegmentId_,
+                                                             false,
+                                                             false,
+                                                             trackReuseState_);
+            GameLoopRuntime::CommitTrackReuseRuntimeFrame(frameCounter_,
+                                                          latestActiveSegmentId_,
+                                                          false,
+                                                          trackReuseState_);
             CaptureTrackRenderDisabledTraces();
             return;
         }
@@ -1678,6 +1671,13 @@ private:
             context_.carWorldPosition);
         const auto trackRenderPacket =
             TrackRenderDomain::BuildTrackRenderPacket(trackFrameContext, context_.trackSystem);
+        lastSubmittedTrackFacesThisFrame_ = trackRenderPacket.submittedTrackFaces;
+        GameLoopRuntime::CaptureTrackReuseRuntimeRequest(
+            frameCounter_,
+            latestActiveSegmentId_,
+            true,
+            IsTrackProducerJobInFlightHint(),
+            trackReuseState_);
 
         context_.trackSystem->SetObservedCarSegmentId(trackRenderPacket.observedCarSegmentId);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
@@ -1693,6 +1693,10 @@ private:
         CaptureTrackDrawStageTraces();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
         context_.trackSystem->EndFrame();
+        GameLoopRuntime::CommitTrackReuseRuntimeFrame(frameCounter_,
+                                                      latestActiveSegmentId_,
+                                                      trackRenderPacket.valid,
+                                                      trackReuseState_);
         CaptureTrackEndStageTraces();
     }
 
@@ -1741,22 +1745,7 @@ private:
 
     uint32_t GetSubmittedTrackFacesThisFrame() const
     {
-        if (context_.TrackSystemReady() && context_.RenderTrack() && context_.trackSystem)
-        {
-            const auto trackFrameContext = TrackRenderDomain::BuildTrackFrameContext(
-                frameCounter_,
-                latestActiveSegmentId_,
-                true,
-                context_.trackSegOffset,
-                context_.lightDirection,
-                lastValidCameraLocation_,
-                lastValidLookTarget_,
-                context_.carWorldPosition);
-            const auto trackPacket =
-                TrackRenderDomain::BuildTrackRenderPacket(trackFrameContext, context_.trackSystem);
-            return trackPacket.submittedTrackFaces;
-        }
-        return 0u;
+        return IsTrackFrameEnabled() ? lastSubmittedTrackFacesThisFrame_ : 0u;
     }
 
     uint32_t GetSubmittedCarFacesThisFrame() const
@@ -1797,7 +1786,8 @@ private:
         if (Game::MemoryBudgetRuntimeBridge::ShouldAvoidDebugTransientOptionalTelemetry()) return;
 
         PrintSegmentOverlapDiagnostics(framePresentation.submittedTrackFaces,
-                                       framePresentation.submittedCarFaces);
+                                       framePresentation.submittedCarFaces,
+                                       trackTelemetryView);
         GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket sh2Presentation{};
         if (TryBuildTrackRenderSh2PresentationPacket(framePresentation.sh2,
                                                      trackTelemetryView,
@@ -1872,29 +1862,18 @@ private:
         const Game::CarSystem::DrivetrainDebugSnapshot drivetrain =
             GameLoopOverlayDomain::BuildExtendedDrivetrainOverlaySnapshot(
                 (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr);
-        SRL::Debug::Print(0, 12, "KM/H:%d GEAR:%c RPM:%d    ",
-                          static_cast<int>(drivetrain.speedKmh),
-                          drivetrain.gearChar,
-                          static_cast<int>(drivetrain.engineRpm));
-        if (drivetrain.shiftFrames > 0u)
-        {
-            SRL::Debug::Print(0, 11, "SHIFT %d>%d f:%u   ",
-                              static_cast<int>(drivetrain.shiftRpmBefore),
-                              static_cast<int>(drivetrain.shiftRpmAfter),
-                              static_cast<unsigned>(drivetrain.shiftFrames));
-        }
-        else
-        {
-            SRL::Debug::Print(0, 11, "                         ");
-        }
+        const auto drivingHud = GameLoopRuntime::BuildDrivingHudTextPacket(drivetrain);
+        GameLoopRuntime::PresentPresenterBoundaryHudStatusTextPacket(
+            GameLoopRuntime::BuildPresenterBoundaryStatusTextPacket(drivingHud));
+        GameLoopRuntime::PresentDrivingHudShiftTextPacket(drivingHud);
     }
 
-    void PrintSegmentOverlapDiagnostics(uint32_t submittedTrackFaces,
-                                        uint32_t submittedCarFaces)
+    void PrintSegmentOverlapDiagnostics(
+        uint32_t submittedTrackFaces,
+        uint32_t submittedCarFaces,
+        const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView)
     {
         OverlayDiagnosticsSnapshot overlay{};
-        GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
-        (void)TryBuildTrackRenderTelemetryView(trackTelemetryView);
         GameLoopOverlayDomain::SegmentSnapshotAssemblyInputs overlayInputs{};
         overlayInputs.ports.track =
             (context_.TrackSystemReady() && context_.trackSystem) ? context_.trackSystem : nullptr;
@@ -2875,10 +2854,14 @@ private:
     SimulationRuntimeState simState_{};
     CarRenderPrepareTask carPrepareTask_{};
     CarPrepareRuntimeState carPrepareState_{};
+    GameLoopRuntime::TrackReuseRuntimeState trackReuseState_{};
     int16_t latestActiveSegmentId_ = -1;
     ShadowDebugState shadowDebug_{};
     int32_t cameraSlopeLiftRaw_ = 0;
     OverlayEventState overlayEventState_{};
+    bool trackProducerHintCached_ = false;
+    bool trackProducerJobInFlightHint_ = false;
+    uint16_t lastSubmittedTrackFacesThisFrame_ = 0u;
     uint16_t lastRenderedCarFacesThisFrame_ = 0u;
     SRL::Math::Types::Vector3D lastValidCarRenderPos_{
         SRL::Math::Types::Fxp::BuildRaw(0),

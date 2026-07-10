@@ -261,3 +261,28 @@ Current runtime consumption is intentionally minimal:
 - consume it only in bootstrap-local cart-availability checks
 - keep direct asset-loading flows untouched for now
 
+## Applied safe bootstrap runtime bridges
+
+Two narrow bootstrap substitutions are now in place for the current CD slice:
+
+- `src/cd_asset_bootstrap_runtime_bridge.hpp`
+- `src/main.cxx`
+
+Current behavior remains intentionally equivalent:
+
+- bootstrap still resolves the `SBA` path through
+  `CdAssetDomain::ResolveSbaShadowModelPath()`
+- bootstrap still loads `CAR1_ANCHORS.JSON` through
+  `CdAssetDomain::LoadCarAnchorPointsAsset()`
+- `ModelObject` construction ownership stays in `src/main.cxx`
+- `MeshRenderer` construction ownership stays in `src/main.cxx`
+- anchor fallback math ownership stays in `src/main.cxx`
+- boot order and fallback timing stay unchanged
+
+Current runtime consumption is intentionally narrow:
+
+- build one `CdAssetSbaBootstrapDecisionPacket`
+- consume only `shouldAttemptSbaModelLoad` and `resolvedSbaPath`
+- build one `CdAssetAnchorBootstrapDecisionPacket`
+- consume only `shouldUseAnchorFallback`, `hasValidAnchors`, and `anchors`
+

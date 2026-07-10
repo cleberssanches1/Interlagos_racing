@@ -12,6 +12,8 @@ Prepare the extraction of car visual preparation out of `src/game_loop_system.hp
 - `src/car_render_submitter.hpp`
 - `src/car_render_transition_ops.hpp`
 - `src/car_render_system.hpp`
+- `src/game_loop_car_shadow_prep_preview_contracts.hpp`
+- `src/game_loop_car_shadow_prep_preview_assembler.hpp`
 - `src/game_loop_car_visual_packet.hpp`
 - `src/game_loop_car_visual_packet_assembler.hpp`
 
@@ -97,6 +99,16 @@ Passive replacement coverage already available:
 2. `CarRenderDomain::SeedShadowPacket(...)`
 3. `CarRenderDomain::AnchorShadowToGround(...)`
 4. `CarRenderDomain::ConfigureShadowModes(...)`
+
+Current compile-only preview above this slice:
+
+1. `src/game_loop_car_shadow_prep_preview_contracts.hpp`
+2. `src/game_loop_car_shadow_prep_preview_assembler.hpp`
+
+Current preview payload:
+
+- `RenderPacket`
+- `ShadowPacket`
 
 Important constraint:
 
@@ -316,6 +328,13 @@ Accepted runtime shape:
 - `RenderCarShadowIfEnabled(...)` selects the ground-bias variant and dispatches
   to the unchanged draw paths
 
+Current implementation note:
+
+- runtime helper: `src/game_loop_car_shadow_runtime_assembler.hpp`
+- the helper now builds one narrow `ShadowPacket` per active draw variant from
+  the existing `CarRenderFrameState`
+- draw entrypoints and submit ownership remain unchanged
+
 ### Replacement C - package submit telemetry without moving ownership
 
 Keep:
@@ -350,6 +369,10 @@ For the current `CarRender` state, the best next runtime candidate is:
 3. prepare the shadow-prep substitution map
 4. only then attempt a sector-neutral shadow-data cut that can later share
    budget with submit/telemetry packaging
+
+That substitution map is now documented in:
+
+- `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md`
 
 That shadow-data cut should target only:
 

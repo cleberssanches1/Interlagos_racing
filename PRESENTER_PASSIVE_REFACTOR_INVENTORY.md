@@ -6,6 +6,15 @@ Provide one consolidated inventory of the passive presenter/observability/render
 refactor already completed, so the next runtime step can be chosen without
 re-reading multiple plans.
 
+Branch status note:
+
+- the older `PresenterFacade*`, `PresenterFrameEndDecision*`, and
+  `PresenterHudTelemetryDecision*` chains described later in this document are
+  historical/archival in this branch
+- their source headers are no longer present under `src/`
+- the current highest presenter compile-only boundary still present in source is
+  `PresenterSummaryObservabilityPacket`
+
 ## Scope
 
 This inventory covers only the passive presenter-facing groundwork around:
@@ -130,6 +139,9 @@ Files:
 - `src/game_loop_presenter_input_assembler.hpp`
 - `src/game_loop_presenter_observability_input_contracts.hpp`
 - `src/game_loop_presenter_observability_input_assembler.hpp`
+- `src/game_loop_presenter_scheduler_reuse_bridge_assembler.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_assembler.hpp`
 
 Main packet:
 
@@ -156,6 +168,11 @@ Additional purpose:
 - preserve one future-ready observability-side adapter for presenter input
 - keep scheduler/reuse debug telemetry attachable to presenter input without
   widening ownership in runtime
+- keep a sibling compile-only bridge that derives scheduler/reuse debug input
+  from scheduler telemetry + producer flags + `frame_reuse` runtime-owner state
+  without reopening `src/game_loop_system.hpp`
+- keep one compile-only preview directly above that sibling bridge so the
+  presenter summary side can validate this attach point without runtime changes
 
 ### 7. Presenter top-level summary
 
@@ -183,6 +200,144 @@ Current summary fields:
 - face counters
 - query counters
 - frame id
+
+### 7.5. Current top presenter boundary
+
+Files:
+
+- `src/game_loop_presenter_summary_observability_contracts.hpp`
+- `src/game_loop_presenter_summary_observability_assembler.hpp`
+
+Main packet:
+
+- `PresenterSummaryObservabilityPacket`
+
+Purpose:
+
+- keep the current highest presenter compile-only boundary aligned to files that
+  still exist in `src/`
+- group the enriched top-level summary with the narrowed observability input
+  without reviving removed facade/decision shims
+
+### 7.6. Current presenter presence-decision boundary
+
+Files:
+
+- `src/game_loop_presenter_presence_decision_contracts.hpp`
+- `src/game_loop_presenter_presence_decision_assembler.hpp`
+
+Main packet:
+
+- `PresenterPresenceDecisionPacket`
+
+Purpose:
+
+- expose the narrowest current presenter decision surface that still exists in
+  `src/`
+- derive direct presence decisions from `PresenterSummaryObservabilityPacket`
+  without reviving the removed facade/frame-end chains
+
+### 7.7. Current presenter presence preview
+
+Files:
+
+- `src/game_loop_presenter_presence_preview_contracts.hpp`
+- `src/game_loop_presenter_presence_preview_assembler.hpp`
+
+Main packet:
+
+- `PresenterPresencePreviewPacket`
+
+Purpose:
+
+- keep one compile-only preview directly above the current presenter
+  presence-decision boundary
+- validate the local chain
+  `PresenterInputBundle -> PresenterSummaryObservabilityPacket ->
+  PresenterPresenceDecisionPacket`
+  without reviving removed facade/frame-end shims
+
+### 7.8. Presenter scheduler/reuse summary preview
+
+Files:
+
+- `src/game_loop_presenter_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_assembler.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_preview_assembler.hpp`
+
+Main packet:
+
+- `PresenterSummarySchedulerReusePreviewPacket`
+
+Purpose:
+
+- keep one compile-only preview directly above the scheduler/reuse presenter
+  attach point and the presenter summary boundary
+- validate the local chain
+  `SchedulerReuseDebugTelemetryPacket -> PresenterObservabilityInputPacket ->
+  PresenterSummaryObservabilityPacket`
+  without runtime changes
+
+### 7.9. Presenter top boundary preview
+
+Files:
+
+- `src/game_loop_presenter_boundary_preview_contracts.hpp`
+- `src/game_loop_presenter_boundary_preview_assembler.hpp`
+
+Main packet:
+
+- `PresenterBoundaryPreviewPacket`
+
+Purpose:
+
+- keep one compile-only packet at the current highest presenter boundary that
+  still exists in this branch
+- group the current presenter local-decision branch and the current
+  scheduler/reuse summary branch in one place
+- validate the local chain
+  `PresenterPresencePreviewPacket + PresenterSummarySchedulerReusePreviewPacket`
+  without runtime changes
+
+### 7.10. Presenter top boundary view
+
+Files:
+
+- `src/game_loop_presenter_boundary_view_contracts.hpp`
+- `src/game_loop_presenter_boundary_view_assembler.hpp`
+
+Main packet:
+
+- `PresenterBoundaryViewPacket`
+
+Purpose:
+
+- expose one minimal presenter-side attach packet above the current top preview
+- keep only the small subset useful for a future non-critical textual helper:
+  presence decisions, observability/scheduler-reuse flags, speed/gear/rpm, and
+  frame id
+- avoid carrying the broader nested preview hierarchy into the next compile-only
+  consumer
+
+Additional compile-only consumer:
+
+- `src/game_loop_presenter_boundary_text_contracts.hpp`
+- `src/game_loop_presenter_boundary_text_assembler.hpp`
+- `src/game_loop_presenter_boundary_view_presenter_ops.hpp`
+
+Purpose:
+
+- provide one textual packet layer above `PresenterBoundaryViewPacket`
+- provide one narrow textual presenter helper above `PresenterBoundaryViewPacket`
+- keep any future retry localized to this view packet instead of the broader
+  preview hierarchy
+
+Minimal future runtime reopening plan:
+
+- `PRESENTER_BOUNDARY_TEXT_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `PRESENTER_BOUNDARY_TEXT_FIRST_STATUS_RETRY_PATCH_PLAN.md`
+- `PRESENTER_BOUNDARY_DECISION_RETRY_BLOCKER.md`
 
 ### 8. Facade handoff layer
 
@@ -429,4 +584,6 @@ Do not do these as the first runtime presenter patch:
 - `GAME_LOOP_PRESENTER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `GAME_LOOP_PRESENTER_RUNTIME_MINIMAL_INTEGRATION_PLAN.md`
 - `GAME_LOOP_PRESENTER_RUNTIME_ALTERNATIVES.md`
+- `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
+- `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `MEMORY_BUDGET_PASSIVE_FLOW_PLAN.md`

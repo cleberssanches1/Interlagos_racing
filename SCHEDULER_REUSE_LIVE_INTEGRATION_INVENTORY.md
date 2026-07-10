@@ -22,7 +22,8 @@ It does not authorize a live patch by itself.
 ## Current live status
 
 The `scheduler/reuse observability` chain is now partially live through two
-narrow local observability-only substitutions.
+narrow local observability-only substitutions plus one narrow track-only reuse
+activation.
 
 No broad scheduler/reuse aggregate is consumed live in critical runtime files:
 
@@ -36,22 +37,64 @@ No broad scheduler/reuse aggregate is consumed live in critical runtime files:
 Current runtime ownership remains local at the existing scheduler, simulation,
 and producer call sites.
 
-## Current live retry blocker
+## Current active low live boundary
 
-The first live retry attempt for `Boundary D` was not retained.
+### Boundary C.5 - track-only reuse seam activation
+
+Live file:
+
+- `src/game_loop_system.hpp`
+
+Live accessor:
+
+- `TryBuildReuseObservabilityDebugBundle(...)`
+
+Current live timing:
+
+- assembled on demand during frame HUD / telemetry presentation
+
+Current live substitution shape:
+
+- the previous empty runtime-owner capture was replaced in place
+- the host now feeds one real track-only `FrameReuseRuntimeOwnerPacket`
+- that packet is built from one narrow local `TrackReuseRuntimeState`
+- track history is committed during `RenderTrackFrame(...)`
+- the current request snapshot is captured in the same local track runtime flow
+- simulation-side reuse remains neutral in this seam
+- cumulative reuse telemetry remains out of the live runtime path
+
+Current ownership kept local:
+
+- scheduler runtime ownership
+- track producer ownership
+- final reuse debug presentation cadence
+- simulation-side reuse ownership
+
+Accepted validation result:
+
+- stable ISO preserved at `4134912`
+- passive headers passed
+- observability headers passed
+
+## Current broader live retry blocker
+
+The first broader symmetric live retry for `Boundary D` is still not retained.
 
 Reason:
 
-- it pushed the ISO from `4134912` to `4139008`
-- exact regression budget was `4096` bytes
+- the code-side live retry budget is still `4096` bytes
+- the accepted track-only retry preserved the final ISO only by reducing the
+  inert ISO pad, not by reopening the full symmetric reuse branch
 
 Current required pre-step:
 
-- reduce debug / telemetry code size first using
-  `DEBUG_TELEMETRY_SIZE_REDUCTION_PLAN.md`
-- latest reattempt result confirms the blocker still holds:
-  - decision-first retry still raised the ISO to `4139008`
-  - cumulative telemetry was not the cause
+- identify one equally narrow remove-first simulation-side substitution, or
+- recover enough always-live budget before reopening the broader symmetric
+  reuse aggregate
+
+Exact planning document for that missing branch:
+
+- `SIMULATION_REUSE_SEAM_COMPLETION_PLAN.md`
 
 ## Current live boundary
 
@@ -184,18 +227,53 @@ Prepared derived local bundle presenter:
 
 - `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`
 
+Prepared higher compile-only preview above the local simulation-side debug
+boundary:
+
+- `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
+- `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
+- `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
+
+Prepared higher compile-only presenter/resumo aggregate above that preview:
+
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_preview_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_preview_assembler.hpp`
+
+Prepared sibling compile-only presenter/resumo view/text above that aggregate:
+
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_view_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_view_assembler.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_text_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_text_assembler.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_text_presenter_ops.hpp`
+
+Current role:
+
+- keep the next compile-only growth above Boundary F
+- aggregate one scheduler/reuse flow preview with the new local simulation-side
+  debug preview boundary
+- keep one presenter helper directly above that aggregate without reopening the
+  runtime owner seam
+- keep one presenter/resumo aggregate directly above that helper
+- keep one presenter/resumo view/text sibling directly above that aggregate
+- keep one presenter/resumo text presenter directly above that view/text
+- avoid reopening the runtime owner seam while the simulation-side live retry
+  remains blocked
+
 Current live posture:
 
-- compile-only groundwork remains ready
-- runtime retry is deferred until the `4 KB` budget is recovered
+- lower-level groundwork remains ready
+- the track-only low live seam below this aggregate is now active
+- the broader symmetric runtime retry remains deferred until the next
+  substitutional branch is identified
 - first size-reduction pass already removed duplicate packet-overload glue from
   the bundle/local helper stack
 - second size-reduction pass already compressed the reuse presenter from two
   lines into one compact line
 - third size-reduction pass already removed the extra compile-only local helper
   layer and left the bundle presenter as the narrowest remaining helper
-- even after those reductions, the decision-first live retry still hit the same
-  `+4096` byte ISO regression and was reverted
+- even after those reductions, the broader decision-first symmetric live retry
+  still hit the same `+4096` byte ISO regression and was reverted
 
 ### Boundary E - scheduler lifecycle aggregate
 
@@ -232,24 +310,31 @@ Prepared off-path chain helper:
 
 ## Recommended first live boundary
 
-The first acceptable future live retry after the current live cuts should target
-only Boundary D.
+The next acceptable future live retry after the current live cuts should target
+only the symmetric branch completion above Boundary C.5.
 
 Patch shape:
 
 1. reuse the already-live local scheduler/producer observability helpers
-2. add `ReuseObservabilityPacket` in the same local observability-facing helper
-   or its immediate sibling
-3. remove equivalent reuse-view reads in the same patch
-4. keep packet assembly stack-local
+2. reuse the now-live track-only reuse seam
+3. add only the missing simulation-side reuse substitution in the same local
+   observability-facing helper or its immediate sibling
+4. remove equivalent simulation-side reuse reads in the same patch
+5. keep packet assembly stack-local
 
 Why this is next:
 
 - Boundary A is already active and stable
 - Boundary C is already active and stable
-- reuse observability is the next already-prepared aggregate above those cuts
+- Boundary C.5 is already active and stable
+- the symmetric reuse aggregate is the next already-prepared cut above those
+  live slices
 - it still avoids touching `N-1` reuse semantics
 - it keeps the retry substitutional
+
+The exact missing simulation-side branch is documented in:
+
+- `SIMULATION_REUSE_SEAM_COMPLETION_PLAN.md`
 
 ## Current prohibited live moves
 
@@ -264,9 +349,9 @@ Do not do these in the first scheduler/reuse live retry:
 
 ## Current investigation posture
 
-Because recent ultra-narrow retries could still regress emulator startup even
-while preserving ISO `4134912`, the immediate next step should prefer external
-instrumentation over another live retry in `src/game_loop_system.hpp`.
+Because the new low live seam is already accepted, immediate work can now stay
+documentation-first and remove-first, instead of reopening broad experimentation
+in `src/game_loop_system.hpp`.
 
 Use:
 
@@ -309,6 +394,10 @@ Required after every future live attempt:
 
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
 - `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
+- `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`
+- `PRESENTER_SUMMARY_SCHEDULER_REUSE_SIMULATION_BOUNDARY_CONSOLIDATED.md`
+- `PRESENTER_SUMMARY_SCHEDULER_REUSE_SIMULATION_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `PASSIVE_TO_RUNTIME_INTEGRATION_PLAN.md`
 - `PASSIVE_CONTRACTS_INVENTORY.md`

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "frame_reuse_runtime_observability_source_assembler.hpp"
 #include "frame_reuse_runtime_observability_owner_assembler.hpp"
 
 namespace FrameReuseDomain
@@ -18,6 +19,12 @@ inline ReuseObservabilitySourceSnapshot CaptureReuseObservabilitySourceSnapshot(
     return BuildReuseObservabilitySourceSnapshot(simulationDecision,
                                                  trackDecision,
                                                  telemetry);
+}
+
+inline ReuseObservabilitySourceSnapshot CaptureReuseObservabilitySourceSnapshot(
+    const FrameReuseRuntimeOwnerPacket& runtimeOwnerPacket)
+{
+    return BuildReuseObservabilitySourceSnapshot(runtimeOwnerPacket);
 }
 
 inline ReuseObservabilitySourceOwnerPacket CaptureEmptyReuseObservabilitySourceOwnerPacket()

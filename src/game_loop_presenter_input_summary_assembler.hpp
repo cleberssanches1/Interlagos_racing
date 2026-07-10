@@ -19,6 +19,7 @@ inline void SeedPresenterInputSummaryPacket(const PresenterInputBundle& inputBun
     outPacket.hasCar = inputBundle.renderDebug.hasCar;
     outPacket.hasOverlay = inputBundle.observabilityInput.overlayDebug.valid;
     outPacket.hasObservability = inputBundle.observabilityInput.hasObservability;
+    outPacket.hasSchedulerReuseDebug = inputBundle.observabilityInput.hasSchedulerReuseDebug;
     outPacket.hasMemoryDebug = inputBundle.observabilityInput.overlayDebug.hasMemoryDebug;
     outPacket.speedKmh = inputBundle.presentation.drivingHud.speedKmh;
     outPacket.gearChar = inputBundle.presentation.drivingHud.gearChar;

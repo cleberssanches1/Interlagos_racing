@@ -313,12 +313,61 @@ That next reuse groundwork now has two passive layers:
 - `TrackReuseDecisionViewPacket`
 - `TrackReuseTelemetryViewPacket`
 
+One higher track-only aggregate now also exists above them:
+
+- `TrackReuseObservabilityPacket`
+
+One compile-only preview now also exists above that aggregate:
+
+- `TrackReusePreviewPacket`
+
+One compile-only presenter/debug helper now also exists above that preview:
+
+- `PresentTrackReusePreviewPacket(...)`
+
+One compile-only runtime bridge now also exists aligned to the real host seam:
+
+- `BuildTrackReuseRuntimeObservabilityPacket(...)`
+- `BuildTrackReuseRuntimePreviewPacket(...)`
+
+One compile-only presenter helper now also exists directly above that seam:
+
+- `PresentTrackReuseRuntimePreviewPacket(...)`
+
+One narrow live seam is now also accepted at that same host anchor:
+
+- `src/game_loop_system.hpp` captures one local `TrackReuseRuntimeState`
+- `RenderTrackFrame(...)` now records the narrow request-side and committed
+  history data for track reuse
+- `TryBuildReuseObservabilityDebugBundle(...)` now builds one real track-only
+  `FrameReuseRuntimeOwnerPacket`
+- simulation-side reuse remains neutral there
+
 Current split:
 
 - `TrackReuseDecisionViewPacket`
   - final decision flags/slots
 - `TrackReuseTelemetryViewPacket`
   - accumulated track reuse counters only
+- `TrackReuseObservabilityPacket`
+  - narrow track-only aggregate for future live callers before they need the
+    broader cross-domain `ReuseObservabilityPacket`
+- `TrackReusePreviewPacket`
+  - compile-only inspection point for
+    `TrackReuseDecisionViewPacket + TrackReuseTelemetryViewPacket ->
+    TrackReuseObservabilityPacket`
+- `PresentTrackReusePreviewPacket(...)`
+  - compile-only textual consumer for the same chain
+- `BuildTrackReuseRuntimeObservabilityPacket(...)`
+  - compile-only bridge from `FrameReuseRuntimeOwnerPacket` into the narrow
+    track-only aggregate
+- `BuildTrackReuseRuntimePreviewPacket(...)`
+  - compile-only bridge from the same seam into the preview guard rail
+- `PresentTrackReuseRuntimePreviewPacket(...)`
+  - compile-only presenter/debug helper immediately above that seam
+- accepted live seam at the same anchor
+  - real track-only runtime-owner capture only
+  - no simulation-side live reuse yet
 
 This keeps future live retry options narrow on both the decision side and the
 telemetry side without pulling the full `FrameReuseTelemetry` object into a
@@ -350,10 +399,10 @@ It groups only the narrow reuse views:
 
 - `SimulationReuseDecisionViewPacket`
 - `SimulationReuseTelemetryViewPacket`
-- `TrackReuseDecisionViewPacket`
-- `TrackReuseTelemetryViewPacket`
+- `TrackReuseObservabilityPacket`
 
-This is intentionally still compile-only groundwork.
+This broader cross-domain packet is intentionally still compile-only groundwork
+above the accepted track-only low live seam.
 
 Current benefit:
 
@@ -380,3 +429,15 @@ Current intent:
 The dedicated hierarchy/order for this family is now documented in:
 
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
+
+The first accepted live retry for the track-only branch is now documented in:
+
+- `TRACK_REUSE_OBSERVABILITY_FIRST_LIVE_RETRY_PLAN.md`
+- `TRACK_REUSE_OBSERVABILITY_FIRST_LIVE_RETRY_PATCH_PLAN.md`
+
+The next safe move above that seam is not another broad aggregate jump.
+
+It is:
+
+- complete only the missing symmetric simulation-side branch in the same local
+  reuse seam

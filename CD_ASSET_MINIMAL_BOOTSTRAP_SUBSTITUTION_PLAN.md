@@ -74,6 +74,14 @@ Must remain unchanged:
 - `MeshRenderer` construction ownership
 - fallback candidate ordering
 
+Status:
+
+- applied with `src/cd_asset_bootstrap_runtime_bridge.hpp`
+- current live cut only replaces the local load gate in `src/main.cxx`
+- current implementation still resolves the path via the stable runtime helper
+  `CdAssetDomain::ResolveSbaShadowModelPath()`
+- validated with stable ISO `4134912`
+
 ### Step 2 - car-anchor boundary second
 
 Only after repeated stable runs from Step 1:
@@ -89,6 +97,14 @@ Must remain unchanged:
 - anchor-based fallback math ownership
 - gameplay yaw derivation ownership
 - bootstrap sequencing around car setup
+
+Status:
+
+- applied with `src/cd_asset_bootstrap_runtime_bridge.hpp`
+- current live cut only replaces the local anchor fallback gate in `src/main.cxx`
+- current implementation still loads anchors via the stable runtime helper
+  `CdAssetDomain::LoadCarAnchorPointsAsset()`
+- validated with stable ISO `4134912`
 
 ## What must not be pulled into `src/main.cxx`
 

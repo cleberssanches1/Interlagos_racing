@@ -27,6 +27,11 @@ Primary plans:
 - `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
 - `GAME_LOOP_OBSERVABILITY_FLOW_PLAN.md`
 - `GAME_LOOP_PRESENTER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `PRESENTER_SUMMARY_SCHEDULER_REUSE_SIMULATION_BOUNDARY_CONSOLIDATED.md`
+- `PRESENTER_SUMMARY_SCHEDULER_REUSE_SIMULATION_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `PRESENTER_BOUNDARY_TEXT_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `PRESENTER_BOUNDARY_TEXT_FIRST_STATUS_RETRY_PATCH_PLAN.md`
+- `PRESENTER_BOUNDARY_DECISION_RETRY_BLOCKER.md`
 - `PRESENTER_FACADE_CHAIN_FLOW_PLAN.md`
 - `PRESENTER_FACADE_LIVE_INTEGRATION_INVENTORY.md`
 
@@ -39,6 +44,14 @@ Main passive families:
 - presenter facade request/decision/bridge packets
 - frame-end and HUD/telemetry decision packets
 - presenter observability input adapter
+- presenter scheduler/reuse bridge adapter
+- presenter scheduler/reuse preview
+- presenter summary/scheduler-reuse preview
+- presenter summary/scheduler-reuse simulation preview
+- presenter summary/scheduler-reuse simulation view/text
+- presenter summary/scheduler-reuse simulation text presenter
+- presenter top boundary preview
+- presenter top boundary view
 - presenter facade input adapter
 - presenter facade decision input adapter
 - presenter facade decision bridge
@@ -60,6 +73,18 @@ Representative files:
 - `src/game_loop_presenter_hud_telemetry_preview_contracts.hpp`
 - `src/game_loop_presenter_hud_telemetry_preview_assembler.hpp`
 - `src/game_loop_presenter_observability_input_contracts.hpp`
+- `src/game_loop_presenter_scheduler_reuse_bridge_assembler.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_preview_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_preview_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_preview_assembler.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_view_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_view_assembler.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_text_contracts.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_text_assembler.hpp`
+- `src/game_loop_presenter_summary_scheduler_reuse_simulation_text_presenter_ops.hpp`
+- `src/game_loop_presenter_boundary_preview_contracts.hpp`
+- `src/game_loop_presenter_boundary_view_contracts.hpp`
 - `src/game_loop_presenter_facade_input_contracts.hpp`
 - `src/game_loop_presenter_facade_decision_input_contracts.hpp`
 - `src/game_loop_presenter_facade_decision_bridge_contracts.hpp`
@@ -79,6 +104,10 @@ Runtime status:
 - one additional compile-only frame-end preview now exists above
   `PresenterFrameEndDecisionPacket` for the `UpdateFrameEndOverlays()` boundary
   only
+- one higher compile-only presenter/resumo aggregate now also exists above the
+  scheduler/reuse simulation preview path
+- one sibling compile-only view/text path now also exists above that aggregate
+- one sibling compile-only text presenter now also exists above that view/text
 
 ### Track Render
 
@@ -87,6 +116,7 @@ Primary plans:
 - `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 - `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `TRACK_RENDER_REINTRODUCTION_STRATEGY.md`
+- `SCHEDULER_TRACK_RENDER_REUSE_FLOW_CONSOLIDATED.md`
 
 Main passive families:
 
@@ -119,6 +149,16 @@ Runtime status:
   - one `TrackRenderTelemetryViewPacket` can feed both:
     - `Sh2SplitTelemetrySnapshot`
     - derived `TrackRenderProducerStatePacket`
+- one compile-only preview now also exists directly above the current live
+  track-render seam:
+  - `TrackRenderTelemetryViewPacket`
+  - `TrackRenderProducerHintPacket`
+  - `TrackRenderSh2PresentationPacket`
+- one compile-only preview now also exists directly above the scheduler
+  lifecycle + track-render SH2 bridge:
+  - `SimulationSchedulerLifecycleObservabilityPacket`
+  - `TrackRenderTelemetryViewPacket`
+  - `TrackRenderSh2PresentationPacket`
 - one higher compile-only aggregate now exists above that live cut:
   - `TrackRenderPresentationObservabilityPacket`
 - that packet remains compile-only and is not currently consumed by the runtime
@@ -133,6 +173,37 @@ Runtime status:
 - that exact boundary packet is not currently consumed by the runtime path
 - these cuts are intentionally narrow and stable
 
+### Car Render
+
+Primary plans:
+
+- `CAR_RENDER_PASSIVE_FLOW_PLAN.md`
+- `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md`
+
+Main passive families:
+
+- frame context and render packet
+- shadow packet assembly
+- submit and telemetry packet assembly
+- car visual frame packet
+- shadow-prep preview packet
+
+Representative files:
+
+- `src/car_render_system.hpp`
+- `src/car_shadow_assembler.hpp`
+- `src/game_loop_car_shadow_prep_preview_contracts.hpp`
+- `src/game_loop_car_visual_packet.hpp`
+
+Runtime status:
+
+- broad `CarVisualFramePacket` runtime integration remains deferred by binary budget
+- the next safe runtime candidate remains the shadow-prep remove+replace slice
+- one compile-only preview now exists directly above that slice:
+  - `RenderPacket`
+  - `ShadowPacket`
+- submit ownership and draw entrypoints remain intentionally on the host
+
 ### Reuse / Scheduler groundwork
 
 Primary plans:
@@ -144,11 +215,28 @@ Primary plans:
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
 - `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md`
+- `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
+- `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`
+- `SCHEDULER_TRACK_RENDER_REUSE_FLOW_CONSOLIDATED.md`
 
 Main passive families:
 
 - track reuse decision view
 - track reuse telemetry view
+- track reuse observability aggregate
+- track reuse preview
+- track reuse preview presenter helper
+- track reuse runtime bridge
+- track reuse runtime preview presenter helper
+- simulation reuse runtime commit helper
+- simulation reuse runtime state helper
+- simulation reuse runtime decision bridge
+- simulation reuse runtime preview
+- simulation reuse runtime preview presenter helper
+- simulation reuse runtime preview presenter bridge
+- simulation reuse runtime debug bridge helper
+- simulation reuse runtime debug preview boundary
+- simulation/track runtime seam assembler
 - simulation reuse decision view
 - simulation reuse telemetry view
 - reuse observability aggregate
@@ -161,6 +249,11 @@ Main passive families:
 - simulation scheduler lifecycle observability aggregate
 - scheduler/reuse observability aggregate
 - scheduler/reuse flow observability aggregate
+- scheduler/reuse simulation preview aggregate
+- scheduler/reuse simulation preview presenter helper
+- presenter/resumo scheduler-reuse simulation preview aggregate
+- presenter/resumo scheduler-reuse simulation view/text
+- presenter/resumo scheduler-reuse simulation text presenter
 - scheduler/reuse debug telemetry packet
 - scheduler/reuse full chain assembly helper
 
@@ -168,6 +261,28 @@ Representative files:
 
 - `src/game_loop_track_reuse_decision_view_contracts.hpp`
 - `src/game_loop_track_reuse_telemetry_view_contracts.hpp`
+- `src/game_loop_track_reuse_observability_contracts.hpp`
+- `src/game_loop_track_reuse_preview_contracts.hpp`
+- `src/game_loop_track_reuse_preview_presenter_ops.hpp`
+- `src/game_loop_track_reuse_runtime_bridge_assembler.hpp`
+- `src/game_loop_track_reuse_runtime_preview_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_commit_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_commit_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_commit_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_state_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_state_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_decision_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_decision_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_bridge_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_bridge_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_bridge_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
+- `src/game_loop_reuse_runtime_seam_assembler.hpp`
 - `src/game_loop_simulation_reuse_decision_view_contracts.hpp`
 - `src/game_loop_simulation_reuse_telemetry_view_contracts.hpp`
 - `src/game_loop_reuse_observability_contracts.hpp`
@@ -180,6 +295,9 @@ Representative files:
 - `src/game_loop_simulation_scheduler_lifecycle_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
+- `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
+- `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
+- `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
 - `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
 - `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
 
@@ -190,6 +308,49 @@ Runtime status:
   - `SimulationSchedulerTelemetryViewPacket`
 - `TrackRenderProducerStatePacket` is now consumed by a separate local
   presentation/debug helper without changing the SH2 snapshot layout
+- one additional narrow live track-only reuse seam is now active:
+  - one local `TrackReuseRuntimeState` is captured in the host track flow
+  - one real track-only `FrameReuseRuntimeOwnerPacket` is built on demand in
+    `TryBuildReuseObservabilityDebugBundle(...)`
+  - simulation-side reuse remains neutral there
+- one additional passive helper now exists for the next symmetric simulation-side
+  seam completion:
+  - authoritative `SimulationPayload` -> `SimulationReuseRuntimeCommitPacket`
+  - authoritative `SimulationPayload` -> `SimulationFrameHistoryState` commit
+- one sibling passive state helper now exists for that same seam:
+  - `SimulationReuseRuntimeState` persists only
+    `SimulationFrameHistoryState`
+  - one narrow owner-packet builder can surface that state without adding
+    broader scheduler ownership
+- one narrow combined seam helper now exists directly above the accepted
+  observability-only retry point:
+  - simulation-side request inputs + simulation history
+  - track-side request state + track history
+  - one combined `FrameReuseRuntimeOwnerPacket`
+- one additional passive decision bridge now exists for that same future seam:
+  - exact local host inputs -> `SimulationReuseDecisionPacket`
+  - exact local host inputs -> `SimulationReuseDecisionViewPacket`
+- one sibling compile-only preview now exists above that same decision bridge:
+  - exact local host inputs
+  - derived `SimulationReuseDecisionViewPacket`
+  - no runtime owner-packet change required
+- one sibling presenter helper now exists above that preview:
+  - one narrow debug line for the derived simulation-side decision view only
+- one sibling presenter bridge now also exists above that helper:
+  - exact host decision inputs -> preview packet -> preview presenter
+- one local observability/debug helper now also exists above that bridge:
+  - exact host decision inputs -> simulation preview debug presentation
+- one explicit local observability boundary now also exists above that helper:
+  - local debug preview packet
+  - local debug preview presenter
+  - no seam or owner-packet dependency
+- one higher compile-only scheduler/reuse preview now also exists above that
+  local boundary:
+  - `SchedulerReuseFlowObservabilityPacket`
+  - `SimulationReuseRuntimeDebugPreviewPacket`
+- that aggregate is now materialized as one explicit preview packet above the
+  local simulation-side debug boundary
+- one sibling presenter helper now also exists above that aggregate
 - prepared to keep future track/simulation reuse substitutions symmetric
 - no live scheduler ownership change has been introduced here
 - one compile-only helper now assembles the full lower-to-higher
@@ -200,20 +361,23 @@ Runtime status:
 - one compile-only local bundle now exists directly above that presenter/helper
 - one compile-only local bundle presenter now exists directly above that local
   bundle
-- the preferred next narrow runtime-facing candidate is
-  `ReuseObservabilityPacket` in the same local observability-only area
-  before any broader scheduler/reuse aggregate is attempted
-- that retry is currently blocked by code-size budget after a measured
-  `+4096` byte ISO regression
-- use `DEBUG_TELEMETRY_SIZE_REDUCTION_PLAN.md` before reopening it
+- the failed broader simulation-side retry is now explicitly blocked by runtime
+  boot stability; see `SIMULATION_REUSE_LIVE_RETRY_BLOCKER.md`
+- the preferred next narrow candidate is now a preview-first reopen above the
+  simulation decision branch, before any combined owner-packet live retry
+- the broader symmetric retry still carries the measured `+4096` byte code-side
+  budget pressure
+- use `DEBUG_TELEMETRY_SIZE_REDUCTION_PLAN.md` and the accepted track-only seam
+  as the reference baseline before reopening it
 - first reduction pass already collapsed duplicate packet-overload glue in the
   compile-only reuse presenter/helper stack
 - second reduction pass already compressed the reuse debug presenter output from
   two lines into one compact line
 - third reduction pass already removed the extra compile-only local helper
   layer above the bundle presenter
-- a post-reduction decision-first live retry was attempted and still reproduced
-  the same `+4096` byte ISO regression, so the runtime path remains reverted
+- a post-reduction broader decision-first symmetric live retry was attempted
+  and still reproduced the same `+4096` byte ISO regression, so only the new
+  track-only low seam remains live today
 
 ### CD Asset / Bootstrap
 
@@ -381,6 +545,7 @@ Prefer the next cut only if all are true:
 
 1. continue documentation-first consolidation before new live cuts
 2. prefer substitutional reuse/scheduler observability over broad scheduler moves
-3. continue from `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md` Boundary D
-   (`ReuseObservabilityPacket`) now that Boundaries A and C are already live
+3. continue from `SCHEDULER_REUSE_LIVE_INTEGRATION_INVENTORY.md` above the new
+   track-only live seam, completing only the remaining symmetric simulation-side
+   branch before any broader scheduler/reuse aggregate
 4. keep bootstrap/presenter changes compile-only unless a remove-first patch is obvious
