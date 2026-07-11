@@ -2,6 +2,7 @@
 
 #include <srl.hpp>
 
+#include "game_loop_low_work_overlay_assembly_ops.hpp"
 #include "game_loop_memory_overlay_text_contracts.hpp"
 #include "game_loop_memory_overlay_text_view_assembler.hpp"
 #include "game_loop_memory_overlay_text_view_contracts.hpp"
@@ -48,6 +49,13 @@ inline void PresentLowWorkOverlayBreakdownTextPacket(const LowWorkOverlayBreakdo
                       static_cast<unsigned>(packet.metadata));
 }
 
+inline void PresentLowWorkOverlayBaseBundle(const LowWorkOverlayTextBundle& bundle)
+{
+    PresentLowWorkOverlayHeaderBundle(bundle);
+    PresentHighWorkOverlayTextPacket(bundle.highWork);
+    PresentLowWorkOverlayBreakdownTextPacket(bundle.breakdown);
+}
+
 inline void PresentLowWorkOverlayTicksCompact(const LowWorkOverlayTicksTextPacket& packet,
                                               const LowWorkOverlayTextViewPacket& viewPacket)
 {
@@ -71,6 +79,12 @@ inline void PresentLowWorkOverlayTicksCompactBundle(const LowWorkOverlayTextBund
 {
     PresentLowWorkOverlayTicksCompact(bundle.ticks,
                                       BuildLowWorkOverlayTextViewPacket(bundle));
+}
+
+inline void PresentLowWorkOverlayCompactTextBundle(const LowWorkOverlayTextBundle& bundle)
+{
+    PresentLowWorkOverlayBaseBundle(bundle);
+    PresentLowWorkOverlayTicksCompactBundle(bundle);
 }
 
 inline void PresentLowWorkTagGroupTextPacket(const LowWorkTagGroupTextPacket& packet)
@@ -113,6 +127,58 @@ inline void PresentLowWorkOverlayTicksFull(const LowWorkOverlayTicksTextPacket& 
                       static_cast<unsigned>(packet.prefetchBuildAttempts),
                       static_cast<unsigned>(packet.prefetchBuildBudget),
                       static_cast<unsigned>(packet.prefetchBuildDrops));
+}
+
+inline void PresentLowWorkOverlayMemoryDebugBundle(const LowWorkOverlayTextBundle& bundle)
+{
+    PresentLowWorkTagGroupTextPacket(bundle.tagGroups);
+    PresentLowWorkAllocatorTextPacket(bundle.allocator);
+    PresentLowWorkOverlayTicksFull(bundle.ticks);
+}
+
+inline void PresentLowWorkOverlayMemoryDebugPacket(
+    const LowWorkOverlayMemoryDebugPacket& packet,
+    LowWorkOverlayTextBundle& ioBundle)
+{
+    PresentLowWorkTrackTagBytesPacket(packet.trackBytes);
+    EnrichLowWorkOverlayTextBundleWithMemoryDebug(packet, ioBundle);
+    PresentLowWorkOverlayMemoryDebugBundle(ioBundle);
+}
+
+inline void PresentLowWorkOverlayFullTextBundle(
+    LowWorkOverlayTextBundle& ioBundle,
+    const LowWorkOverlayMemoryDebugPacket& packet)
+{
+    PresentLowWorkOverlayBaseBundle(ioBundle);
+    PresentLowWorkOverlayMemoryDebugPacket(packet, ioBundle);
+}
+
+inline void PresentLowWorkOverlayTextBundleByMode(
+    bool fullMode,
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    LowWorkOverlayTextBundle& ioBundle)
+{
+    if (!fullMode)
+    {
+        PresentLowWorkOverlayCompactTextBundle(ioBundle);
+        return;
+    }
+
+    PresentLowWorkOverlayFullTextBundle(ioBundle,
+                                        CaptureAndApplyLowWorkOverlayMemoryDebugState(overlay));
+}
+
+inline void PresentCapturedLowWorkOverlayByMode(
+    bool fullMode,
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const TrackSystem* trackSystem,
+    bool trackSystemReady)
+{
+    auto overlayTextBundle = CaptureAndBuildLowWorkOverlayBaseTextBundle(
+        overlay,
+        trackSystem,
+        trackSystemReady);
+    PresentLowWorkOverlayTextBundleByMode(fullMode, overlay, overlayTextBundle);
 }
 
 } // namespace GameLoopMemoryPresentationDomain

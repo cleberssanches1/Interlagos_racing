@@ -2,6 +2,7 @@
 
 #include <srl.hpp>
 
+#include "game_loop_low_work_overlay_capture_ops.hpp"
 #include "game_loop_memory_overlay_text_assembler.hpp"
 #include "game_loop_memory_presentation_state_assembler.hpp"
 #include "game_loop_memory_presentation_contracts.hpp"
@@ -31,6 +32,17 @@ inline LowWorkOverlayTextBundle BuildLowWorkOverlayTextBundleFromHeader(
                                          LowWorkOverlayTicksPacket{},
                                          LowWorkTagGroupPacket{},
                                          LowWorkAllocatorPacket{});
+}
+
+inline LowWorkOverlayHeaderPacket BuildLowWorkOverlayHeaderPacket(
+    const LowWorkOverlayRuntimePacket& runtimeOverlay,
+    int32_t freeDelta)
+{
+    return BuildLowWorkOverlayHeaderPacket(freeDelta,
+                                           runtimeOverlay.freeBytes,
+                                           runtimeOverlay.highFreeBytes,
+                                           runtimeOverlay.slides,
+                                           runtimeOverlay.slideId);
 }
 
 inline HighWorkOverlayPacket CaptureHighWorkOverlayPacket(uint32_t highWorkFreeBytes)
@@ -102,6 +114,40 @@ inline LowWorkOverlayTicksPacket BuildLowWorkOverlayTicksPacket(
                                   prefetchBuildDrops,
                                   packet);
     return packet;
+}
+
+inline LowWorkOverlayTextBundle BuildLowWorkOverlayBaseTextBundle(
+    const LowWorkOverlayRuntimePacket& runtimeOverlay,
+    int32_t freeDelta)
+{
+    return BuildLowWorkOverlayTextBundle(
+        BuildLowWorkOverlayHeaderPacket(runtimeOverlay, freeDelta),
+        CaptureHighWorkOverlayPacket(runtimeOverlay.highFreeBytes),
+        BuildLowWorkOverlayBreakdownPacket(runtimeOverlay.breakdown),
+        runtimeOverlay.ticks,
+        LowWorkTagGroupPacket{},
+        LowWorkAllocatorPacket{});
+}
+
+inline LowWorkOverlayTextBundle CaptureAndBuildLowWorkOverlayBaseTextBundle(
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const TrackSystem* trackSystem,
+    bool trackSystemReady)
+{
+    const auto runtimeStateUpdate = CaptureAndApplyLowWorkOverlayRuntimeState(
+        overlay,
+        trackSystem,
+        trackSystemReady);
+    return BuildLowWorkOverlayBaseTextBundle(runtimeStateUpdate.runtimeOverlay,
+                                             runtimeStateUpdate.freeDelta);
+}
+
+inline void EnrichLowWorkOverlayTextBundleWithMemoryDebug(
+    const LowWorkOverlayMemoryDebugPacket& memoryDebugPacket,
+    LowWorkOverlayTextBundle& ioBundle)
+{
+    ioBundle.tagGroups = BuildLowWorkTagGroupTextPacket(memoryDebugPacket.tagGroups);
+    ioBundle.allocator = BuildLowWorkAllocatorTextPacket(memoryDebugPacket.allocator);
 }
 
 } // namespace GameLoopMemoryPresentationDomain

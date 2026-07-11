@@ -29,6 +29,11 @@ inline WorkRamUsagePacket BuildWorkRamUsagePacket(const MemoryBudgetDomain::Memo
     return packet;
 }
 
+inline WorkRamUsagePacket BuildCurrentWorkRamUsagePacket()
+{
+    return BuildWorkRamUsagePacket(MemoryBudgetDomain::CaptureMemorySnapshotPacket());
+}
+
 inline void SeedLowWorkOverlayHeaderPacket(int32_t freeDelta,
                                            uint32_t lowWorkFree,
                                            uint32_t highWorkFree,

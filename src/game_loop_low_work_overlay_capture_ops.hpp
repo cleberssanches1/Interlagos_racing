@@ -19,6 +19,22 @@ struct LowWorkOverlayRuntimePacket
     LowWorkOverlayTicksPacket ticks{};
 };
 
+struct LowWorkOverlayRuntimeStateUpdate
+{
+    LowWorkOverlayRuntimePacket runtimeOverlay{};
+    int32_t freeDelta = 0;
+};
+
+struct LowWorkOverlayMemoryDebugPacket;
+
+inline void ApplyLowWorkOverlayBreakdownState(
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const TrackSystem::LowWorkCategoryBreakdown& breakdown);
+
+inline void ApplyLowWorkOverlayMemoryDebugState(
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const LowWorkOverlayMemoryDebugPacket& packet);
+
 inline LowWorkOverlayRuntimePacket CaptureLowWorkOverlayRuntimePacket(
     const TrackSystem* trackSystem,
     bool trackSystemReady,
@@ -51,6 +67,27 @@ inline LowWorkOverlayRuntimePacket CaptureLowWorkOverlayRuntimePacket(
 
     packet.freeBytes = memorySnapshot.snapshot.lowWorkFree;
     return packet;
+}
+
+inline LowWorkOverlayRuntimeStateUpdate CaptureAndApplyLowWorkOverlayRuntimeState(
+    GameLoopRuntime::LowWorkOverlayState& overlay,
+    const TrackSystem* trackSystem,
+    bool trackSystemReady)
+{
+    const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
+    LowWorkOverlayRuntimeStateUpdate update{};
+    update.runtimeOverlay = CaptureLowWorkOverlayRuntimePacket(
+        trackSystem,
+        trackSystemReady,
+        memorySnapshot);
+    update.freeDelta = overlay.FreeValid()
+        ? (static_cast<int32_t>(update.runtimeOverlay.freeBytes) -
+           static_cast<int32_t>(overlay.lastFreeBytes))
+        : 0;
+    overlay.lastFreeBytes = update.runtimeOverlay.freeBytes;
+    overlay.SetFreeValid(true);
+    ApplyLowWorkOverlayBreakdownState(overlay, update.runtimeOverlay.breakdown);
+    return update;
 }
 
 struct LowWorkTrackTagBytesPacket
@@ -190,6 +227,14 @@ inline LowWorkOverlayMemoryDebugPacket CaptureLowWorkOverlayMemoryDebugPacket()
     packet.trackBytes = CaptureLowWorkTrackTagBytesPacket();
     packet.tagGroups = CaptureLowWorkTagGroupPacket(packet.trackBytes);
     packet.allocator = CaptureLowWorkAllocatorPacket(packet.tagGroups);
+    return packet;
+}
+
+inline LowWorkOverlayMemoryDebugPacket CaptureAndApplyLowWorkOverlayMemoryDebugState(
+    GameLoopRuntime::LowWorkOverlayState& overlay)
+{
+    const auto packet = CaptureLowWorkOverlayMemoryDebugPacket();
+    ApplyLowWorkOverlayMemoryDebugState(overlay, packet);
     return packet;
 }
 

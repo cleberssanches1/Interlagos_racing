@@ -50,6 +50,7 @@
 #include "game_loop_reuse_observability_debug_bundle_presenter_ops.hpp"
 #include "game_loop_reuse_source_owner_assembler.hpp"
 #include "game_loop_reuse_runtime_debug_bridge_assembler.hpp"
+#include "game_loop_simulation_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_render_presentation_observability_presenter_ops.hpp"
 #include "game_loop_track_render_producer_hint_assembler.hpp"
@@ -370,9 +371,8 @@ private:
 
     void PrintWorkRamUsageRealtime() const
     {
-        const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
         GameLoopMemoryPresentationDomain::PresentWorkRamUsagePacket(
-            GameLoopMemoryPresentationDomain::BuildWorkRamUsagePacket(memorySnapshot));
+            GameLoopMemoryPresentationDomain::BuildCurrentWorkRamUsagePacket());
     }
 
     void UpdateLowWorkFreeOverlay()
@@ -406,89 +406,15 @@ private:
             lowWorkFreeOverlayCooldownFrames_ = kLowWorkFreeOverlayCadenceFrames;
             TOverlay& overlay = lowWorkOverlay_;
 
-            const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
-            const auto runtimeOverlay =
-                GameLoopMemoryPresentationDomain::CaptureLowWorkOverlayRuntimePacket(
-                    context_.trackSystem,
-                    context_.TrackSystemReady(),
-                    memorySnapshot);
-
-        const int32_t freeDelta = overlay.FreeValid()
-            ? (static_cast<int32_t>(runtimeOverlay.freeBytes) - static_cast<int32_t>(overlay.lastFreeBytes))
-            : 0;
-        overlay.lastFreeBytes = runtimeOverlay.freeBytes;
-        overlay.SetFreeValid(true);
-
-        const auto overlayHeader =
-            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayHeaderPacket(
-                freeDelta,
-                runtimeOverlay.freeBytes,
-                runtimeOverlay.highFreeBytes,
-                runtimeOverlay.slides,
-                runtimeOverlay.slideId);
-
-        auto overlayTextBundle =
-            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTextBundleFromHeader(
-                overlayHeader);
-        GameLoopMemoryPresentationDomain::PresentLowWorkOverlayHeaderBundle(
-            overlayTextBundle);
-
-        const auto highOverlay =
-            GameLoopMemoryPresentationDomain::CaptureHighWorkOverlayPacket(runtimeOverlay.highFreeBytes);
-        overlayTextBundle.highWork =
-            GameLoopMemoryPresentationDomain::BuildHighWorkOverlayTextPacket(highOverlay);
-
-        GameLoopMemoryPresentationDomain::PresentHighWorkOverlayTextPacket(
-            overlayTextBundle.highWork);
-
-        GameLoopMemoryPresentationDomain::ApplyLowWorkOverlayBreakdownState(
-            overlay,
-            runtimeOverlay.breakdown);
-
 #ifdef TRACK_LWR_STAGE_TRACE
-        TrackSystem::PrintLwrStageProbes();
+            TrackSystem::PrintLwrStageProbes();
 #endif
 
-        const auto overlayBreakdown =
-            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayBreakdownPacket(runtimeOverlay.breakdown);
-        overlayTextBundle.breakdown =
-            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayBreakdownTextPacket(overlayBreakdown);
-
-        GameLoopMemoryPresentationDomain::PresentLowWorkOverlayBreakdownTextPacket(
-            overlayTextBundle.breakdown);
-
-        if constexpr (!kEnableLowWorkFreeOverlayFull)
-        {
-            overlayTextBundle.ticks =
-                GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTicksTextPacket(runtimeOverlay.ticks);
-            GameLoopMemoryPresentationDomain::PresentLowWorkOverlayTicksCompactBundle(
-                overlayTextBundle);
-            return;
-        }
-
-        const auto memoryDebugPacket =
-            GameLoopMemoryPresentationDomain::CaptureLowWorkOverlayMemoryDebugPacket();
-        GameLoopMemoryPresentationDomain::PresentLowWorkTrackTagBytesPacket(
-            memoryDebugPacket.trackBytes);
-        GameLoopMemoryPresentationDomain::ApplyLowWorkOverlayMemoryDebugState(
-            overlay,
-            memoryDebugPacket);
-
-        overlayTextBundle.tagGroups =
-            GameLoopMemoryPresentationDomain::BuildLowWorkTagGroupTextPacket(memoryDebugPacket.tagGroups);
-
-        GameLoopMemoryPresentationDomain::PresentLowWorkTagGroupTextPacket(
-            overlayTextBundle.tagGroups);
-
-        overlayTextBundle.allocator =
-            GameLoopMemoryPresentationDomain::BuildLowWorkAllocatorTextPacket(memoryDebugPacket.allocator);
-
-        GameLoopMemoryPresentationDomain::PresentLowWorkAllocatorTextPacket(
-            overlayTextBundle.allocator);
-        overlayTextBundle.ticks =
-            GameLoopMemoryPresentationDomain::BuildLowWorkOverlayTicksTextPacket(runtimeOverlay.ticks);
-        GameLoopMemoryPresentationDomain::PresentLowWorkOverlayTicksFull(
-            overlayTextBundle.ticks);
+            GameLoopMemoryPresentationDomain::PresentCapturedLowWorkOverlayByMode(
+                kEnableLowWorkFreeOverlayFull,
+                overlay,
+                context_.trackSystem,
+                context_.TrackSystemReady());
         }
     }
 
@@ -537,30 +463,6 @@ private:
             tracePacket,
             lowWorkTraceDeltaInputs);
 #endif
-    }
-
-    GameLoopMemoryPresentationDomain::MemoryDebugPresentationBundle
-    BuildFrameEndMemoryDebugPresentationBundle() const
-    {
-        const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
-        GameLoopMemoryPresentationDomain::LowWorkOverlayAssemblyInputs overlayPacketInputs{};
-        GameLoopMemoryPresentationDomain::MemoryDebugOverlayInputs overlayTextInputs{};
-        GameLoopMemoryPresentationDomain::MemoryDebugTraceInputs traceInputs{};
-        traceInputs.highWorkTrace = &hwrStageTrace_;
-        traceInputs.lowWorkTrace = &lwrStageTrace_;
-        traceInputs.lowWorkTraceDeltas =
-            GameLoopMemoryPresentationDomain::CaptureLowWorkTraceDeltaInputs(context_.trackSystem);
-        return GameLoopMemoryPresentationDomain::BuildMemoryDebugPresentationBundle(
-            memorySnapshot,
-            overlayPacketInputs,
-            overlayTextInputs,
-            traceInputs);
-    }
-
-    void PresentMemoryDebugPresentationBundle(
-        const GameLoopMemoryPresentationDomain::MemoryDebugPresentationBundle& bundle) const
-    {
-        GameLoopMemoryPresentationDomain::PresentMemoryDebugPresentationBundle(bundle);
     }
 
     // Validate world position before rendering to avoid invalid transform collapse.
@@ -852,37 +754,6 @@ private:
         return trackProducerJobInFlightHint_;
     }
 
-    bool TryBuildTrackRenderTelemetryView(
-        GameLoopRuntime::TrackRenderTelemetryViewPacket& outTelemetryView) const
-    {
-        return GameLoopRuntime::TryBuildTrackRenderTelemetryViewPacket(context_.trackSystem,
-                                                                       context_.TrackSystemReady(),
-                                                                       context_.RenderTrack(),
-                                                                       outTelemetryView);
-    }
-
-    bool TryBuildTrackRenderSh2PresentationPacket(
-        const Sh2SplitTelemetrySnapshot& sh2Snapshot,
-        const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView,
-        GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket& outPacket) const
-    {
-        return GameLoopRuntime::TryBuildTrackRenderSh2PresentationPacket(
-            sh2Snapshot,
-            trackTelemetryView,
-            kEnablePhysicsSafeTelemetry,
-            static_cast<uint32_t>(simState_.slaveDispatchCount),
-            static_cast<uint32_t>(simState_.slaveDispatchSkipsTrackBusy),
-            outPacket);
-    }
-
-    bool TryBuildReuseObservabilityDebugBundle(
-        GameLoopObservabilityDomain::ReuseObservabilityDebugBundle& outBundle) const
-    {
-        return GameLoopObservabilityDomain::TryBuildReuseObservabilityDebugBundle(
-            GameLoopRuntime::BuildTrackReuseRuntimeOwnerPacket(trackReuseState_),
-            outBundle);
-    }
-
     void BackoffSimulationSlaveDispatch()
     {
         simState_.slaveBackoffFrames = std::max<uint8_t>(simState_.slaveBackoffFrames, kSimSlaveBackoffFrames);
@@ -936,7 +807,10 @@ private:
 
         SimulationSchedulerDomain::MarkSimulationCompleted(simState_, simState_.inFlightIdx);
         simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
-        ApplySimulationOutput(simState_.output[simState_.completedIdx]);
+        ApplySimulationOutput(
+            GameLoopRuntime::CommitCompletedSimulationReuseAuthoritativeOutput(
+                simState_,
+                simulationReuseState_));
         return true;
     }
 
@@ -954,7 +828,14 @@ private:
         }
         else if (completionPacket.hasCompleted)
         {
-            ApplySimulationOutput(simState_.output[completionPacket.completedIdx]);
+            if (const Game::SimulationPayload* authoritativeOutput =
+                    GameLoopRuntime::TryCommitCompletedSimulationReuseAuthoritativeOutput(
+                        simState_,
+                        completionPacket,
+                        simulationReuseState_))
+            {
+                ApplySimulationOutput(*authoritativeOutput);
+            }
         }
         if (carPrepareState_.JobInFlight() && carPrepareTask_.IsDone())
         {
@@ -1377,9 +1258,19 @@ private:
         shadowDebug_.yawDeg = shadowYawDeg;
     }
 
-    void DrawCarShadowBlob(const Game::CarRenderSystem::ShadowPacket& shadowPacket)
+    SRL::Math::Types::Angle BuildShadowDrawYaw(
+        const Game::CarRenderSystem::ShadowPacket& shadowPacket)
     {
         using SRL::Math::Types::Angle;
+        using SRL::Math::Types::Fxp;
+
+        StoreShadowDebugState(shadowPacket.shadowPosition, shadowPacket.shadowYawDeg);
+        return Angle::FromDegrees(
+            Fxp::BuildRaw(static_cast<int32_t>(shadowPacket.shadowYawDeg) << 16));
+    }
+
+    void DrawCarShadowBlob(const Game::CarRenderSystem::ShadowPacket& shadowPacket)
+    {
         using SRL::Math::Types::Fxp;
         using SRL::Math::Types::Vector2D;
         using SRL::Math::Types::Vector3D;
@@ -1391,9 +1282,7 @@ private:
         constexpr SRL::Types::HighColor kShadowColor = SRL::Types::HighColor::FromRGB555(0, 0, 0);
 
         Vector3D center = shadowPacket.shadowPosition;
-        const int32_t shadowYawDeg = shadowPacket.shadowYawDeg;
-        StoreShadowDebugState(center, shadowYawDeg);
-        const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
+        const auto yaw = BuildShadowDrawYaw(shadowPacket);
         const Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
         const Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
 
@@ -1475,16 +1364,10 @@ private:
 
     void DrawCarShadowModel(const Game::CarRenderSystem::ShadowPacket& shadowPacket)
     {
-        using SRL::Math::Types::Angle;
-        using SRL::Math::Types::Fxp;
-
         if (!context_.carShadowRenderer) return;
 
         const SRL::Math::Types::Vector3D& shadowPos = shadowPacket.shadowPosition;
-        const int32_t shadowYawDeg = shadowPacket.shadowYawDeg;
-        StoreShadowDebugState(shadowPos, shadowYawDeg);
-        const Angle yaw =
-            Angle::FromDegrees(Fxp::BuildRaw(static_cast<int32_t>(shadowYawDeg) << 16));
+        const auto yaw = BuildShadowDrawYaw(shadowPacket);
         context_.carShadowRenderer->Render(shadowPos, yaw, false);
     }
 
@@ -1647,15 +1530,9 @@ private:
         if (!IsTrackFrameEnabled())
         {
             lastSubmittedTrackFacesThisFrame_ = 0u;
-            GameLoopRuntime::CaptureTrackReuseRuntimeRequest(frameCounter_,
-                                                             latestActiveSegmentId_,
-                                                             false,
-                                                             false,
-                                                             trackReuseState_);
-            GameLoopRuntime::CommitTrackReuseRuntimeFrame(frameCounter_,
-                                                          latestActiveSegmentId_,
-                                                          false,
-                                                          trackReuseState_);
+            GameLoopRuntime::CaptureTrackReuseRuntimeDisabledFrame(frameCounter_,
+                                                                   latestActiveSegmentId_,
+                                                                   trackReuseState_);
             CaptureTrackRenderDisabledTraces();
             return;
         }
@@ -1672,10 +1549,9 @@ private:
         const auto trackRenderPacket =
             TrackRenderDomain::BuildTrackRenderPacket(trackFrameContext, context_.trackSystem);
         lastSubmittedTrackFacesThisFrame_ = trackRenderPacket.submittedTrackFaces;
-        GameLoopRuntime::CaptureTrackReuseRuntimeRequest(
+        GameLoopRuntime::CaptureTrackReuseRuntimeEnabledRequest(
             frameCounter_,
             latestActiveSegmentId_,
-            true,
             IsTrackProducerJobInFlightHint(),
             trackReuseState_);
 
@@ -1734,7 +1610,10 @@ private:
 
         ++frameCounter_;
         GameLoopRuntime::TrackRenderTelemetryViewPacket trackTelemetryView{};
-        (void)TryBuildTrackRenderTelemetryView(trackTelemetryView);
+        (void)GameLoopRuntime::TryBuildTrackRenderTelemetryViewPacket(context_.trackSystem,
+                                                                      context_.TrackSystemReady(),
+                                                                      context_.RenderTrack(),
+                                                                      trackTelemetryView);
         const FramePresentationSnapshot framePresentation =
             BuildFramePresentationSnapshot(trackTelemetryView);
 
@@ -1757,7 +1636,10 @@ private:
         const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView) const
     {
         const Sh2SplitTelemetrySnapshot sh2 = trackTelemetryView.valid
-            ? BuildSh2SplitTelemetrySnapshot(trackTelemetryView)
+            ? GameLoopRuntime::BuildSh2SplitTelemetrySnapshot(
+                simState_,
+                trackTelemetryView,
+                kEnablePhysicsSafeTelemetry)
             : Sh2SplitTelemetrySnapshot{};
         return GameLoopRuntime::BuildFramePresentationSnapshot(
             GetSubmittedTrackFacesThisFrame(),
@@ -1788,18 +1670,20 @@ private:
         PrintSegmentOverlapDiagnostics(framePresentation.submittedTrackFaces,
                                        framePresentation.submittedCarFaces,
                                        trackTelemetryView);
-        GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket sh2Presentation{};
-        if (TryBuildTrackRenderSh2PresentationPacket(framePresentation.sh2,
-                                                     trackTelemetryView,
-                                                     sh2Presentation))
+        GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket trackSh2Presentation{};
+        if (GameLoopRuntime::TryBuildTrackRenderSh2PresentationPacket(
+                framePresentation.sh2,
+                trackTelemetryView,
+                kEnablePhysicsSafeTelemetry,
+                static_cast<uint32_t>(simState_.slaveDispatchCount),
+                static_cast<uint32_t>(simState_.slaveDispatchSkipsTrackBusy),
+                trackSh2Presentation))
         {
-            PrintSh2SplitTelemetry(sh2Presentation);
+            GameLoopObservabilityDomain::PresentTrackRenderSh2PresentationPacket(
+                trackSh2Presentation);
         }
-        GameLoopObservabilityDomain::ReuseObservabilityDebugBundle reuseBundle{};
-        if (TryBuildReuseObservabilityDebugBundle(reuseBundle))
-        {
-            GameLoopObservabilityDomain::PresentReuseObservabilityDebugBundle(reuseBundle);
-        }
+        (void)GameLoopObservabilityDomain::TryPresentTrackReuseObservabilityDebugBundle(
+            trackReuseState_);
     }
 
     void SynchronizeFrameCore()
@@ -1851,7 +1735,11 @@ private:
             }
             if (workRamOverlayDue)
             {
-                PresentMemoryDebugPresentationBundle(BuildFrameEndMemoryDebugPresentationBundle());
+                GameLoopMemoryPresentationDomain::PresentMemoryDebugPresentationBundle(
+                    GameLoopMemoryPresentationDomain::BuildFrameEndMemoryDebugPresentationBundle(
+                        hwrStageTrace_,
+                        lwrStageTrace_,
+                        context_.trackSystem));
             }
         }
         UpdateLowWorkFreeOverlay();
@@ -1969,25 +1857,6 @@ private:
             return;
         }
         GameLoopRuntime::PresentPhysicsQueryOverlay(overlay);
-    }
-
-    Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
-        const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView) const
-    {
-        if (!trackTelemetryView.valid) return {};
-
-        const auto simTelemetryView =
-            GameLoopRuntime::BuildSimulationSchedulerTelemetryViewPacket(simState_);
-        return GameLoopRuntime::BuildSh2SplitTelemetrySnapshot(
-            simTelemetryView,
-            trackTelemetryView,
-            kEnablePhysicsSafeTelemetry);
-    }
-
-    void PrintSh2SplitTelemetry(
-        const GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket& packet)
-    {
-        GameLoopObservabilityDomain::PresentTrackRenderSh2PresentationPacket(packet);
     }
 
     void UpdateRealtimeFpsOverlay()
@@ -2854,6 +2723,7 @@ private:
     SimulationRuntimeState simState_{};
     CarRenderPrepareTask carPrepareTask_{};
     CarPrepareRuntimeState carPrepareState_{};
+    GameLoopRuntime::SimulationReuseRuntimeState simulationReuseState_{};
     GameLoopRuntime::TrackReuseRuntimeState trackReuseState_{};
     int16_t latestActiveSegmentId_ = -1;
     ShadowDebugState shadowDebug_{};

@@ -96,6 +96,22 @@ Exact planning document for that missing branch:
 
 - `SIMULATION_REUSE_SEAM_COMPLETION_PLAN.md`
 
+Latest narrower retry result:
+
+- a host-local retry was attempted using the already prepared
+  `BuildSimulationTrackReuseRuntimeOwnerPacket(...)` seam
+- the HUD/debug call site replaced the accepted track-only owner packet with the
+  combined simulation+track owner packet
+- the final ISO became `4136960`
+- baseline delta was `+2048` bytes
+- the patch was reverted
+
+Current conclusion:
+
+- the symmetric seam shape is technically valid
+- the current blocker for that retry is also code-size budget, not semantics
+- the accepted live baseline therefore remains the track-only seam
+
 ## Current live boundary
 
 ### Boundary A - local scheduler telemetry assembly
@@ -331,6 +347,14 @@ Why this is next:
   live slices
 - it still avoids touching `N-1` reuse semantics
 - it keeps the retry substitutional
+
+Current practical constraint:
+
+- the first direct host substitution from track-only seam to the combined
+  simulation+track owner seam already exceeds the stable ISO envelope by
+  `+2048`
+- do not retry that exact shape again until equivalent code is removed first or
+  additional always-live budget is recovered
 
 The exact missing simulation-side branch is documented in:
 

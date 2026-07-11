@@ -3,6 +3,7 @@
 #include "game_loop_memory_debug_contracts.hpp"
 #include "game_loop_memory_overlay_text_assembler.hpp"
 #include "game_loop_memory_presentation_packet_assembler.hpp"
+#include "game_loop_memory_trace_packet_assembler.hpp"
 #include "game_loop_memory_trace_text_assembler.hpp"
 
 namespace GameLoopMemoryPresentationDomain
@@ -81,6 +82,27 @@ inline MemoryDebugPresentationBundle BuildMemoryDebugPresentationBundle(
             : LowWorkTraceTextPacket{};
 
     return BuildMemoryDebugPresentationBundle(memoryFlow, overlayText, highTraceText, lowTraceText);
+}
+
+inline MemoryDebugPresentationBundle BuildFrameEndMemoryDebugPresentationBundle(
+    const GameLoopRuntime::HwrStageTrace& highWorkTrace,
+    const GameLoopRuntime::LwrStageTrace& lowWorkTrace,
+    const TrackSystem* trackSystem)
+{
+    const auto memorySnapshot = MemoryBudgetDomain::CaptureMemorySnapshotPacket();
+    const LowWorkOverlayAssemblyInputs overlayPacketInputs{};
+    const MemoryDebugOverlayInputs overlayTextInputs{};
+
+    MemoryDebugTraceInputs traceInputs{};
+    traceInputs.highWorkTrace = &highWorkTrace;
+    traceInputs.lowWorkTrace = &lowWorkTrace;
+    traceInputs.lowWorkTraceDeltas = CaptureLowWorkTraceDeltaInputs(trackSystem);
+
+    return BuildMemoryDebugPresentationBundle(
+        memorySnapshot,
+        overlayPacketInputs,
+        overlayTextInputs,
+        traceInputs);
 }
 
 } // namespace GameLoopMemoryPresentationDomain

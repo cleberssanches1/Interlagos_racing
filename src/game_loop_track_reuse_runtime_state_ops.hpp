@@ -25,6 +25,18 @@ inline void CaptureTrackReuseRuntimeRequest(uint32_t frameId,
     ioState.producerJobInFlight = producerJobInFlight;
 }
 
+inline void CaptureTrackReuseRuntimeEnabledRequest(uint32_t frameId,
+                                                   int16_t activeSegmentId,
+                                                   bool producerJobInFlight,
+                                                   TrackReuseRuntimeState& ioState)
+{
+    CaptureTrackReuseRuntimeRequest(frameId,
+                                    activeSegmentId,
+                                    true,
+                                    producerJobInFlight,
+                                    ioState);
+}
+
 inline void CommitTrackReuseRuntimeFrame(uint32_t frameId,
                                          int16_t activeSegmentId,
                                          bool valid,
@@ -34,6 +46,21 @@ inline void CommitTrackReuseRuntimeFrame(uint32_t frameId,
                                              activeSegmentId,
                                              valid,
                                              ioState.history);
+}
+
+inline void CaptureTrackReuseRuntimeDisabledFrame(uint32_t frameId,
+                                                  int16_t activeSegmentId,
+                                                  TrackReuseRuntimeState& ioState)
+{
+    CaptureTrackReuseRuntimeRequest(frameId,
+                                    activeSegmentId,
+                                    false,
+                                    false,
+                                    ioState);
+    CommitTrackReuseRuntimeFrame(frameId,
+                                 activeSegmentId,
+                                 false,
+                                 ioState);
 }
 
 inline FrameReuseDomain::TrackReuseDecisionPacket

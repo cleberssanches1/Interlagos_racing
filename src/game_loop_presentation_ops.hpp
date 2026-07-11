@@ -71,6 +71,17 @@ inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
 }
 
 inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
+    const Game::SimulationRuntimeState& simRuntimeState,
+    const TrackRenderTelemetryViewPacket& trackTelemetry,
+    bool includeQueryTelemetry)
+{
+    return BuildSh2SplitTelemetrySnapshot(
+        BuildSimulationSchedulerTelemetryViewPacket(simRuntimeState),
+        trackTelemetry,
+        includeQueryTelemetry);
+}
+
+inline Sh2SplitTelemetrySnapshot BuildSh2SplitTelemetrySnapshot(
     const GameLoopObservabilityDomain::SimulationSchedulerLifecycleObservabilityPacket& lifecycle,
     const TrackRenderTelemetryViewPacket& trackTelemetry,
     bool includeQueryTelemetry)

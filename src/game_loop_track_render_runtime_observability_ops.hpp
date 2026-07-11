@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game_loop_runtime_state.hpp"
+#include "game_loop_track_render_presentation_observability_presenter_ops.hpp"
 #include "game_loop_track_render_producer_hint_assembler.hpp"
 #include "game_loop_track_render_sh2_presentation_assembler.hpp"
 #include "game_loop_track_render_sh2_presentation_runtime_assembler.hpp"

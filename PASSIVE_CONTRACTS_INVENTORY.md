@@ -6,6 +6,11 @@ Provide one consolidated index of the passive-contract groundwork already in the
 repo, so future runtime cuts can be chosen without re-reading every domain
 plan first.
 
+Operational next-cuts companion:
+
+- `REFACTOR_RUNTIME_SAFE_NEXT_CUTS.md`
+- `REFACTOR_SUBSYSTEM_RUNTIME_MATRIX.md`
+
 This document is inventory-only.
 
 It does not authorize broader runtime substitutions by itself.
@@ -24,6 +29,7 @@ It does not authorize broader runtime substitutions by itself.
 
 Primary plans:
 
+- `REFACTOR_CONSOLIDATED_FINAL_INDEX.md`
 - `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
 - `GAME_LOOP_OBSERVABILITY_FLOW_PLAN.md`
 - `GAME_LOOP_PRESENTER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
@@ -96,6 +102,10 @@ Runtime status:
 - mostly compile-only
 - prior live presenter attempts were rolled back
 - presenter runtime ownership remains in `src/game_loop_system.hpp`
+- one narrow HUD status-line cut is already live through:
+  - `DrivingHudTextPacket`
+  - `PresenterBoundaryStatusTextPacket`
+  - `PresentPresenterBoundaryHudStatusTextPacket(...)`
 - one compile-only preview packet now validates the broad facade bridge plus
   the narrow decision bridge without touching runtime
 - one additional compile-only HUD/telemetry preview now exists above
@@ -145,10 +155,12 @@ Runtime status:
   - overlay query metrics
   - SH2 telemetry snapshot path
   - producer in-flight hint path
+- one local `TrackRenderSh2PresentationPacket` consumer is now also active in
+  the same HUD/debug path
 - one additional narrow local share is now active in the presentation/HUD path:
   - one `TrackRenderTelemetryViewPacket` can feed both:
     - `Sh2SplitTelemetrySnapshot`
-    - derived `TrackRenderProducerStatePacket`
+    - local `TrackRenderSh2PresentationPacket`
 - one compile-only preview now also exists directly above the current live
   track-render seam:
   - `TrackRenderTelemetryViewPacket`
@@ -163,10 +175,8 @@ Runtime status:
   - `TrackRenderPresentationObservabilityPacket`
 - that packet remains compile-only and is not currently consumed by the runtime
   path
-- one compile-only presenter helper now exists for the future producer-state
-  line retry
-- one narrow live presentation line now already uses that helper at the
-  `TrackRenderProducerStatePacket` level only
+- one narrow live presentation line now already uses the higher local
+  `TrackRenderSh2PresentationPacket` helper
 - the `SH2 busy/sim` debug lines now also use external presenter helpers
 - one compile-only packet now exists for the exact `PrintSh2SplitTelemetry(...)`
   boundary
@@ -457,6 +467,8 @@ Representative files:
 - `src/game_loop_render_budget_observability_view_contracts.hpp`
 - `src/game_loop_render_budget_presentation_view_contracts.hpp`
 - `src/game_loop_render_budget_overlay_text_view_contracts.hpp`
+- `src/game_loop_render_budget_overlay_text_bridge_assembler.hpp`
+- `src/game_loop_render_budget_overlay_text_presenter_ops.hpp`
 - `src/game_loop_memory_presentation_contracts.hpp`
 - `src/game_loop_memory_overlay_text_view_contracts.hpp`
 - `src/game_loop_memory_trace_text_view_contracts.hpp`
@@ -478,6 +490,14 @@ Runtime status:
 - that low-work overlay consumer now covers `WLWR`, `HWT`, `LWC`, `LTX`,
   `LFO`, full `LTK`, and both `PB` paths through the same local bundle/text
   boundary
+- one compile-only render-budget textual boundary now also exists above:
+  - `RenderBudgetObservabilityViewPacket`
+  - `RenderBudgetPresentationViewPacket`
+  - `RenderBudgetOverlayTextViewPacket`
+- one sibling compile-only presenter helper now exists directly above that
+  textual boundary
+- that render-budget textual chain remains intentionally compile-only because
+  no remove-first runtime textual consumer exists yet in the active host path
 
 ### AutoLap Route
 

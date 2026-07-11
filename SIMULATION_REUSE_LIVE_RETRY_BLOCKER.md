@@ -36,6 +36,29 @@ So the regression is most likely caused by one or more of:
 - extra inline code and stack pressure at the local seam;
 - combining representation change and timing change in the same live retry.
 
+## Latest narrowed retry result
+
+After stabilizing the authoritative simulation-history commit separately, the
+next narrower retry was attempted as:
+
+1. keep the new simulation-history commit points live;
+2. replace only the local track-only owner-packet seam with the combined
+   `simulation + track` owner packet;
+3. keep the existing local observability consumer unchanged.
+
+Observed result:
+
+- stable build completed;
+- final ISO became `4136960`;
+- baseline delta was `2048` bytes;
+- the retry was reverted immediately to preserve the fixed envelope.
+
+This means the current seam blocker is now narrower and better understood:
+
+- the remaining owner-packet join itself still exceeds the current code-size
+  envelope, even after the simulation-history commit has already been split out
+  and stabilized.
+
 ## Safe conclusion
 
 Do not reopen the simulation-side live seam with the combined owner-packet
@@ -48,6 +71,13 @@ The next retry must be narrower than:
 - plus local observability consumer change
 
 all in the same patch.
+
+At the current state, even the reduced retry:
+
+- live simulation-history commit
+- plus combined owner-packet seam join
+
+is still too large for the fixed ISO envelope.
 
 ## Recommended next cut
 
@@ -71,3 +101,9 @@ When reopening runtime, prefer this order:
 1. local preview-only consumption in debug/observability code;
 2. only then one authoritative simulation-history commit line;
 3. only after repeated stability, join it with the track-side owner packet.
+
+Additional guard rail now required:
+
+4. do not retry the combined owner-packet join again until a separate
+   code-size reduction pass recovers at least `2048` bytes of always-live
+   budget, or the user explicitly authorizes a different ISO-envelope strategy.

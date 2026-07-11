@@ -4,6 +4,8 @@
 
 #include "game_loop_simulation_reuse_runtime_commit_ops.hpp"
 #include "game_loop_simulation_reuse_runtime_state_contracts.hpp"
+#include "simulation_scheduler_contracts.hpp"
+#include "simulation_scheduler_state.hpp"
 
 namespace GameLoopRuntime
 {
@@ -26,6 +28,34 @@ inline void CommitSimulationReuseRuntimeFrame(
     SimulationReuseRuntimeState& ioState)
 {
     CommitAuthoritativeSimulationOutputForReuse(commitPacket, ioState.history);
+}
+
+inline const Game::SimulationPayload&
+CommitCompletedSimulationReuseAuthoritativeOutput(
+    const Game::SimulationRuntimeState& runtimeState,
+    SimulationReuseRuntimeState& ioState)
+{
+    const Game::SimulationPayload& authoritativeOutput =
+        runtimeState.output[runtimeState.completedIdx];
+    CommitSimulationReuseRuntimeFrame(authoritativeOutput, ioState);
+    return authoritativeOutput;
+}
+
+inline const Game::SimulationPayload*
+TryCommitCompletedSimulationReuseAuthoritativeOutput(
+    const Game::SimulationRuntimeState& runtimeState,
+    const SimulationSchedulerDomain::SimulationCompletionPacket& completionPacket,
+    SimulationReuseRuntimeState& ioState)
+{
+    if (!completionPacket.hasCompleted)
+    {
+        return nullptr;
+    }
+
+    const Game::SimulationPayload& authoritativeOutput =
+        runtimeState.output[completionPacket.completedIdx];
+    CommitSimulationReuseRuntimeFrame(authoritativeOutput, ioState);
+    return &authoritativeOutput;
 }
 
 inline FrameReuseDomain::FrameReuseRuntimeOwnerPacket

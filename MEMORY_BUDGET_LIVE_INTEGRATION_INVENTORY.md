@@ -161,6 +161,12 @@ Live file:
 Live accessor:
 
 - `BuildLowWorkOverlayMemoryDebugPresentationBundle(...)`
+- `PresentLowWorkOverlayMemoryDebugPacket(...)`
+- `PresentLowWorkOverlayCompactTextBundle(...)`
+- `PresentLowWorkOverlayFullTextBundle(...)`
+- `CaptureAndBuildLowWorkOverlayBaseTextBundle(...)`
+- `PresentLowWorkOverlayTextBundleByMode(...)`
+- `PresentCapturedLowWorkOverlayByMode(...)`
 
 Current live timing:
 
@@ -183,6 +189,41 @@ Current live text coverage:
 - full `LTK`
 - both `PB` paths
 
+### Boundary G - render-budget overlay text chain
+
+Live file:
+
+- none yet
+
+Prepared passive surfaces:
+
+- `BuildRenderBudgetObservabilityViewPacket(...)`
+- `BuildRenderBudgetPresentationViewPacket(...)`
+- `BuildRenderBudgetOverlayTextViewPacket(...)`
+- `PresentRenderBudgetOverlayTextViewPacket(...)`
+
+Current live timing:
+
+- none
+
+Current ownership kept local:
+
+- render scheduling
+- allocator timing
+- presenter/debug print ordering
+- runtime call-site ownership
+
+Current blocker:
+
+- no existing host-local textual read family currently consumes equivalent
+  render-budget state in a remove-first shape
+- the boundary is prepared, but there is not yet one safe live substitution
+  target in `src/game_loop_system.hpp` or its active presenter helpers
+
+Current allowed status:
+
+- compile-only only until a real substitutional consumer exists
+
 ## Current passive-enriched consumers
 
 These consumers already receive memory category policy, but they remain passive
@@ -193,6 +234,8 @@ enrichment only:
 - `src/game_loop_render_budget_observability_view_assembler.hpp`
 - `src/game_loop_render_budget_presentation_view_assembler.hpp`
 - `src/game_loop_render_budget_overlay_text_view_assembler.hpp`
+- `src/game_loop_render_budget_overlay_text_bridge_assembler.hpp`
+- `src/game_loop_render_budget_overlay_text_presenter_ops.hpp`
 - `src/game_loop_observability_state_assembler.hpp`
 
 Meaning:
@@ -206,6 +249,10 @@ Meaning:
   boundary fields only
 - `RenderBudgetOverlayTextViewPacket` narrows them one level further to
   printable/renderable overlay flags
+- one sibling compile-only textual presenter boundary now already exists above
+  that path
+- that chain currently has no approved live consumer because no equivalent
+  host-local textual read family exists yet
 - no allocator ownership moved
 - no render scheduling ownership moved
 

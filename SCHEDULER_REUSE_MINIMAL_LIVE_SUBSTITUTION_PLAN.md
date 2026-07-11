@@ -37,6 +37,15 @@ Latest measured result:
 - ISO still became `4139008`
 - the `4096` byte blocker remains unchanged for the broader symmetric retry
 
+Additional measured result:
+
+- a narrower host-local seam substitution was attempted later
+- the accepted track-only owner packet at the HUD/debug call site was replaced
+  with `BuildSimulationTrackReuseRuntimeOwnerPacket(...)`
+- final ISO became `4136960`
+- baseline delta was `+2048`
+- this narrower symmetric seam retry was reverted
+
 ## Current status
 
 - three narrow local live substitutions are now active in `src/game_loop_system.hpp`
@@ -173,6 +182,15 @@ Current narrowing status for that staging:
 - the accepted track-only retry already consumes only track-side decision data
 - the next broad symmetric return should therefore add only:
   - simulation reuse decision flags
+
+Current retry blocker at the lower seam:
+
+- even before reopening `ReuseObservabilityPacket` directly, the lower
+  host-local switch from track-only owner packet to combined simulation+track
+  owner packet already costs `+2048` bytes
+- therefore the next acceptable attempt is not the same seam substitution
+  again; it is first removing equivalent always-live code or shrinking the
+  surrounding host path
 
 ### Step 5 - scheduler/reuse aggregate last
 
