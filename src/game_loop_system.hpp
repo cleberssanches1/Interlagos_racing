@@ -49,11 +49,9 @@
 #include "game_loop_presenter_boundary_text_hud_presenter_ops.hpp"
 #include "game_loop_reuse_observability_debug_bundle_presenter_ops.hpp"
 #include "game_loop_reuse_source_owner_assembler.hpp"
-#include "game_loop_reuse_runtime_debug_bridge_assembler.hpp"
 #include "game_loop_simulation_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_render_presentation_observability_presenter_ops.hpp"
-#include "game_loop_track_render_producer_hint_assembler.hpp"
 #include "game_loop_track_render_runtime_observability_ops.hpp"
 #include "game_loop_runtime_state.hpp"
 #include "game_loop_track_render_telemetry_view_assembler.hpp"
@@ -205,7 +203,7 @@ public:
             ResetPerFrameSimulationTelemetry();
             ResetPerFrameTrackRenderHintCache();
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
-            CaptureBeginStageTraces();
+            CaptureWorkRamStage(hwrStageTrace_.begin, lwrStageTrace_.begin, true);
 
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
@@ -215,7 +213,7 @@ public:
             ExecuteGameplayFrame(frameState);
             // Keep chase heading synced with gameplay/physics yaw every frame.
             SyncCameraHeadingFromCar();
-            CaptureGameplayStageTraces();
+            CaptureWorkRamStage(hwrStageTrace_.gameplay, lwrStageTrace_.gameplay);
 
             if (AutoLapTestEnabled())
             {
@@ -223,17 +221,17 @@ public:
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
                 SyncCameraHeadingFromCar();
             }
-            CaptureAutoLapStageTraces();
+            CaptureWorkRamStage(hwrStageTrace_.autoLap, lwrStageTrace_.autoLap);
 
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Background);
             ScheduleCarPrepareIfEnabled();
             UpdateBackground();
-            CaptureBackgroundStageTraces();
+            CaptureWorkRamStage(hwrStageTrace_.background, lwrStageTrace_.background);
 
             const CameraFrameState camera = ResolveCameraFrameState();
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Hud);
             UpdateHud(camera);
-            CaptureHudStageTraces();
+            CaptureWorkRamStage(hwrStageTrace_.hud, lwrStageTrace_.hud);
             RenderFrame(camera);
             RenderAxes();
 
@@ -344,42 +342,6 @@ private:
         trackProducerJobInFlightHint_ = false;
     }
 
-    void CaptureBeginStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.begin, lwrStageTrace_.begin, true);
-    }
-
-    void CaptureGameplayStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.gameplay, lwrStageTrace_.gameplay);
-    }
-
-    void CaptureAutoLapStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.autoLap, lwrStageTrace_.autoLap);
-    }
-
-    void CaptureBackgroundStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.background, lwrStageTrace_.background);
-    }
-
-    void CaptureHudStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.hud, lwrStageTrace_.hud);
-    }
-
-    void PrintWorkRamUsageRealtime() const
-    {
-        GameLoopMemoryPresentationDomain::PresentWorkRamUsagePacket(
-            GameLoopMemoryPresentationDomain::BuildCurrentWorkRamUsagePacket());
-    }
-
-    void UpdateLowWorkFreeOverlay()
-    {
-        UpdateLowWorkFreeOverlayEnabled<>();
-    }
-
     template <bool tEnabled = kEnableLowWorkFreeOverlay,
               typename TOverlay = LowWorkOverlayStorage>
     void UpdateLowWorkFreeOverlayEnabled()
@@ -416,53 +378,6 @@ private:
                 context_.trackSystem,
                 context_.TrackSystemReady());
         }
-    }
-
-    void MaybeLogHighWorkRamTrace()
-    {
-#if !defined(SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY) || !SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY
-        return;
-#else
-        constexpr uint32_t kLowFreeThresholdBytes = 8u * 1024u;
-        constexpr uint32_t kLargeDropThresholdBytes = 32u * 1024u;
-        const auto tracePacket =
-            GameLoopMemoryPresentationDomain::BuildHighWorkTracePacket(hwrStageTrace_);
-        const uint32_t beginFree = tracePacket.begin.freeBytes;
-        const uint32_t finishFree = tracePacket.postSync.freeBytes;
-        if (hwrTraceCooldownFrames_ > 0u)
-        {
-            --hwrTraceCooldownFrames_;
-        }
-
-        const bool lowFree = finishFree <= kLowFreeThresholdBytes;
-        const bool largeDrop = beginFree > finishFree && (beginFree - finishFree) >= kLargeDropThresholdBytes;
-        const bool leakedThisFrame = tracePacket.frameAccum > 0;
-        const bool failedAlloc = tracePacket.postSync.failedAllocCalls > tracePacket.begin.failedAllocCalls;
-        if (!lowFree && !largeDrop && !leakedThisFrame && !failedAlloc) return;
-        if (hwrTraceCooldownFrames_ > 0u) return;
-
-        GameLoopMemoryPresentationDomain::PresentHighWorkLiveTagPacket(
-            GameLoopMemoryPresentationDomain::CaptureHighWorkLiveTagPacket());
-        GameLoopMemoryPresentationDomain::PresentHighWorkTracePacket(tracePacket);
-        GameLoopMemoryPresentationDomain::PresentLowWorkValidationDebugPacket(
-            GameLoopMemoryPresentationDomain::CaptureLowWorkValidationDebugPacket());
-        hwrTraceCooldownFrames_ = 15u;
-#endif
-    }
-
-    void MaybeLogLowWorkRamTrace()
-    {
-#if !defined(SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY) || !SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY
-        return;
-#else
-        const auto tracePacket =
-            GameLoopMemoryPresentationDomain::BuildLowWorkTracePacket(lwrStageTrace_);
-        const auto lowWorkTraceDeltaInputs =
-            GameLoopMemoryPresentationDomain::CaptureLowWorkTraceDeltaInputs(context_.trackSystem);
-        GameLoopMemoryPresentationDomain::PresentLowWorkTracePacket(
-            tracePacket,
-            lowWorkTraceDeltaInputs);
-#endif
     }
 
     // Validate world position before rendering to avoid invalid transform collapse.
@@ -725,13 +640,6 @@ private:
         }
     }
 
-    void ApplySimulationOutput(const SimulationPayload& simOut)
-    {
-        ApplyResolvedFrameState(simOut.frameState,
-                                simOut.frameState.carWorldPosition,
-                                simOut.frameState.carYawDeg);
-    }
-
     bool IsTrackProducerJobInFlightHint()
     {
         if (trackProducerHintCached_)
@@ -807,10 +715,13 @@ private:
 
         SimulationSchedulerDomain::MarkSimulationCompleted(simState_, simState_.inFlightIdx);
         simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
-        ApplySimulationOutput(
+        const SimulationPayload& authoritativeOutput =
             GameLoopRuntime::CommitCompletedSimulationReuseAuthoritativeOutput(
                 simState_,
-                simulationReuseState_));
+                simulationReuseState_);
+        ApplyResolvedFrameState(authoritativeOutput.frameState,
+                                authoritativeOutput.frameState.carWorldPosition,
+                                authoritativeOutput.frameState.carYawDeg);
         return true;
     }
 
@@ -834,7 +745,9 @@ private:
                         completionPacket,
                         simulationReuseState_))
             {
-                ApplySimulationOutput(*authoritativeOutput);
+                ApplyResolvedFrameState(authoritativeOutput->frameState,
+                                        authoritativeOutput->frameState.carWorldPosition,
+                                        authoritativeOutput->frameState.carYawDeg);
             }
         }
         if (carPrepareState_.JobInFlight() && carPrepareTask_.IsDone())
@@ -1466,26 +1379,11 @@ private:
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
     }
 
-    void CaptureTrackDrawStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
-    }
-
-    void CaptureTrackEndStageTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.trackEnd, lwrStageTrace_.trackEnd);
-    }
-
     void CaptureIdleTrackAndCarTraces()
     {
         CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
         hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
         lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
-        CaptureWorkRamStage(hwrStageTrace_.car, lwrStageTrace_.car);
-    }
-
-    void CaptureCarStageTraces()
-    {
         CaptureWorkRamStage(hwrStageTrace_.car, lwrStageTrace_.car);
     }
 
@@ -1509,13 +1407,8 @@ private:
         ConfigureScene3dView(camera);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Car);
         RenderCar(camera);
-        CaptureCarStageTraces();
+        CaptureWorkRamStage(hwrStageTrace_.car, lwrStageTrace_.car);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
-    }
-
-    void CaptureIdleRenderTraces()
-    {
-        CaptureIdleTrackAndCarTraces();
     }
 
     bool IsTrackFrameEnabled() const
@@ -1533,7 +1426,9 @@ private:
             GameLoopRuntime::CaptureTrackReuseRuntimeDisabledFrame(frameCounter_,
                                                                    latestActiveSegmentId_,
                                                                    trackReuseState_);
-            CaptureTrackRenderDisabledTraces();
+            CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
+            hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
+            lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
             return;
         }
 
@@ -1566,21 +1461,14 @@ private:
                                           trackFrameContext.cameraLocation,
                                           trackFrameContext.cameraLookTarget,
                                           trackFrameContext.carWorldPosition);
-        CaptureTrackDrawStageTraces();
+        CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
         context_.trackSystem->EndFrame();
         GameLoopRuntime::CommitTrackReuseRuntimeFrame(frameCounter_,
                                                       latestActiveSegmentId_,
                                                       trackRenderPacket.valid,
                                                       trackReuseState_);
-        CaptureTrackEndStageTraces();
-    }
-
-    void CaptureTrackRenderDisabledTraces()
-    {
-        CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
-        hwrStageTrace_.trackEnd = hwrStageTrace_.trackDraw;
-        lwrStageTrace_.trackEnd = lwrStageTrace_.trackDraw;
+        CaptureWorkRamStage(hwrStageTrace_.trackEnd, lwrStageTrace_.trackEnd);
     }
 
     void RenderAxes()
@@ -1622,16 +1510,6 @@ private:
         UpdateFrameEndOverlays();
     }
 
-    uint32_t GetSubmittedTrackFacesThisFrame() const
-    {
-        return IsTrackFrameEnabled() ? lastSubmittedTrackFacesThisFrame_ : 0u;
-    }
-
-    uint32_t GetSubmittedCarFacesThisFrame() const
-    {
-        return CanRenderCar() ? lastRenderedCarFacesThisFrame_ : 0u;
-    }
-
     FramePresentationSnapshot BuildFramePresentationSnapshot(
         const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView) const
     {
@@ -1642,8 +1520,8 @@ private:
                 kEnablePhysicsSafeTelemetry)
             : Sh2SplitTelemetrySnapshot{};
         return GameLoopRuntime::BuildFramePresentationSnapshot(
-            GetSubmittedTrackFacesThisFrame(),
-            GetSubmittedCarFacesThisFrame(),
+            IsTrackFrameEnabled() ? lastSubmittedTrackFacesThisFrame_ : 0u,
+            CanRenderCar() ? lastRenderedCarFacesThisFrame_ : 0u,
             context_.EnableRuntimeStatsLogs(),
             sh2);
     }
@@ -1712,7 +1590,13 @@ private:
 
     void UpdateFrameEndOverlays()
     {
-        PrintDrivingHud();
+        const Game::CarSystem::DrivetrainDebugSnapshot drivetrain =
+            GameLoopOverlayDomain::BuildExtendedDrivetrainOverlaySnapshot(
+                (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr);
+        const auto drivingHud = GameLoopRuntime::BuildDrivingHudTextPacket(drivetrain);
+        GameLoopRuntime::PresentPresenterBoundaryHudStatusTextPacket(
+            GameLoopRuntime::BuildPresenterBoundaryStatusTextPacket(drivingHud));
+        GameLoopRuntime::PresentDrivingHudShiftTextPacket(drivingHud);
 
         if (context_.EnableRuntimeStatsLogs() || context_.EnableMinimalFpsOverlay())
         {
@@ -1742,18 +1626,7 @@ private:
                         context_.trackSystem));
             }
         }
-        UpdateLowWorkFreeOverlay();
-    }
-
-    void PrintDrivingHud() const
-    {
-        const Game::CarSystem::DrivetrainDebugSnapshot drivetrain =
-            GameLoopOverlayDomain::BuildExtendedDrivetrainOverlaySnapshot(
-                (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr);
-        const auto drivingHud = GameLoopRuntime::BuildDrivingHudTextPacket(drivetrain);
-        GameLoopRuntime::PresentPresenterBoundaryHudStatusTextPacket(
-            GameLoopRuntime::BuildPresenterBoundaryStatusTextPacket(drivingHud));
-        GameLoopRuntime::PresentDrivingHudShiftTextPacket(drivingHud);
+        UpdateLowWorkFreeOverlayEnabled<>();
     }
 
     void PrintSegmentOverlapDiagnostics(
@@ -1805,11 +1678,19 @@ private:
         const SegmentOverlaySnapshot& segment = overlayFlow.segment.snapshot;
 
         GameLoopRuntime::PrintSegmentWindowOverlay(segment);
-        PrintSegmentSpatialOverlay(overlaySnapshot);
-        PrintShadowSpatialOverlay();
-        PrintFaceAndShadowOverlay(overlaySnapshot);
-        PrintGroundProbeOverlay(overlaySnapshot);
-        PrintPhysicsQueryOverlay(overlaySnapshot);
+        GameLoopRuntime::PresentSegmentSpatialOverlay(overlaySnapshot, carYawDeg_);
+        GameLoopRuntime::PresentShadowSpatialOverlay(shadowDebug_);
+        GameLoopRuntime::PresentFaceAndShadowOverlay(
+            overlaySnapshot,
+            context_.SbaLoaded(),
+            context_.RenderCarShadowModel() && context_.carShadowRenderer,
+            context_.sbaMeshCount,
+            context_.sbaFaceCount);
+        GameLoopRuntime::PresentGroundProbeOverlay(overlaySnapshot);
+        if constexpr (kEnablePhysicsSafeTelemetry)
+        {
+            GameLoopRuntime::PresentPhysicsQueryOverlay(overlaySnapshot);
+        }
         constexpr bool kEnableExtendedDrivetrainOverlay = true;
         if constexpr (kEnableExtendedDrivetrainOverlay)
         {
@@ -1823,40 +1704,6 @@ private:
             segment,
             kEnablePhysicsSafeTelemetry);
         overlayEventState_.Update(segment);
-    }
-
-    void PrintSegmentSpatialOverlay(const OverlayDiagnosticsSnapshot& overlay) const
-    {
-        GameLoopRuntime::PresentSegmentSpatialOverlay(overlay, carYawDeg_);
-    }
-
-    void PrintShadowSpatialOverlay() const
-    {
-        GameLoopRuntime::PresentShadowSpatialOverlay(shadowDebug_);
-    }
-
-    void PrintFaceAndShadowOverlay(const OverlayDiagnosticsSnapshot& overlay) const
-    {
-        GameLoopRuntime::PresentFaceAndShadowOverlay(
-            overlay,
-            context_.SbaLoaded(),
-            context_.RenderCarShadowModel() && context_.carShadowRenderer,
-            context_.sbaMeshCount,
-            context_.sbaFaceCount);
-    }
-
-    void PrintGroundProbeOverlay(const OverlayDiagnosticsSnapshot& overlay) const
-    {
-        GameLoopRuntime::PresentGroundProbeOverlay(overlay);
-    }
-
-    void PrintPhysicsQueryOverlay(const OverlayDiagnosticsSnapshot& overlay) const
-    {
-        if constexpr (!kEnablePhysicsSafeTelemetry)
-        {
-            return;
-        }
-        GameLoopRuntime::PresentPhysicsQueryOverlay(overlay);
     }
 
     void UpdateRealtimeFpsOverlay()
@@ -1873,58 +1720,28 @@ private:
         constexpr uint32_t kDisplayRefreshHz = 50u;
 #endif
 
-        uint32_t vblankDelta = 0u;
-        if (!BeginRealtimeFpsSample(vblankDelta))
-        {
-            return;
-        }
-
-        AccumulateRealtimeFpsSample(vblankDelta, kDisplayRefreshHz);
-        if (fpsState_.sampleVblanks == 0u)
-        {
-            return;
-        }
-
-        const RealtimeFpsMetricsSnapshot metrics =
-            BuildRealtimeFpsMetricsSnapshot(kDisplayRefreshHz);
-        PrintRealtimeFpsMetrics(metrics);
-
-        constexpr uint32_t kSampleWindowFrames = 60u;
-        if (fpsState_.sampleFrames >= kSampleWindowFrames)
-        {
-            ResetRealtimeFpsSampleWindow();
-        }
-    }
-
-    bool BeginRealtimeFpsSample(uint32_t& outVblankDelta)
-    {
         const uint32_t vblankNow = SRL_AppGetVblankCounter();
         if (!fpsState_.VblankValid())
         {
             fpsState_.SetVblankValid(true);
             fpsState_.lastVblank = vblankNow;
-            return false;
+            return;
         }
 
-        outVblankDelta = vblankNow - fpsState_.lastVblank;
+        uint32_t vblankDelta = vblankNow - fpsState_.lastVblank;
         fpsState_.lastVblank = vblankNow;
-        if (outVblankDelta == 0u)
+        if (vblankDelta == 0u)
         {
-            // Should not happen in steady state, but keep the metric stable.
-            outVblankDelta = 1u;
+            vblankDelta = 1u;
         }
-        return true;
-    }
 
-    void AccumulateRealtimeFpsSample(uint32_t vblankDelta, uint32_t displayRefreshHz)
-    {
         ++fpsState_.sampleFrames;
         fpsState_.sampleVblanks += static_cast<uint16_t>(vblankDelta);
         const uint32_t frameTimeX100 = static_cast<uint32_t>(
-            (static_cast<uint64_t>(vblankDelta) * 100000u + (displayRefreshHz / 2u)) /
-            static_cast<uint64_t>(displayRefreshHz));
-        constexpr uint32_t kTarget30FrameTimeX100 = 100000u / 30u; // 33.33 ms
-        constexpr uint32_t kTarget60FrameTimeX100 = 100000u / 60u; // 16.67 ms
+            (static_cast<uint64_t>(vblankDelta) * 100000u + (kDisplayRefreshHz / 2u)) /
+            static_cast<uint64_t>(kDisplayRefreshHz));
+        constexpr uint32_t kTarget30FrameTimeX100 = 100000u / 30u;
+        constexpr uint32_t kTarget60FrameTimeX100 = 100000u / 60u;
         if (frameTimeX100 > kTarget30FrameTimeX100)
         {
             ++fpsState_.framesOver30Budget;
@@ -1933,44 +1750,41 @@ private:
         {
             ++fpsState_.framesOver60Budget;
         }
-    }
+        if (fpsState_.sampleVblanks == 0u)
+        {
+            return;
+        }
 
-    RealtimeFpsMetricsSnapshot BuildRealtimeFpsMetricsSnapshot(uint32_t displayRefreshHz) const
-    {
-        RealtimeFpsMetricsSnapshot out{};
-        const uint64_t fpsNum = static_cast<uint64_t>(displayRefreshHz) *
+        RealtimeFpsMetricsSnapshot metrics{};
+        const uint64_t fpsNum = static_cast<uint64_t>(kDisplayRefreshHz) *
                                 static_cast<uint64_t>(10u) *
                                 static_cast<uint64_t>(fpsState_.sampleFrames);
-        out.fpsX10 = static_cast<uint16_t>(
+        metrics.fpsX10 = static_cast<uint16_t>(
             (fpsNum + static_cast<uint64_t>(fpsState_.sampleVblanks / 2u)) /
             static_cast<uint64_t>(fpsState_.sampleVblanks));
 
         const uint64_t frameMsNum =
             static_cast<uint64_t>(10000u) * static_cast<uint64_t>(fpsState_.sampleVblanks);
-        const uint64_t frameMsDen = static_cast<uint64_t>(displayRefreshHz) *
+        const uint64_t frameMsDen = static_cast<uint64_t>(kDisplayRefreshHz) *
                                     static_cast<uint64_t>(fpsState_.sampleFrames);
-        out.frameMsX10 = static_cast<uint16_t>(
+        metrics.frameMsX10 = static_cast<uint16_t>(
             (frameMsNum + (frameMsDen / 2u)) / std::max<uint64_t>(1u, frameMsDen));
 
         const uint64_t vbNum =
             static_cast<uint64_t>(fpsState_.sampleVblanks) * static_cast<uint64_t>(100u);
-        out.vbX100 = static_cast<uint16_t>(
+        metrics.vbX100 = static_cast<uint16_t>(
             (vbNum + static_cast<uint64_t>(fpsState_.sampleFrames / 2u)) /
             static_cast<uint64_t>(fpsState_.sampleFrames));
 
-        out.drop30Pct = (fpsState_.sampleFrames > 0u)
+        metrics.drop30Pct = (fpsState_.sampleFrames > 0u)
             ? static_cast<uint8_t>((static_cast<uint64_t>(fpsState_.framesOver30Budget) * 100u) /
                                    static_cast<uint64_t>(fpsState_.sampleFrames))
             : 0u;
-        out.drop60Pct = (fpsState_.sampleFrames > 0u)
+        metrics.drop60Pct = (fpsState_.sampleFrames > 0u)
             ? static_cast<uint8_t>((static_cast<uint64_t>(fpsState_.framesOver60Budget) * 100u) /
                                    static_cast<uint64_t>(fpsState_.sampleFrames))
             : 0u;
-        return out;
-    }
 
-    void PrintRealtimeFpsMetrics(const RealtimeFpsMetricsSnapshot& metrics) const
-    {
         SRL::Debug::Print(0, 16, "FPS:%u.%u ms:%u.%u vb:%u.%02u d30:%u%% d60:%u%%",
                           static_cast<unsigned>(metrics.fpsX10 / 10u),
                           static_cast<unsigned>(metrics.fpsX10 % 10u),
@@ -1980,14 +1794,15 @@ private:
                           static_cast<unsigned>(metrics.vbX100 % 100u),
                           static_cast<unsigned>(metrics.drop30Pct),
                           static_cast<unsigned>(metrics.drop60Pct));
-    }
 
-    void ResetRealtimeFpsSampleWindow()
-    {
-        fpsState_.sampleFrames = 0u;
-        fpsState_.sampleVblanks = 0u;
-        fpsState_.framesOver30Budget = 0u;
-        fpsState_.framesOver60Budget = 0u;
+        constexpr uint32_t kSampleWindowFrames = 60u;
+        if (fpsState_.sampleFrames >= kSampleWindowFrames)
+        {
+            fpsState_.sampleFrames = 0u;
+            fpsState_.sampleVblanks = 0u;
+            fpsState_.framesOver30Budget = 0u;
+            fpsState_.framesOver60Budget = 0u;
+        }
     }
 
     static int32_t NormalizeYawDeg360(int32_t yawDeg)

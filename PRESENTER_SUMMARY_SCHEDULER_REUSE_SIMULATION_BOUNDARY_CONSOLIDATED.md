@@ -45,20 +45,13 @@ Current narrowed presentation-facing branch above that:
 
 ### Simulation-side preview chain
 
-- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
+- removed during later cleanup after smoke validation stopped depending on this
+  preview ladder
 
 ### Scheduler/reuse aggregate
 
-- `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
+- removed during later cleanup after smoke validation stopped depending on this
+  aggregate preview ladder
 
 ### Presenter/resumo aggregate
 

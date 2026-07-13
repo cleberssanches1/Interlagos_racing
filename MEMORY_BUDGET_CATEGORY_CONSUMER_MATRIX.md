@@ -19,7 +19,7 @@ It does not authorize runtime migration by itself.
 
 | Category | Current consumer | Current file | Current shape | Current status | Best future boundary |
 | --- | --- | --- | --- | --- | --- |
-| `TrackRender` | passive render packet enrichment | `src/game_loop_track_render_packet_assembler.hpp` | `QueryCategoryPolicy(...)` into `TrackRenderFramePacket` | passive only | `RenderBudgetObservabilityViewPacket` or one narrow render-budget consumer |
+| `TrackRender` | former passive render packet enrichment | former `src/game_loop_track_render_packet_assembler.hpp` | `QueryCategoryPolicy(...)` into `TrackRenderFramePacket` | removed after smoke-only phase | `RenderBudgetObservabilityViewPacket` or one narrow render-budget consumer |
 | `CarRender` | passive render packet enrichment | `src/game_loop_car_visual_packet_assembler.hpp` | `QueryCategoryPolicy(...)` into `CarVisualFramePacket` | passive only | `RenderBudgetObservabilityViewPacket` or one narrow render-budget consumer |
 | `AudioPcm` | PCM allocation setup | `src/car_audio_system.hpp` | `ConfigurePcmStreamingBudgetFromPolicy()` | live neutral | keep bridge boundary only |
 | `Hud` | optional periodic HUD stats gate | `src/game_loop_system.hpp` | `ShouldAvoidHudOptionalTelemetry()` | live neutral | keep bridge boundary only |

@@ -45,7 +45,7 @@ Files:
 
 - `src/game_loop_simulation_scheduler_lifecycle_observability_contracts.hpp`
 - `src/game_loop_simulation_scheduler_lifecycle_observability_assembler.hpp`
-- `src/game_loop_simulation_scheduler_lifecycle_runtime_assembler.hpp`
+- lifecycle compile-only shim removed after smoke validation stopped including it
 
 Role:
 
@@ -68,16 +68,12 @@ Role:
 
 Files:
 
-- `src/game_loop_scheduler_track_render_preview_contracts.hpp`
-- `src/game_loop_scheduler_track_render_preview_assembler.hpp`
+- preview-contract layer removed after smoke validation stopped depending on it
 
 Role:
 
-- define one compile-only preview directly above the lifecycle-to-track-render
-  bridge
-- group:
-  - `SimulationSchedulerLifecycleObservabilityPacket`
-  - `TrackRenderTelemetryViewPacket`
+- compile-only preview assembler was removed after smoke validation stopped
+  depending on it
   - `TrackRenderSh2PresentationPacket`
 - keep one passive inspection point that spans scheduler lifecycle state and the
   current SH2 track-render presentation output

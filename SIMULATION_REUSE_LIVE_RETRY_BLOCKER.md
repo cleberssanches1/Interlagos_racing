@@ -64,6 +64,17 @@ This means the current seam blocker is now narrower and better understood:
 Do not reopen the simulation-side live seam with the combined owner-packet
 retry first.
 
+Current project posture:
+
+- the simulation-side live retry is now under formal freeze
+- do not reopen this seam while the fixed ISO target remains `4134912`
+- do not reopen this seam until one of these becomes true:
+  - at least `2048` bytes of always-live budget are recovered for the minimal
+    seam join retry
+  - at least `4096` bytes of always-live budget are recovered for the broader
+    Boundary D retry path
+  - the user explicitly authorizes a different ISO-envelope strategy
+
 The next retry must be narrower than:
 
 - `SimulationReuseRuntimeState` live commit
@@ -91,8 +102,10 @@ simulation seam:
 
 That preview now exists as:
 
-- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
+- it originally existed as a dedicated preview pair, but that ladder was later
+  removed after smoke validation stopped depending on it
+- the remaining safe seam is now the decision/view path plus the passive
+  owner/source/observability helpers around runtime reuse
 
 ## Next live retry shape
 

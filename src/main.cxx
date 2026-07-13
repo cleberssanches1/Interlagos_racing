@@ -117,6 +117,95 @@ static bool ComputeCarVisualYawOffsetFromAnchors(const CarAnchorPoints& anchors,
     return true;
 }
 
+static Vector3D ComputeCarModelCenter(ModelObject* carPtr, uint32_t meshCount, bool isSmoothMesh);
+
+struct SbaShadowBootstrapAssets
+{
+    std::unique_ptr<ModelObject> model{};
+    std::unique_ptr<MeshRenderer> renderer{};
+    bool loaded = false;
+    uint16_t meshCount = 0;
+    uint16_t faceCount = 0;
+};
+
+static SbaShadowBootstrapAssets BuildSbaShadowBootstrapAssets(
+    const GameLoopRuntime::CdAssetSbaBootstrapDecisionPacket& decision)
+{
+    SbaShadowBootstrapAssets assets{};
+    if (!decision.shouldAttemptSbaModelLoad || decision.resolvedSbaPath == nullptr)
+    {
+        return assets;
+    }
+
+    assets.model = std::make_unique<ModelObject>(
+        decision.resolvedSbaPath,
+        0,
+        false,
+        0,
+        false,
+        false,
+        false);
+    if (!assets.model || assets.model->GetMeshCount() == 0 || assets.model->GetFaceCount() == 0)
+    {
+        return assets;
+    }
+
+    assets.model->ForceSolidColorPreserveDisplay(SRL::Types::HighColor::FromRGB555(0, 0, 0));
+    assets.model->ForceHalfTransparency(true);
+
+    MeshRenderer::Config sbaCfg{};
+    sbaCfg.modelCenter = ComputeCarModelCenter(assets.model.get(),
+                                               assets.model->GetMeshCount(),
+                                               assets.model->IsSmooth());
+    sbaCfg.lightDirection = Vector3D(0.35, -0.15, 0.35);
+    sbaCfg.drawOrderCount = std::min<size_t>(8u, assets.model->GetMeshCount());
+    for (size_t i = 0; i < sbaCfg.drawOrderCount; ++i)
+    {
+        sbaCfg.drawOrder[i] = i;
+    }
+    sbaCfg.useBudget = false;
+    sbaCfg.rotateModelX180 = false;
+    sbaCfg.rotateModelZ180 = false;
+    assets.renderer = std::make_unique<MeshRenderer>(*assets.model,
+                                                     assets.model->IsSmooth(),
+                                                     sbaCfg);
+    assets.loaded = (assets.renderer != nullptr);
+    assets.meshCount = static_cast<uint16_t>(assets.model->GetMeshCount());
+    assets.faceCount = static_cast<uint16_t>(assets.model->GetFaceCount());
+    return assets;
+}
+
+struct CarAnchorBootstrapFallback
+{
+    int32_t visualYawOffsetDeg = 0;
+    int32_t gameplayYawDeg = 0;
+    bool hasVisualYawOffset = false;
+    bool hasGameplayYaw = false;
+};
+
+static CarAnchorBootstrapFallback BuildCarAnchorBootstrapFallback(
+    const GameLoopRuntime::CdAssetAnchorBootstrapDecisionPacket& decision)
+{
+    CarAnchorBootstrapFallback fallback{};
+    if (!decision.shouldUseAnchorFallback)
+    {
+        return fallback;
+    }
+
+    fallback.hasVisualYawOffset =
+        ComputeCarVisualYawOffsetFromAnchors(decision.anchors, fallback.visualYawOffsetDeg);
+    if (!decision.hasValidAnchors)
+    {
+        return fallback;
+    }
+
+    const int32_t dxRaw = (decision.anchors.front.X - decision.anchors.rear.X).RawValue();
+    const int32_t dzRaw = (decision.anchors.front.Z - decision.anchors.rear.Z).RawValue();
+    fallback.hasGameplayYaw =
+        ComputeGameplayYawFromModelForwardRaw(dxRaw, dzRaw, fallback.gameplayYawDeg);
+    return fallback;
+}
+
 static bool ComputeCarMeshCenterByIndex(ModelObject* carPtr,
                                         uint32_t meshCount,
                                         bool isSmoothMesh,
@@ -963,38 +1052,12 @@ static int RunPhysicsPocMode()
     if (renderCar && kEnableSbaShadowModelLoad)
     {
         const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
-        if (sbaDecision.shouldAttemptSbaModelLoad)
-        {
-            sbaModel = std::make_unique<ModelObject>(
-                sbaDecision.resolvedSbaPath,
-                0,
-                false,
-                0,
-                false,
-                false,
-                false);
-            if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
-            {
-                // Configure SBA as a shadow-only model.
-                sbaModel->ForceSolidColorPreserveDisplay(SRL::Types::HighColor::FromRGB555(0, 0, 0));
-                sbaModel->ForceHalfTransparency(true);
-
-                MeshRenderer::Config sbaCfg{};
-                sbaCfg.modelCenter = ComputeCarModelCenter(sbaModel.get(),
-                                                           sbaModel->GetMeshCount(),
-                                                           sbaModel->IsSmooth());
-                sbaCfg.lightDirection = Vector3D(0.35, -0.15, 0.35);
-                sbaCfg.drawOrderCount = std::min<size_t>(8u, sbaModel->GetMeshCount());
-                for (size_t i = 0; i < sbaCfg.drawOrderCount; ++i) sbaCfg.drawOrder[i] = i;
-                sbaCfg.useBudget = false;
-                sbaCfg.rotateModelX180 = false;
-                sbaCfg.rotateModelZ180 = false;
-                sbaRenderer = std::make_unique<MeshRenderer>(*sbaModel, sbaModel->IsSmooth(), sbaCfg);
-                sbaLoaded = (sbaRenderer != nullptr);
-                sbaMeshCount = static_cast<uint16_t>(sbaModel->GetMeshCount());
-                sbaFaceCount = static_cast<uint16_t>(sbaModel->GetFaceCount());
-            }
-        }
+        auto sbaAssets = BuildSbaShadowBootstrapAssets(sbaDecision);
+        sbaModel = std::move(sbaAssets.model);
+        sbaRenderer = std::move(sbaAssets.renderer);
+        sbaLoaded = sbaAssets.loaded;
+        sbaMeshCount = sbaAssets.meshCount;
+        sbaFaceCount = sbaAssets.faceCount;
     }
     std::array<size_t, 5> drawOrder{};
     size_t orderCount = 0;
@@ -1216,38 +1279,12 @@ int GameApp::Run()
     if (renderCar && kEnableSbaShadowModelLoad)
     {
         const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
-        if (sbaDecision.shouldAttemptSbaModelLoad)
-        {
-            sbaModel = std::make_unique<ModelObject>(
-                sbaDecision.resolvedSbaPath,
-                0,
-                false,
-                0,
-                false,
-                false,
-                false);
-            if (sbaModel && sbaModel->GetMeshCount() > 0 && sbaModel->GetFaceCount() > 0)
-            {
-                // Configure SBA as a shadow-only model.
-                sbaModel->ForceSolidColorPreserveDisplay(SRL::Types::HighColor::FromRGB555(0, 0, 0));
-                sbaModel->ForceHalfTransparency(true);
-
-                MeshRenderer::Config sbaCfg{};
-                sbaCfg.modelCenter = ComputeCarModelCenter(sbaModel.get(),
-                                                           sbaModel->GetMeshCount(),
-                                                           sbaModel->IsSmooth());
-                sbaCfg.lightDirection = Vector3D(0.35, -0.15, 0.35);
-                sbaCfg.drawOrderCount = std::min<size_t>(8u, sbaModel->GetMeshCount());
-                for (size_t i = 0; i < sbaCfg.drawOrderCount; ++i) sbaCfg.drawOrder[i] = i;
-                sbaCfg.useBudget = false;
-                sbaCfg.rotateModelX180 = false;
-                sbaCfg.rotateModelZ180 = false;
-                sbaRenderer = std::make_unique<MeshRenderer>(*sbaModel, sbaModel->IsSmooth(), sbaCfg);
-                sbaLoaded = (sbaRenderer != nullptr);
-                sbaMeshCount = static_cast<uint16_t>(sbaModel->GetMeshCount());
-                sbaFaceCount = static_cast<uint16_t>(sbaModel->GetFaceCount());
-            }
-        }
+        auto sbaAssets = BuildSbaShadowBootstrapAssets(sbaDecision);
+        sbaModel = std::move(sbaAssets.model);
+        sbaRenderer = std::move(sbaAssets.renderer);
+        sbaLoaded = sbaAssets.loaded;
+        sbaMeshCount = sbaAssets.meshCount;
+        sbaFaceCount = sbaAssets.faceCount;
     }
     // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
@@ -1473,17 +1510,16 @@ int GameApp::Run()
             markerFaces);
 
         const auto anchorDecision = Game::CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision();
-        const CarAnchorPoints& anchors = anchorDecision.anchors;
+        const auto anchorFallback = BuildCarAnchorBootstrapFallback(anchorDecision);
         int32_t anchorYawDeg = 0;
         bool anchorOffsetValid = false;
-        if (!markerOffsetValid && anchorDecision.shouldUseAnchorFallback)
+        if (!markerOffsetValid && anchorFallback.hasVisualYawOffset)
         {
-            anchorOffsetValid = ComputeCarVisualYawOffsetFromAnchors(anchors, visualYawOffsetDeg);
-            if (anchorDecision.hasValidAnchors)
+            visualYawOffsetDeg = anchorFallback.visualYawOffsetDeg;
+            anchorOffsetValid = true;
+            if (anchorFallback.hasGameplayYaw)
             {
-                const int32_t dxRaw = (anchors.front.X - anchors.rear.X).RawValue();
-                const int32_t dzRaw = (anchors.front.Z - anchors.rear.Z).RawValue();
-                (void)ComputeGameplayYawFromModelForwardRaw(dxRaw, dzRaw, anchorYawDeg);
+                anchorYawDeg = anchorFallback.gameplayYawDeg;
             }
         }
         if constexpr (kLog)

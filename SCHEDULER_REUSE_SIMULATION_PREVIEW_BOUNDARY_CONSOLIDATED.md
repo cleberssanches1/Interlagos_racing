@@ -46,15 +46,13 @@ Higher consumers already prepared above it:
 
 ### Lower simulation-side debug branch
 
-- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
+- removed during later cleanup after smoke validation stopped depending on this
+  lower debug preview branch
 
 ### Joined scheduler/reuse simulation preview
 
-- `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
+- removed during later cleanup after smoke validation stopped depending on this
+  joined preview branch
 
 ### Higher presentation-facing consumers
 

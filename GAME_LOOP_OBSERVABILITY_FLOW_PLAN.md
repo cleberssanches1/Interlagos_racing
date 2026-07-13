@@ -92,12 +92,8 @@ Current local runtime coverage already integrated:
   - this consolidates the local telemetry-view, producer-hint, and SH2
     presentation packet assembly without changing runtime ownership
 - one compile-only preview now also exists directly above that local live seam:
-  - `src/game_loop_track_render_presentation_preview_contracts.hpp`
-  - `src/game_loop_track_render_presentation_preview_assembler.hpp`
-  - it groups:
-    - `TrackRenderTelemetryViewPacket`
-    - `TrackRenderProducerHintPacket`
-    - `TrackRenderSh2PresentationPacket`
+  - that preview-contract layer was later removed after smoke validation
+    stopped depending on it
 - the SH2/track-render presentation subflow is now documented as a
   consolidated passive boundary in:
   - `SH2_TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
@@ -106,12 +102,8 @@ Current local runtime coverage already integrated:
   - `SIMULATION_SCHEDULER_LIFECYCLE_BOUNDARY_CONSOLIDATED.md`
 - one compile-only preview now also exists directly above lifecycle +
   track-render reuse:
-  - `src/game_loop_scheduler_track_render_preview_contracts.hpp`
-  - `src/game_loop_scheduler_track_render_preview_assembler.hpp`
-  - it groups:
-    - `SimulationSchedulerLifecycleObservabilityPacket`
-    - `TrackRenderTelemetryViewPacket`
-    - `TrackRenderSh2PresentationPacket`
+  - that preview-contract layer was later removed after smoke validation
+    stopped depending on it
 - the full combined map for scheduler lifecycle + track-render + reuse is now
   documented in:
   - `SCHEDULER_TRACK_RENDER_REUSE_FLOW_CONSOLIDATED.md`
@@ -126,7 +118,6 @@ Current scheduler/reuse status:
 - that passive assembly point is now prepared in:
   - `src/game_loop_reuse_runtime_observability_ops.hpp`
   - `src/game_loop_reuse_runtime_owner_assembler.hpp`
-  - `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
   - it adapts raw `frame_reuse` runtime packets/telemetry into
     `ReuseObservabilityPacket` and `ReuseObservabilityDebugBundle`
   - host runtime ownership is still intentionally unchanged
@@ -136,12 +127,8 @@ Current scheduler/reuse status:
   - `src/game_loop_scheduler_reuse_observability_assembler.hpp`
   - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
   - `src/game_loop_scheduler_reuse_flow_observability_assembler.hpp`
-  - `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
   - `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
-  - `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
   - `src/game_loop_scheduler_reuse_runtime_debug_bridge_assembler.hpp`
-  - `src/game_loop_scheduler_reuse_preview_contracts.hpp`
-  - `src/game_loop_scheduler_reuse_preview_assembler.hpp`
   - it joins scheduler telemetry, explicit producer flags, and the future
     `frame_reuse` runtime owner path without reopening `src/game_loop_system.hpp`
   - and now exposes the narrow `SchedulerReuseDebugTelemetryPacket` marker above
@@ -164,15 +151,16 @@ Current scheduler/reuse status:
   - `src/frame_reuse_runtime_owner_assembler.hpp`
   - `src/frame_reuse_runtime_observability_source_assembler.hpp`
   - `src/frame_reuse_runtime_observability_owner_assembler.hpp`
-  - `src/game_loop_reuse_runtime_preview_contracts.hpp`
-  - `src/game_loop_reuse_runtime_preview_assembler.hpp`
   - `src/game_loop_reuse_runtime_source_assembler.hpp`
   - `src/game_loop_reuse_runtime_owner_assembler.hpp`
-  - `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
   - `src/frame_reuse_observability_source_contracts.hpp`
   - `src/frame_reuse_observability_source_assembler.hpp`
   - `src/frame_reuse_observability_source_owner_contracts.hpp`
   - `src/frame_reuse_observability_source_owner_assembler.hpp`
+- the former narrow preview contract above that seam was removed once the path
+  was reduced to owner/source/observability helpers only
+- the former scheduler/reuse assembly-ops bridge above that seam was also
+  removed once the remaining path no longer needed a dedicated wrapper
   - `src/frame_reuse_observability_capture_ops.hpp`
   - `src/game_loop_reuse_source_state_contracts.hpp`
   - `src/game_loop_reuse_source_state_assembler.hpp`
@@ -414,7 +402,8 @@ The observability-specific compile-only hook now validates the passive include c
 - `src/game_loop_observability_contracts.hpp`
 - `src/game_loop_observability_state_assembler.hpp`
 - `src/game_loop_observability_packet_assembler.hpp`
-- `src/game_loop_memory_presentation_packet_assembler.hpp`
+- former `src/game_loop_memory_presentation_packet_assembler.hpp` removed after
+  its helpers were absorbed by the live memory debug assembler
 - `src/game_loop_memory_trace_packet_assembler.hpp`
 - `src/game_loop_memory_trace_text_contracts.hpp`
 - `src/game_loop_memory_trace_text_assembler.hpp`
@@ -435,7 +424,8 @@ The observability-specific compile-only hook now validates the passive include c
 - `src/game_loop_car_visual_debug_contracts.hpp`
 - `src/game_loop_car_visual_debug_assembler.hpp`
 - `src/game_loop_track_render_debug_contracts.hpp`
-- `src/game_loop_track_render_debug_assembler.hpp`
+- former wrapper `src/game_loop_track_render_debug_assembler.hpp`, later
+  removed after its only consumer absorbed the packet assembly directly
 - `src/game_loop_presenter_render_debug_contracts.hpp`
 - `src/game_loop_presenter_render_debug_assembler.hpp`
 - `src/game_loop_presenter_overlay_debug_contracts.hpp`

@@ -229,7 +229,7 @@ Current allowed status:
 These consumers already receive memory category policy, but they remain passive
 enrichment only:
 
-- `src/game_loop_track_render_packet_assembler.hpp`
+- former `src/game_loop_track_render_packet_assembler.hpp` removed after smoke validation stopped depending on it
 - `src/game_loop_car_visual_packet_assembler.hpp`
 - `src/game_loop_render_budget_observability_view_assembler.hpp`
 - `src/game_loop_render_budget_presentation_view_assembler.hpp`

@@ -58,7 +58,6 @@ Files:
 - `src/frame_reuse_runtime_observability_owner_assembler.hpp`
 - `src/game_loop_reuse_runtime_source_assembler.hpp`
 - `src/game_loop_reuse_runtime_owner_assembler.hpp`
-- `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
 - `src/frame_reuse_observability_capture_ops.hpp`
 
 #### `ReuseObservabilitySourceSnapshot`
@@ -345,22 +344,18 @@ Files:
 Derived compile-only helper for future HUD/debug use:
 
 - packet: `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
-- assembler: `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
+- contract-only leaf remains: `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
 - source boundary: `SchedulerReuseFlowObservabilityPacket`
 - current payload shape: valid-only marker
 
 Current compile-only preview above that helper:
 
-- packet: `src/game_loop_scheduler_reuse_preview_contracts.hpp`
-- assembler: `src/game_loop_scheduler_reuse_preview_assembler.hpp`
-- contents:
-  - `SchedulerReuseFlowObservabilityPacket`
-  - `SchedulerReuseDebugTelemetryPacket`
+- preview-contract layer removed after smoke validation stopped depending on it
 
 Additional compile-only chain helper:
 
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
-- `src/game_loop_simulation_scheduler_lifecycle_runtime_assembler.hpp`
+- former bridge leaf `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  later removed after smoke validation stopped depending on it
 
 Current structural effect:
 

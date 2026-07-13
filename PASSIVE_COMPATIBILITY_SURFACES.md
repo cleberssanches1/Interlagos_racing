@@ -27,6 +27,13 @@ Current state:
 - the former presenter facade/decision shim chain was isolated from the generic
   smoke scripts and then removed entirely once it had no runtime, compile-only,
   or remaining smoke-only consumers
+- the former scheduler/reuse bridge shim pair was then removed as well:
+  - `src/game_loop_presenter_scheduler_reuse_bridge_assembler.hpp`
+  - `src/game_loop_scheduler_reuse_runtime_debug_bridge_assembler.hpp`
+- the former scheduler lifecycle compile-only shim was then removed as well:
+  - `src/game_loop_simulation_scheduler_lifecycle_runtime_assembler.hpp`
+- the generic passive/observability smoke scripts now compile the surviving
+  direct consumers instead of preserving those bridge-only headers
 
 Safe removal precondition:
 
@@ -60,25 +67,12 @@ Current entries:
 - `src/game_loop_reuse_runtime_observability_contracts.hpp`
 - `src/game_loop_reuse_runtime_packet_assembler.hpp`
 - `src/game_loop_reuse_runtime_debug_bundle_assembler.hpp`
-- `src/game_loop_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_reuse_runtime_preview_assembler.hpp`
 - `src/game_loop_reuse_runtime_owner_assembler.hpp`
-- `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
 - `src/game_loop_scheduler_reuse_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_observability_assembler.hpp`
 - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_flow_observability_assembler.hpp`
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
 - `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
-- `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
-- `src/game_loop_scheduler_reuse_preview_contracts.hpp`
-- `src/game_loop_scheduler_reuse_preview_assembler.hpp`
-- `src/game_loop_track_render_presentation_preview_contracts.hpp`
-- `src/game_loop_track_render_presentation_preview_assembler.hpp`
-- `src/game_loop_scheduler_track_render_preview_contracts.hpp`
-- `src/game_loop_scheduler_track_render_preview_assembler.hpp`
-- `src/game_loop_simulation_scheduler_lifecycle_runtime_assembler.hpp`
-- `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
 
 Current state:
 
@@ -117,54 +111,36 @@ Current state:
 - `src/game_loop_reuse_runtime_observability_*` now splits reuse source-state
   contracts, packet assembly, and debug-bundle assembly into narrower passive
   helpers under the existing host-local seam
-- `src/game_loop_reuse_runtime_preview_*` now defines the current compile-only
-  preview directly above the `frame_reuse` runtime-owner to reuse-debug bridge
 - `src/game_loop_reuse_runtime_owner_assembler.hpp` now adds the compile-only
   owner bridge from `FrameReuseRuntimeOwnerPacket` into the game-loop
   observability owner packet
-- `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp` now adds the
-  compile-only bridge from `FrameReuseRuntimeOwnerPacket` into
-  `ReuseObservabilityAssemblyInputs` and `ReuseObservabilityDebugBundle`
 - `src/game_loop_scheduler_reuse_observability_*` now defines the passive
   aggregate above reuse + scheduler telemetry using explicit producer flags
 - `src/game_loop_scheduler_reuse_flow_observability_*` now defines the higher
   passive bundle above lifecycle + scheduler/reuse aggregate
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp` now exposes
-  the compile-only bridge from scheduler telemetry + producer flags +
-  `FrameReuseRuntimeOwnerPacket` into the higher scheduler/reuse aggregate
-- `src/game_loop_scheduler_reuse_debug_telemetry_*` now exposes the minimal
-  valid-only debug/presenter marker above `SchedulerReuseFlowObservabilityPacket`
-- `src/game_loop_scheduler_reuse_preview_*` now defines the current
-  compile-only preview directly above the scheduler/reuse flow boundary
-- `src/game_loop_track_render_presentation_preview_*` now defines the current
-  compile-only preview directly above the track-render telemetry/hint/SH2
-  presentation seam
-- `src/game_loop_scheduler_track_render_preview_*` now defines the current
-  compile-only preview directly above the lifecycle + track-render SH2
-  presentation bridge
-- `src/game_loop_presenter_observability_input_assembler.hpp` now accepts the
-  same marker through an overload while preserving the older two-argument
-  adapter
-- `src/game_loop_presenter_input_assembler.hpp` now exposes the sibling
-  compile-only overload that threads the same marker directly into
-  `PresenterInputBundle` without reopening the runtime path
-- `src/game_loop_presenter_input_summary_assembler.hpp` now mirrors that marker
-  at the top-level presenter summary boundary through
-  `PresenterInputSummaryPacket.hasSchedulerReuseDebug`
-- `src/game_loop_presenter_summary_observability_*` now defines the current
-  highest presenter compile-only boundary still backed by live source files in
-  this branch
-- `src/game_loop_presenter_presence_decision_*` now defines the narrowest
-  current presenter presence-decision boundary above
-  `PresenterSummaryObservabilityPacket`
-- `src/game_loop_presenter_presence_preview_*` now defines the current
-  compile-only preview directly above that presenter presence-decision boundary
-- `src/game_loop_simulation_scheduler_lifecycle_runtime_assembler.hpp` now
-  exposes the sibling compile-only bridge from scheduler runtime packets into
-  the lifecycle observability packet
-- `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp` now
-  exposes the compile-only bridge from SH2 snapshot/lifecycle inputs into the
-  final track-render SH2 presentation packet
+- `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp` still preserves
+  the minimal valid-only debug/presenter marker contract above
+  `SchedulerReuseFlowObservabilityPacket`
+- the former presenter compile-only preview/input chain was fully removed after
+  smoke validation stopped depending on it
+- the former track-render presentation preview chain was also fully removed
+  after smoke validation stopped depending on it
+- the former track-reuse preview ladder was also removed after it lost every
+  non-self consumer in `src/` and in smoke validation
+- the former simulation-reuse preview/debug ladder was also removed after it
+  lost every non-self consumer in `src/` and in smoke validation
+- the former `src/game_loop_reuse_runtime_preview_contracts.hpp` leaf was then
+  removed because the remaining path no longer needed a standalone preview
+  payload above the runtime-owner seam
+- the former `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  bridge leaf was then removed because the remaining path no longer needed a
+  dedicated wrapper above the owner/source and aggregate assemblers
+- the former `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp`
+  leaf was then removed because the remaining path only needed the packet
+  contract, not a dedicated assembler wrapper
+- the former `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
+  bridge leaf was removed after its only live consumer absorbed the trivial
+  forwarding logic directly
 
 Safe removal precondition:
 

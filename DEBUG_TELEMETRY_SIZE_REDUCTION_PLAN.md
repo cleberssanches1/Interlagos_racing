@@ -406,6 +406,91 @@ Current status:
   booleans instead of carrying the full producer-state packet
 - `TrackRenderPresentationObservabilityPacket` also flattened the consumed
   producer-state booleans instead of carrying the full producer-state packet
+- the host overlay/debug path in `src/game_loop_system.hpp` then dropped more
+  single-use wrapper methods and now calls the canonical overlay presenters
+  directly for:
+  - segment spatial
+  - shadow spatial
+  - face/shadow summary
+  - ground probe
+  - physics query
+- the same host cleanup also removed tiny one-use wrappers around submitted
+  face counters and simulation-output application in the frame presentation
+  path while preserving the stable build envelope
+- a follow-up host cleanup removed additional one-use wrappers in the same
+  critical file for:
+  - track draw trace capture
+  - track end trace capture
+  - car trace capture
+  - track-disabled trace capture
+  - driving HUD forwarding
+- those paths now call the same canonical capture/presenter logic directly in
+  their owning runtime branches while preserving the stable build envelope
+- the realtime FPS path in `src/game_loop_system.hpp` also dropped the orphan
+  `CaptureIdleRenderTraces()` helper plus its one-use sampling/print wrapper
+  stack:
+  - `BeginRealtimeFpsSample(...)`
+  - `AccumulateRealtimeFpsSample(...)`
+  - `BuildRealtimeFpsMetricsSnapshot(...)`
+  - `PrintRealtimeFpsMetrics(...)`
+  - `ResetRealtimeFpsSampleWindow()`
+- `UpdateRealtimeFpsOverlay()` now owns the sample/update/print/reset flow
+  directly, keeping the same stable-build envelope while recovering always-live
+  host size from the critical file
+- the next host-only reduction then inlined the five per-stage work-RAM capture
+  wrappers directly into the main frame loop:
+  - `CaptureBeginStageTraces()`
+  - `CaptureGameplayStageTraces()`
+  - `CaptureAutoLapStageTraces()`
+  - `CaptureBackgroundStageTraces()`
+  - `CaptureHudStageTraces()`
+- the same patch also removed dead or one-hop local helpers that no longer had
+  any callers in `src/game_loop_system.hpp`:
+  - `UpdateLowWorkFreeOverlay()`
+  - `PrintWorkRamUsageRealtime()`
+  - `MaybeLogHighWorkRamTrace()`
+  - `MaybeLogLowWorkRamTrace()`
+- frame-end low-work overlay presentation now calls
+  `UpdateLowWorkFreeOverlayEnabled<>()` directly, preserving the stable build
+  envelope while shrinking the critical host surface further
+- outside the host-critical file, the track reuse observability presenter path
+  also dropped two forwarding-only helpers in
+  `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`:
+  - `PresentReuseObservabilityDebugBundle(...)`
+  - `TryPresentReuseObservabilityDebugBundle(...)`
+- `TryPresentTrackReuseObservabilityDebugBundle(...)` now builds, checks, and
+  presents the same debug payload directly while preserving the stable build
+  envelope and keeping the public call site unchanged
+- the next reuse/scheduler cleanup then decoupled the remaining runtime-owner
+  bridge from its active consumers, keeping the compatibility header but
+  removing the live dependency on it in:
+  - `src/game_loop_reuse_observability_debug_bundle_presenter_ops.hpp`
+- `src/game_loop_reuse_runtime_preview_assembler.hpp` was later removed once
+  smoke validation no longer depended on it
+- the former `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  leaf also assembled reuse inputs from the source-owner path directly instead
+  of routing through the runtime-owner bridge before later cleanup removed that
+  wrapper
+- the active runtime paths continue to depend directly on
+  `game_loop_reuse_runtime_owner`
+  / source-owner assembly, preserving the stable build envelope and the
+  `4134912` ISO size
+- the next scheduler-reuse cleanup then removed a remaining one-use seed helper
+  from the former `src/game_loop_scheduler_reuse_debug_telemetry_assembler.hpp` and
+  returned the debug packet directly from `flow.valid`
+- the active presenter-side consumers also no longer route through
+  `BuildSchedulerReuseRuntimeDebugTelemetryPacket(...)`; they now build the
+  same debug packet directly from the narrow observability/flow assembly in:
+  - `src/game_loop_presenter_scheduler_reuse_bridge_assembler.hpp`
+  - `src/game_loop_presenter_scheduler_reuse_preview_assembler.hpp`
+- the runtime debug bridge header remains available for compatibility/header
+  coverage, but the live presenter path no longer depends on it
+- the follow-up cleanup confirmed there are now zero `src/` include-sites for
+  `game_loop_scheduler_reuse_runtime_debug_bridge_assembler.hpp`
+- `src/game_loop_presenter_scheduler_reuse_preview_assembler.hpp` also dropped
+  its now-dead include of `game_loop_presenter_scheduler_reuse_bridge_assembler.hpp`
+- that leaves the scheduler-reuse runtime debug bridge as a compatibility-only
+  shim for header-smoke coverage rather than an active runtime dependency
 
 ## Recommended execution order
 

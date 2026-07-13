@@ -85,31 +85,26 @@ Files:
 - `src/game_loop_reuse_runtime_packet_assembler.hpp`
 - `src/game_loop_reuse_runtime_debug_bundle_assembler.hpp`
 - `src/game_loop_reuse_runtime_observability_ops.hpp`
-- `src/game_loop_reuse_runtime_debug_bridge_assembler.hpp`
 
 Role:
 
 - expose source-state and assembly-input contracts
 - build `ReuseObservabilityPacket`
 - build `ReuseObservabilityDebugBundle`
-- bridge a future `FrameReuseRuntimeOwnerPacket` directly into the game-loop
-  observability input/debug path without rebuilding that chain in the host
+- the former runtime-owner debug bridge was removed after smoke validation
+  stopped depending on it
 - keep host-local capture and assembly seams explicit
 
 ### 5. Compile-only runtime-to-presentation preview
 
 Files:
 
-- `src/game_loop_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_reuse_runtime_preview_assembler.hpp`
+- removed during later cleanup after smoke validation stopped depending on it
 
 Role:
 
-- define one preview packet directly above the current runtime-owner to
-  debug-bundle bridge
-- group:
-  - `FrameReuseDomain::FrameReuseRuntimeOwnerPacket`
-  - `GameLoopObservabilityDomain::ReuseObservabilityDebugBundle`
+- compile-only preview assembler was removed after smoke validation stopped
+  depending on it
 - keep one narrow compile-only inspection point that spans raw source ownership
   and presenter-facing reuse debug payload without touching the host runtime
 

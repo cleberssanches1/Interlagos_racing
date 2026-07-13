@@ -241,8 +241,9 @@ Good compile-only follow-up work before that retry:
   lifecycle-oriented and narrow
 - prefer `SimulationSchedulerLifecycleObservabilityPacket` for any future
   scheduler-only observability consumer before mixing it with reuse
-- prefer `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp` to
-  assemble the lower-to-higher chain off-path before any new live retry
+- the former `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  bridge was the preferred off-path lower-to-higher assembly point before later
+  cleanup removed that wrapper
 
 ## Remove-first rule
 

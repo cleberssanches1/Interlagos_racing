@@ -132,8 +132,8 @@ Purpose:
 
 Files:
 
-- `src/game_loop_memory_budget_packet.hpp`
-- `src/game_loop_memory_budget_packet_assembler.hpp`
+- former passive memory-budget frame packet pair removed after smoke validation
+  stopped depending on it
 
 Primary packet:
 
@@ -181,7 +181,8 @@ Representative files:
 - `src/game_loop_render_budget_presentation_view_assembler.hpp`
 - `src/game_loop_render_budget_overlay_text_view_contracts.hpp`
 - `src/game_loop_render_budget_overlay_text_view_assembler.hpp`
-- `src/game_loop_memory_presentation_packet_assembler.hpp`
+- former `src/game_loop_memory_presentation_packet_assembler.hpp` removed after
+  its helpers were absorbed by the live memory debug assembler
 - `src/game_loop_memory_debug_packet_assembler.hpp`
 - `src/game_loop_observability_state_assembler.hpp`
 

@@ -73,7 +73,7 @@ Purpose:
 Files:
 
 - `src/game_loop_track_render_debug_contracts.hpp`
-- `src/game_loop_track_render_debug_assembler.hpp`
+- former wrapper `src/game_loop_track_render_debug_assembler.hpp`
 - `src/game_loop_car_visual_debug_contracts.hpp`
 - `src/game_loop_car_visual_debug_assembler.hpp`
 - `src/game_loop_presenter_render_debug_contracts.hpp`

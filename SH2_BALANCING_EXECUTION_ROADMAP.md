@@ -255,8 +255,8 @@ Passive groundwork already available for this stage:
 - `src/memory_budget_category_assembler.hpp`
 - `src/memory_budget_transition_ops.hpp`
 - `src/memory_budget_system.hpp`
-- `src/game_loop_memory_budget_packet.hpp`
-- `src/game_loop_memory_budget_packet_assembler.hpp`
+- former passive memory-budget frame packet pair removed after smoke validation
+  stopped depending on it
 - `MEMORY_BUDGET_PASSIVE_FLOW_PLAN.md`
 
 Acceptance criteria:

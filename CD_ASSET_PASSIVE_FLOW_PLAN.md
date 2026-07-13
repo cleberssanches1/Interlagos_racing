@@ -218,6 +218,19 @@ An additional safe passive step now also exists for this slice:
 This means a future bootstrap retry can target a narrow decision packet first,
 instead of pulling the broader CD asset packet structure into `src/main.cxx`.
 
+## Current runtime priority
+
+At the current branch state, `Bootstrap / CD` is the preferred next major
+runtime target after `Scheduler/Reuse`.
+
+Reason:
+
+- narrow bootstrap runtime bridges are already accepted and stable
+- the next cut can stay local to bootstrap candidate/request metadata
+- boot order and file timing can remain unchanged
+- this is currently lower risk than reopening the broader `Car Render`
+  packet-integration path under the fixed ISO envelope
+
 Two even narrower bootstrap-side cuts now also exist:
 
 - `CdAssetSbaBootstrapDecisionPacket`
@@ -285,4 +298,52 @@ Current runtime consumption is intentionally narrow:
 - consume only `shouldAttemptSbaModelLoad` and `resolvedSbaPath`
 - build one `CdAssetAnchorBootstrapDecisionPacket`
 - consume only `shouldUseAnchorFallback`, `hasValidAnchors`, and `anchors`
+
+## Latest accepted bootstrap-side reduction
+
+The next accepted `Bootstrap / CD` cut stayed local to `src/main.cxx` and
+removed duplicated SBA shadow-model bootstrap consumption.
+
+Applied shape:
+
+- keep `CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision()` unchanged
+- add one local helper that consumes only
+  `CdAssetSbaBootstrapDecisionPacket`
+- replace the two duplicated SBA model/bootstrap setup blocks in `src/main.cxx`
+  with that one helper
+
+Preserved behavior:
+
+- boot order unchanged
+- SBA path resolution unchanged
+- model construction ownership unchanged
+- mesh-renderer construction ownership unchanged
+- fallback timing unchanged
+
+Validation result:
+
+- stable ISO preserved at `4134912`
+- passive headers passed
+- observability headers passed
+
+One sibling accepted cut now also exists for the anchor boundary:
+
+- keep `CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision()` unchanged
+- add one local helper that consumes only
+  `CdAssetAnchorBootstrapDecisionPacket`
+- replace the local anchor fallback derivation block in `src/main.cxx` with
+  that helper
+
+Preserved behavior:
+
+- boot order unchanged
+- anchor load timing unchanged
+- fallback yaw math ownership unchanged
+- marker-first selection unchanged
+
+Validation result:
+
+- stable ISO preserved at `4134912`
+- passive headers passed
+- observability headers passed
 

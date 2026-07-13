@@ -2,15 +2,28 @@
 
 #include "game_loop_runtime_state.hpp"
 #include "game_loop_track_render_presentation_observability_presenter_ops.hpp"
-#include "game_loop_track_render_producer_hint_assembler.hpp"
+#include "game_loop_track_render_producer_hint_contracts.hpp"
 #include "game_loop_track_render_sh2_presentation_assembler.hpp"
-#include "game_loop_track_render_sh2_presentation_runtime_assembler.hpp"
 #include "game_loop_track_render_telemetry_view_assembler.hpp"
 #include "track_render_transition_ops.hpp"
 #include "track_system.hpp"
 
 namespace GameLoopRuntime
 {
+
+inline void SeedTrackRenderProducerHintPacket(const TrackRenderTelemetryViewPacket& telemetryView,
+                                              TrackRenderProducerHintPacket& outPacket)
+{
+    outPacket.producerJobInFlight = telemetryView.producerJobInFlight;
+}
+
+inline TrackRenderProducerHintPacket BuildTrackRenderProducerHintPacket(
+    const TrackRenderTelemetryViewPacket& telemetryView)
+{
+    TrackRenderProducerHintPacket packet{};
+    SeedTrackRenderProducerHintPacket(telemetryView, packet);
+    return packet;
+}
 
 inline bool TryBuildTrackRenderTelemetryViewPacket(const TrackSystem* trackSystem,
                                                    bool trackSystemReady,
@@ -55,13 +68,21 @@ inline bool TryBuildTrackRenderSh2PresentationPacket(
     uint32_t slaveDispatchSkipsTrackBusy,
     GameLoopObservabilityDomain::TrackRenderSh2PresentationPacket& outPacket)
 {
-    return TryBuildTrackRenderSh2PresentationFromTelemetry(
+    if (!trackTelemetryView.valid)
+    {
+        outPacket = {};
+        return false;
+    }
+
+    outPacket = GameLoopObservabilityDomain::BuildTrackRenderSh2PresentationPacket(
         sh2Snapshot,
-        trackTelemetryView,
         useSafeTelemetryFormat,
         slaveDispatchCount,
         slaveDispatchSkipsTrackBusy,
-        outPacket);
+        true,
+        trackTelemetryView.producerJobInFlight,
+        trackTelemetryView.producerSafeModeActive);
+    return outPacket.valid;
 }
 
 } // namespace GameLoopRuntime

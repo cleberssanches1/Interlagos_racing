@@ -381,6 +381,19 @@ That shadow-data cut should target only:
 3. debug-state propagation
 4. blob/model mode selection
 
+## Current runtime posture
+
+`Car Render` remains the second-priority major runtime block after
+`Bootstrap / CD`.
+
+Reason:
+
+- the accepted shadow-prep narrowing is stable and remains useful
+- the broader `CarVisualFramePacket` integration path still measured a direct
+  `+2048` byte regression at the fixed ISO target
+- the next safe `Car Render` move therefore remains narrower and more
+  constrained than the current bootstrap-side decision/candidate cuts
+
 ## Guard rails
 
 - do not mix this extraction with audio, scheduler or track changes

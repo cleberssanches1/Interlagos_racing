@@ -13,8 +13,8 @@ changing current allocation/runtime behavior.
 - `src/memory_budget_category_assembler.hpp`
 - `src/memory_budget_transition_ops.hpp`
 - `src/memory_budget_system.hpp`
-- `src/game_loop_memory_budget_packet.hpp`
-- `src/game_loop_memory_budget_packet_assembler.hpp`
+- former passive frame packet pair removed after smoke validation stopped
+  depending on it
 
 These files already describe a passive memory-budget path for:
 
@@ -42,7 +42,7 @@ category-policy layer that answers:
 
 ## Passive packet model
 
-`src/game_loop_memory_budget_packet.hpp` aggregates:
+The former `game_loop_memory_budget_packet` layer aggregated:
 
 - `MemorySnapshotPacket`
 - `MemoryPressurePacket`
@@ -183,8 +183,8 @@ Another safe passive step now available for this slice is:
 
 - explicit `Thresholds` builder in `src/memory_budget_transition_ops.hpp`
 - explicit single-category builder in `src/memory_budget_transition_ops.hpp`
-- explicit `MemoryBudgetFramePacket` builder in
-  `src/game_loop_memory_budget_packet_assembler.hpp`
+- the former `MemoryBudgetFramePacket` builder was later removed after smoke
+  validation stopped depending on it
 
 This means the passive memory-budget side now has a complete
 snapshot-to-frame-packet path ready for future substitutional runtime cuts.
@@ -297,7 +297,8 @@ touching the critical runtime path.
 
 The memory/debug presentation side now also has a dedicated off-path packet assembler:
 
-- `src/game_loop_memory_presentation_packet_assembler.hpp`
+- former `src/game_loop_memory_presentation_packet_assembler.hpp` removed after
+  its helpers were absorbed by the live memory debug assembler
 
 Current effect:
 

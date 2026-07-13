@@ -29,7 +29,8 @@ Files:
 - `src/game_loop_track_render_telemetry_view_contracts.hpp`
 - `src/game_loop_track_render_telemetry_view_assembler.hpp`
 - `src/game_loop_track_render_producer_hint_contracts.hpp`
-- `src/game_loop_track_render_producer_hint_assembler.hpp`
+- former wrapper `src/game_loop_track_render_producer_hint_assembler.hpp`,
+  later removed after its only consumer absorbed the packet assembly directly
 
 Role:
 
@@ -55,7 +56,8 @@ Files:
 
 - `src/game_loop_track_render_sh2_presentation_contracts.hpp`
 - `src/game_loop_track_render_sh2_presentation_assembler.hpp`
-- `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
+- former bridge leaf `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
+  later removed after its only consumer absorbed the forwarding logic directly
 
 Role:
 
@@ -83,17 +85,12 @@ Role:
 
 Files:
 
-- `src/game_loop_track_render_presentation_preview_contracts.hpp`
-- `src/game_loop_track_render_presentation_preview_assembler.hpp`
+- preview-contract layer removed after smoke validation stopped depending on it
 
 Role:
 
-- define one narrow compile-only preview directly above the current
-  track-render telemetry + producer-hint + SH2-presentation seam
-- group:
-  - `TrackRenderTelemetryViewPacket`
-  - `TrackRenderProducerHintPacket`
-  - `TrackRenderSh2PresentationPacket`
+- compile-only preview assembler was removed after smoke validation stopped
+  depending on it
 - keep one inspection point that spans the current live boundary without
   widening runtime ownership
 

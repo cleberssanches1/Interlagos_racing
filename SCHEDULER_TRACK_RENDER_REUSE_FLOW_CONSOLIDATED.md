@@ -72,7 +72,8 @@ Main files:
 - `src/game_loop_track_render_telemetry_view_contracts.hpp`
 - `src/game_loop_track_render_producer_hint_contracts.hpp`
 - `src/game_loop_track_render_sh2_presentation_contracts.hpp`
-- `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
+- former bridge leaf `src/game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
+  later removed after its only consumer absorbed the forwarding logic directly
 - `src/game_loop_track_render_runtime_observability_ops.hpp`
 
 ### Level 2 - scheduler lifecycle + track-render preview
@@ -88,8 +89,8 @@ Purpose:
 
 Main files:
 
-- `src/game_loop_scheduler_track_render_preview_contracts.hpp`
-- `src/game_loop_scheduler_track_render_preview_assembler.hpp`
+- preview-contract layer removed after smoke validation stopped depending on it
+- preview assembler removed after smoke validation stopped depending on it
 
 ### Level 3 - frame-reuse source staging
 
@@ -133,8 +134,8 @@ Main files:
 - `src/game_loop_reuse_observability_contracts.hpp`
 - `src/game_loop_reuse_runtime_packet_assembler.hpp`
 - `src/game_loop_reuse_runtime_debug_bundle_assembler.hpp`
-- `src/game_loop_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_reuse_runtime_preview_assembler.hpp`
+- the former `src/game_loop_reuse_runtime_preview_contracts.hpp` leaf was
+  removed after the path was reduced to owner/source/observability helpers
 
 ### Level 5 - scheduler/reuse aggregate
 
@@ -153,8 +154,8 @@ Main files:
 
 - `src/game_loop_scheduler_reuse_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
-- `src/game_loop_scheduler_reuse_preview_contracts.hpp`
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+- former bridge leaf `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  later removed after smoke validation stopped depending on it
 
 ## Live vs passive state
 

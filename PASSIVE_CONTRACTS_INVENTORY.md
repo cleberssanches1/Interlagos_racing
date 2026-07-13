@@ -10,6 +10,7 @@ Operational next-cuts companion:
 
 - `REFACTOR_RUNTIME_SAFE_NEXT_CUTS.md`
 - `REFACTOR_SUBSYSTEM_RUNTIME_MATRIX.md`
+- `GAME_LOOP_RUNTIME_CRITICAL_ENGINEERING_POLICY.md`
 
 This document is inventory-only.
 
@@ -22,6 +23,8 @@ It does not authorize broader runtime substitutions by itself.
 - critical runtime files still require substitution-first discipline:
   - `src/game_loop_system.hpp`
   - `src/main.cxx`
+- policy reference for critical-host size/growth decisions:
+  - `GAME_LOOP_RUNTIME_CRITICAL_ENGINEERING_POLICY.md`
 
 ## Domains
 
@@ -272,10 +275,6 @@ Representative files:
 - `src/game_loop_track_reuse_decision_view_contracts.hpp`
 - `src/game_loop_track_reuse_telemetry_view_contracts.hpp`
 - `src/game_loop_track_reuse_observability_contracts.hpp`
-- `src/game_loop_track_reuse_preview_contracts.hpp`
-- `src/game_loop_track_reuse_preview_presenter_ops.hpp`
-- `src/game_loop_track_reuse_runtime_bridge_assembler.hpp`
-- `src/game_loop_track_reuse_runtime_preview_presenter_ops.hpp`
 - `src/game_loop_simulation_reuse_runtime_commit_contracts.hpp`
 - `src/game_loop_simulation_reuse_runtime_commit_assembler.hpp`
 - `src/game_loop_simulation_reuse_runtime_commit_ops.hpp`
@@ -284,14 +283,6 @@ Representative files:
 - `src/game_loop_simulation_reuse_runtime_decision_contracts.hpp`
 - `src/game_loop_simulation_reuse_runtime_decision_assembler.hpp`
 - `src/game_loop_simulation_reuse_runtime_bridge_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
 - `src/game_loop_reuse_runtime_seam_assembler.hpp`
 - `src/game_loop_simulation_reuse_decision_view_contracts.hpp`
 - `src/game_loop_simulation_reuse_telemetry_view_contracts.hpp`
@@ -305,11 +296,26 @@ Representative files:
 - `src/game_loop_simulation_scheduler_lifecycle_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_observability_contracts.hpp`
 - `src/game_loop_scheduler_reuse_flow_observability_contracts.hpp`
+- `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
+
+Removed during later cleanup:
+
+- `src/game_loop_track_reuse_preview_contracts.hpp`
+- `src/game_loop_track_reuse_preview_presenter_ops.hpp`
+- `src/game_loop_track_reuse_runtime_bridge_assembler.hpp`
+- `src/game_loop_track_reuse_runtime_preview_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_preview_bridge_presenter_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_bridge_presenter_ops.hpp`
+- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
+- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
 - `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
 - `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
 - `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
-- `src/game_loop_scheduler_reuse_debug_telemetry_contracts.hpp`
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
 
 Runtime status:
 
@@ -457,7 +463,8 @@ Main passive families:
 
 Representative files:
 
-- `src/game_loop_memory_budget_packet.hpp`
+- former passive memory-budget frame packet pair removed after smoke validation
+  stopped depending on it
 - `src/game_loop_low_work_overlay_capture_ops.hpp`
 - `src/game_loop_low_work_overlay_assembly_ops.hpp`
 - `src/game_loop_memory_debug_presenter_ops.hpp`

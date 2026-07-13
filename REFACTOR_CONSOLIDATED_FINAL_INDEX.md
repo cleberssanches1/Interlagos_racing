@@ -14,12 +14,17 @@ Operational next-cuts companion:
 - `REFACTOR_RUNTIME_SAFE_NEXT_CUTS.md`
 - `REFACTOR_SUBSYSTEM_RUNTIME_MATRIX.md`
 - `REFACTOR_CLOSURE_EXECUTION_PLAN.md`
+- `GAME_LOOP_RUNTIME_CRITICAL_ENGINEERING_POLICY.md`
+- `ACTIVE_BOUNDARY_CLOSURE_OVERVIEW.md`
+- `REFACTOR_FINAL_REMAINING_WORK.md`
 
 ## Stable baseline
 
 - target ISO remains `4134912`
 - emulator boot must remain stable
 - `AUDIO_PROFILE=1`
+- runtime-critical policy reference:
+  - `GAME_LOOP_RUNTIME_CRITICAL_ENGINEERING_POLICY.md`
 - critical runtime ownership remains centered on:
   - `src/game_loop_system.hpp`
   - `src/main.cxx`
@@ -36,7 +41,8 @@ The refactor already established five concrete outcomes:
    scheduler/reuse, memory budget, bootstrap/CD, car render, and AutoLap
 2. several narrow live substitutions are already accepted and stable
 3. risky domains now have explicit passive boundaries and minimal live plans
-4. multiple compile-only preview chains now exist above critical runtime seams
+4. multiple compile-only preview chains were created, used to drive safe
+   remove-first cleanup, and then removed once they became fully orphaned
 5. documentation now reflects both active live cuts and blocked retry paths
 
 ## Current accepted live runtime cuts
@@ -105,16 +111,11 @@ non-live.
 
 ### Presenter / observability
 
-Established layers:
+Current state:
 
-- presentation bundles
-- render debug bundles
-- overlay/observability bundles
-- presenter summary boundary
-- presenter presence decision/preview boundary
-- presenter top boundary preview/view/text
-- presenter scheduler/reuse preview chain
-- presenter summary scheduler/reuse simulation preview/view/text chain
+- the broad presenter compile-only preview hierarchy was removed after smoke
+  validation stopped depending on it
+- the surviving active seam is now only the HUD status-line path
 
 Important note:
 
@@ -125,7 +126,7 @@ Important note:
 
 Current highest active source-side presenter boundary:
 
-- `PresenterSummaryObservabilityPacket`
+- `PresenterBoundaryStatusTextPacket`
 
 Key references:
 
@@ -143,14 +144,30 @@ Established layers:
 - `SimulationSchedulerLifecycleObservabilityPacket`
 - `SchedulerReuseObservabilityPacket`
 - `SchedulerReuseFlowObservabilityPacket`
-- simulation reuse runtime debug preview boundary
-- scheduler/reuse simulation preview join boundary
-- presenter/resumo simulation preview/view/text chain above that join
+- reduced passive owner/source/debug-bundle assembly around the accepted
+  track-only seam
 
-Current blocked point:
+Recent cleanup:
 
-- broader symmetric simulation-side live retry is still blocked by emulator
-  stability and code-size pressure
+- the former track-reuse preview ladder was removed after it became fully
+  orphaned from `src/` and smoke validation
+- the former simulation-reuse preview/debug ladder was removed for the same
+  reason
+- the former narrow `ReuseRuntimePreviewPacket` contract was also removed once
+  the remaining path was reduced to the owner/source/observability layers that
+  still exist in the tree
+- the former scheduler/reuse assembly-ops bridge leaf was also removed once the
+  remaining path no longer needed a dedicated wrapper above the aggregate
+  assemblers
+- the former minimal `SchedulerReuseDebugTelemetry` assembler leaf was removed
+  after it became observability-smoke-only and the contract remained sufficient
+
+Current branch-final point:
+
+- the narrow accepted seam is treated as the final active result for this
+  branch
+- the broader symmetric simulation-side retry is formally frozen by emulator
+  stability and code-size pressure under the fixed ISO envelope
 
 Key references:
 
@@ -158,6 +175,7 @@ Key references:
 - `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `SIMULATION_REUSE_LIVE_RETRY_BLOCKER.md`
+- `SCHEDULER_REUSE_BRANCH_FINAL_STATUS.md`
 
 ### Track render
 
@@ -170,13 +188,25 @@ Established layers:
 - producer-hint packet
 - SH2 presentation packet
 - presentation/observability aggregate packet
-- compile-only previews above current live seams
+- live consumer now talks directly to the SH2 presentation packet assembler
+  without an extra runtime bridge leaf
+
+Recent cleanup:
+
+- the former `game_loop_track_render_sh2_presentation_runtime_assembler.hpp`
+  bridge leaf was removed after its only consumer absorbed the forwarding logic
+  directly
+- the former `game_loop_track_render_debug_assembler.hpp` wrapper was removed
+  after its only consumer absorbed the packet assembly directly
+- the former `game_loop_track_render_producer_hint_assembler.hpp` wrapper was
+  removed after its only consumer absorbed the packet assembly directly
 
 Key references:
 
 - `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 - `TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
 - `SH2_TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+- `TRACK_RENDER_ACTIVE_CONTRACTS_BOUNDARY_CONSOLIDATED.md`
 
 ### Car render
 
@@ -196,6 +226,7 @@ Key references:
 
 - `CAR_RENDER_PASSIVE_FLOW_PLAN.md`
 - `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md`
+- `CAR_RENDER_BOUNDARY_CLOSURE_CONSOLIDATED.md`
 
 ### CD asset / bootstrap
 
@@ -216,6 +247,7 @@ Key references:
 - `CD_ASSET_PASSIVE_FLOW_PLAN.md`
 - `CD_ASSET_MINIMAL_BOOTSTRAP_SUBSTITUTION_PLAN.md`
 - `CD_BOOTSTRAP_CHAIN_FLOW_PLAN.md`
+- `CD_ASSET_ACTIVE_CONTRACTS_BOUNDARY_CONSOLIDATED.md`
 
 ### Memory budget
 
@@ -223,15 +255,22 @@ Established layers:
 
 - category-policy bridge surfaces
 - memory snapshot/pressure/policy/telemetry packets
-- render-budget observability/presentation/overlay text narrowing
+- render-budget observability narrowing
 - frame-end and low-work overlay presentation boundaries
 - high-work and low-work trace text packetization
+
+Recent cleanup:
+
+- former memory-budget frame packet layer was removed once it became smoke-only
+- former render-budget presentation/overlay text chain was removed once it
+  became smoke-only
 
 Key references:
 
 - `MEMORY_BUDGET_CHAIN_FLOW_PLAN.md`
 - `MEMORY_BUDGET_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
 - `MEMORY_BUDGET_FRAME_END_BOUNDARY_CONSOLIDATED.md`
+- `MEMORY_BUDGET_ACTIVE_CONTRACTS_BOUNDARY_CONSOLIDATED.md`
 
 ### AutoLap route
 
@@ -250,6 +289,7 @@ Key references:
 
 - `AUTO_LAP_ROUTE_PASSIVE_FLOW_PLAN.md`
 - `AUTO_LAP_ROUTE_REINTRODUCTION_STRATEGY.md`
+- `AUTO_LAP_BOUNDARY_CLOSURE_CONSOLIDATED.md`
 
 ## What was reduced or stabilized structurally
 
@@ -262,6 +302,8 @@ These improvements matter even where runtime ownership has not moved yet.
 - memory-debug presentation is already localized through bundle consumers
 - track-render presentation now has narrower SH2-facing boundaries
 - simulation-side retry blockers are documented instead of repeatedly retried
+- dead legacy helpers that no longer participate in `src/` runtime or smoke
+  validation are being removed instead of preserved as accidental side APIs
   blindly
 
 ## Current blockers already understood
@@ -271,6 +313,9 @@ These improvements matter even where runtime ownership has not moved yet.
 - the broader symmetric simulation-side retry still reproduces code-size
   pressure around `+4096` bytes
 - emulator stability regresses when the retry is widened too early
+- the remaining simulation-side completion branch is now under formal freeze
+  until remove-first recovery opens at least `2048` bytes of always-live
+  budget for the narrow seam join retry, or the ISO strategy changes
 
 Primary blocker docs:
 
@@ -295,6 +340,41 @@ Primary blocker docs:
 
 - runtime bootstrap sequencing remains too sensitive for a broad first move
 
+## Recommended next runtime priority
+
+With `Scheduler/Reuse` now frozen at the accepted track-only seam, the next
+runtime-facing subsystem should be `Bootstrap / CD`, not `Car Render`.
+
+Why:
+
+- `Bootstrap / CD` already has accepted narrow runtime bridges in `src/main.cxx`
+- the next bootstrap-side cut can stay local to candidate/request metadata and
+  path/load decisions
+- `Car Render` still carries a direct measured `+2048` byte regression for the
+  broader `CarVisualFramePacket` integration path
+- current `Car Render` progress is useful, but its next safe runtime move is
+  narrower and more constrained than the current `Bootstrap / CD` path
+
+## Current low-risk cleanup frontier
+
+The current non-runtime cleanup frontier is no longer in presenter or
+render-budget text paths.
+
+The remaining low-risk cleanup work is concentrated in:
+
+- scheduler/reuse passive wrappers that still survive as documented non-live
+  boundaries
+- track-reuse / simulation-reuse presenter-side helpers that are still only
+  smoke/compile-only
+- selective memory-debug wrappers only where a full subgraph can be collapsed
+  without touching `src/game_loop_system.hpp`
+
+Avoid next:
+
+- live presenter HUD path
+- track-render SH2 runtime observability path
+- core memory-debug bundle flow
+
 ## Validation contract already standardized
 
 Compile-only validation:
@@ -310,6 +390,9 @@ Rule:
 
 - any future runtime move must be remove-first, boundary-local, and keep the
   ISO at `4134912`
+- use `GAME_LOOP_RUNTIME_CRITICAL_ENGINEERING_POLICY.md` as the explicit
+  interpretation guide for method size, helper growth, and binary-budget
+  decisions in critical hosts
 
 ## Recommended reading order
 
@@ -342,7 +425,8 @@ The project now has:
 - explicit passive boundaries
 - explicit live accepted cuts
 - explicit blocked retry points
-- explicit compile-only preview ladders above critical seams
+- explicit records of which compile-only ladders were removed versus which
+  passive boundaries still remain
 - explicit subsystem inventories to resume work safely
 
 The remaining work is mostly controlled runtime substitution, not structural

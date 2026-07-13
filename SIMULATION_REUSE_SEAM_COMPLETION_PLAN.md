@@ -239,17 +239,8 @@ Current role:
 One narrower compile-only preview now also exists directly above that same
 decision path:
 
-- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
+- that narrower compile-only preview ladder was later removed after smoke
+  validation stopped depending on it
 - `src/game_loop_presenter_summary_scheduler_reuse_simulation_preview_contracts.hpp`
 - `src/game_loop_presenter_summary_scheduler_reuse_simulation_preview_assembler.hpp`
 - `src/game_loop_presenter_summary_scheduler_reuse_simulation_view_contracts.hpp`

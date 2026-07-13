@@ -40,22 +40,19 @@ This keeps the simulation-side branch observable without requiring a live
 - `src/game_loop_simulation_reuse_runtime_decision_assembler.hpp`
 - `src/game_loop_simulation_reuse_decision_view_contracts.hpp`
 - `src/game_loop_simulation_reuse_decision_view_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_assembler.hpp`
+- the former runtime preview pair was removed during later cleanup after smoke
+  validation stopped depending on it
 
 ### Local presentation-facing debug boundary
 
-- `src/game_loop_simulation_reuse_runtime_preview_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_preview_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_bridge_presenter_ops.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_contracts.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_assembler.hpp`
-- `src/game_loop_simulation_reuse_runtime_debug_preview_presenter_ops.hpp`
+- the former local debug preview ladder above that pair was also removed during
+  later cleanup after smoke validation stopped depending on it
 
 ## What this boundary isolates
 
 - exact host-local simulation reuse decision inputs
-- derived simulation reuse decision preview
+- derived simulation reuse decision preview, now represented directly by the
+  remaining decision/view/bridge layers without a standalone preview ladder
 - one explicit local debug-preview packet above that preview
 - one explicit local presenter helper above that debug-preview packet
 

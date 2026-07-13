@@ -17,7 +17,7 @@ Consolidated passive-contract index:
 - `src/track_render_transition_ops.hpp`
 - `src/track_render_scheduler.hpp`
 - `src/game_loop_track_render_packet.hpp`
-- `src/game_loop_track_render_packet_assembler.hpp`
+- former `src/game_loop_track_render_packet_assembler.hpp` removed after smoke validation stopped depending on it
 - `src/game_loop_track_render_telemetry_view_contracts.hpp`
 - `src/game_loop_track_render_telemetry_view_assembler.hpp`
 
@@ -178,7 +178,7 @@ The next safe step is:
 Current compile-only SH2 validation now covers:
 
 - `src/game_loop_track_render_packet.hpp`
-- `src/game_loop_track_render_packet_assembler.hpp`
+- former `src/game_loop_track_render_packet_assembler.hpp` removed after smoke validation stopped depending on it
 
 through:
 
@@ -200,7 +200,8 @@ Current effect:
 An additional passive derived-debug slice is now also available for the track path:
 
 - `src/game_loop_track_render_debug_contracts.hpp`
-- `src/game_loop_track_render_debug_assembler.hpp`
+- former wrapper `src/game_loop_track_render_debug_assembler.hpp`, later
+  removed after its only consumer absorbed the packet assembly directly
 
 Current effect:
 

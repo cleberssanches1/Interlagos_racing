@@ -111,6 +111,10 @@ Current conclusion:
 - the symmetric seam shape is technically valid
 - the current blocker for that retry is also code-size budget, not semantics
 - the accepted live baseline therefore remains the track-only seam
+- the simulation-side completion branch is now under formal freeze at the
+  current baseline until remove-first recovery opens at least `2048` bytes of
+  always-live budget, or the user explicitly authorizes a different fixed-ISO
+  strategy
 
 ## Current live boundary
 
@@ -223,7 +227,8 @@ Intended consumer shape:
 
 Prepared off-path chain helper:
 
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+- former bridge leaf `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  later removed after smoke validation stopped depending on it
 
 Prepared derived debug-view helper:
 
@@ -246,9 +251,7 @@ Prepared derived local bundle presenter:
 Prepared higher compile-only preview above the local simulation-side debug
 boundary:
 
-- `src/game_loop_scheduler_reuse_simulation_preview_contracts.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_assembler.hpp`
-- `src/game_loop_scheduler_reuse_simulation_preview_presenter_ops.hpp`
+- later removed after smoke validation stopped depending on that preview ladder
 
 Prepared higher compile-only presenter/resumo aggregate above that preview:
 
@@ -322,7 +325,8 @@ Intended consumer shape:
 
 Prepared off-path chain helper:
 
-- `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+- former bridge leaf `src/game_loop_scheduler_reuse_observability_assembly_ops.hpp`
+  later removed after smoke validation stopped depending on it
 
 ## Recommended first live boundary
 
