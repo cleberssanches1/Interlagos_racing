@@ -99,10 +99,18 @@ Key references:
   - `PresenterBoundaryStatusTextPacket`
   - `PresentPresenterBoundaryHudStatusTextPacket(...)`
 
+Current branch-final point:
+
+- the narrow HUD status-text seam is treated as the final active presenter
+  result for this branch
+- broader presenter retries are intentionally deferred instead of kept as
+  mandatory remaining work
+
 Key references:
 
 - `REFACTOR_SUBSYSTEM_RUNTIME_MATRIX.md`
 - `PRESENTER_BOUNDARY_TEXT_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `PRESENTER_BRANCH_FINAL_STATUS.md`
 
 ## Current compile-only but structurally prepared boundaries
 
@@ -128,11 +136,17 @@ Current highest active source-side presenter boundary:
 
 - `PresenterBoundaryStatusTextPacket`
 
+Current branch-final interpretation:
+
+- the narrow live HUD seam is sufficient for this branch
+- broader presenter runtime widening is deferred, not pending mandatory closure
+
 Key references:
 
 - `PRESENTER_PASSIVE_REFACTOR_INVENTORY.md`
 - `PRESENTER_SUMMARY_SCHEDULER_REUSE_SIMULATION_BOUNDARY_CONSOLIDATED.md`
 - `PRESENTER_BOUNDARY_TEXT_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
+- `PRESENTER_BRANCH_FINAL_STATUS.md`
 
 ### Scheduler / reuse passive chain
 
@@ -222,11 +236,19 @@ Current constrained point:
 - broad `CarVisualFramePacket` runtime integration remains deferred by binary
   budget
 
+Current branch-final point:
+
+- the narrow render-packet plus shadow-prep plus sync plus submit runtime seam
+  is treated as the final active `car render` result for this branch
+- broader visual/runtime packet handoff is intentionally deferred instead of
+  kept as mandatory remaining work
+
 Key references:
 
 - `CAR_RENDER_PASSIVE_FLOW_PLAN.md`
 - `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md`
 - `CAR_RENDER_BOUNDARY_CLOSURE_CONSOLIDATED.md`
+- `CAR_RENDER_BRANCH_FINAL_STATUS.md`
 
 ### CD asset / bootstrap
 
@@ -282,14 +304,22 @@ Established layers:
 
 Current runtime posture:
 
-- remains mostly passive
-- future runtime moves must remain substitutional
+- host ownership still remains local for the broader AutoLap flow
+- broader runtime moves are frozen for this branch by the fixed ISO envelope
+
+Current branch-final point:
+
+- the narrow helper seam through lifecycle/build helpers and route-trace
+  assembly is treated as the final active `AutoLap` result for this branch
+- broader route/runtime packet handoff is frozen instead of kept as mandatory
+  remaining work
 
 Key references:
 
 - `AUTO_LAP_ROUTE_PASSIVE_FLOW_PLAN.md`
 - `AUTO_LAP_ROUTE_REINTRODUCTION_STRATEGY.md`
 - `AUTO_LAP_BOUNDARY_CLOSURE_CONSOLIDATED.md`
+- `AUTO_LAP_BRANCH_FINAL_STATUS.md`
 
 ## What was reduced or stabilized structurally
 
@@ -340,40 +370,21 @@ Primary blocker docs:
 
 - runtime bootstrap sequencing remains too sensitive for a broad first move
 
-## Recommended next runtime priority
+## Runtime follow-up policy
 
-With `Scheduler/Reuse` now frozen at the accepted track-only seam, the next
-runtime-facing subsystem should be `Bootstrap / CD`, not `Car Render`.
+There is no branch-mandatory next runtime priority anymore.
 
-Why:
+The branch is already structurally closed.
 
-- `Bootstrap / CD` already has accepted narrow runtime bridges in `src/main.cxx`
-- the next bootstrap-side cut can stay local to candidate/request metadata and
-  path/load decisions
-- `Car Render` still carries a direct measured `+2048` byte regression for the
-  broader `CarVisualFramePacket` integration path
-- current `Car Render` progress is useful, but its next safe runtime move is
-  narrower and more constrained than the current `Bootstrap / CD` path
+Any new runtime move must now be treated as:
 
-## Current low-risk cleanup frontier
+- a new explicit goal
+- boundary-local
+- remove-first
+- validated against the fixed ISO `4134912`
 
-The current non-runtime cleanup frontier is no longer in presenter or
-render-budget text paths.
-
-The remaining low-risk cleanup work is concentrated in:
-
-- scheduler/reuse passive wrappers that still survive as documented non-live
-  boundaries
-- track-reuse / simulation-reuse presenter-side helpers that are still only
-  smoke/compile-only
-- selective memory-debug wrappers only where a full subgraph can be collapsed
-  without touching `src/game_loop_system.hpp`
-
-Avoid next:
-
-- live presenter HUD path
-- track-render SH2 runtime observability path
-- core memory-debug bundle flow
+That means the old “what should come next” ordering is no longer part of the
+mandatory refactor closure state.
 
 ## Validation contract already standardized
 
@@ -429,5 +440,7 @@ The project now has:
   passive boundaries still remain
 - explicit subsystem inventories to resume work safely
 
-The remaining work is mostly controlled runtime substitution, not structural
-discovery.
+The remaining work for branch closure is exhausted.
+
+Any further move is now a fresh runtime goal, not unresolved structural
+discovery for this refactor branch.

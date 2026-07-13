@@ -122,7 +122,7 @@ What stays outside:
 
 Status:
 
-- Active consolidated, but narrow
+- Active consolidated at narrow seam, broader branch deferred
 
 Primary active runtime seam:
 
@@ -143,6 +143,7 @@ What stays outside:
 
 - broader presenter decision/facade hierarchy
 - larger runtime presenter retries
+- broader presenter ownership migration
 
 ### 5. Scheduler / Reuse
 
@@ -176,34 +177,59 @@ What stays outside:
 
 Status:
 
-- Passive/documental
+- Active consolidated at narrow runtime seam, broader branch deferred
 
 Primary docs:
 
 - `CAR_RENDER_PASSIVE_FLOW_PLAN.md`
 - `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md`
 - `CAR_RENDER_BOUNDARY_CLOSURE_CONSOLIDATED.md`
+- `CAR_RENDER_BRANCH_FINAL_STATUS.md`
 
-Current posture:
+Current live surfaces:
 
-- broad runtime integration still deferred by binary budget
+- `GameLoopRuntime::BuildCarRenderRuntimePacket(...)`
+- `GameLoopRuntime::BuildCarShadowRuntimeDecision(...)`
+- `Game::CarRenderSystem::RenderPacket`
+- `GameLoopRuntime::BuildCarShadowPrepPacket(...)`
+- `GameLoopRuntime::ApplyCarRenderRuntimeSync(...)`
+- `GameLoopRuntime::SubmitCarRenderRuntime(...)`
+- `Game::CarRenderSystem::ShadowPacket`
+- `Game::CarRenderSystem::Telemetry`
+- `DrawCarShadowBlob(...)`
+- `DrawCarShadowModel(...)`
+- no live dependency on `CarRenderFrameState`
+
+What stays outside:
+
+- broad `CarVisualFramePacket` runtime integration
+- render submission ownership migration
+- mesh-render ownership migration
 
 ### 7. AutoLap Route
 
 Status:
 
-- Passive/documental
+- Active consolidated at narrow helper seam, broader branch frozen
 
 Primary docs:
 
 - `AUTO_LAP_ROUTE_PASSIVE_FLOW_PLAN.md`
 - `AUTO_LAP_ROUTE_REINTRODUCTION_STRATEGY.md`
 - `AUTO_LAP_BOUNDARY_CLOSURE_CONSOLIDATED.md`
+- `AUTO_LAP_BRANCH_FINAL_STATUS.md`
 
-Current posture:
+Current live surfaces:
 
-- route helpers and packet slices exist
-- runtime ownership remains mostly local and deferred
+- `src/auto_lap_route_lifecycle_ops.hpp`
+- `src/auto_lap_route_build_ops.hpp`
+- `AutoLapGuideRouteTrace`
+
+What stays outside:
+
+- final runtime route ownership
+- route-step mutation ownership
+- broader `AutoLapFramePacket` live integration
 
 ## What is already closed well enough
 
@@ -212,8 +238,10 @@ The branch now has explicit active-boundary closure for:
 - `track-render`
 - `memory budget`
 - `bootstrap/CD`
-- the narrow active `presenter` HUD seam
+- the narrow final `presenter` HUD seam with broader branch defer
 - the narrow final `scheduler/reuse` seam with broader branch freeze
+- the narrow final `car render` runtime seam with broader branch defer
+- the narrow final `AutoLap` helper seam with broader branch freeze
 
 This means those subsystems now have:
 
@@ -224,16 +252,8 @@ This means those subsystems now have:
 
 ## What is not yet fully closed
 
-The branch does not yet have the same level of active-boundary closure for:
-
-- `car render`
-- `AutoLap`
-
-For those subsystems, the branch currently relies more on:
-
-- passive flow documents
-- blocker documents
-- minimal retry plans
+At the active-boundary inventory level, no additional subsystem remains open in
+this branch.
 
 ## Recommended sequencing from here
 
@@ -241,11 +261,9 @@ Best next order:
 
 1. keep the already closed active boundaries stable
 2. avoid reopening trivial wrapper cleanup in those closed areas
-3. pick one remaining non-closed subsystem at a time:
-   - `car render`
-   - or `AutoLap`
-4. only after that, consider a higher-level closure pass for the remaining
-   passive/documental areas
+3. only reopen a subsystem when there is a new explicit runtime goal
+4. otherwise restrict follow-up work to documentation, validation, or targeted
+   remove-first retries with fresh budget evidence
 
 Final remaining-work list:
 

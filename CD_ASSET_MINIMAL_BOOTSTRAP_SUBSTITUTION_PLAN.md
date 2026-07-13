@@ -89,6 +89,12 @@ Only after repeated stable runs from Step 1:
 1. assemble the narrow anchor packet locally
 2. consume only `CdAssetAnchorBootstrapDecisionPacket`
 3. replace only equivalent local anchor fallback gating
+
+Current branch state:
+
+- this narrow anchor-side local substitution is already accepted
+- no further equally narrow local anchor retry remains obvious without widening
+  bootstrap responsibilities
 4. keep current yaw/fallback computations in place
 
 Must remain unchanged:

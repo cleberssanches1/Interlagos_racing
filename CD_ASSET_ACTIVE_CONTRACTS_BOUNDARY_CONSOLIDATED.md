@@ -20,19 +20,27 @@ This document is runtime-shape inventory only.
 
 The live `bootstrap/CD` path now relies on four active contract groups.
 
+One narrow bridge packet now also exists above the already-accepted SBA and
+anchor decisions, but only as a local composition of those existing live
+decisions.
+
 ### 1. Narrow bootstrap runtime bridge
 
 Files:
 
 - `src/cd_asset_bootstrap_runtime_bridge.hpp`
 - `src/cd_asset_transition_ops.hpp`
+- `src/game_loop_cd_asset_decision_bridge_assembler.hpp`
 - `src/game_loop_cd_asset_sba_decision_contracts.hpp`
 - `src/game_loop_cd_asset_anchor_decision_contracts.hpp`
+- `src/game_loop_cd_asset_decision_bridge_contracts.hpp`
 
 Role:
 
 - build one narrow SBA bootstrap decision
 - build one narrow car-anchor bootstrap decision
+- optionally compose one narrow bridge packet from those already-built live
+  decisions
 - keep request/resolve/load details outside the host bootstrap call site
 
 Live posture:
@@ -50,12 +58,14 @@ Files:
 Local helper:
 
 - `BuildSbaShadowBootstrapAssets(...)`
+- `LoadSbaShadowBootstrapAssetsIfEnabled(...)`
 
 Role:
 
 - consume `CdAssetSbaBootstrapDecisionPacket`
 - keep `ModelObject` construction local
 - keep `MeshRenderer` construction local
+- keep SBA enable/disable gating local
 - keep bootstrap order and fallback timing unchanged
 
 Live posture:
@@ -63,6 +73,7 @@ Live posture:
 - active
 - local helper only
 - no ownership migration away from `src/main.cxx`
+- no duplicated local anchor consumer remains after the accepted cut
 
 ### 3. Car-anchor bootstrap local consumer boundary
 
@@ -128,7 +139,9 @@ The highest live call-site families currently are:
 
 - `CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision()`
 - `CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision()`
+- `GameLoopRuntime::BuildCdAssetBootstrapDecisionBridgePacket(...)`
 - `BuildSbaShadowBootstrapAssets(...)`
+- `LoadSbaShadowBootstrapAssetsIfEnabled(...)`
 - `BuildCarAnchorBootstrapFallback(...)`
 - `MemoryBudgetRuntimeBridge::ShouldPreferCartForCdStaging()`
 
@@ -149,6 +162,7 @@ The current shape makes explicit that:
 
 - live bootstrap/CD use is narrow and local
 - SBA and anchor boundaries are separate and substitutional
+- the live bridge packet is composed only from already-built local decisions
 - staging preference remains a bridge query, not a broad policy move
 - boot sequencing and asset construction still belong to `src/main.cxx`
 
@@ -159,7 +173,9 @@ Do next:
 1. keep this active boundary stable
 2. avoid widening live bootstrap use into broad CD frame/request/read/parse
    packets
-3. prefer future work on passive CD-chain consolidation or another subsystem
+3. treat the current anchor-side local consumer as minimal enough unless a new
+   explicit runtime goal requires broader bootstrap restructuring
+4. prefer future work on passive CD-chain consolidation or another subsystem
 
 Do not do next:
 

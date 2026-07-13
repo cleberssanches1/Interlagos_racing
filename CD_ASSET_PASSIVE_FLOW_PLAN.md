@@ -311,6 +311,7 @@ Applied shape:
   `CdAssetSbaBootstrapDecisionPacket`
 - replace the two duplicated SBA model/bootstrap setup blocks in `src/main.cxx`
   with that one helper
+- keep the SBA enable/disable gate local to `src/main.cxx`
 
 Preserved behavior:
 
@@ -346,4 +347,14 @@ Validation result:
 - stable ISO preserved at `4134912`
 - passive headers passed
 - observability headers passed
+
+Current interpretation:
+
+- no duplicated local anchor consumer remains in `src/main.cxx`
+- the next bootstrap/CD move should not force a broader anchor-side cut unless
+  a new explicit runtime goal justifies widening beyond the accepted local
+  boundary
+- one narrow live bridge composition is now acceptable only when composed from
+  already-built SBA and anchor decisions, without pulling broader frame/request
+  packets or anticipating anchor load timing
 

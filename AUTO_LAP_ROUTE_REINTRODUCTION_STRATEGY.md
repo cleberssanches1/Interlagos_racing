@@ -2,110 +2,55 @@
 
 ## Objetivo
 
-Definir uma estratégia segura para reintroduzir partes do `AutoLapRouteSystem` fora de `GameLoopSystem`, sem repetir os problemas de boot/runtime vistos em mudanças pequenas no caminho crítico.
+Registrar a estratégia segura que foi validada nesta branch e o ponto exato em
+que a reintegração runtime mais ampla foi congelada.
 
+## Estado final seguro
 
-## Estado atual seguro
+Hoje o estado aceito é:
 
-Hoje o estado está dividido assim:
+- runtime permanece em `src/game_loop_system.hpp`
+- estado runtime já existe em `src/auto_lap_route_runtime_state.hpp`
+- contratos passivos já existem para frame/storage/guide/build/step
+- helpers de lifecycle e build já estão extraídos
+- o seam estreito atual é o estado final aceito da branch
 
-- runtime ainda permanece em `src/game_loop_system.hpp`
-- estado runtime já foi extraído para `src/auto_lap_route_runtime_state.hpp`
-- contratos passivos já existem em:
-  - `src/auto_lap_route_contracts.hpp`
-  - `src/auto_lap_route_state_assembler.hpp`
-  - `src/auto_lap_route_transition_ops.hpp`
-  - `src/auto_lap_route_lifecycle_ops.hpp`
+## O que foi tentado
 
-Essa é a linha segura atual: documentação + contratos + estado passivo, sem integração no fluxo crítico.
+Foi tentado um corte runtime mais amplo para tirar mais coordenação viva do
+host.
 
+Resultado:
 
-## Por que o lifecycle é o primeiro alvo
+- build funcional
+- regressão de orçamento binário
+- ISO subiu de `4134912` para `4136960`
 
-O lifecycle do auto-lap tem baixo acoplamento funcional:
+Decisão:
 
-- reset de flags
-- reset de escalares
-- clear de buffers
-- release de guide lines
-- retenção de storage
+- revertido
+- branch congelada no seam estreito atual
 
-Esses pontos:
+## O que fica aceito nesta branch
 
-- não decidem movimento do carro;
-- não calculam yaw;
-- não tocam render;
-- não dependem da ordem do frame;
-- têm resultado fácil de verificar.
+- lifecycle fora do host
+- route-build/search helpers fora do host
+- guide-route trace consumido no host
+- ownership, timing, rebuild de yaw e stepping continuam no host
 
-Por isso são o melhor primeiro ponto de reintegração real quando quisermos sair da fase apenas passiva.
+## O que não é mais trabalho obrigatório
 
+Nesta branch, não é mais obrigatório:
 
-## Ordem segura de reintegração
+- mover o stepper para fora
+- integrar `AutoLapFramePacket` ao runtime vivo
+- migrar ownership de rota
+- entregar um handoff runtime amplo
 
-### Etapa 1 — Substituição textual 1:1 do lifecycle
+## Regra para reabrir
 
-Trocar, uma por vez, as implementações internas de:
+Só reabrir `AutoLap` se houver:
 
-- `HasRetainedAutoLapRouteStorage`
-- `ResetAutoLapRouteFlags`
-- `ResetAutoLapRouteScalars`
-- `ResetAutoLapRouteState`
-- `ClearAutoLapRouteBuffers`
-- `ReleaseAutoLapGuideLines`
-- `ReleaseAutoLapRouteStorage`
-
-por chamadas equivalentes para `AutoLapRouteDomain::*`.
-
-Regra:
-
-- uma função por vez;
-- rebuild;
-- validação no emulador;
-- só depois seguir para a próxima.
-
-### Etapa 2 — Builders passivos
-
-Só depois do lifecycle estável:
-
-- snapshots de storage;
-- packets de guide load;
-- packets de build.
-
-Status atual:
-
-- `src/auto_lap_route_transition_ops.hpp` já consegue materializar
-  `AutoLapRouteStorageSnapshot` diretamente de `AutoLapRouteState`,
-  sem depender do runtime crítico.
-- o mesmo header agora também consegue materializar
-  `AutoLapRouteBuildPacket` e `AutoLapRouteStepPacket`
-  diretamente de `AutoLapRouteState` + contexto mínimo externo.
-
-Ainda sem mover lógica principal, só tornando fronteiras observáveis.
-
-### Etapa 3 — Stepper
-
-Somente por último:
-
-- init route;
-- advance planar/vertical;
-- waypoint window;
-- heading update.
-
-Esse é o trecho com maior risco funcional e deve continuar no `GameLoopSystem` até o lifecycle e os builders estarem estabilizados.
-
-
-## O que não fazer agora
-
-- não integrar os headers passivos diretamente em blocos grandes do runtime;
-- não mover a lógica de step do auto-lap para fora de uma vez;
-- não substituir várias funções do lifecycle em um único passo;
-- não tocar simultaneamente em câmera, render e auto-lap.
-
-
-## Critério de aceite por micro-passo
-
-- build fecha;
-- `BuildDrop/Interlagos_racing.iso` volta para `4134912`;
-- boot no emulador continua estável;
-- auto-lap continua ligando/desligando sem regressão observável.
+- novo objetivo explícito
+- margem binária real
+- aceitação de novo tradeoff de runtime

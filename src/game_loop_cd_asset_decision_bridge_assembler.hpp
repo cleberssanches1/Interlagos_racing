@@ -35,6 +35,16 @@ inline CdAssetBootstrapDecisionBridgePacket BuildCdAssetBootstrapDecisionBridgeP
 }
 
 inline CdAssetBootstrapDecisionBridgePacket BuildCdAssetBootstrapDecisionBridgePacket(
+    const CdAssetSbaBootstrapDecisionPacket& sbaDecision,
+    const CdAssetAnchorBootstrapDecisionPacket& anchorDecision)
+{
+    return BuildCdAssetBootstrapDecisionBridgePacket(
+        CdAssetBootstrapDecisionPacket{},
+        sbaDecision,
+        anchorDecision);
+}
+
+inline CdAssetBootstrapDecisionBridgePacket BuildCdAssetBootstrapDecisionBridgePacket(
     const CdAssetFramePacket& framePacket)
 {
     const auto bootstrapDecision = BuildCdAssetBootstrapDecisionPacket(framePacket);

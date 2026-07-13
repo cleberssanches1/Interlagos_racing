@@ -301,7 +301,6 @@ private:
     using CameraPathRouteIndices = GameLoopRuntime::CameraPathRouteIndices;
     using FrameInputState = GameLoopRuntime::FrameInputState;
     using CameraFrameState = GameLoopRuntime::CameraFrameState;
-    using CarRenderFrameState = GameLoopRuntime::CarRenderFrameState;
     using HwrStageTrace = GameLoopRuntime::HwrStageTrace;
     using LwrStageTrace = GameLoopRuntime::LwrStageTrace;
     using LowWorkTagGroupOverlay = GameLoopRuntime::LowWorkTagGroupOverlay;
@@ -1149,21 +1148,6 @@ private:
         return {};
     }
 
-    CarRenderFrameState BuildCarRenderFrameState(const CameraFrameState& camera)
-    {
-        CarRenderFrameState state{};
-        state.car = ActiveCarSystem();
-        if (!state.car)
-        {
-            return state;
-        }
-
-        state.renderPosition = ResolveCarRenderPosition(camera);
-        state.runtimeDebug = state.car->RuntimeDebug();
-        state.renderYawDeg = state.car->RenderYawDegrees();
-        return state;
-    }
-
     void StoreShadowDebugState(const SRL::Math::Types::Vector3D& shadowWorldPosition,
                                int32_t shadowYawDeg)
     {
@@ -1289,15 +1273,32 @@ private:
         if (!CanRenderCar()) return;
 
         AppState::Set(AppState::Stage::LoopCar, frameCounter_);
-        CarRenderFrameState carFrame = BuildCarRenderFrameState(camera);
-        if (!carFrame.car) return;
+        Game::CarSystem* car = ActiveCarSystem();
+        if (!car) return;
 
-        RenderCarShadowIfEnabled(carFrame);
-        carFrame.car->SyncRenderState(carFrame.renderPosition, carYawDeg_);
-        SubmitCarRender(*carFrame.car);
+        const auto runtimeDebug = car->RuntimeDebug();
+        constexpr int32_t kCarVisualLiftUnits = 0;
+        constexpr int32_t kCarDepthBiasUnits = 3;
+        const int32_t depthBiasUnits =
+            (runtimeDebug.speedProxy <= 20) ? 0 : kCarDepthBiasUnits;
+        const auto renderPacket = GameLoopRuntime::BuildCarRenderRuntimePacket(
+            ResolveCarRenderPosition(),
+            camera.location,
+            camera.lookTarget,
+            carYawDeg_,
+            car->VisualYawOffsetDegrees(),
+            runtimeDebug,
+            kCarVisualLiftUnits,
+            depthBiasUnits);
+
+        RenderCarShadowIfEnabled(renderPacket);
+        GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, carYawDeg_);
+        const auto telemetry =
+            GameLoopRuntime::SubmitCarRenderRuntime(*context_.renderPipeline, *car);
+        lastRenderedCarFacesThisFrame_ = telemetry.renderedFaceCount;
     }
 
-    SRL::Math::Types::Vector3D ResolveCarRenderPosition(const CameraFrameState& camera)
+    SRL::Math::Types::Vector3D ResolveCarRenderPosition()
     {
         SRL::Math::Types::Vector3D carRenderPos = context_.carWorldPosition;
         if (!IsFiniteCarPos(lastValidCarRenderPos_))
@@ -1313,62 +1314,28 @@ private:
             lastValidCarRenderPos_ = carRenderPos;
         }
 
-        ApplyCarCameraDepthBias(camera, carRenderPos);
-        ApplyCarVisualLift(carRenderPos);
         return carRenderPos;
     }
 
-    void ApplyCarCameraDepthBias(const CameraFrameState& camera,
-                                 SRL::Math::Types::Vector3D& ioCarRenderPos) const
+    void RenderCarShadowIfEnabled(const Game::CarRenderSystem::RenderPacket& renderPacket)
     {
-        // Small camera depth bias to reduce seam overdraw on car body.
-        // Disable at very low speed to avoid visual side-slip impression at launch.
-        if (CarRuntimeDebugSnapshot().speedProxy <= 20) return;
+        const auto decision = GameLoopRuntime::BuildCarShadowRuntimeDecision(
+            context_.RenderCarShadowModel(),
+            context_.carShadowRenderer != nullptr);
 
-        constexpr int32_t kCarDepthBiasUnits = 3;
-        CarRenderDomain::ApplyDepthBias(camera.location, ioCarRenderPos, kCarDepthBiasUnits);
-    }
-
-    void ApplyCarVisualLift(SRL::Math::Types::Vector3D& ioCarRenderPos) const
-    {
-        // Visual lift for seam overlap testing.
-        // This does not change gameplay physics state.
-        constexpr int32_t kCarVisualLiftUnits = 0;
-        CarRenderDomain::ApplyVisualLift(ioCarRenderPos, kCarVisualLiftUnits);
-    }
-
-    void RenderCarShadowIfEnabled(const CarRenderFrameState& carFrame)
-    {
-        constexpr bool kEnableCarShadowRendering = true;
-        constexpr bool kUseBlobShadow = false;
-        if constexpr (!kEnableCarShadowRendering) return;
-
-        if constexpr (kUseBlobShadow)
+        if (decision.drawBlob)
         {
-            constexpr int32_t kShadowGroundBiasUnitsBlob = 10;
-            DrawCarShadowBlob(GameLoopRuntime::BuildCarShadowPrepPacket(carFrame,
+            DrawCarShadowBlob(GameLoopRuntime::BuildCarShadowPrepPacket(renderPacket,
                                                                         true,
                                                                         false,
-                                                                        kShadowGroundBiasUnitsBlob));
+                                                                        decision.blobGroundBiasUnits));
         }
-        if (context_.RenderCarShadowModel() && context_.carShadowRenderer)
+        if (decision.drawModel)
         {
-            constexpr int32_t kShadowGroundBiasUnitsModel = 1;
-            DrawCarShadowModel(GameLoopRuntime::BuildCarShadowPrepPacket(carFrame,
+            DrawCarShadowModel(GameLoopRuntime::BuildCarShadowPrepPacket(renderPacket,
                                                                          false,
                                                                          true,
-                                                                         kShadowGroundBiasUnitsModel));
-        }
-    }
-
-    void SubmitCarRender(Game::CarSystem& car)
-    {
-        context_.renderPipeline->Reset();
-        car.SubmitRender(*context_.renderPipeline);
-        context_.renderPipeline->Flush();
-        if (MeshRenderer* renderer = car.Renderer())
-        {
-            lastRenderedCarFacesThisFrame_ = GameLoopRuntime::ClampToU16(renderer->LastRenderFaceCount());
+                                                                         decision.modelGroundBiasUnits));
         }
     }
 
@@ -2253,7 +2220,6 @@ private:
     {
         if (!context.trackSystem || !context.TrackSystemReady()) return;
         if (!EnsureAutoLapRouteReady(context, ioCarWorldPosition)) return;
-        // Keep only a tiny clearance above asphalt to prevent z-fighting.
         const auto rideHeight = SRL::Math::Types::Fxp::BuildRaw(-(1 << 13));
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         if (!InitializeAutoLapRouteIfNeeded(context,
@@ -2425,18 +2391,21 @@ private:
         const bool reversed = AutoLapRouteDomain::NormalizeRouteDirection(
             autoLapRoute_,
             segmentCount);
-        const auto routeTrace = AutoLapRouteDomain::BuildAutoLapGuideRouteTrace(
+        const auto build = AutoLapRouteDomain::BuildAutoLapRouteBuildPacket(
             autoLapRoute_,
-            selectedLineIndex,
-            routeLine->size(),
+            AutoLapRouteDomain::HasValidGuideBuildOutput(autoLapRoute_),
+            true,
             reversed);
+        const auto routeTrace = AutoLapRouteDomain::BuildAutoLapGuideRouteTrace(
+            build.usedGuidePath,
+            build.normalizedDirection,
+            build.selectedGuideLine,
+            static_cast<uint16_t>(routeLine->size()),
+            build.routePointCount);
         LogAutoLapGuideRouteSelection(routeTrace);
-        if constexpr (kEnableAutoPathLogs)
-        {
-            SRL::Debug::Print(1, 26, reversed ? "AUTO PATH dir:REV fix" : "AUTO PATH dir:FWD");
-        }
+        LogAutoLapGuideBuildResult(build);
         RebuildAutoLapRouteYawData();
-        return AutoLapRouteDomain::HasValidGuideBuildOutput(autoLapRoute_);
+        return build.valid;
     }
 
     void LogAutoLapGuideLineEmpty() const
@@ -2459,6 +2428,23 @@ private:
         }
     }
 
+    void LogAutoLapGuideBuildResult(
+        const AutoLapRouteDomain::AutoLapRouteBuildPacket& build) const
+    {
+        if constexpr (kEnableAutoPathLogs)
+        {
+            SRL::Debug::Print(1, 26, build.normalizedDirection ? "AUTO PATH dir:REV fix" : "AUTO PATH dir:FWD");
+        }
+    }
+
+    void LogAutoLapFallbackBuild() const
+    {
+        if constexpr (kEnableAutoPathLogs)
+        {
+            SRL::Debug::Print(1, 24, "AUTO PATH fallback seg centers");
+        }
+    }
+
     void BuildFallbackAutoLapRoute(const Context& context)
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
@@ -2470,14 +2456,6 @@ private:
             segmentCount);
         RebuildAutoLapRouteYawData();
         AutoLapRouteDomain::FinalizeAutoLapFallbackBuildState(autoLapRoute_);
-    }
-
-    void LogAutoLapFallbackBuild() const
-    {
-        if constexpr (kEnableAutoPathLogs)
-        {
-            SRL::Debug::Print(1, 24, "AUTO PATH fallback seg centers");
-        }
     }
 
     void UpdateAutoLapHeading(size_t currentIndex,
@@ -2506,7 +2484,6 @@ private:
         }
     }
 
-    // Build preferred route for the player car.
     void BuildAutoLapRoute(const Context& context,
                            const SRL::Math::Types::Vector3D& referenceCarWorldPosition)
     {

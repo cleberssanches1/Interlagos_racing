@@ -3,34 +3,34 @@
 ## Objective
 
 Consolidate the real current state of the `car render` boundary, explicitly
-distinguishing what is already packetized/passive from what is still blocked
-from active runtime integration.
+distinguishing what is already active in runtime from what remains deferred by
+binary budget and ownership sensitivity.
 
 This document is inventory-only.
 
-It does not authorize a live runtime move by itself.
+It does not authorize a broader live runtime move by itself.
 
 ## Stable baseline
 
 - ISO must remain exactly `4134912`
 - emulator boot must remain stable
 - `src/game_loop_system.hpp` remains the live owner of `RenderCar(...)`
-- `SubmitCarRender(...)` remains Master-side
+- final car render submission remains Master-side
 - shadow draw ordering remains unchanged
 
 ## Current boundary status
 
 Status:
 
-- Passive/documental
+- Active consolidated at narrow render/shadow/sync/submit seam, broader branch
+  deferred
 
 Reason:
 
 - the passive packet/assembler graph already exists
-- but broader live `CarVisualFramePacket` integration previously exceeded the
-  fixed ISO envelope
-- accepted progress so far is limited to narrower shadow-prep and debug-facing
-  passive preparation
+- a narrow live runtime seam is now accepted in the host
+- broader live `CarVisualFramePacket` integration previously exceeded the fixed
+  ISO envelope
 
 ## Passive contract families already closed
 
@@ -102,10 +102,11 @@ The real live render path still belongs to `src/game_loop_system.hpp`.
 Current active host-owned sequence:
 
 1. `ResolveCarRenderPosition(...)`
-2. `BuildCarRenderFrameState(...)`
-3. `RenderCarShadowIfEnabled(...)`
-4. `car->SyncRenderState(...)`
-5. `SubmitCarRender(...)`
+2. `GameLoopRuntime::BuildCarRenderRuntimePacket(...)`
+3. `GameLoopRuntime::BuildCarShadowRuntimeDecision(...)`
+4. `RenderCarShadowIfEnabled(...)`
+5. `GameLoopRuntime::ApplyCarRenderRuntimeSync(...)`
+6. `GameLoopRuntime::SubmitCarRenderRuntime(...)`
 
 Current active shadow slice:
 
@@ -117,42 +118,50 @@ Current active shadow slice:
 
 Accepted progress already achieved:
 
+- narrow live `RenderPacket` assembly is explicit
+- narrow live shadow decision assembly is explicit
+- narrow live visual sync handoff is explicit
+- narrow live submit + telemetry handoff is explicit
+- shadow-prep live path now consumes `RenderPacket` directly
+- the live path no longer depends on `CarRenderFrameState`
 - passive `CarVisualFramePacket` shape is explicit
 - passive `CarVisualDebugPacket` shape is explicit
 - shadow-prep substitution map is explicit
 - render debug aggregation already accepts the car visual slice off-path
-- accepted shadow-prep runtime narrowing proved that shared shadow setup can be
-  reduced without moving draw ownership
 
-## What still blocks active closure
+## What still blocks broader runtime closure
 
-The boundary is not yet `Active consolidated` because these points remain true:
+The boundary remains intentionally narrow because these points remain true:
 
-- `RenderCar(...)` still owns final runtime assembly
-- `SubmitCarRender(...)` still owns final submission
+- `RenderCar(...)` still owns final runtime orchestration
+- the live submit path still owns final submission on the Master side
 - shadow draw entry points still remain in the host
 - the broader packet handoff into the live path previously pushed the ISO from
   `4134912` to `4136960`
 
-That means the missing step is not more packet design.
+That means the deferred step is not more packet design.
 
-The missing step is a binary-neutral remove-first runtime substitution.
+The deferred step is a broader binary-neutral remove-first runtime substitution.
 
-## Current safest live retry shape
+## Current safest broader retry shape
 
-If `car render` is reopened, the next acceptable move should target only:
+If `car render` is reopened beyond the accepted seam, the next acceptable move
+should target only one narrow remove-first widening at a time.
+
+The best remaining candidate is still the broader packet handoff around:
 
 1. shared shadow grounding
 2. shadow yaw propagation
 3. shadow debug-state propagation
 4. blob/model mode selection
+5. eventual broader frame-packet consumption
 
 That retry must:
 
 - keep `RenderCar(...)` as owner
 - keep `DrawCarShadowBlob(...)` and `DrawCarShadowModel(...)` as draw entry
   points
-- keep `SubmitCarRender(...)` unchanged
+- keep the final submit path unchanged at the Master-side ownership boundary
 - remove equivalent host logic in the same patch
 
 ## What stays outside this boundary
@@ -160,33 +169,34 @@ That retry must:
 The following concerns still remain intentionally outside any active
 consolidated car-render boundary:
 
-- final render submission ownership
-- `MeshRenderer` ownership
+- final render submission ownership migration
+- `MeshRenderer` ownership migration
 - shadow draw ordering/effects
 - broader runtime packet handoff in `RenderCar(...)`
 - any attempt to merge car render with scheduler/reuse or audio
 
-## Why this subsystem is “not closed yet”
+## Why this subsystem is considered closed enough for the branch
 
-Unlike `track-render`, `memory`, and `bootstrap/CD`, this subsystem still lacks:
+Unlike earlier stages of this refactor, this subsystem now already has:
 
-- a stable active packet consumer boundary in the live host path
-- a proven direct replacement path that is sector-neutral at `4134912`
+- a stable active runtime seam in the live host path
+- repeated proof that the seam remains sector-neutral at `4134912`
+- explicit declaration of what remains outside the seam
 
-So the correct closure label today is:
+So the correct closure label for this branch today is:
 
-- structurally prepared
-- runtime-constrained
-- not yet actively consolidated
+- actively consolidated at a narrow seam
+- broader runtime work deferred
 
 ## Recommended next move
 
 Do next:
 
-1. keep the passive graph stable
-2. treat `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md` as the real next live
-   retry map
-3. avoid broad `CarVisualFramePacket` runtime integration until an equivalent
+1. keep the active narrow seam stable
+2. keep the passive graph stable
+3. treat `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md` as the real next broader
+   retry map only if a new explicit runtime goal is chosen
+4. avoid broad `CarVisualFramePacket` runtime integration until an equivalent
    removal-first patch exists
 
 Do not do next:
@@ -194,4 +204,4 @@ Do not do next:
 - introduce the full frame packet in `RenderCar(...)` again without paired
   removals
 - mix car render runtime work with another subsystem
-- widen the submit path in the first retry
+- widen the submit path in the first broader retry

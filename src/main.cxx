@@ -11,6 +11,7 @@
 #include "car_audio_system.hpp"
 #include "cd_asset_bootstrap_runtime_bridge.hpp"
 #include "cd_asset_transition_ops.hpp"
+#include "game_loop_cd_asset_decision_bridge_assembler.hpp"
 #include "memory_budget_runtime_bridge.hpp"
 #include "project_voice_router.hpp"
 #include "simple_car_physics.hpp"
@@ -173,6 +174,31 @@ static SbaShadowBootstrapAssets BuildSbaShadowBootstrapAssets(
     assets.meshCount = static_cast<uint16_t>(assets.model->GetMeshCount());
     assets.faceCount = static_cast<uint16_t>(assets.model->GetFaceCount());
     return assets;
+}
+
+static void LoadSbaShadowBootstrapAssetsIfEnabled(bool renderCar,
+                                                  GameLoopRuntime::CdAssetSbaBootstrapDecisionPacket& outDecision,
+                                                  std::unique_ptr<ModelObject>& outModel,
+                                                  std::unique_ptr<MeshRenderer>& outRenderer,
+                                                  bool& outLoaded,
+                                                  uint16_t& outMeshCount,
+                                                  uint16_t& outFaceCount)
+{
+    outDecision = {};
+    constexpr bool kEnableSbaShadowModelLoad = true;
+    if (!renderCar || !kEnableSbaShadowModelLoad)
+    {
+        return;
+    }
+
+    const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
+    outDecision = sbaDecision;
+    auto sbaAssets = BuildSbaShadowBootstrapAssets(sbaDecision);
+    outModel = std::move(sbaAssets.model);
+    outRenderer = std::move(sbaAssets.renderer);
+    outLoaded = sbaAssets.loaded;
+    outMeshCount = sbaAssets.meshCount;
+    outFaceCount = sbaAssets.faceCount;
 }
 
 struct CarAnchorBootstrapFallback
@@ -1048,17 +1074,14 @@ static int RunPhysicsPocMode()
     bool sbaLoaded = false;
     uint16_t sbaMeshCount = 0;
     uint16_t sbaFaceCount = 0;
-    constexpr bool kEnableSbaShadowModelLoad = true;
-    if (renderCar && kEnableSbaShadowModelLoad)
-    {
-        const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
-        auto sbaAssets = BuildSbaShadowBootstrapAssets(sbaDecision);
-        sbaModel = std::move(sbaAssets.model);
-        sbaRenderer = std::move(sbaAssets.renderer);
-        sbaLoaded = sbaAssets.loaded;
-        sbaMeshCount = sbaAssets.meshCount;
-        sbaFaceCount = sbaAssets.faceCount;
-    }
+    GameLoopRuntime::CdAssetSbaBootstrapDecisionPacket sbaDecision{};
+    LoadSbaShadowBootstrapAssetsIfEnabled(renderCar,
+                                         sbaDecision,
+                                         sbaModel,
+                                         sbaRenderer,
+                                         sbaLoaded,
+                                         sbaMeshCount,
+                                         sbaFaceCount);
     std::array<size_t, 5> drawOrder{};
     size_t orderCount = 0;
     BuildCarDrawOrder(meshCount, drawOrder, orderCount);
@@ -1275,17 +1298,14 @@ int GameApp::Run()
     bool sbaLoaded = false;
     uint16_t sbaMeshCount = 0;
     uint16_t sbaFaceCount = 0;
-    constexpr bool kEnableSbaShadowModelLoad = true;
-    if (renderCar && kEnableSbaShadowModelLoad)
-    {
-        const auto sbaDecision = Game::CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision();
-        auto sbaAssets = BuildSbaShadowBootstrapAssets(sbaDecision);
-        sbaModel = std::move(sbaAssets.model);
-        sbaRenderer = std::move(sbaAssets.renderer);
-        sbaLoaded = sbaAssets.loaded;
-        sbaMeshCount = sbaAssets.meshCount;
-        sbaFaceCount = sbaAssets.faceCount;
-    }
+    GameLoopRuntime::CdAssetSbaBootstrapDecisionPacket sbaDecision{};
+    LoadSbaShadowBootstrapAssetsIfEnabled(renderCar,
+                                         sbaDecision,
+                                         sbaModel,
+                                         sbaRenderer,
+                                         sbaLoaded,
+                                         sbaMeshCount,
+                                         sbaFaceCount);
     // MLOG(1, 1, "CAR1.NYA load (smooth flag:%d)", carWasSmooth ? 1 : 0);
 
     if constexpr (kCarLogs)
@@ -1510,7 +1530,11 @@ int GameApp::Run()
             markerFaces);
 
         const auto anchorDecision = Game::CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision();
-        const auto anchorFallback = BuildCarAnchorBootstrapFallback(anchorDecision);
+        const auto bootstrapBridge =
+            GameLoopRuntime::BuildCdAssetBootstrapDecisionBridgePacket(
+                sbaDecision,
+                anchorDecision);
+        const auto anchorFallback = BuildCarAnchorBootstrapFallback(bootstrapBridge.anchor);
         int32_t anchorYawDeg = 0;
         bool anchorOffsetValid = false;
         if (!markerOffsetValid && anchorFallback.hasVisualYawOffset)
