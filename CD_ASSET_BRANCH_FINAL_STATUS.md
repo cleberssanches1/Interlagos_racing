@@ -25,6 +25,7 @@ Active live path:
 - `CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision()`
 - `CdAssetBootstrapRuntimeBridge::BuildSbaAnchorDecisionBridge(...)`
 - `LoadSbaShadowBootstrapAssetsIfEnabled(...)`
+- `BuildBootstrapCarRuntimeState(...)`
 - `BuildCarBootstrapVisualConfig(...)`
 - `BuildBootstrapCarSystem(...)`
 - `ApplyBootstrapCarVisualYaw(...)`
@@ -54,6 +55,8 @@ This branch already achieved the stable remove-first reductions that mattered:
 - marker-vs-anchor visual-yaw selection was localized
 - bootstrap visual config, gated `CarSystem` creation, and yaw application were
   reduced behind explicit local helpers
+- final bootstrap car setup is now also composed through one narrow local
+  runtime-state helper reused by both bootstrap flows
 - emulator stability and fixed ISO envelope were preserved throughout
 
 That is the accepted closure point for this branch.

@@ -86,6 +86,7 @@ Local helper:
 - `BuildCarBootstrapVisualConfig(...)`
 - `BuildBootstrapCarSystem(...)`
 - `ApplyBootstrapCarVisualYaw(...)`
+- `BuildBootstrapCarRuntimeState(...)`
 - `BuildCarAnchorBootstrapFallback(...)`
 - `ResolveCarAnchorBootstrapFallback(...)`
 - `ResolveCarBootstrapVisualYawSelection(...)`
@@ -96,9 +97,11 @@ Role:
 
 - consume `CdAssetAnchorBootstrapDecisionPacket`
 - return one narrow anchor bootstrap fallback result to the host
+- compose one narrow bootstrap car runtime state for the host
 - keep `CarSystem::Config` assembly local
 - keep `CarSystem` creation gate local
 - keep final visual-yaw application local
+- keep spawn/camera bootstrap state application local
 - keep anchor fallback math local
 - keep final marker-vs-anchor visual-yaw selection local
 - keep marker-mesh probe/debug aggregation local
@@ -152,6 +155,7 @@ The highest live call-site families currently are:
 - `CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision()`
 - `CdAssetBootstrapRuntimeBridge::BuildSbaAnchorDecisionBridge(...)`
 - `LoadSbaShadowBootstrapAssetsIfEnabled(...)`
+- `BuildBootstrapCarRuntimeState(...)`
 - `BuildCarAnchorBootstrapFallback(...)`
 - `ResolveCarAnchorBootstrapFallback(...)`
 - `MemoryBudgetRuntimeBridge::ShouldPreferCartForCdStaging()`
@@ -174,6 +178,7 @@ The current shape makes explicit that:
 - live bootstrap/CD use is narrow and local
 - SBA and anchor boundaries are separate and substitutional
 - the live bridge packet is composed through one narrow runtime-bridge helper
+- the final bootstrap car setup is now composed through one narrow local helper
 - staging preference remains a bridge query, not a broad policy move
 - boot sequencing and asset construction still belong to `src/main.cxx`
 

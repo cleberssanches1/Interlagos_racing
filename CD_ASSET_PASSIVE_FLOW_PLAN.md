@@ -360,6 +360,13 @@ Current interpretation:
   now consolidated behind one narrow visual bootstrap helper surface
 - the remaining local visual bootstrap host code for config assembly, car
   creation gate, and yaw application is now narrowed behind explicit helpers
+- one additional narrow local composition helper now also exists to assemble
+  the final bootstrap car runtime state from:
+  - car config
+  - gated `CarSystem` creation
+  - optional visual-yaw setup
+  - final visual-yaw application
+  - spawn/camera bootstrap state application
 - the next bootstrap/CD move should not force a broader anchor-side cut unless
   a new explicit runtime goal justifies widening beyond the accepted local
   boundary
@@ -370,4 +377,18 @@ Current interpretation:
   instead of being assembled directly in `src/main.cxx`
 - the current accepted reading for this branch is now documented in
   `CD_ASSET_BRANCH_FINAL_STATUS.md`
+
+Latest accepted host-local reduction:
+
+- keep `CdAssetBootstrapRuntimeBridge` unchanged
+- keep SBA/anchor decisions unchanged
+- add one local helper that composes the final bootstrap car runtime state
+- reuse that helper in both the POC bootstrap flow and the main runtime flow
+- keep boot order, CD timing, and ownership unchanged
+
+Validation result:
+
+- stable ISO preserved at `4134912`
+- passive headers passed
+- observability headers passed
 

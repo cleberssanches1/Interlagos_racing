@@ -224,6 +224,12 @@ struct CarBootstrapVisualYawSetup
     bool usedAnchorOffset = false;
 };
 
+struct BootstrapCarRuntimeState
+{
+    std::unique_ptr<Game::CarSystem> carSystem{};
+    CarBootstrapVisualYawSetup visualYawSetup{};
+};
+
 static CarAnchorBootstrapFallback BuildCarAnchorBootstrapFallback(
     const GameLoopRuntime::CdAssetAnchorBootstrapDecisionPacket& decision)
 {
@@ -756,6 +762,45 @@ static void ApplyBootstrapCarVisualYaw(Game::CarSystem& carSystem,
     cameraSystem.SetCarForwardYawOffsetDegrees(0);
 }
 
+static BootstrapCarRuntimeState BuildBootstrapCarRuntimeState(
+    ModelObject* carPtr,
+    bool carValid,
+    bool isSmoothMesh,
+    uint32_t meshCount,
+    uint32_t faceCount,
+    const Vector3D& modelCenter,
+    const Vector3D& lightDirection,
+    CameraSystem& cameraSystem,
+    const Vector3D& carWorldPosition,
+    const GameLoopRuntime::CdAssetSbaBootstrapDecisionPacket* sbaDecision = nullptr)
+{
+    BootstrapCarRuntimeState state{};
+    const auto carConfig = BuildCarBootstrapVisualConfig(meshCount, modelCenter, lightDirection);
+    state.carSystem = BuildBootstrapCarSystem(
+        carPtr, carValid, isSmoothMesh, meshCount, faceCount, carConfig);
+    if (!state.carSystem)
+    {
+        return state;
+    }
+
+    if (sbaDecision != nullptr)
+    {
+        state.visualYawSetup = ResolveCarBootstrapVisualYawSetup(
+            carPtr,
+            meshCount,
+            isSmoothMesh,
+            modelCenter,
+            *sbaDecision);
+    }
+
+    ApplyBootstrapCarVisualYaw(*state.carSystem,
+                               cameraSystem,
+                               state.visualYawSetup.visualYawOffsetDeg);
+    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
+    state.carSystem->SetWorldPosition(carWorldPosition);
+    return state;
+}
+
 static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
                                                     bool enableBg,
                                                     bool renderTrack,
@@ -1204,16 +1249,16 @@ static int RunPhysicsPocMode()
     }
 
     auto sbaBootstrap = LoadSbaShadowBootstrapAssetsIfEnabled(renderCar);
-    const auto carConfig = BuildCarBootstrapVisualConfig(meshCount, modelCenter, lightDirection);
-
-    auto carSystem = BuildBootstrapCarSystem(
-        carPtr, carValid, isSmoothMesh, meshCount, faceCount, carConfig);
-    if (carSystem)
-    {
-        ApplyBootstrapCarVisualYaw(*carSystem, cameraSystem, 0);
-        cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
-        carSystem->SetWorldPosition(carWorldPosition);
-    }
+    auto bootstrapCar = BuildBootstrapCarRuntimeState(carPtr,
+                                                      carValid,
+                                                      isSmoothMesh,
+                                                      meshCount,
+                                                      faceCount,
+                                                      modelCenter,
+                                                      lightDirection,
+                                                      cameraSystem,
+                                                      carWorldPosition);
+    auto carSystem = std::move(bootstrapCar.carSystem);
 
     RenderPipeline renderPipeline;
     SRL::Math::Types::Vector3D minV{};
@@ -1597,16 +1642,20 @@ int GameApp::Run()
         }
     }
 
-    const auto carConfig = BuildCarBootstrapVisualConfig(meshCount, modelCenter, lightDirection);
-    auto carSystem = BuildBootstrapCarSystem(
-        carPtr, carValid, isSmoothMesh, meshCount, faceCount, carConfig);
+    auto bootstrapCar = BuildBootstrapCarRuntimeState(carPtr,
+                                                      carValid,
+                                                      isSmoothMesh,
+                                                      meshCount,
+                                                      faceCount,
+                                                      modelCenter,
+                                                      lightDirection,
+                                                      cameraSystem,
+                                                      carWorldPosition,
+                                                      &sbaBootstrap.decision);
+    auto carSystem = std::move(bootstrapCar.carSystem);
     if (carSystem)
     {
-        const auto visualYawSetup = ResolveCarBootstrapVisualYawSetup(carPtr,
-                                                                      meshCount,
-                                                                      isSmoothMesh,
-                                                                      modelCenter,
-                                                                      sbaBootstrap.decision);
+        const auto& visualYawSetup = bootstrapCar.visualYawSetup;
         if constexpr (kLog)
         {
             SRL::Debug::Print(1, 12, "CAR fwd:%s off:%d y:%d m6v:%u m6f:%u",
@@ -1616,11 +1665,6 @@ int GameApp::Run()
                               static_cast<unsigned>(visualYawSetup.markerVerts),
                               static_cast<unsigned>(visualYawSetup.markerFaces));
         }
-        // Rotate only the rendered car model so spawn orientation is correct
-        // without changing gameplay/camera yaw reference.
-        ApplyBootstrapCarVisualYaw(*carSystem, cameraSystem, visualYawSetup.visualYawOffsetDeg);
-        cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
-        carSystem->SetWorldPosition(carWorldPosition);
         if constexpr (kCarLogs)
         {
             MLOG(1, 12, "CarSystem criado ptr:%08lx valid:%d",

@@ -282,6 +282,8 @@ Current branch-final point:
   result for this branch
 - broader bootstrap/runtime ownership migration is intentionally deferred
   instead of kept as mandatory remaining work
+- final bootstrap car setup is now also consolidated behind one narrow local
+  helper, so no further micro-cleanup is mandatory in this subsystem
 
 Key references:
 
