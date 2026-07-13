@@ -354,45 +354,39 @@ Current assessment:
 
 ## Immediate next safe step
 
-The next safe step is not a runtime packet integration.
+The next safe step in this branch is not a new runtime packet integration.
 
 It is:
 
-1. preserve current runtime calls unchanged
-2. document the exact removal-first substitutions
-3. only then attempt a same-patch remove+replace change in one tiny slice
+1. preserve the current runtime seam unchanged
+2. keep the removal-first substitution map documented
+3. reopen only if a new explicit runtime goal is chosen
 
-For the current `CarRender` state, the best next runtime candidate is:
-
-1. keep `SubmitCarRender(...)` unchanged
-2. keep `RenderCar(...)` unchanged
-3. prepare the shadow-prep substitution map
-4. only then attempt a sector-neutral shadow-data cut that can later share
-   budget with submit/telemetry packaging
-
-That substitution map is now documented in:
+The future reopening map remains:
 
 - `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md`
 
-That shadow-data cut should target only:
+If this subsystem is reopened later, the next broader retry should still target
+only:
 
 1. ground anchoring
 2. shadow yaw propagation
 3. debug-state propagation
 4. blob/model mode selection
 
-## Current runtime posture
+## Current branch interpretation
 
-`Car Render` remains the second-priority major runtime block after
-`Bootstrap / CD`.
+At the current branch state, `car render` is no longer a mandatory next
+runtime target.
 
 Reason:
 
-- the accepted shadow-prep narrowing is stable and remains useful
-- the broader `CarVisualFramePacket` integration path still measured a direct
+- the accepted narrow runtime seam is already in place
+- the broader `CarVisualFramePacket` integration already proved a direct
   `+2048` byte regression at the fixed ISO target
-- the next safe `Car Render` move therefore remains narrower and more
-  constrained than the current bootstrap-side decision/candidate cuts
+- the shadow-prep substitution map is already documented for a future
+  reopen-first move
+- any broader live widening now counts as a new explicit runtime goal
 
 ## Guard rails
 
@@ -402,13 +396,11 @@ Reason:
 - validate every step with `tools/validate_saturn_stable_build.ps1`
 - keep ISO exactly `4134912`
 
-## Recommended next runtime move
+## Branch-final reading
 
-The first safe runtime move for car visuals is:
+The accepted reading for this branch is now:
 
-- assemble `CarVisualFramePacket` locally in `RenderCar(...)`
-- keep existing shadow draw and submit calls untouched
-- do not alter `CarSystem` ownership or APIs in the same patch
+- `CAR_RENDER_BRANCH_FINAL_STATUS.md`
 
 ## New passive render aggregation
 

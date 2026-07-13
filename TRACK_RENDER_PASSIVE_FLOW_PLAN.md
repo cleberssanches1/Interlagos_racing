@@ -173,6 +173,19 @@ The next safe step is:
 3. later try a tiny runtime cut that shares one telemetry snapshot across the
    track overlay and SH2 presentation paths
 
+## Current branch interpretation
+
+At the current branch state, `track render` is no longer a mandatory next
+runtime target.
+
+Reason:
+
+- the accepted narrow telemetry/presentation seam is already in place
+- per-frame hint and face-count reuse are already localized
+- the broader presentation-preview retry was already measured, rolled back,
+  and documented
+- any broader live widening now counts as a new explicit runtime goal
+
 ## Validation coverage
 
 Current compile-only SH2 validation now covers:
@@ -442,3 +455,7 @@ It is:
 
 - complete only the missing symmetric simulation-side branch in the same local
   reuse seam
+
+Current accepted reading for this branch:
+
+- `TRACK_RENDER_BRANCH_FINAL_STATUS.md`

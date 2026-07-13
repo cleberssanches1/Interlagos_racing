@@ -218,18 +218,18 @@ An additional safe passive step now also exists for this slice:
 This means a future bootstrap retry can target a narrow decision packet first,
 instead of pulling the broader CD asset packet structure into `src/main.cxx`.
 
-## Current runtime priority
+## Current branch interpretation
 
-At the current branch state, `Bootstrap / CD` is the preferred next major
-runtime target after `Scheduler/Reuse`.
+At the current branch state, `Bootstrap / CD` is no longer a mandatory next
+runtime target.
 
 Reason:
 
-- narrow bootstrap runtime bridges are already accepted and stable
-- the next cut can stay local to bootstrap candidate/request metadata
-- boot order and file timing can remain unchanged
-- this is currently lower risk than reopening the broader `Car Render`
-  packet-integration path under the fixed ISO envelope
+- the accepted narrow bootstrap runtime seam is already in place
+- the remaining local bootstrap host work has already been reduced behind
+  explicit helpers
+- boot order and file timing remained unchanged through the accepted cuts
+- any broader bootstrap move now counts as a new explicit runtime goal
 
 Two even narrower bootstrap-side cuts now also exist:
 
@@ -351,10 +351,23 @@ Validation result:
 Current interpretation:
 
 - no duplicated local anchor consumer remains in `src/main.cxx`
+- the SBA bootstrap helper surface is now reduced to one runtime-state return
+  that carries both the narrow decision and the local SBA assets together
+- the anchor fallback helper surface is now reduced to one structured return
+- the final marker-vs-anchor visual-yaw application is now reduced to one
+  narrow local helper instead of an open-coded host block
+- the marker-mesh probe, yaw-selection result, and debug-source description are
+  now consolidated behind one narrow visual bootstrap helper surface
+- the remaining local visual bootstrap host code for config assembly, car
+  creation gate, and yaw application is now narrowed behind explicit helpers
 - the next bootstrap/CD move should not force a broader anchor-side cut unless
   a new explicit runtime goal justifies widening beyond the accepted local
   boundary
 - one narrow live bridge composition is now acceptable only when composed from
   already-built SBA and anchor decisions, without pulling broader frame/request
   packets or anticipating anchor load timing
+- that bridge composition may be consumed through one runtime-bridge helper
+  instead of being assembled directly in `src/main.cxx`
+- the current accepted reading for this branch is now documented in
+  `CD_ASSET_BRANCH_FINAL_STATUS.md`
 

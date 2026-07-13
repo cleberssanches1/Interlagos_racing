@@ -194,10 +194,9 @@ Do next:
 
 1. keep the active narrow seam stable
 2. keep the passive graph stable
-3. treat `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md` as the real next broader
-   retry map only if a new explicit runtime goal is chosen
-4. avoid broad `CarVisualFramePacket` runtime integration until an equivalent
-   removal-first patch exists
+3. treat `CAR_RENDER_SHADOW_PREP_SUBSTITUTION_MAP.md` as a future reopening map
+   only if a new explicit runtime goal is chosen
+4. avoid broad `CarVisualFramePacket` runtime integration in this branch
 
 Do not do next:
 

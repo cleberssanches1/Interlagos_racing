@@ -48,7 +48,6 @@
 #include "game_loop_presenter_boundary_text_driving_hud_bridge_assembler.hpp"
 #include "game_loop_presenter_boundary_text_hud_presenter_ops.hpp"
 #include "game_loop_reuse_observability_debug_bundle_presenter_ops.hpp"
-#include "game_loop_reuse_source_owner_assembler.hpp"
 #include "game_loop_simulation_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_reuse_runtime_state_ops.hpp"
 #include "game_loop_track_render_presentation_observability_presenter_ops.hpp"

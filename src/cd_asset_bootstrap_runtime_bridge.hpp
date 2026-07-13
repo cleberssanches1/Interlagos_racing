@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cd_asset_transition_ops.hpp"
+#include "game_loop_cd_asset_decision_bridge_assembler.hpp"
 #include "game_loop_cd_asset_anchor_decision_contracts.hpp"
 #include "game_loop_cd_asset_sba_decision_contracts.hpp"
 
@@ -44,6 +45,14 @@ public:
         packet.anchors = anchors;
         packet.candidateCount = static_cast<uint32_t>(request.candidates.count);
         return packet;
+    }
+
+    static GameLoopRuntime::CdAssetBootstrapDecisionBridgePacket BuildSbaAnchorDecisionBridge(
+        const GameLoopRuntime::CdAssetSbaBootstrapDecisionPacket& sbaDecision)
+    {
+        return GameLoopRuntime::BuildCdAssetBootstrapDecisionBridgePacket(
+            sbaDecision,
+            BuildCarAnchorDecision());
     }
 };
 

@@ -57,12 +57,12 @@ Files:
 
 Local helper:
 
-- `BuildSbaShadowBootstrapAssets(...)`
 - `LoadSbaShadowBootstrapAssetsIfEnabled(...)`
 
 Role:
 
 - consume `CdAssetSbaBootstrapDecisionPacket`
+- return one narrow SBA bootstrap runtime state to the host
 - keep `ModelObject` construction local
 - keep `MeshRenderer` construction local
 - keep SBA enable/disable gating local
@@ -83,12 +83,25 @@ Files:
 
 Local helper:
 
+- `BuildCarBootstrapVisualConfig(...)`
+- `BuildBootstrapCarSystem(...)`
+- `ApplyBootstrapCarVisualYaw(...)`
 - `BuildCarAnchorBootstrapFallback(...)`
+- `ResolveCarAnchorBootstrapFallback(...)`
+- `ResolveCarBootstrapVisualYawSelection(...)`
+- `ResolveCarBootstrapVisualYawSetup(...)`
+- `DescribeCarBootstrapVisualYawSource(...)`
 
 Role:
 
 - consume `CdAssetAnchorBootstrapDecisionPacket`
+- return one narrow anchor bootstrap fallback result to the host
+- keep `CarSystem::Config` assembly local
+- keep `CarSystem` creation gate local
+- keep final visual-yaw application local
 - keep anchor fallback math local
+- keep final marker-vs-anchor visual-yaw selection local
+- keep marker-mesh probe/debug aggregation local
 - keep marker-first selection local
 - keep gameplay/visual yaw derivation local
 
@@ -121,11 +134,9 @@ Live posture:
 The active bootstrap/CD call graph is now intentionally narrow:
 
 1. bootstrap asks whether cart should be preferred for CD staging
-2. bootstrap builds one SBA decision packet
-3. bootstrap derives SBA local assets from that narrow packet
-4. bootstrap builds one car-anchor decision packet
-5. bootstrap derives local anchor fallback data from that narrow packet
-6. bootstrap keeps final construction, sequencing, and fallback ownership local
+2. bootstrap resolves one SBA runtime state from a narrow decision surface
+3. bootstrap derives local anchor fallback data from a narrow bridge helper
+4. bootstrap keeps final construction, sequencing, and fallback ownership local
 
 ## Current active entry points
 
@@ -139,10 +150,10 @@ The highest live call-site families currently are:
 
 - `CdAssetBootstrapRuntimeBridge::BuildSbaShadowModelDecision()`
 - `CdAssetBootstrapRuntimeBridge::BuildCarAnchorDecision()`
-- `GameLoopRuntime::BuildCdAssetBootstrapDecisionBridgePacket(...)`
-- `BuildSbaShadowBootstrapAssets(...)`
+- `CdAssetBootstrapRuntimeBridge::BuildSbaAnchorDecisionBridge(...)`
 - `LoadSbaShadowBootstrapAssetsIfEnabled(...)`
 - `BuildCarAnchorBootstrapFallback(...)`
+- `ResolveCarAnchorBootstrapFallback(...)`
 - `MemoryBudgetRuntimeBridge::ShouldPreferCartForCdStaging()`
 
 ## What still stays outside
@@ -162,7 +173,7 @@ The current shape makes explicit that:
 
 - live bootstrap/CD use is narrow and local
 - SBA and anchor boundaries are separate and substitutional
-- the live bridge packet is composed only from already-built local decisions
+- the live bridge packet is composed through one narrow runtime-bridge helper
 - staging preference remains a bridge query, not a broad policy move
 - boot sequencing and asset construction still belong to `src/main.cxx`
 
@@ -173,9 +184,9 @@ Do next:
 1. keep this active boundary stable
 2. avoid widening live bootstrap use into broad CD frame/request/read/parse
    packets
-3. treat the current anchor-side local consumer as minimal enough unless a new
-   explicit runtime goal requires broader bootstrap restructuring
-4. prefer future work on passive CD-chain consolidation or another subsystem
+3. treat the current local bootstrap seam as final enough for this branch
+4. prefer another subsystem unless a new explicit bootstrap runtime goal is
+   intentionally chosen
 
 Do not do next:
 

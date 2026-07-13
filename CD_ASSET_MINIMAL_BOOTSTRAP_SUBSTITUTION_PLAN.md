@@ -130,6 +130,25 @@ Preferred compile-only narrowing directly above those bootstrap boundaries:
 
 - `CdAssetBootstrapDecisionBridgePacket`
 
+Current accepted live posture:
+
+- `src/main.cxx` may consume the SBA+anchor bridge through one narrow runtime
+  helper, as long as boot order, load timing, and ownership remain unchanged
+- the SBA asset-load helper may return one runtime-state object carrying both
+  the narrow decision and the local SBA assets, as long as ownership and
+  sequencing remain unchanged
+- the anchor fallback side may also return one structured result instead of
+  splitting bridge assembly and fallback derivation across the host
+- the final marker-vs-anchor yaw selection may also be consumed through one
+  narrow local helper, as long as marker-first behavior and yaw ownership stay
+  unchanged
+- the marker probe plus debug payload may also be consolidated into one narrow
+  local visual-bootstrap helper, as long as no load timing or `CarSystem`
+  ownership moves with it
+- the remaining visual bootstrap setup may also be reduced behind narrow local
+  helpers for config assembly, gated `CarSystem` creation, and yaw application,
+  as long as bootstrap order and ownership remain unchanged
+
 ## Remove-first rule
 
 Each bootstrap patch must be substitutional.

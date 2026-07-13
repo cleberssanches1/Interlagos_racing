@@ -116,6 +116,27 @@ Current conclusion:
   always-live budget, or the user explicitly authorizes a different fixed-ISO
   strategy
 
+Additional smaller retry result:
+
+- a narrower host-local retry was also attempted without the combined runtime
+  owner packet
+- that retry tried to feed the `RU` debug line from:
+  - `BuildSimulationReuseRuntimeDecisionViewPacket(...)`
+  - `BuildTrackReuseRuntimeDecisionViewPacket(...)`
+- first version caused the old track-only bundle path to become dead-stripped
+  and the final ISO shrank to `4132864`
+- compatibility-preserving fallback then restored the old path but pushed the
+  final ISO to `4136960`
+- that retry was also reverted
+
+Current conclusion from the smaller retry:
+
+- even the decision-line-only simulation-side completion is currently envelope
+  sensitive
+- the practical blocker is still code-size/layout budget, not missing passive
+  modeling
+- the accepted live baseline remains the track-only seam
+
 ## Current live boundary
 
 ### Boundary A - local scheduler telemetry assembly
@@ -291,8 +312,18 @@ Current live posture:
   lines into one compact line
 - third size-reduction pass already removed the extra compile-only local helper
   layer and left the bundle presenter as the narrowest remaining helper
+- later remove-first cleanup also reduced the owner/source adapter ladder and
+  folded the remaining local `*OrDefault` packet wrappers into the runtime
+  packet assembler itself
 - even after those reductions, the broader decision-first symmetric live retry
   still hit the same `+4096` byte ISO regression and was reverted
+
+Current branch interpretation for Boundary D groundwork:
+
+- the accepted narrow seam and its local structural cleanup are now considered
+  complete for this branch
+- no further helper-level trimming is required before leaving this micro-area
+- any future work here is a new explicit runtime goal, not pending cleanup
 
 ### Boundary E - scheduler lifecycle aggregate
 
@@ -421,6 +452,7 @@ Required after every future live attempt:
 ## Related documents
 
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
+- `SCHEDULER_REUSE_REMOVE_FIRST_BUDGET_RECOVERY_PLAN.md`
 - `SCHEDULER_REUSE_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`

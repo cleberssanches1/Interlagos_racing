@@ -39,6 +39,13 @@ The accepted final live `scheduler/reuse` shape for this branch is:
 This is the live seam that should now be treated as the final accepted runtime
 result for the current branch.
 
+The local structural cleanup around that seam is also now treated as complete
+for this branch:
+
+- owner/source forwarding was reduced
+- compat-only shims were minimized and then frozen
+- local reuse packet-wrapper glue was reduced
+
 ## What is formally frozen
 
 The following broader expansion is now formally frozen for this branch:
@@ -52,6 +59,8 @@ Reason:
 - code-size pressure at the fixed ISO envelope
 - emulator instability when the seam is widened too early
 - no recovered always-live budget currently justifies reopening the branch
+- even a later decision-line-only simulation-side retry failed to preserve the
+  exact fixed envelope
 
 ## Freeze condition
 
@@ -86,6 +95,7 @@ The following concerns remain intentionally outside the accepted final seam:
 - broader symmetric simulation-side reuse ownership
 - wider live scheduler/reuse observability aggregate
 - larger presenter/resumo growth above the accepted seam
+- any further micro-cleanup inside the already accepted narrow seam
 
 ## Recommended interpretation in closure docs
 

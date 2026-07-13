@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game_loop_reuse_runtime_observability_ops.hpp"
+#include "game_loop_reuse_runtime_observability_contracts.hpp"
 #include "game_loop_reuse_source_state_contracts.hpp"
 
 namespace GameLoopObservabilityDomain
@@ -43,17 +43,17 @@ inline ReuseObservabilitySourcePacket BuildReuseObservabilitySourcePacket(
     return packet;
 }
 
-inline ReuseObservabilitySourceState CaptureReuseObservabilitySourceState(
+inline ReuseObservabilityAssemblyInputs CaptureReuseObservabilityAssemblyInputs(
     const ReuseObservabilitySourcePacket& packet)
 {
-    ReuseObservabilitySourceState outState{};
-    outState.simulationDecision =
+    ReuseObservabilityAssemblyInputs outInputs{};
+    outInputs.simulationDecision =
         packet.hasSimulationDecision ? &packet.simulationDecision : nullptr;
-    outState.trackDecision =
+    outInputs.trackDecision =
         packet.hasTrackDecision ? &packet.trackDecision : nullptr;
-    outState.telemetry =
+    outInputs.telemetry =
         packet.hasTelemetry ? &packet.telemetry : nullptr;
-    return outState;
+    return outInputs;
 }
 
 } // namespace GameLoopObservabilityDomain

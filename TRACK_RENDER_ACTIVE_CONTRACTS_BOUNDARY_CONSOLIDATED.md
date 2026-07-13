@@ -177,9 +177,10 @@ while preserving:
 Do next:
 
 1. keep this active boundary stable
-2. avoid removing deeper live packet layers unless they become pure forwarding
-3. prefer future work on higher-level presentation consolidation or another
-   subsystem boundary
+2. avoid widening this boundary into broader presentation/runtime aggregates in
+   this branch
+3. prefer another subsystem unless a new explicit `track render` runtime goal
+   is intentionally chosen
 
 Do not do next:
 

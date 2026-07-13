@@ -77,6 +77,7 @@ Key references:
 - `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 - `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `SH2_TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+- `TRACK_RENDER_BRANCH_FINAL_STATUS.md`
 
 ### Memory budget
 
@@ -182,10 +183,13 @@ Current branch-final point:
   branch
 - the broader symmetric simulation-side retry is formally frozen by emulator
   stability and code-size pressure under the fixed ISO envelope
+- the local remove-first cleanup pass around that narrow seam is also complete,
+  so no further micro-boundary cleanup remains mandatory in this subsystem
 
 Key references:
 
 - `SCHEDULER_REUSE_OBSERVABILITY_FLOW_PLAN.md`
+- `SCHEDULER_REUSE_REMOVE_FIRST_BUDGET_RECOVERY_PLAN.md`
 - `SIMULATION_REUSE_RUNTIME_DEBUG_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `SCHEDULER_REUSE_SIMULATION_PREVIEW_BOUNDARY_CONSOLIDATED.md`
 - `SIMULATION_REUSE_LIVE_RETRY_BLOCKER.md`
@@ -215,12 +219,20 @@ Recent cleanup:
 - the former `game_loop_track_render_producer_hint_assembler.hpp` wrapper was
   removed after its only consumer absorbed the packet assembly directly
 
+Current branch-final point:
+
+- the narrow telemetry/presentation/debug seam is treated as the final active
+  `track render` result for this branch
+- broader presentation/runtime widening is intentionally deferred instead of
+  kept as mandatory remaining work
+
 Key references:
 
 - `TRACK_RENDER_PASSIVE_FLOW_PLAN.md`
 - `TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
 - `SH2_TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
 - `TRACK_RENDER_ACTIVE_CONTRACTS_BOUNDARY_CONSOLIDATED.md`
+- `TRACK_RENDER_BRANCH_FINAL_STATUS.md`
 
 ### Car render
 
@@ -264,12 +276,20 @@ Current runtime posture:
 
 - bootstrap ownership remains in `src/main.cxx`
 
+Current branch-final point:
+
+- the narrow bootstrap-local seam is treated as the final active `bootstrap/CD`
+  result for this branch
+- broader bootstrap/runtime ownership migration is intentionally deferred
+  instead of kept as mandatory remaining work
+
 Key references:
 
 - `CD_ASSET_PASSIVE_FLOW_PLAN.md`
 - `CD_ASSET_MINIMAL_BOOTSTRAP_SUBSTITUTION_PLAN.md`
 - `CD_BOOTSTRAP_CHAIN_FLOW_PLAN.md`
 - `CD_ASSET_ACTIVE_CONTRACTS_BOUNDARY_CONSOLIDATED.md`
+- `CD_ASSET_BRANCH_FINAL_STATUS.md`
 
 ### Memory budget
 

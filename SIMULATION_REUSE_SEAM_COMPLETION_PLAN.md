@@ -183,6 +183,36 @@ The next simulation-side seam completion passes only if:
 - no duplicate application of completed simulation output
 - no broad scheduler/reuse ownership move
 
+## Latest retry note
+
+One narrower retry beyond the original combined-owner attempt was also tested.
+
+Shape tested:
+
+1. keep the accepted track-only seam in place
+2. derive `SimulationReuseDecisionViewPacket` stack-locally from:
+   - `frameCounter_`
+   - `context_.EnableSlaveForSimulation()`
+   - `context_.SlaveSimulationLockstep()`
+   - `simState_.JobInFlight()`
+   - committed `SimulationFrameHistoryState`
+3. derive `TrackReuseDecisionViewPacket` directly from `TrackReuseRuntimeState`
+4. feed only the `RU` debug line from those two narrow decision views
+
+Measured result:
+
+- first version reduced the final ISO to `4132864` because the old track-only
+  bundle path became dead-stripped
+- compatibility-preserving fallback then increased the final ISO to `4136960`
+- the retry was reverted
+
+Interpretation:
+
+- this seam is still sensitive even when avoiding the broader owner-packet
+  aggregate
+- the next future retry must recover exact remove-first budget first, not only
+  choose a narrower packet shape
+
 ## Validation ritual
 
 - `tools/validate_saturn_stable_build.ps1 -SkipHostTests`
