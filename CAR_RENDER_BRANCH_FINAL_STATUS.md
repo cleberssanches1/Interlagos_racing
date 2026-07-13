@@ -58,6 +58,41 @@ real constraints:
 That cut removed duplicated shadow-prep work while preserving the live draw and
 submit path.
 
+The latest accepted cleanup inside that same seam also keeps the shadow path
+clearer:
+
+- shadow debug capture is explicit at the draw entrypoints
+- `BuildShadowDrawYaw(...)` no longer mutates debug state
+- draw ownership and submit ownership remain unchanged
+
+One additional cleanup is now also accepted inside the same seam:
+
+- `RenderCar(...)` resolves render inputs through one narrow helper
+- runtime policy for depth bias is no longer spread inline at the host call site
+- gameplay yaw / visual yaw offset / runtime debug capture are grouped before
+  packet assembly
+- submission ownership and shadow dispatch ownership remain unchanged
+
+The shadow dispatch seam is also flatter now:
+
+- the runtime helper owns the `enabled -> prepared shadow packet` bridge
+- `RenderCarShadowIfEnabled(...)` now consumes that bridge and dispatches only
+  the active blob/model draw path
+- blob/model draw entrypoints remain host-owned and unchanged
+
+The submit seam is also cleaner now:
+
+- face-count capture is explicit apart from submit execution
+- telemetry shaping is explicit apart from face-count capture
+- final pipeline reset / submit / flush ownership remains on the Master-side
+
+The SH2-side car-prepare branch is now considered formally frozen:
+
+- `CarRenderPrepareTask` only normalizes yaw
+- `CarPrepareRuntimeState.outputYaw` has no live consumer
+- the runtime flag for this path is already disabled by default
+- no removal-first runtime cut is required there for branch closure
+
 ## What remains intentionally outside the active seam
 
 The following are explicitly deferred and are not required for branch closure:

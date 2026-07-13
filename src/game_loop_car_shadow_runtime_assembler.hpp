@@ -71,12 +71,47 @@ inline Game::CarRenderSystem::ShadowPacket BuildCarShadowPrepPacket(
         groundBiasUnits);
 }
 
+inline bool TryBuildCarShadowPrepPacket(
+    const Game::CarRenderSystem::RenderPacket& renderPacket,
+    bool enabled,
+    bool drawBlob,
+    bool drawModel,
+    int32_t groundBiasUnits,
+    Game::CarRenderSystem::ShadowPacket& outShadowPacket)
+{
+    if (!enabled)
+    {
+        return false;
+    }
+
+    outShadowPacket =
+        BuildCarShadowPrepPacket(renderPacket, drawBlob, drawModel, groundBiasUnits);
+    return true;
+}
+
 inline void ApplyCarRenderRuntimeSync(
     Game::CarSystem& car,
     const Game::CarRenderSystem::RenderPacket& renderPacket,
     int32_t gameplayYawDeg)
 {
     car.SyncRenderState(renderPacket.renderPosition, gameplayYawDeg);
+}
+
+inline uint16_t CaptureCarRenderRuntimeFaceCount(Game::CarSystem& car)
+{
+    if (MeshRenderer* renderer = car.Renderer())
+    {
+        const uint32_t rawFaceCount = renderer->LastRenderFaceCount();
+        return static_cast<uint16_t>((rawFaceCount > 0xFFFFu) ? 0xFFFFu : rawFaceCount);
+    }
+
+    return 0u;
+}
+
+inline Game::CarRenderSystem::Telemetry BuildCarRenderRuntimeTelemetry(
+    uint16_t renderedFaceCount)
+{
+    return Game::CarRenderSystem::BuildTelemetry(renderedFaceCount, true);
 }
 
 inline Game::CarRenderSystem::Telemetry SubmitCarRenderRuntime(
@@ -86,15 +121,7 @@ inline Game::CarRenderSystem::Telemetry SubmitCarRenderRuntime(
     renderPipeline.Reset();
     car.SubmitRender(renderPipeline);
     renderPipeline.Flush();
-
-    uint16_t renderedFaceCount = 0u;
-    if (MeshRenderer* renderer = car.Renderer())
-    {
-        const uint32_t rawFaceCount = renderer->LastRenderFaceCount();
-        renderedFaceCount =
-            static_cast<uint16_t>((rawFaceCount > 0xFFFFu) ? 0xFFFFu : rawFaceCount);
-    }
-    return Game::CarRenderSystem::BuildTelemetry(renderedFaceCount, true);
+    return BuildCarRenderRuntimeTelemetry(CaptureCarRenderRuntimeFaceCount(car));
 }
 
 } // namespace GameLoopRuntime

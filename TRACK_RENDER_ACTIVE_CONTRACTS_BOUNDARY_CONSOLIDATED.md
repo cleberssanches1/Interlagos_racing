@@ -78,6 +78,7 @@ Live posture:
 - active
 - now assembled directly inside the runtime consumer helper
 - no standalone wrapper remains
+- the packet no longer pays an extra local seed/build forwarding hop
 
 ### 4. SH2 presentation boundary
 
@@ -101,6 +102,8 @@ Live posture:
 - active at the host call site
 - packet assembly is now direct from the active runtime helper
 - no intermediate runtime bridge leaf remains
+- the redundant four-argument convenience overload was removed to keep one
+  canonical assembly path
 
 ### 5. Render-debug bundle boundary
 
@@ -164,6 +167,7 @@ The current shape reduces:
 - one-hop wrapper assembly for producer hints
 - one-hop wrapper assembly for SH2 presentation packet forwarding
 - one-hop wrapper assembly for track debug packet derivation
+- duplicate local assembly entry points around the same SH2 presentation packet
 
 while preserving:
 

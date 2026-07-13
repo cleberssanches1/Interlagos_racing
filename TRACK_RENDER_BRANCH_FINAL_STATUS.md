@@ -50,6 +50,8 @@ This branch already achieved the stable remove-first reductions that mattered:
   wrappers
 - submitted track face reuse is localized
 - per-frame producer hint reuse is localized
+- producer-hint packet construction is flattened to the final live helper
+- SH2 presentation packet assembly now has one canonical active overload
 - emulator stability and fixed ISO envelope were preserved
 
 That is the accepted closure point for this branch.
@@ -78,6 +80,13 @@ Relevant references:
 - `TRACK_RENDER_ACTIVE_CONTRACTS_BOUNDARY_CONSOLIDATED.md`
 - `TRACK_RENDER_MINIMAL_LIVE_SUBSTITUTION_PLAN.md`
 - `SH2_TRACK_RENDER_PRESENTATION_BOUNDARY_CONSOLIDATED.md`
+
+Latest validation snapshot for this accepted state:
+
+- stable build passed
+- stable ISO remained `4134912`
+- passive header validation passed
+- observability header validation passed
 
 ## Branch-final interpretation
 

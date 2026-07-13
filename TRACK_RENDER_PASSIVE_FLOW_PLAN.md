@@ -459,3 +459,20 @@ It is:
 Current accepted reading for this branch:
 
 - `TRACK_RENDER_BRANCH_FINAL_STATUS.md`
+
+## Latest accepted flattening
+
+The most recent safe runtime-side cleanup stayed strictly inside the already
+accepted narrow seam:
+
+- `TryBuildTrackRenderProducerHintPacket(...)` now writes the minimal packet
+  payload directly
+- the redundant four-argument
+  `BuildTrackRenderSh2PresentationPacket(...)` convenience overload was removed
+
+Current effect:
+
+- one fewer forwarding hop in the producer-hint path
+- one canonical active SH2 presentation assembly path
+- no ownership or timing change
+- validation remained stable at ISO `4134912`

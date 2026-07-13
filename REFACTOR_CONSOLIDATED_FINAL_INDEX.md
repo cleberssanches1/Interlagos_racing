@@ -449,6 +449,10 @@ Use these as the main entry docs by subsystem:
 - Car Render: `CAR_RENDER_PASSIVE_FLOW_PLAN.md`
 - AutoLap: `AUTO_LAP_ROUTE_PASSIVE_FLOW_PLAN.md`
 
+Cross-subsystem closure note for the two most sensitive frozen/closed axes:
+
+- `BOOTSTRAP_CD_SCHEDULER_REUSE_ACTION_PLAN.md`
+
 ## Final state summary
 
 The refactor is no longer at the stage of discovering shapes.

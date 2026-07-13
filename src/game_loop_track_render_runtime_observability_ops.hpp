@@ -11,20 +11,6 @@
 namespace GameLoopRuntime
 {
 
-inline void SeedTrackRenderProducerHintPacket(const TrackRenderTelemetryViewPacket& telemetryView,
-                                              TrackRenderProducerHintPacket& outPacket)
-{
-    outPacket.producerJobInFlight = telemetryView.producerJobInFlight;
-}
-
-inline TrackRenderProducerHintPacket BuildTrackRenderProducerHintPacket(
-    const TrackRenderTelemetryViewPacket& telemetryView)
-{
-    TrackRenderProducerHintPacket packet{};
-    SeedTrackRenderProducerHintPacket(telemetryView, packet);
-    return packet;
-}
-
 inline bool TryBuildTrackRenderTelemetryViewPacket(const TrackSystem* trackSystem,
                                                    bool trackSystemReady,
                                                    bool renderTrack,
@@ -56,7 +42,7 @@ inline bool TryBuildTrackRenderProducerHintPacket(const TrackSystem* trackSystem
         return false;
     }
 
-    outProducerHint = BuildTrackRenderProducerHintPacket(trackTelemetryView);
+    outProducerHint.producerJobInFlight = trackTelemetryView.producerJobInFlight;
     return true;
 }
 

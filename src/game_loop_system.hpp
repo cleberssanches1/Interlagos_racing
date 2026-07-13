@@ -1129,14 +1129,14 @@ private:
                                    context_.carWorldPosition);
     }
 
-    int32_t ResolveCarRenderYawDegrees() const
+    struct CarRenderRuntimeInputs
     {
-        if (Game::CarSystem* car = ActiveCarSystem())
-        {
-            return car->RenderYawDegrees();
-        }
-        return carYawDeg_;
-    }
+        SRL::Math::Types::Vector3D renderPosition{};
+        int32_t gameplayYawDeg = 0;
+        int32_t visualYawOffsetDeg = 0;
+        Game::CarSystem::RuntimeDebugSnapshot runtimeDebug{};
+        int32_t depthBiasUnits = 0;
+    };
 
     Game::CarSystem::RuntimeDebugSnapshot CarRuntimeDebugSnapshot() const
     {
@@ -1147,11 +1147,34 @@ private:
         return {};
     }
 
+    int32_t ResolveCarRenderDepthBiasUnits(
+        const Game::CarSystem::RuntimeDebugSnapshot& runtimeDebug) const
+    {
+        constexpr int32_t kCarDepthBiasUnits = 3;
+        return (runtimeDebug.speedProxy <= 20) ? 0 : kCarDepthBiasUnits;
+    }
+
+    CarRenderRuntimeInputs ResolveCarRenderRuntimeInputs(const Game::CarSystem& car)
+    {
+        CarRenderRuntimeInputs inputs{};
+        inputs.renderPosition = ResolveCarRenderPosition();
+        inputs.gameplayYawDeg = carYawDeg_;
+        inputs.visualYawOffsetDeg = car.VisualYawOffsetDegrees();
+        inputs.runtimeDebug = car.RuntimeDebug();
+        inputs.depthBiasUnits = ResolveCarRenderDepthBiasUnits(inputs.runtimeDebug);
+        return inputs;
+    }
+
     void StoreShadowDebugState(const SRL::Math::Types::Vector3D& shadowWorldPosition,
                                int32_t shadowYawDeg)
     {
         shadowDebug_.worldPos = shadowWorldPosition;
         shadowDebug_.yawDeg = shadowYawDeg;
+    }
+
+    void CaptureShadowDebugState(const Game::CarRenderSystem::ShadowPacket& shadowPacket)
+    {
+        StoreShadowDebugState(shadowPacket.shadowPosition, shadowPacket.shadowYawDeg);
     }
 
     SRL::Math::Types::Angle BuildShadowDrawYaw(
@@ -1160,7 +1183,6 @@ private:
         using SRL::Math::Types::Angle;
         using SRL::Math::Types::Fxp;
 
-        StoreShadowDebugState(shadowPacket.shadowPosition, shadowPacket.shadowYawDeg);
         return Angle::FromDegrees(
             Fxp::BuildRaw(static_cast<int32_t>(shadowPacket.shadowYawDeg) << 16));
     }
@@ -1177,6 +1199,7 @@ private:
         constexpr Fxp kShadowSortBias = Fxp::BuildRaw(0x00100000);   // force shadow behind car
         constexpr SRL::Types::HighColor kShadowColor = SRL::Types::HighColor::FromRGB555(0, 0, 0);
 
+        CaptureShadowDebugState(shadowPacket);
         Vector3D center = shadowPacket.shadowPosition;
         const auto yaw = BuildShadowDrawYaw(shadowPacket);
         const Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
@@ -1262,6 +1285,7 @@ private:
     {
         if (!context_.carShadowRenderer) return;
 
+        CaptureShadowDebugState(shadowPacket);
         const SRL::Math::Types::Vector3D& shadowPos = shadowPacket.shadowPosition;
         const auto yaw = BuildShadowDrawYaw(shadowPacket);
         context_.carShadowRenderer->Render(shadowPos, yaw, false);
@@ -1275,23 +1299,20 @@ private:
         Game::CarSystem* car = ActiveCarSystem();
         if (!car) return;
 
-        const auto runtimeDebug = car->RuntimeDebug();
+        const auto renderInputs = ResolveCarRenderRuntimeInputs(*car);
         constexpr int32_t kCarVisualLiftUnits = 0;
-        constexpr int32_t kCarDepthBiasUnits = 3;
-        const int32_t depthBiasUnits =
-            (runtimeDebug.speedProxy <= 20) ? 0 : kCarDepthBiasUnits;
         const auto renderPacket = GameLoopRuntime::BuildCarRenderRuntimePacket(
-            ResolveCarRenderPosition(),
+            renderInputs.renderPosition,
             camera.location,
             camera.lookTarget,
-            carYawDeg_,
-            car->VisualYawOffsetDegrees(),
-            runtimeDebug,
+            renderInputs.gameplayYawDeg,
+            renderInputs.visualYawOffsetDeg,
+            renderInputs.runtimeDebug,
             kCarVisualLiftUnits,
-            depthBiasUnits);
+            renderInputs.depthBiasUnits);
 
         RenderCarShadowIfEnabled(renderPacket);
-        GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, carYawDeg_);
+        GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, renderInputs.gameplayYawDeg);
         const auto telemetry =
             GameLoopRuntime::SubmitCarRenderRuntime(*context_.renderPipeline, *car);
         lastRenderedCarFacesThisFrame_ = telemetry.renderedFaceCount;
@@ -1321,20 +1342,25 @@ private:
         const auto decision = GameLoopRuntime::BuildCarShadowRuntimeDecision(
             context_.RenderCarShadowModel(),
             context_.carShadowRenderer != nullptr);
+        Game::CarRenderSystem::ShadowPacket shadowPacket{};
 
-        if (decision.drawBlob)
+        if (GameLoopRuntime::TryBuildCarShadowPrepPacket(renderPacket,
+                                                         decision.drawBlob,
+                                                         true,
+                                                         false,
+                                                         decision.blobGroundBiasUnits,
+                                                         shadowPacket))
         {
-            DrawCarShadowBlob(GameLoopRuntime::BuildCarShadowPrepPacket(renderPacket,
-                                                                        true,
-                                                                        false,
-                                                                        decision.blobGroundBiasUnits));
+            DrawCarShadowBlob(shadowPacket);
         }
-        if (decision.drawModel)
+        if (GameLoopRuntime::TryBuildCarShadowPrepPacket(renderPacket,
+                                                         decision.drawModel,
+                                                         false,
+                                                         true,
+                                                         decision.modelGroundBiasUnits,
+                                                         shadowPacket))
         {
-            DrawCarShadowModel(GameLoopRuntime::BuildCarShadowPrepPacket(renderPacket,
-                                                                         false,
-                                                                         true,
-                                                                         decision.modelGroundBiasUnits));
+            DrawCarShadowModel(shadowPacket);
         }
     }
 

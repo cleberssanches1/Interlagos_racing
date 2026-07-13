@@ -46,19 +46,4 @@ inline TrackRenderSh2PresentationPacket BuildTrackRenderSh2PresentationPacket(
     return packet;
 }
 
-inline TrackRenderSh2PresentationPacket BuildTrackRenderSh2PresentationPacket(
-    const GameLoopRuntime::Sh2SplitTelemetrySnapshot& sh2,
-    bool useSafeTelemetryFormat,
-    uint32_t slaveDispatchCount,
-    uint32_t slaveDispatchSkipsTrackBusy)
-{
-    return BuildTrackRenderSh2PresentationPacket(sh2,
-                                                 useSafeTelemetryFormat,
-                                                 slaveDispatchCount,
-                                                 slaveDispatchSkipsTrackBusy,
-                                                 false,
-                                                 false,
-                                                 false);
-}
-
 } // namespace GameLoopObservabilityDomain
