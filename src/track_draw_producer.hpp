@@ -66,7 +66,12 @@ public:
     // Build and publish the list in the same frame.
     void Build(const std::vector<Handle>& orderedHandles, size_t limit) override
     {
-        lists_.BuildWriteList(orderedHandles, limit);
+        BuildFromRange(orderedHandles.data(), orderedHandles.size(), limit);
+    }
+
+    void BuildFromRange(const Handle* orderedHandles, size_t count, size_t limit)
+    {
+        lists_.BuildWriteList(orderedHandles, count, limit);
         lists_.Publish();
         ++stats_.synchronousBuilds;
         ++stats_.jobsSubmitted;
@@ -442,6 +447,11 @@ public:
     // Build list using slave task when available and keep a safe fallback.
     void Build(const std::vector<Handle>& orderedHandles, size_t limit) override
     {
+        BuildFromRange(orderedHandles.data(), orderedHandles.size(), limit);
+    }
+
+    void BuildFromRange(const Handle* orderedHandles, size_t count, size_t limit)
+    {
         FinalizeIfReady();
 
         if (jobInFlight_)
@@ -467,7 +477,7 @@ public:
         }
 
         BuildJobData jobData{};
-        jobData.count = static_cast<uint16_t>(std::min({ limit, orderedHandles.size(), size_t(Capacity) }));
+        jobData.count = static_cast<uint16_t>(std::min({ limit, count, size_t(Capacity) }));
         for (size_t i = 0; i < jobData.count; ++i)
         {
             jobData.items[i] = orderedHandles[i];

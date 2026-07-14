@@ -53,6 +53,138 @@ private:
         return (a.X * b.X) + (a.Z * b.Z);
     }
 
+    static bool ProjectPlanarOntoAxis(const CarPhysics::Fxp vecX,
+                                      const CarPhysics::Fxp vecZ,
+                                      const CarPhysics::Fxp axisX,
+                                      const CarPhysics::Fxp axisZ,
+                                      CarPhysics::Fxp& outProjX,
+                                      CarPhysics::Fxp& outProjZ)
+    {
+        const CarPhysics::Fxp axisLenSq = (axisX * axisX) + (axisZ * axisZ);
+        if (axisLenSq <= CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+        {
+            outProjX = CarPhysics::Fxp::BuildRaw(0);
+            outProjZ = CarPhysics::Fxp::BuildRaw(0);
+            return false;
+        }
+
+        const int32_t axisLenSqRaw = axisLenSq.RawValue();
+        if (axisLenSqRaw == 0)
+        {
+            outProjX = CarPhysics::Fxp::BuildRaw(0);
+            outProjZ = CarPhysics::Fxp::BuildRaw(0);
+            return false;
+        }
+
+        const CarPhysics::Fxp axisDot = (vecX * axisX) + (vecZ * axisZ);
+        const int32_t scaleRaw = static_cast<int32_t>(
+            (static_cast<int64_t>(axisDot.RawValue()) << 16) / axisLenSqRaw);
+        const CarPhysics::Fxp scale = CarPhysics::Fxp::BuildRaw(scaleRaw);
+        outProjX = axisX * scale;
+        outProjZ = axisZ * scale;
+        return true;
+    }
+
+    static bool BuildWallPlanarNormal(const CarPhysics::GroundState& groundState,
+                                      CarPhysics::Fxp& outNX,
+                                      CarPhysics::Fxp& outNZ,
+                                      CarPhysics::Fxp& outMaxAxis)
+    {
+        const CarPhysics::Fxp absX = groundState.lastWallPushX.Abs();
+        const CarPhysics::Fxp absZ = groundState.lastWallPushZ.Abs();
+        outMaxAxis = (absX >= absZ) ? absX : absZ;
+        if (outMaxAxis <= CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+        {
+            outNX = CarPhysics::Fxp::BuildRaw(0);
+            outNZ = CarPhysics::Fxp::BuildRaw(0);
+            return false;
+        }
+
+        outNX = CarPhysics::Fxp::BuildRaw(
+            static_cast<int32_t>(
+                (static_cast<int64_t>(groundState.lastWallPushX.RawValue()) << 16) /
+                outMaxAxis.RawValue()));
+        outNZ = CarPhysics::Fxp::BuildRaw(
+            static_cast<int32_t>(
+                (static_cast<int64_t>(groundState.lastWallPushZ.RawValue()) << 16) /
+                outMaxAxis.RawValue()));
+        return true;
+    }
+
+    static void ApplyLowCostWallResponse(CarPhysics::DynamicsState& ioDynamicsState,
+                                         const CarPhysics::FrameStepOutput& stepOutput,
+                                         const CarPhysics::GroundState& groundState,
+                                         const Vector3D& preStepPosition,
+                                         Vector3D& ioCarWorldPosition)
+    {
+        CarPhysics::Fxp normalX{};
+        CarPhysics::Fxp normalZ{};
+        CarPhysics::Fxp maxAxis{};
+        if (!BuildWallPlanarNormal(groundState, normalX, normalZ, maxAxis))
+        {
+            return;
+        }
+
+        const CarPhysics::Fxp worldVelX =
+            (stepOutput.sinYaw * ioDynamicsState.forwardSpeed) +
+            (stepOutput.cosYaw * ioDynamicsState.lateralSpeed);
+        const CarPhysics::Fxp worldVelZ =
+            (CarPhysics::Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()) *
+             ioDynamicsState.forwardSpeed) +
+            (stepOutput.sinYaw * ioDynamicsState.lateralSpeed);
+        const CarPhysics::Fxp velDotNormal =
+            (worldVelX * normalX) + (worldVelZ * normalZ);
+        if (velDotNormal < CarPhysics::Fxp::BuildRaw(0))
+        {
+            CarPhysics::Fxp inwardVelX{};
+            CarPhysics::Fxp inwardVelZ{};
+            ProjectPlanarOntoAxis(worldVelX,
+                                  worldVelZ,
+                                  normalX,
+                                  normalZ,
+                                  inwardVelX,
+                                  inwardVelZ);
+            const CarPhysics::Fxp resolvedWorldVelX = worldVelX - inwardVelX;
+            const CarPhysics::Fxp resolvedWorldVelZ = worldVelZ - inwardVelZ;
+            ioDynamicsState.forwardSpeed =
+                (resolvedWorldVelX * stepOutput.sinYaw) +
+                (resolvedWorldVelZ * CarPhysics::Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()));
+            ioDynamicsState.lateralSpeed =
+                (resolvedWorldVelX * stepOutput.cosYaw) +
+                (resolvedWorldVelZ * stepOutput.sinYaw);
+        }
+
+        ioDynamicsState.forwardSpeed -=
+            ioDynamicsState.forwardSpeed *
+            CarPhysics::Tunables::kWallImpactForwardDamping;
+
+        ioDynamicsState.yawRateDegPerFrame = CarPhysics::Fxp::BuildRaw(0);
+
+        const CarPhysics::Fxp deltaX = ioCarWorldPosition.X - preStepPosition.X;
+        const CarPhysics::Fxp deltaZ = ioCarWorldPosition.Z - preStepPosition.Z;
+        const CarPhysics::Fxp deltaDotNormal = (deltaX * normalX) + (deltaZ * normalZ);
+        if (deltaDotNormal < CarPhysics::Fxp::BuildRaw(0))
+        {
+            ioCarWorldPosition.X =
+                ioCarWorldPosition.X - (normalX * deltaDotNormal) +
+                (normalX * CarPhysics::Tunables::kWallSeparationSkin);
+            ioCarWorldPosition.Z =
+                ioCarWorldPosition.Z - (normalZ * deltaDotNormal) +
+                (normalZ * CarPhysics::Tunables::kWallSeparationSkin);
+        }
+
+        if (ioDynamicsState.forwardSpeed.Abs() <
+            CarPhysics::Tunables::kWallImpactStopCutoff)
+        {
+            ioDynamicsState.forwardSpeed = CarPhysics::Fxp::BuildRaw(0);
+        }
+        if (ioDynamicsState.lateralSpeed.Abs() <
+            CarPhysics::Tunables::kWallSeparationSkin)
+        {
+            ioDynamicsState.lateralSpeed = CarPhysics::Fxp::BuildRaw(0);
+        }
+    }
+
     static SRL::Math::Types::Fxp ResolveGripScaleFromSurfaceType(uint8_t surfaceType)
     {
         switch (surfaceType)
@@ -358,31 +490,19 @@ private:
         if (trackQuery && CarPhysics::Tunables::kEnableWallPlanarPush &&
             groundState_.lastWallQueryHit)
         {
-            const CarPhysics::Fxp absX = groundState_.lastWallPushX.Abs();
-            const CarPhysics::Fxp absZ = groundState_.lastWallPushZ.Abs();
-            const CarPhysics::Fxp maxAxis = (absX >= absZ) ? absX : absZ;
             if constexpr (CarPhysics::Tunables::kEnableSaturnLowCostPhysics)
             {
-                if (maxAxis > CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
-                {
-                    dynamicsState_.forwardSpeed -=
-                        dynamicsState_.forwardSpeed *
-                        CarPhysics::Tunables::kWallImpactForwardDamping;
-                    dynamicsState_.lateralSpeed = CarPhysics::Fxp::BuildRaw(0);
-                    dynamicsState_.yawRateDegPerFrame -=
-                        dynamicsState_.yawRateDegPerFrame *
-                        CarPhysics::Tunables::kWallImpactYawDamping;
-                    ioCarWorldPosition.X = preStepPosition.X + groundState_.lastWallPushX;
-                    ioCarWorldPosition.Z = preStepPosition.Z + groundState_.lastWallPushZ;
-                    if (dynamicsState_.forwardSpeed.Abs() <
-                        CarPhysics::Tunables::kWallImpactStopCutoff)
-                    {
-                        dynamicsState_.forwardSpeed = CarPhysics::Fxp::BuildRaw(0);
-                    }
-                }
+                ApplyLowCostWallResponse(dynamicsState_,
+                                         stepOutput,
+                                         groundState_,
+                                         preStepPosition,
+                                         ioCarWorldPosition);
             }
             else
             {
+                const CarPhysics::Fxp absX = groundState_.lastWallPushX.Abs();
+                const CarPhysics::Fxp absZ = groundState_.lastWallPushZ.Abs();
+                const CarPhysics::Fxp maxAxis = (absX >= absZ) ? absX : absZ;
                 // Cancel velocity directed into the wall so the car doesn't re-tunnel next frame.
                 // Uses lastWallPushX/Z from the current frame's ground follower query (~10 muls).
                 if (maxAxis > CarPhysics::Tunables::kWallPushVelocityCancelThreshold)

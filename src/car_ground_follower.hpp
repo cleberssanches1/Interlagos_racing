@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 #include "car_physics_shared.hpp"
 
 namespace Game::CarPhysics
@@ -173,7 +175,6 @@ public:
             : ioFrameState.steering;
         const bool lowDynamicsInputs =
             (!ioFrameState.braking) &&
-            (ioFrameState.throttle == 0) &&
             (steeringAbs <= Tunables::kLowDynamicsSteeringThreshold) &&
             (ioFrameState.speedProxy <= Tunables::kLowDynamicsSpeedProxyThreshold);
         const bool mediumDynamicsInputs =
@@ -528,26 +529,6 @@ private:
             sinYaw,
             Fxp::BuildRaw(0),
             Fxp::BuildRaw(-cosYaw.RawValue()));
-
-        if constexpr (Tunables::kEnableSaturnLowCostPhysics)
-        {
-            // Saturn safety path:
-            // keep a single wall query only. Multi-probe expansion increased
-            // runtime cost/code size enough to destabilize startup on emulator.
-            int32_t hitSegmentId = -1;
-            const bool hit = trackQuery->ResolvePlanarWallPush(basePosition,
-                                                               forwardDirection,
-                                                               wallRadius,
-                                                               outPush,
-                                                               &hitSegmentId,
-                                                               seedSegmentId);
-            if (outSegmentId)
-            {
-                *outSegmentId = static_cast<int16_t>(hitSegmentId);
-            }
-            return hit;
-        }
-
         const Fxp wallRightX = cosYaw;
         const Fxp wallRightZ = sinYaw;
 
@@ -556,12 +537,28 @@ private:
         bool anyHit = false;
         Vector3D workingBase = basePosition;
 
-        constexpr uint8_t kMaxResolvePasses = 3u;
-        const Fxp lateralOffsets[3] = {
-            Fxp::BuildRaw(0),
-            Tunables::kProbeHalfTrack,
-            Fxp::BuildRaw(-Tunables::kProbeHalfTrack.RawValue())
+        constexpr uint8_t kMaxResolvePasses =
+            Tunables::kEnableSaturnLowCostPhysics ? 1u : 3u;
+        const Fxp probeHalfLength = Tunables::kWallHullHalfLength;
+        const Fxp probeHalfWidth = Tunables::kWallHullHalfWidth;
+        const Fxp negHalfLength = Fxp::BuildRaw(-probeHalfLength.RawValue());
+        const Fxp negHalfWidth = Fxp::BuildRaw(-probeHalfWidth.RawValue());
+        const Fxp probeRadius = Tunables::kEnableSaturnLowCostPhysics
+            ? Tunables::kWallHullProbeRadius
+            : wallRadius;
+        const Fxp frontProbeLength = Tunables::kEnableSaturnLowCostPhysics
+            ? (probeHalfLength + probeRadius)
+            : probeHalfLength;
+        const std::pair<Fxp, Fxp> probeOffsets[6] = {
+            { frontProbeLength, negHalfWidth },
+            { frontProbeLength, probeHalfWidth },
+            { negHalfLength, negHalfWidth },
+            { negHalfLength, probeHalfWidth },
+            { Fxp::BuildRaw(0), negHalfWidth },
+            { Fxp::BuildRaw(0), probeHalfWidth }
         };
+        const uint8_t probeCount =
+            Tunables::kEnableSaturnLowCostPhysics ? 4u : 6u;
 
         for (uint8_t pass = 0; pass < kMaxResolvePasses; ++pass)
         {
@@ -570,22 +567,23 @@ private:
             int32_t bestSegmentId = -1;
             int64_t bestMagRaw = -1;
 
-            for (uint8_t probe = 0; probe < 3u; ++probe)
+            for (uint8_t probeIndex = 0; probeIndex < probeCount; ++probeIndex)
             {
+                const auto& probeOffset = probeOffsets[probeIndex];
                 Vector3D probePosition = workingBase;
-                const Fxp lateralOffset = lateralOffsets[probe];
-                if (lateralOffset.RawValue() != 0)
-                {
-                    probePosition.X += wallRightX * lateralOffset;
-                    probePosition.Z += wallRightZ * lateralOffset;
-                }
+                probePosition.X +=
+                    (forwardDirection.X * probeOffset.first) +
+                    (wallRightX * probeOffset.second);
+                probePosition.Z +=
+                    (forwardDirection.Z * probeOffset.first) +
+                    (wallRightZ * probeOffset.second);
 
                 Vector3D probePush{};
                 int32_t probeSegmentId = -1;
                 const bool hit = trackQuery->ResolvePlanarWallPush(
                     probePosition,
                     forwardDirection,
-                    wallRadius,
+                    probeRadius,
                     probePush,
                     &probeSegmentId,
                     localSeedSegmentId);
@@ -604,6 +602,29 @@ private:
                     bestMagRaw = magRaw;
                     bestPush = probePush;
                     bestSegmentId = probeSegmentId;
+                }
+            }
+
+            if constexpr (Tunables::kEnableSaturnLowCostPhysics)
+            {
+                if (!passHit)
+                {
+                    Vector3D centerPush{};
+                    int32_t centerSegmentId = -1;
+                    const bool centerHit = trackQuery->ResolvePlanarWallPush(
+                        workingBase,
+                        forwardDirection,
+                        wallRadius,
+                        centerPush,
+                        &centerSegmentId,
+                        localSeedSegmentId);
+                    if (centerHit)
+                    {
+                        passHit = true;
+                        anyHit = true;
+                        bestPush = centerPush;
+                        bestSegmentId = centerSegmentId;
+                    }
                 }
             }
 

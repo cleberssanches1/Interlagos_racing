@@ -20,6 +20,7 @@ public:
     struct PreparedChunk
     {
         Handle handle{};
+        uintptr_t resolvedEntryAddress = 0u;
         int32_t segmentId = -1;
         uint16_t drawOrder = 0;
         SRL::Math::Types::Vector3D center{};
@@ -80,7 +81,12 @@ public:
         const auto& drawList = producer_.Consume();
         telemetry_.drawListCount = drawList.count;
 
-        std::array<PreparedChunk, Capacity> prepared{};
+        PreparedChunk* prepared = chunkPool_.BeginWrite(drawList.count);
+        if (!prepared)
+        {
+            telemetry_.trackSegmentsPrepared = 0u;
+            return;
+        }
         size_t preparedCount = 0;
         for (uint16_t i = 0; i < drawList.count && preparedCount < Capacity; ++i)
         {
@@ -92,17 +98,19 @@ public:
             }
 
             const RenderResult estimate = estimateCost(*entry);
-            PreparedChunk chunk{};
+            PreparedChunk& chunk = prepared[preparedCount];
+            chunk = PreparedChunk{};
             chunk.handle = drawList.items[i];
+            chunk.resolvedEntryAddress = reinterpret_cast<uintptr_t>(entry);
             chunk.drawOrder = static_cast<uint16_t>(preparedCount);
             chunk.estimatedMeshes = estimate.meshes;
             chunk.estimatedFaces = estimate.faces;
             extractMetadata(*entry, chunk);
             chunk.valid = true;
-            prepared[preparedCount++] = chunk;
+            ++preparedCount;
         }
 
-        chunkPool_.SetActive(prepared.data(), preparedCount);
+        chunkPool_.CommitWrite(preparedCount);
         telemetry_.trackSegmentsPrepared = static_cast<uint32_t>(preparedCount);
     }
 
@@ -129,7 +137,7 @@ public:
                 continue;
             }
 
-            auto* entry = resolve(chunk.handle);
+            auto* entry = resolve(chunk);
             if (!entry)
             {
                 ++telemetry_.executeResolveMisses;

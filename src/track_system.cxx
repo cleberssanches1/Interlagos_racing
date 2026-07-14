@@ -107,6 +107,37 @@ using SRL::Math::Types::Vector3D;
 
 namespace
 {
+struct SegmentHandleMembershipTable
+{
+    std::array<uint16_t, TrackSystem::kTrackSegmentLimit> generations{};
+    std::array<uint8_t, TrackSystem::kTrackSegmentLimit> present{};
+};
+
+template <typename HandleT>
+inline void BuildSegmentHandleMembershipTable(const HandleT* handles,
+                                              size_t count,
+                                              SegmentHandleMembershipTable& outTable)
+{
+    outTable.generations.fill(0u);
+    outTable.present.fill(0u);
+    for (size_t i = 0; i < count; ++i)
+    {
+        const auto handle = handles[i];
+        if (handle.slot >= TrackSystem::kTrackSegmentLimit) continue;
+        outTable.generations[handle.slot] = handle.generation;
+        outTable.present[handle.slot] = 1u;
+    }
+}
+
+template <typename HandleT>
+inline bool SegmentHandleMembershipContains(const SegmentHandleMembershipTable& table,
+                                            HandleT handle)
+{
+    return handle.slot < TrackSystem::kTrackSegmentLimit &&
+           table.present[handle.slot] != 0u &&
+           table.generations[handle.slot] == handle.generation;
+}
+
 inline void SaturatingIncrementU16(uint16_t& value)
 {
     if (value < std::numeric_limits<uint16_t>::max()) ++value;
@@ -9956,10 +9987,6 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     {
         stabilizedSortedHandlesScratch_.reserve(segmentCap);
     }
-    if (stabilizedProducerInputScratch_.capacity() < segmentCap)
-    {
-        stabilizedProducerInputScratch_.reserve(segmentCap);
-    }
     for (auto& entry : segmentRenderers_)
     {
         EnsureVectorCapacityFloor(entry.lodState.faceFamilyIds, faceReserveFloor);
@@ -12407,11 +12434,18 @@ void TrackSystem::RefreshFamilyWorkingSet(bool releaseUnused)
         seg1FamilySlots_[i].workingRefs = { 0, 0, 0, 0 };
     }
 
+    RebuildFamilySlotIndex();
+
     auto addRef = [&](uint16_t familyId, int32_t slotHint, uint8_t fallbackLodIndex)
     {
         if (familyId == 0) return;
-        Seg1FamilySlotEntry* family = FindFamilySlot(seg1FamilySlots_, familyId);
-        if (!family) return;
+        if (familyId >= familySlotIndex_.size()) return;
+        const int16_t familyIndex = familySlotIndex_[familyId];
+        if (familyIndex < 0) return;
+        const size_t familySlotIndex = static_cast<size_t>(familyIndex);
+        if (familySlotIndex >= seg1FamilySlots_.size()) return;
+        Seg1FamilySlotEntry* family = &seg1FamilySlots_[familySlotIndex];
+        if (family->familyId != familyId) return;
 
         uint8_t resolvedLod = 0xFF;
         if (slotHint >= 0 && slotHint < static_cast<int32_t>(SRL_MAX_TEXTURES))
@@ -13164,7 +13198,6 @@ void TrackSystem::ResetInitializationState()
     segmentHandles_.clear();
     stabilizedDepthItemsScratch_.clear();
     stabilizedSortedHandlesScratch_.clear();
-    stabilizedProducerInputScratch_.clear();
     stabilizedDepthStats_ = {};
     slideScratchRenderer_.reset();
     slideIncomingFamilyIdsScratch_.clear();
@@ -15016,13 +15049,20 @@ const TrackLowWorkVector<TrackSystem::SegmentHandle>& TrackSystem::BuildStabiliz
     stabilizedDepthStats_ = stabilizedDepthSorter_.Stats();
     sh2SlaveSortTicksThisFrame_ = stabilizedDepthStats_.slaveLastJobTicks;
 
+    SegmentHandleMembershipTable currentFrameMembership{};
+    currentFrameMembership.generations.fill(0u);
+    currentFrameMembership.present.fill(0u);
+    for (size_t i = 0; i < stabilizedDepthItemsScratch_.size(); ++i)
+    {
+        const SegmentHandle handle = stabilizedDepthItemsScratch_[i].handle;
+        if (handle.slot >= kTrackSegmentLimit) continue;
+        currentFrameMembership.generations[handle.slot] = handle.generation;
+        currentFrameMembership.present[handle.slot] = 1u;
+    }
+
     const auto& sorted = stabilizedDepthSorter_.Consume();
     if (sorted.count == maxVisible)
     {
-        auto sameHandle = [](const SegmentHandle& a, const SegmentHandle& b) -> bool
-        {
-            return (a.slot == b.slot) && (a.generation == b.generation);
-        };
         bool sortedListValid = true;
         for (uint16_t i = 0; i < sorted.count; ++i)
         {
@@ -15034,16 +15074,7 @@ const TrackLowWorkVector<TrackSystem::SegmentHandle>& TrackSystem::BuildStabiliz
                 break;
             }
 
-            bool foundInCurrentFrame = false;
-            for (size_t k = 0; k < stabilizedDepthItemsScratch_.size(); ++k)
-            {
-                if (sameHandle(stabilizedDepthItemsScratch_[k].handle, handle))
-                {
-                    foundInCurrentFrame = true;
-                    break;
-                }
-            }
-            if (!foundInCurrentFrame)
+            if (!SegmentHandleMembershipContains(currentFrameMembership, handle))
             {
                 sortedListValid = false;
                 break;
@@ -15411,7 +15442,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
     const Vector3D& lightDirection,
     const Vector3D& cameraLocation,
     std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-    std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+    std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
     bool& segment01Prepared)
 {
     // Two pass stabilized draw:
@@ -15449,22 +15480,21 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
     const auto& orderedHandles = plannedHandles
         ? *plannedHandles
         : BuildStabilizedSortedHandles(trackOffset, cameraLocation);
-    auto sameHandle = [](const SegmentHandle& a, const SegmentHandle& b) -> bool
-    {
-        return (a.slot == b.slot) && (a.generation == b.generation);
-    };
+    const bool runtimeStatsLogsEnabled = runtimeDiagnostics_.RuntimeStatsLogsEnabled();
+    const bool emitRareRuntimeStatsLogs =
+        runtimeStatsLogsEnabled && ((frameIdThisFrame_ & 0x0Fu) == 0u);
     const SegmentHandle* drawHandles =
         orderedHandles.empty() ? nullptr : orderedHandles.data();
     size_t drawHandleCount = orderedHandles.size();
     if (kEnableStabilizedProducerOnSlave)
     {
-        stabilizedProducerInputScratch_.clear();
-        stabilizedProducerInputScratch_.reserve(orderedHandles.size());
-        for (size_t i = 0; i < orderedHandles.size(); ++i)
-        {
-            stabilizedProducerInputScratch_.push_back(orderedHandles[i]);
-        }
-        producer_.Build(stabilizedProducerInputScratch_, stabilizedProducerInputScratch_.size());
+        SegmentHandleMembershipTable orderedHandleMembership{};
+        BuildSegmentHandleMembershipTable(orderedHandles.data(),
+                                          orderedHandles.size(),
+                                          orderedHandleMembership);
+        producer_.BuildFromRange(orderedHandles.data(),
+                                 orderedHandles.size(),
+                                 orderedHandles.size());
         const auto& produced = producer_.Consume();
         bool producerListValid =
             produced.count > 0u &&
@@ -15474,22 +15504,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             for (uint16_t i = 0; i < produced.count; ++i)
             {
                 const SegmentHandle handle = produced.items[i];
-                auto* producedEntry = segmentPool_.Resolve(handle);
-                if (!producedEntry || !producedEntry->renderer)
-                {
-                    producerListValid = false;
-                    break;
-                }
-                bool foundInOrderedHandles = false;
-                for (size_t k = 0; k < orderedHandles.size(); ++k)
-                {
-                    if (sameHandle(orderedHandles[k], handle))
-                    {
-                        foundInOrderedHandles = true;
-                        break;
-                    }
-                }
-                if (!foundInOrderedHandles)
+                if (!SegmentHandleMembershipContains(orderedHandleMembership, handle))
                 {
                     producerListValid = false;
                     break;
@@ -15517,7 +15532,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             if (!TryRepairRendererState(*entry->renderer) &&
                 !RebuildSafeSegmentEntry(*entry))
             {
-                if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                if (emitRareRuntimeStatsLogs)
                 {
                     SRL::Debug::Print(1, 21, "TRK inv id:%d m:%u f:%u v:%u d:%u",
                                       entry->id,
@@ -15543,7 +15558,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             {
                 size_t logicalRank = 0u;
                 const bool hasLogicalRank = TryGetWindowLogicalRank(entry->id, logicalRank);
-                if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                if (emitRareRuntimeStatsLogs)
                 {
                     SRL::Debug::Print(1, 21, "TRK det miss id:%d r:%u l:%u m:%u",
                                       entry->id,
@@ -15663,7 +15678,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                 }
                 else if (requireExactRepair)
                 {
-                    if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                    if (emitRareRuntimeStatsLogs)
                     {
                         SRL::Debug::Print(1, 21, "TRK exact miss id:%d r:%u l:%u m:%u",
                                           entry->id,
@@ -15750,11 +15765,12 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
         ++runtimeSafeRenderedThisFrame_;
         const int sid = entry->id;
-        if (sid > 0 && sid <= static_cast<int>(kTrackSegmentLimit))
+        if (renderedCountById &&
+            sid > 0 && sid <= static_cast<int>(kTrackSegmentLimit))
         {
-            if (renderedCountById[static_cast<size_t>(sid)] < 255)
+            if ((*renderedCountById)[static_cast<size_t>(sid)] < 255)
             {
-                ++renderedCountById[static_cast<size_t>(sid)];
+                ++(*renderedCountById)[static_cast<size_t>(sid)];
             }
         }
     };
@@ -15827,15 +15843,18 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
 }
 
 void TrackSystem::RenderVisibleSegmentOrder(
-    const std::vector<SegmentHandle>& orderedHandles,
+    const std::vector<SegmentHandle>* orderedHandles,
     const Vector3D& trackOffset,
     const Vector3D& lightDirection,
     const Vector3D& cameraLocation,
     std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-    std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+    std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
     bool& segment01Logged,
     bool& segment01Prepared)
 {
+    const bool runtimeStatsLogsEnabled = runtimeDiagnostics_.RuntimeStatsLogsEnabled();
+    const bool emitRareRuntimeStatsLogs =
+        runtimeStatsLogsEnabled && ((frameIdThisFrame_ & 0x0Fu) == 0u);
     LowWorkRamStageSample lowWorkDrawStart{};
     LowWorkRamStageSample lowWorkDrawCursor{};
     if constexpr (kEnableLowWorkDrawStageTelemetry)
@@ -15897,9 +15916,16 @@ void TrackSystem::RenderVisibleSegmentOrder(
     if (!CoordinatorReady())
     {
         // Fallback render path when coordinator is unavailable.
-        for (size_t i = 0; i < orderedHandles.size(); ++i)
+        if (!orderedHandles)
         {
-            auto* entry = segmentPool_.Resolve(orderedHandles[i]);
+            captureLowWorkDrawDelta(frameMemoryTelemetry_.drawOtherDeltaThisFrame);
+            finalizeLowWorkDrawDeltas();
+            releaseRuntimeFaceSlotsScratch();
+            return;
+        }
+        for (size_t i = 0; i < orderedHandles->size(); ++i)
+        {
+            auto* entry = segmentPool_.Resolve((*orderedHandles)[i]);
             if (!entry || !entry->renderer) continue;
             if (kEnableLeakABSkipTrackRenderSubmit)
             {
@@ -15911,11 +15937,12 @@ void TrackSystem::RenderVisibleSegmentOrder(
             entry->renderer->Render(lightDirection, cameraLocation);
             SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
             const int sid = entry->id;
-            if (sid > 0 && sid <= static_cast<int>(kTrackSegmentLimit))
+            if (renderedCountById &&
+                sid > 0 && sid <= static_cast<int>(kTrackSegmentLimit))
             {
-                if (renderedCountById[static_cast<size_t>(sid)] < 255)
+                if ((*renderedCountById)[static_cast<size_t>(sid)] < 255)
                 {
-                    ++renderedCountById[static_cast<size_t>(sid)];
+                    ++(*renderedCountById)[static_cast<size_t>(sid)];
                 }
             }
         }
@@ -15926,7 +15953,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
     }
 
     coordinator_.Prepare(
-        orderedHandles,
+        orderedHandles ? *orderedHandles : std::vector<SegmentHandle>{},
         coordinator_.Budget().maxTrackSegments,
         [&](const SegmentHandle& handle) -> SegmentRenderEntry*
         {
@@ -15950,7 +15977,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
             // Do not budget corrupted renderers for this frame.
             if (!TryRepairRendererState(*renderer))
             {
-                if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                if (emitRareRuntimeStatsLogs)
                 {
                     SRL::Debug::Print(1, 23, "TRK prep skip seg:%d", entry.id);
                 }
@@ -15980,9 +16007,14 @@ void TrackSystem::RenderVisibleSegmentOrder(
     coordinator_.SetProducerStats(producer_.Stats());
     SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackBackend);
     coordinator_.Execute(
-        [&](const SegmentHandle& handle) -> SegmentRenderEntry*
+        [&](const TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::PreparedChunk& chunk)
+            -> SegmentRenderEntry*
         {
-            return segmentPool_.Resolve(handle);
+            if (chunk.resolvedEntryAddress != 0u)
+            {
+                return reinterpret_cast<SegmentRenderEntry*>(chunk.resolvedEntryAddress);
+            }
+            return segmentPool_.Resolve(chunk.handle);
         },
         [&](SegmentRenderEntry& entry,
             const TrackRenderCoordinator<SegmentHandle, kTrackSegmentLimit>::PreparedChunk& chunk)
@@ -16025,7 +16057,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
             {
                 if (!TryRepairRendererState(*renderer))
                 {
-                    if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && ((frameIdThisFrame_ & 0x0Fu) == 0u))
+                    if (emitRareRuntimeStatsLogs)
                     {
                         SRL::Debug::Print(1, 23, "TRK draw skip seg:%d", chunk.segmentId);
                     }
@@ -16034,11 +16066,12 @@ void TrackSystem::RenderVisibleSegmentOrder(
             }
 
             renderer->SetOffset(trackOffset);
-            if (chunk.segmentId > 0 && chunk.segmentId <= static_cast<int>(kTrackSegmentLimit))
+            if (renderedCountById &&
+                chunk.segmentId > 0 && chunk.segmentId <= static_cast<int>(kTrackSegmentLimit))
             {
-                if (renderedCountById[static_cast<size_t>(chunk.segmentId)] < 255)
+                if ((*renderedCountById)[static_cast<size_t>(chunk.segmentId)] < 255)
                 {
-                    ++renderedCountById[static_cast<size_t>(chunk.segmentId)];
+                    ++(*renderedCountById)[static_cast<size_t>(chunk.segmentId)];
                 }
             }
             if (kEnableLeakABSkipTrackRenderSubmit)
@@ -16554,21 +16587,12 @@ void TrackSystem::BuildAndApplyFramePlanStage(const Vector3D& trackOffset,
     }
 
     const auto& sortedHandles = BuildStabilizedSortedHandles(trackOffset, cameraLocation);
-    framePlanSortedHandles_.reserve(sortedHandles.size());
-    for (size_t i = 0; i < sortedHandles.size(); ++i)
+    const size_t plannedHandleCount =
+        std::min<size_t>(sortedHandles.size(), kTrackSegmentLimit);
+    framePlanSortedHandles_.reserve(plannedHandleCount);
+    for (size_t i = 0; i < plannedHandleCount; ++i)
     {
-        const SegmentHandle handle = sortedHandles[i];
-        auto* entry = segmentPool_.Resolve(handle);
-        if (!entry || !entry->renderer)
-        {
-            framePlanCurrent_.flags |= kTrackFramePlanFlagPartial;
-            continue;
-        }
-
-        if (framePlanSortedHandles_.size() < kTrackSegmentLimit)
-        {
-            framePlanSortedHandles_.push_back(handle);
-        }
+        framePlanSortedHandles_.push_back(sortedHandles[i]);
     }
 
     const size_t planRankCount = std::min<size_t>(
@@ -16649,12 +16673,12 @@ bool TrackSystem::RunWorkingSetStage()
     return true;
 }
 
-void TrackSystem::RunDrawStage(const std::vector<SegmentHandle>& orderedHandles,
+void TrackSystem::RunDrawStage(const std::vector<SegmentHandle>* orderedHandles,
                                const Vector3D& trackOffset,
                                const Vector3D& lightDirection,
                                const Vector3D& cameraLocation,
                                std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-                               std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+                               std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
                                bool& segment01Logged,
                                bool& segment01Prepared)
 {
@@ -16747,21 +16771,32 @@ void TrackSystem::RunFramePlanStage(const Vector3D& trackOffset,
 void TrackSystem::FinalizeDrawStage(
     uint16_t frameTicksStart,
     const std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-    const std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById)
+    const std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById)
 {
     sh2MasterFrameTicksThisFrame_ =
         Sh2FrtProfiler::Elapsed(frameTicksStart, Sh2FrtProfiler::Now());
+    if (!runtimeDiagnostics_.RuntimeStatsLogsEnabled())
+    {
+        if constexpr (kEnableTrackPhaseRamTelemetry)
+        {
+            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+            frameMemoryTelemetry_.phaseHwrAfterDraw = static_cast<uint32_t>(hwr.FreeSize);
+            frameMemoryTelemetry_.phaseLwrAfterDraw = static_cast<uint32_t>(lwr.FreeSize);
+        }
+        return;
+    }
     for (size_t id = 1; id <= kTrackSegmentLimit; ++id)
     {
-        if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && preparedCountById[id] > 1)
+        if (preparedCountById[id] > 1)
         {
             SRL::Debug::Print(1, 25, "WARN prep dup seg:%u count:%u",
                               (unsigned)id, (unsigned)preparedCountById[id]);
         }
-        if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && renderedCountById[id] > 1)
+        if (renderedCountById && (*renderedCountById)[id] > 1)
         {
             SRL::Debug::Print(1, 24, "WARN rend dup seg:%u count:%u",
-                              (unsigned)id, (unsigned)renderedCountById[id]);
+                              (unsigned)id, (unsigned)(*renderedCountById)[id]);
         }
     }
 
@@ -16873,7 +16908,12 @@ void TrackSystem::RenderFrame(bool renderTrack,
     }
 
     std::vector<SegmentHandle> orderedHandles{};
-    BuildOrderedHandlesStage(trackOffset, cameraLocation, orderedHandles);
+    const std::vector<SegmentHandle>* orderedHandlesView = nullptr;
+    if (!kEnableTrackRuntimeStabilization)
+    {
+        BuildOrderedHandlesStage(trackOffset, cameraLocation, orderedHandles);
+        orderedHandlesView = &orderedHandles;
+    }
     if (TrackPipeline::TrackWorkingSetStage::Run(*this))
     {
         captureLowWorkStage(lowWorkDeltaWorkingSet);
@@ -16927,10 +16967,16 @@ void TrackSystem::RenderFrame(bool renderTrack,
     }
     RunSeg1DiagnosticsForFrame();
     std::array<uint8_t, kTrackSegmentLimit + 1> preparedCountById{};
-    std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountById{};
+    std::array<uint8_t, kTrackSegmentLimit + 1> renderedCountByIdStorage;
+    std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById = nullptr;
+    if (runtimeDiagnostics_.RuntimeStatsLogsEnabled())
+    {
+        renderedCountByIdStorage.fill(0u);
+        renderedCountById = &renderedCountByIdStorage;
+    }
     {
         LWR_PROBE_BEGIN();
-        RunDrawStage(orderedHandles,
+        RunDrawStage(orderedHandlesView,
                      trackOffset,
                      lightDirection,
                      cameraLocation,

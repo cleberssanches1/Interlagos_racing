@@ -74,6 +74,49 @@ public:
         constructed_ = copyCount;
     }
 
+    Handle* BeginWrite(size_t count)
+    {
+        if (!storage_ || capacity_ == 0)
+        {
+            count_ = 0;
+            return nullptr;
+        }
+
+        const size_t writeCount = std::min(capacity_, count);
+        const size_t keepCount = std::min(constructed_, writeCount);
+        for (size_t i = keepCount; i < writeCount; ++i)
+        {
+            ::new (static_cast<void*>(storage_ + i)) Handle{};
+        }
+        for (size_t i = writeCount; i < constructed_; ++i)
+        {
+            storage_[i].~Handle();
+        }
+        constructed_ = writeCount;
+        count_ = 0;
+        return storage_;
+    }
+
+    void CommitWrite(size_t count)
+    {
+        if (!storage_ || capacity_ == 0)
+        {
+            count_ = 0;
+            return;
+        }
+
+        const size_t activeCount = std::min(capacity_, count);
+        if (activeCount < constructed_)
+        {
+            for (size_t i = activeCount; i < constructed_; ++i)
+            {
+                storage_[i].~Handle();
+            }
+            constructed_ = activeCount;
+        }
+        count_ = activeCount;
+    }
+
     const Handle* Active() const { return storage_; }
     size_t ActiveCount() const { return count_; }
     size_t Capacity() const { return capacity_; }

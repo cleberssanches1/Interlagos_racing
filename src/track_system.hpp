@@ -693,12 +693,12 @@ private:
                                   const SRL::Math::Types::Vector3D& cameraLocation,
                                   std::vector<SegmentHandle>& outOrderedHandles);
     bool RunWorkingSetStage();
-    void RunDrawStage(const std::vector<SegmentHandle>& orderedHandles,
+    void RunDrawStage(const std::vector<SegmentHandle>* orderedHandles,
                       const SRL::Math::Types::Vector3D& trackOffset,
                       const SRL::Math::Types::Vector3D& lightDirection,
                       const SRL::Math::Types::Vector3D& cameraLocation,
                       std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-                      std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+                      std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
                       bool& segment01Logged,
                       bool& segment01Prepared);
     void RefreshFamilyWorkingSet(bool releaseUnused);
@@ -717,7 +717,7 @@ private:
         const SRL::Math::Types::Vector3D& lightDirection,
         const SRL::Math::Types::Vector3D& cameraLocation,
         std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-        std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+        std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
         bool& segment01Prepared);
     bool UpdateActiveSegmentWindowForPosition(const SRL::Math::Types::Vector3D& worldPosition,
                                               const SRL::Math::Types::Vector3D& trackOffset);
@@ -730,12 +730,12 @@ private:
     std::vector<SegmentHandle> BuildVisibleSegmentOrder(const SRL::Math::Types::Vector3D& trackOffset,
                                                         const SRL::Math::Types::Vector3D& cameraLocation);
     void RunSeg1DiagnosticsForFrame();
-    void RenderVisibleSegmentOrder(const std::vector<SegmentHandle>& orderedHandles,
+    void RenderVisibleSegmentOrder(const std::vector<SegmentHandle>* orderedHandles,
                                    const SRL::Math::Types::Vector3D& trackOffset,
                                    const SRL::Math::Types::Vector3D& lightDirection,
                                    const SRL::Math::Types::Vector3D& cameraLocation,
                                    std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-                                   std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById,
+                                   std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
                                    bool& segment01Logged,
                                    bool& segment01Prepared);
     bool ShouldRunFramePlanThisFrame(bool slidThisFrame);
@@ -745,7 +745,7 @@ private:
                            bool slidThisFrame);
     void FinalizeDrawStage(uint16_t frameTicksStart,
                            const std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
-                           const std::array<uint8_t, kTrackSegmentLimit + 1>& renderedCountById);
+                           const std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById);
     void PresentCoordinatorTelemetryAndSoak();
     void PresentSh2UsageOverlay();
     void RunEndFrameResourceMaintenance();
@@ -1075,7 +1075,6 @@ private:
     TrackLowWorkVector<SegmentHandle> framePlanLastValidSortedHandles_{};
     TrackLowWorkVector<TrackDepthSortItem<SegmentHandle, int64_t>> stabilizedDepthItemsScratch_{};
     TrackLowWorkVector<SegmentHandle> stabilizedSortedHandlesScratch_{};
-    std::vector<SegmentHandle> stabilizedProducerInputScratch_{};
     std::array<uint8_t, kTrackSegmentLimit + 1> lastSortRank_{};
     SlaveTrackDepthSorter<SegmentHandle, int64_t, kTrackSegmentLimit> stabilizedDepthSorter_{};
     TrackDrawProducerStats stabilizedDepthStats_{};

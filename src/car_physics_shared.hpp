@@ -380,6 +380,10 @@ struct Tunables
     static constexpr Fxp kWallImpactForwardDamping = Fxp::BuildRaw(0x0000A000); // 0.625
     static constexpr Fxp kWallImpactYawDamping = Fxp::BuildRaw(0x0000D000);     // 0.8125
     static constexpr Fxp kWallImpactStopCutoff = Fxp::BuildRaw(0x00026666);     // ~2.40
+    static constexpr Fxp kWallSeparationSkin = Fxp::BuildRaw(0x00001000);       // 0.0625
+    static constexpr Fxp kWallHullHalfLength = Fxp::BuildRaw(40 << 16);         // 40.0 (~2.03 m)
+    static constexpr Fxp kWallHullHalfWidth = Fxp::BuildRaw(20 << 16);          // 20.0 (~1.02 m)
+    static constexpr Fxp kWallHullProbeRadius = Fxp::BuildRaw(6 << 16);         // 6.0  (~0.31 m)
     static constexpr Fxp kBodyClipPenetrationBias = Fxp::BuildRaw(0x00000800);  // 0.03125
     static constexpr Fxp kBodyClipMaxDepth = Fxp::BuildRaw(0x00018000);         // 1.5
     static constexpr Fxp kBodyClipMinPlanarNormalAbs = Fxp::BuildRaw(0x00002000); // 0.125

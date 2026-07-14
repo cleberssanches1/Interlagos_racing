@@ -31,9 +31,18 @@ class TrackDrawListAB
 public:
     void BuildWriteList(const std::vector<Handle>& handles, size_t limit)
     {
+        BuildWriteList(handles.data(), handles.size(), limit);
+    }
+
+    void BuildWriteList(const Handle* handles, size_t count, size_t limit)
+    {
         auto& writeList = lists_[writeIdx_];
         writeList.Clear();
-        const size_t maxCount = std::min(limit, handles.size());
+        if (!handles || count == 0u)
+        {
+            return;
+        }
+        const size_t maxCount = std::min(limit, count);
         for (size_t i = 0; i < maxCount; ++i)
         {
             if (!writeList.Push(handles[i])) break;
