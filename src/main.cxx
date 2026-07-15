@@ -796,7 +796,8 @@ static BootstrapCarRuntimeState BuildBootstrapCarRuntimeState(
     ApplyBootstrapCarVisualYaw(*state.carSystem,
                                cameraSystem,
                                state.visualYawSetup.visualYawOffsetDeg);
-    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
+    // Rigid + speed-scaled follow blend: camera keeps pace with the car (see CameraFollowBlendRaw).
+    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Rigid);
     state.carSystem->SetWorldPosition(carWorldPosition);
     return state;
 }
@@ -1117,7 +1118,8 @@ static int RunPhysicsPocMode()
 
     CameraSystem cameraSystem;
     cameraSystem.SetDebugLogsEnabled(false);
-    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
+    // Rigid + speed-scaled follow blend: camera keeps pace with the car (see CameraFollowBlendRaw).
+    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Rigid);
     cameraSystem.SetChaseNearFollowDistance(320);
 
     const char* carPaths[] = {
@@ -1146,14 +1148,15 @@ static int RunPhysicsPocMode()
     SRL::Scene3D::LightSetColor(lightColor);
 
     static TrackSystem trackSystem;
-    // POC profile: ideal split for Saturn runtime tests.
-    // - Track producer/sort on Slave
-    // - Car gameplay/physics tick on Slave (async)
-    // - Master keeps render/orchestration
+    // POC dual-SH2 split (stable after async-sim freeze on throttle):
+    // - Slave: track producer/sort only (async barrier off in TrackSystem)
+    // - Master: gameplay/physics sync (no Slave contention; productive vs spin-wait)
+    // - Master: render / HUD / PCM driver
+    // Rollback: kPocEnableSlaveSimulation=true + lockstep=true if Master FPS drops.
     constexpr bool kPocDualSh2Profile = true;
     const bool kPocEnableTrackSlave = kPocDualSh2Profile && renderTrack;
-    constexpr bool kPocEnableSlaveSimulation = true;
-    constexpr bool kPocSlaveSimulationLockstep = true; // lockstep para manter audio/HUD/drivetrain coerentes
+    constexpr bool kPocEnableSlaveSimulation = false;
+    constexpr bool kPocSlaveSimulationLockstep = true;
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
@@ -1681,7 +1684,8 @@ int GameApp::Run()
         // Camera 2 calibration baseline requested:
         // CAM2 off x:0 y:-20 z:-144
         constexpr int16_t kCam2BehindUnits = 320;
-        cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Loose);
+        // Rigid + speed-scaled follow blend: camera keeps pace with the car (see CameraFollowBlendRaw).
+    cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Rigid);
         cameraSystem.SetChaseNearFollowDistance(kCam2BehindUnits);
     }
 
@@ -1699,10 +1703,9 @@ int GameApp::Run()
 
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
-    // Runtime simulation enabled to keep gameplay/physics on SH2 pipeline.
+    // Runtime simulation on Master; Slave reserved for track prep (see POC flags).
     const bool enableRuntimeSimulation = true;
-    const bool enableSlaveSimulation = true;
-    // Lockstep: mantem audio/HUD/drivetrain coerentes no frame atual.
+    const bool enableSlaveSimulation = false;
     const bool slaveSimulationLockstep = true;
     const bool enableSlaveForCarPrepare = false;
 

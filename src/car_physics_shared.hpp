@@ -141,15 +141,20 @@ struct Tunables
     };
 
     static constexpr uint8_t kSurfaceProbeIntervalFrames = 2u;
+    // Cost cut 1e: reuse surface probe longer in low dynamics. Rollback: 6u -> 4u.
     static constexpr uint8_t kLowDynamicsProbeIntervalFrames =
-        kEnableSaturnLowCostPhysics ? 4u : 2u;
+        kEnableSaturnLowCostPhysics ? 6u : 2u;
+    // Cost cut 1f: medium-dynamics surface reuse. Rollback: 6u -> 4u.
     static constexpr uint8_t kMediumDynamicsProbeIntervalFrames =
-        kEnableSaturnLowCostPhysics ? 4u : 2u;
-    static constexpr int16_t kLowDynamicsSpeedProxyThreshold = 30; // km/h
-    static constexpr int16_t kLowDynamicsSteeringThreshold = 8;     // percent
+        kEnableSaturnLowCostPhysics ? 6u : 2u;
+    // Cost cut 1h: low-dyn reuse up to 40 km/h. Rollback: 40 -> 30.
+    static constexpr int16_t kLowDynamicsSpeedProxyThreshold = 40; // km/h
+    // Cost cut 1i: low-dyn reuse with slightly more steer. Rollback: 12 -> 8.
+    static constexpr int16_t kLowDynamicsSteeringThreshold = 12;    // percent
     static constexpr int16_t kMediumDynamicsSpeedProxyMin = 25;     // km/h
     static constexpr int16_t kMediumDynamicsSpeedProxyMax = 180;    // km/h
-    static constexpr int16_t kMediumDynamicsSteeringThreshold = 6;  // percent
+    // Cost cut 1g: more frames count as medium-dyn (reuse path). Rollback: 12 -> 6.
+    static constexpr int16_t kMediumDynamicsSteeringThreshold = 12; // percent
     static constexpr uint16_t kAsphaltFamilyId = 1u; // base asphalt family
     static constexpr std::array<uint8_t, 1> kAsphaltSurfaceTypes = {
         kSurfaceTypeAsphalt
@@ -359,10 +364,12 @@ struct Tunables
     static constexpr Fxp kProbeFrontMax = Fxp::BuildRaw(0x00030000);           // 3.0
     static constexpr Fxp kProbeSlopeAssistSpeed = Fxp::BuildRaw(0x0007477D);   // ~7.2793
     static constexpr uint8_t kAuxProbeCadenceFrames = 2u;
+    // Cost cut 1d: grip surface sample every 6 frames (was 4). Rollback: 6u -> 4u.
     static constexpr uint8_t kGripProbeIntervalFrames =
-        kEnableSaturnLowCostPhysics ? 4u : 2u;
+        kEnableSaturnLowCostPhysics ? 6u : 2u;
+    // Cost cut 1c: contact refresh every 6 frames (was 4). Rollback: 6u -> 4u.
     static constexpr uint8_t kSurfaceContactCadenceFrames =
-        kEnableSaturnLowCostPhysics ? 4u : 1u;
+        kEnableSaturnLowCostPhysics ? 6u : 1u;
     static constexpr bool kPreferReducedGroundProbe =
         kEnableSaturnLowCostPhysics;
     static constexpr Fxp kProbeHalfWheelBase = Fxp::BuildRaw(0x0000D999);      // ~0.85

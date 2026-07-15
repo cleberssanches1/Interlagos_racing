@@ -108,9 +108,11 @@ public:
     using Item = TrackDepthSortItem<Handle, DepthKey>;
 
     // Capture frame context for latency and timeout accounting.
+    // Micro-step 3: promote completed Slave work before track submit path.
     void BeginFrame(uint32_t frameId)
     {
         currentFrameId_ = frameId;
+        FinalizeIfReady();
         UpdateSafeModeState();
         TryRecoverSlave();
     }
@@ -436,10 +438,11 @@ class SlaveTrackDrawProducer final : public ITrackDrawProducer<Handle, Capacity>
 public:
     SlaveTrackDrawProducer() = default;
 
-    // Capture frame context used for timeout and latency accounting.
+    // Micro-step 3: promote completed Slave draw list at frame start (N-1 overlap).
     void BeginFrame(uint32_t frameId) override
     {
         currentFrameId_ = frameId;
+        FinalizeIfReady();
         this->UpdateSafeModeState();
         this->TryRecoverSlave();
     }

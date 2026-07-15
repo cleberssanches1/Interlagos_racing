@@ -22,9 +22,10 @@ Este documento descreve **como o projeto esta usando hoje** as SH2 no runtime at
 | Bloco | SH2 Principal | Estado Atual | Referencias |
 |---|---|---|---|
 | Loop do frame (input, camera, HUD, render) | Master | Ativo | `src/game_loop_system.hpp` |
-| Simulacao gameplay/fisica/audio | Slave (lockstep) | **Ativo** | `src/main.cxx:1646-1649` |
-| Producer de draw list da pista | Slave com fallback | Ativo | `src/track_draw_producer.hpp:443` |
-| Depth sort estabilizado da pista | Slave com fallback | Ativo | `src/track_system.cxx:294` |
+| Simulacao gameplay/fisica | **Master** (sync) | **Ativo** | Slave livre so para pista; sem contencao de job |
+| Audio PCM driver | Master | **Ativo** | OnFrame apos commit da sim |
+| Producer de draw list da pista | Slave com fallback | Ativo (**async**, sem barrier) | `kEnableTrackSlaveBarrierLockstep=false` |
+| Depth sort estabilizado da pista | **Master** (sync) | Ativo | Com barrier async so 1 job Slave: sort nao usa Slave |
 | Car prepare task (normalizacao de yaw) | Slave (opcional) | Desligado | `src/main.cxx:1650` |
 
 ---
@@ -36,8 +37,8 @@ Este documento descreve **como o projeto esta usando hoje** as SH2 no runtime at
 | Chave | Valor Atual | Efeito |
 |---|---|---|
 | `enableRuntimeSimulation` | `true` | Injeta `gameplayTick`, `carPhysics`, `audioEvents` no loop |
-| `enableSlaveSimulation` | `true` | Despacha bloco de simulacao para a Slave |
-| `slaveSimulationLockstep` | `true` | Master aguarda resultado da Slave antes de prosseguir (determinístico) |
+| `enableSlaveSimulation` | `false` | Fisica na Master (sync); evita disputa com track na Slave |
+| `slaveSimulationLockstep` | `true` (N/A se sim off) | Reservado se reativar sim na Slave |
 | `enableSlaveForCarPrepare` | `false` | Nao agenda `carPrepareTask_` |
 | `trackConfig.useSlave` | `true` | Ativa modo dual para producer/sort da pista |
 
@@ -48,7 +49,7 @@ Este documento descreve **como o projeto esta usando hoje** as SH2 no runtime at
 | `kEnableTrackRuntimeStabilization` | `true` | Ativa mecanismo de safe mode e depth-sort estabilizado |
 | `kEnableStabilizedDepthSortOnSlave` | `true` | Depth-sort executado na Slave |
 | `kEnableStabilizedProducerOnSlave` | `true` | Producer executado na Slave |
-| `kEnableTrackSlaveBarrierLockstep` | `true` | Master aguarda conclusao do job de pista |
+| `kEnableTrackSlaveBarrierLockstep` | `false` | Master **nao** aguarda job de pista; reusa lista pronta (N/N-1) |
 
 ### Constantes do game loop (game_loop_system.hpp)
 

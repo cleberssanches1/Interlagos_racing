@@ -331,9 +331,10 @@ static constexpr bool kEnableTrackLodBandsInStabilization = true;
 static constexpr bool kEnableDeterministicStabilizedSlide = true;
 static constexpr bool kEnableStabilizedDepthSortOnSlave = true;
 static constexpr bool kEnableStabilizedProducerOnSlave = true;
-// Lockstep mode: master waits for slave producer/sort completion.
-// Prioritizes deterministic sequencing and explicit workload split.
-static constexpr bool kEnableTrackSlaveBarrierLockstep = true;
+// SH2 load split micro-step 2.1 (SH2_FPS_BALANCE_ACTION_PLAN):
+// false = Master does not spin-wait producer/sort; draws last ready list (N/N-1).
+// Rollback: set true if boot/visual/timeouts regress.
+static constexpr bool kEnableTrackSlaveBarrierLockstep = false;
 static constexpr bool kEnableSafeModeSingleRenderBackend = false;
 static constexpr bool kEnableTrackOverlayRows16To22 = false;
 static constexpr bool kEnableTrackPhaseRamTelemetry = false;
@@ -13317,10 +13318,14 @@ void TrackSystem::ApplyTrackSlaveMode()
     const bool effectiveUseSlave =
         TrackSlaveModeRequestedFlag() &&
         (!kEnableTrackRuntimeStabilization || kEnableStabilizedProducerOnSlave);
+    // With async barrier (no Master wait), only ONE Slave job type is safe:
+    // producer. Depth-sort on Slave then producer would clobber slSlaveFunc.
+    // Sort stays on Master (~20 segs) unless barrier lockstep serializes jobs.
     const bool useSlaveDepthSort =
         TrackSlaveModeRequestedFlag() &&
         kEnableTrackRuntimeStabilization &&
-        kEnableStabilizedDepthSortOnSlave;
+        kEnableStabilizedDepthSortOnSlave &&
+        TrackSlaveBarrierLockstepFlag();
     SetTrackSlaveProducerRequestedFlag(effectiveUseSlave);
     SetTrackSlaveDepthSortRequestedFlag(useSlaveDepthSort);
     producer_.SetUseSlave(effectiveUseSlave);

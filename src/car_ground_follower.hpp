@@ -182,10 +182,11 @@ public:
             (steeringAbs <= Tunables::kMediumDynamicsSteeringThreshold) &&
             (ioFrameState.speedProxy >= Tunables::kMediumDynamicsSpeedProxyMin) &&
             (ioFrameState.speedProxy <= Tunables::kMediumDynamicsSpeedProxyMax);
+        // Cost cut 1b: use centerline 2-probe more often. Rollback: 42 -> 35.
         const bool reducedProbeByCostProfile =
             Tunables::kPreferReducedGroundProbe &&
             (!ioFrameState.braking) &&
-            (steeringAbs <= 35);
+            (steeringAbs <= 42);
         const bool useReducedProbe =
             reducedProbeByCostProfile || mediumDynamicsInputs;
         const uint8_t probeReuseInterval = lowDynamicsInputs
@@ -557,8 +558,10 @@ private:
             { Fxp::BuildRaw(0), negHalfWidth },
             { Fxp::BuildRaw(0), probeHalfWidth }
         };
+        // Cost cut micro-step: front L/R only (+ center fallback below).
+        // Rollback: restore 4u if wall clips under throttle/curve.
         const uint8_t probeCount =
-            Tunables::kEnableSaturnLowCostPhysics ? 4u : 6u;
+            Tunables::kEnableSaturnLowCostPhysics ? 2u : 6u;
 
         for (uint8_t pass = 0; pass < kMaxResolvePasses; ++pass)
         {

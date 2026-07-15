@@ -1150,8 +1150,11 @@ private:
     int32_t ResolveCarRenderDepthBiasUnits(
         const Game::CarSystem::RuntimeDebugSnapshot& runtimeDebug) const
     {
-        constexpr int32_t kCarDepthBiasUnits = 3;
-        return (runtimeDebug.speedProxy <= 20) ? 0 : kCarDepthBiasUnits;
+        // Planar pull-toward-camera does NOT break coplanarity with the road
+        // (Y unchanged) and made segment-seam fighting worse at 16 units.
+        // Keep bias off; use visual Y-lift instead (see RenderCar).
+        (void)runtimeDebug;
+        return 0;
     }
 
     CarRenderRuntimeInputs ResolveCarRenderRuntimeInputs(const Game::CarSystem& car)
@@ -1300,7 +1303,10 @@ private:
         if (!car) return;
 
         const auto renderInputs = ResolveCarRenderRuntimeInputs(*car);
-        constexpr int32_t kCarVisualLiftUnits = 0;
+        // Break coplanar sort fights with asphalt at segment seams (VDP1 has no
+        // Z-buffer). Small lift only for render; physics/collision stay on ground.
+        // Rollback: 0 if car looks to float. Raise to 3-4 only if seams still win.
+        constexpr int32_t kCarVisualLiftUnits = 2;
         const auto renderPacket = GameLoopRuntime::BuildCarRenderRuntimePacket(
             renderInputs.renderPosition,
             camera.location,

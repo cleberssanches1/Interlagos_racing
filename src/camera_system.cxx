@@ -335,14 +335,26 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         dynamicLookAheadUnits,
         kLookAheadMinUnits,
         kLookAheadMaxUnits);
+    // Daytona far: look a bit further down-track so car stays in lower frame.
+    if (chasePreset_ == ChasePreset::ChaseFar)
+    {
+        dynamicLookAheadUnits = static_cast<int32_t>(cfg.lookAhead);
+        if (dynamicLookAheadUnits < 60) dynamicLookAheadUnits = 60;
+        if (dynamicLookAheadUnits > 160) dynamicLookAheadUnits = 160;
+    }
     const Fxp dynamicLookAhead = Fxp::BuildRaw(dynamicLookAheadUnits << 16);
 
     const Vector3D forward(chaseForward.X * dynamicLookAhead,
                            zero,
                            chaseForward.Z * dynamicLookAhead);
     lastResolvedLookTarget_ = carWorldPosition + forward;
+    // lookHeight: more negative = higher look point (same Y convention as offsetY).
+    const int32_t lookYUnits =
+        (chasePreset_ == ChasePreset::ChaseFar)
+            ? static_cast<int32_t>(cfg.lookHeight)
+            : static_cast<int32_t>(cfg.lookHeight) + 3;
     lastResolvedLookTarget_.Y = carWorldPosition.Y +
-                                Fxp::BuildRaw(static_cast<int32_t>(cfg.lookHeight + 3) << 16);
+                                Fxp::BuildRaw(lookYUnits << 16);
     return lastResolvedLookTarget_;
 }
 
@@ -404,19 +416,27 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
     case ChasePreset::FirstPerson:
         return ChasePresetConfig{
             0,    // offsetX
-            -26,  // offsetY (up)
-            14,   // offsetZ (cockpit/hood)
+            // Vertical clearance from asphalt (more negative Y = higher).
+            // Was -12 — still too close to coplanar track faces (poly pop).
+            // Raise toward classic cockpit height so lower screen stops exploding.
+            -28,  // offsetY
+            40,   // offsetZ (hood / along car forward)
             220,  // lookAhead
             0,    // lookHeight
             0     // viewPitchDeg
         };
     case ChasePreset::ChaseFar:
+        // Daytona USA-style far cam: high-ish, well BEHIND the car, look at the
+        // car + track so the vehicle stays visible at distance.
         return ChasePresetConfig{
             0,    // offsetX
-            -97,  // offsetY (raised to keep far camera above near asphalt)
-            -320, // offsetZ (farther behind)
-            180,  // lookAhead
-            0,    // lookHeight
+            // Effective with chase lift (-20): ~-96.
+            -76,  // offsetY
+            // Negative Z = behind car (local forward space). Farther than CAM2.
+            -480, // offsetZ
+            120,  // lookAhead (used by far look path)
+            // Aim near car body (not pure horizon) so car is framed like Daytona.
+            -28,  // lookHeight
             0     // viewPitchDeg
         };
     case ChasePreset::ChaseNear:
@@ -507,8 +527,23 @@ int32_t CameraSystem::CameraFollowBlendRaw() const
         return (1 << 16);
     }
 
-    // Keep follow stable while preserving responsiveness.
-    return 19661; // 0.30
+    // Exponential follow lag grows with car speed when alpha is low:
+    //   lag ≈ deltaCar * (1-alpha)/alpha
+    // Old fixed alpha=0.30 made the camera "fall behind" under throttle.
+    // PS1/arcade chase (Ridge Racer / GT-like near cam) keeps position almost
+    // rigid to the car offset and only softens a little at low speed.
+    // chaseResponsePreset_ was previously unused — wire it here.
+    const int32_t baseBlendRaw =
+        (chaseResponsePreset_ == ChaseResponsePreset::Rigid)
+            ? 45875   // ~0.70
+            : 39322;  // ~0.60 (Loose still much snappier than 0.30)
+
+    // Speed boost: as movementSpeedNorm rises, blend → near rigid so lag
+    // does not scale with velocity on long straights.
+    constexpr int32_t kSpeedBlendBoostRaw = 19661; // +0.30 at max speedNorm
+    const int32_t boostRaw = static_cast<int32_t>(
+        (static_cast<int64_t>(kSpeedBlendBoostRaw) * movementSpeedNormRaw_) >> 16);
+    return ClampUnitRaw(baseBlendRaw + boostRaw);
 }
 
 Vector3D CameraSystem::ResolvePresetOffsetWorld() const
@@ -524,24 +559,43 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     const Vector3D forward = headingForward;
     offsetXUnits = std::clamp<int32_t>(offsetXUnits, -140, 140);
     // Requested tuning:
-    // - global Y shift: -20
-    // - camera 2 (ChaseNear): extra -20 (total -40)
-    offsetYUnits -= 20;
+    // - global Y lift (-20) for chase cams (more negative = higher)
+    // - camera 2 (ChaseNear): extra -20
+    // - camera 1 (FirstPerson): small extra vertical clearance off asphalt
+    //   (poly pop / sort explosion when coplanar with track faces)
+    if (chasePreset_ == ChasePreset::FirstPerson)
+    {
+        offsetYUnits -= 8;
+    }
+    else
+    {
+        offsetYUnits -= 20;
+    }
     if (chasePreset_ == ChasePreset::ChaseNear)
     {
         offsetYUnits -= 20;
     }
-    offsetYUnits = std::clamp<int32_t>(offsetYUnits, -56, 20);
-    // Chase cameras must stay behind the car to avoid forward drift/overshoot.
+    // CAM3 needs a lower (more elevated) clamp floor than the old -56 ceiling.
+    const int32_t yMin =
+        (chasePreset_ == ChasePreset::ChaseFar) ? -160 : -56;
+    // Allow CAM1 enough vertical room (was capped oddly vs chase).
+    const int32_t yMax = 20;
+    offsetYUnits = std::clamp<int32_t>(offsetYUnits, yMin, yMax);
+    // Chase cameras must stay behind the car (negative local Z).
+    // CAM3 (Daytona far) needs a deeper rear clamp than CAM2.
     if (chasePreset_ == ChasePreset::FirstPerson)
     {
         offsetZUnits = std::clamp<int32_t>(offsetZUnits, -40, 80);
+    }
+    else if (chasePreset_ == ChasePreset::ChaseFar)
+    {
+        offsetZUnits = std::clamp<int32_t>(offsetZUnits, -560, -200);
     }
     else
     {
         offsetZUnits = std::clamp<int32_t>(offsetZUnits, -320, -80);
     }
-    // Hard rule for arcade chase: camera must stay behind the car.
+    // Hard rule for arcade chase: always behind the car (never in front).
     if (chasePreset_ != ChasePreset::FirstPerson)
     {
         offsetZUnits = -std::abs(offsetZUnits);

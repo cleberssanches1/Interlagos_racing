@@ -620,6 +620,10 @@ private:
         ioFrameState.carGear = physicsFrame.carGear;
         ioFrameState.carEngineRpm = physicsFrame.carEngineRpm;
         ioFrameState.carSpeedKmh = physicsFrame.carSpeedKmh;
+        // Publish shift edge telemetry already computed in IntegratePlanar.
+        ioFrameState.carShiftRpmBefore = physicsFrame.carShiftRpmBefore;
+        ioFrameState.carShiftRpmAfter = physicsFrame.carShiftRpmAfter;
+        ioFrameState.carShiftFrames = physicsFrame.carShiftFrames;
         ioFrameState.activeSegmentId = physicsFrame.activeSegmentId;
         ioFrameState.debugGroundYRear = physicsFrame.debugGroundYRear;
         ioFrameState.debugGroundYFront = physicsFrame.debugGroundYFront;
