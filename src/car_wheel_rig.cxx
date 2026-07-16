@@ -202,9 +202,9 @@ void CarWheelRig::Update(const Input& input)
     int32_t targetRearSusp = 0;
     const bool rearValid = (input.groundMask & 0x1u) != 0u;
     const bool frontValid = (input.groundMask & 0x4u) != 0u;
-    // Parked / crawl: do not chase probe noise (front bob when stopped).
-    const bool flattenPitch =
-        (clampedSpeed < kPitchHoldSpeedKmh) || (input.braking != 0);
+    // Parked / crawl only: do not chase probe noise. Braking still allows pitch
+    // so the nose follows grades while decelerating into a decline.
+    const bool flattenPitch = (clampedSpeed < kPitchHoldSpeedKmh);
 
     if (rearValid && frontValid && !flattenPitch)
     {

@@ -269,7 +269,11 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     runtimeDebug_.SetBraking(frameState.braking);
     runtimeDebug_.SetWallHit(frameState.debugWallHit != 0u);
 
-    wheelInput_.speedKmh = frameState.speedProxy;
+    // Prefer km/h for pitch hold gate (speedProxy is internal units — was
+    // flattening pitch while the car was still rolling on grades).
+    wheelInput_.speedKmh = (frameState.carSpeedKmh != 0)
+        ? frameState.carSpeedKmh
+        : frameState.speedProxy;
     wheelInput_.steering = frameState.steering;
     wheelInput_.yawStepDeg = frameState.debugYawStepDeg;
     wheelInput_.groundRearY = frameState.debugGroundYRear;

@@ -2236,7 +2236,9 @@ static constexpr uint8_t kLeakIsolationPostSlideMaintenanceCadenceFrames = 90u;
 
 static uint8_t ResolveFamilyMergeCooldownFrames(bool fullTrackFamilyCacheReady)
 {
-    if (kEnableTrackLeakIsolationFixed64Pipeline) return 0u;
+    // Isolation used to merge every slide (0), which retired+reuploaded textures
+    // aggressively and starved VDP1 slots mid-drive. Keep a short cooldown.
+    if (kEnableTrackLeakIsolationFixed64Pipeline) return 2u;
     return fullTrackFamilyCacheReady ? 1u : kStabilizedFamilyMergeCooldownFrames;
 }
 
@@ -4100,12 +4102,14 @@ static bool LoadRuntimeFamilyIdsForSegment(int segmentId, TrackLowWorkU16Vector&
         if (!outFamilyIds.empty()) return true;
     }
 
-    if (kEnableTrackRuntimeStabilization)
+    // Always allow SDR fallback for family ids. Blocking SDR under stabilization
+    // caused PKG pf fail (md:0) when RDR was missing/corrupt for higher ids
+    // (e.g. segment 60) and froze the entire sliding window.
+    if (LoadSdrFamilyIdsForSegment(segmentId, outFamilyIds) && !outFamilyIds.empty())
     {
-        return false;
+        return true;
     }
-
-    return LoadSdrFamilyIdsForSegment(segmentId, outFamilyIds);
+    return false;
 }
 
 static size_t ApplyMatFamiliesToRenderer(TrackRenderer& renderer,
@@ -4521,10 +4525,9 @@ static bool BuildRendererFromRuntimeBlob(int segmentId,
         if (outUsedRdr) *outUsedRdr = true;
         return true;
     }
-    if (kEnableTrackRuntimeStabilization)
-    {
-        return false;
-    }
+    // Prefer RDR; fall back to SDR when runtime blob is missing (higher segment
+    // ids mid-lap). Blocking SDR under stabilization froze the window at the
+    // first missing RDR (e.g. PKG pf fail id:60).
     return BuildRendererFromSdr(segmentId, renderer, outCenter, outFamilyIds);
 }
 
@@ -9026,26 +9029,59 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     EnsureVectorCapacityFloor(incomingPrepared.lodState.faceRankOffsets, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(incomingPrepared.lodState.currentFaceSlots, slotFaceCapacityFloor_);
 
-    const bool incomingRebuilt =
-        RebuildSegmentFaceSlotsForLod(incomingPrepared,
-                                      incomingPrepared.lodState.currentLodIndex,
-                                      seg1FamilySlots_,
-                                      /*bypassUploadBudget*/true) &&
-        !HasMissingRequiredFaceTextureSlots(incomingPrepared.lodState.currentFaceSlots,
-                                            &incomingPrepared.lodState.faceFamilyIds);
+    auto tryRebuildIncomingSlots = [&](uint8_t lodIndex) -> bool
+    {
+        return RebuildSegmentFaceSlotsForLod(incomingPrepared,
+                                             lodIndex,
+                                             seg1FamilySlots_,
+                                             /*bypassUploadBudget*/true) &&
+               !HasMissingRequiredFaceTextureSlots(incomingPrepared.lodState.currentFaceSlots,
+                                                   &incomingPrepared.lodState.faceFamilyIds);
+    };
+
+    // Prefer exact LOD for the tail rank; on VDP1 pressure flush retired slots
+    // and retry, then fall back to the opposite band (32↔64) so the window
+    // keeps sliding instead of freezing mid-track.
+    bool incomingRebuilt = tryRebuildIncomingSlots(incomingPrepared.lodState.currentLodIndex);
     if (!incomingRebuilt)
     {
-        slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
+        workRamMaintenance_.releasedEndFrameSlotsThisFrame = static_cast<uint16_t>(
+            std::min<uint32_t>(
+                static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+                static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
+                    static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
+        incomingRebuilt = tryRebuildIncomingSlots(incomingPrepared.lodState.currentLodIndex);
+    }
+    if (!incomingRebuilt)
+    {
+        const uint8_t fallbackLod =
+            (incomingPrepared.lodState.currentLodIndex == kTrackLod64Index)
+                ? kTrackLod32Index
+                : kTrackLod64Index;
+        if (tryRebuildIncomingSlots(fallbackLod))
+        {
+            incomingPrepared.lodState.currentLodIndex = fallbackLod;
+            incomingPrepared.lodState.desiredLodIndex = fallbackLod;
+            incomingRebuilt = true;
+        }
+    }
+    if (!incomingRebuilt)
+    {
+        // Degraded admit: mount geometry even with partial/missing textures so
+        // the sliding window never freezes mid-track (prefer pop-in over stall).
         const uint32_t missingIncoming = CountMissingOrDeadRequiredFaceTextureSlots(
             incomingPrepared.lodState.currentFaceSlots,
             &incomingPrepared.lodState.faceFamilyIds);
-        SRL::Debug::Print(1, 11, "PKG tail miss id:%d md:%u ms:%u",
+        SRL::Debug::Print(1, 11, "PKG tail soft id:%d ms:%u",
                           nextId,
-                          static_cast<unsigned>(prefetchMetadataReady() ? 1u : 0u),
                           static_cast<unsigned>(missingIncoming));
-        slideScratchRenderer_ = std::move(incomingPrepared.renderer);
-        rollbackAddedIncomingFamilies();
-        return false;
+        (void)RebuildSegmentFaceSlotsForLod(incomingPrepared,
+                                            kTrackLod32Index,
+                                            seg1FamilySlots_,
+                                            /*bypassUploadBudget*/true);
+        incomingPrepared.lodState.currentLodIndex = kTrackLod32Index;
+        incomingPrepared.lodState.desiredLodIndex = kTrackLod32Index;
+        incomingRebuilt = true;
     }
     incomingCenter = incomingPrepared.center;
     // Devolver renderer ao scratch; dados permanecem em incomingPrepared.lodState.* (persistente)
@@ -9083,15 +9119,14 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
             totalSegmentCount_);
         if (segmentId <= 0)
         {
-            rollbackAddedIncomingFamilies();
-            return false;
+            continue; // skip boundary prewarm; do not abort the slide
         }
 
         SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
         if (!entry || !entry->renderer || !entry->lodState.Ready())
         {
-            rollbackAddedIncomingFamilies();
-            return false;
+            // Boundary prewarm is optional — never abort an otherwise-valid slide.
+            continue;
         }
 
         const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
@@ -9388,26 +9423,58 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     EnsureVectorCapacityFloor(incomingPrepared.lodState.faceRankOffsets, slotFaceCapacityFloor_);
     EnsureVectorCapacityFloor(incomingPrepared.lodState.currentFaceSlots, slotFaceCapacityFloor_);
 
-    const bool incomingRebuilt =
-        RebuildSegmentFaceSlotsForLod(incomingPrepared,
-                                      incomingPrepared.lodState.currentLodIndex,
-                                      seg1FamilySlots_,
-                                      /*bypassUploadBudget*/true) &&
-        !HasMissingRequiredFaceTextureSlots(incomingPrepared.lodState.currentFaceSlots,
-                                            &incomingPrepared.lodState.faceFamilyIds);
+    auto tryRebuildIncomingSlots = [&](uint8_t lodIndex) -> bool
+    {
+        return RebuildSegmentFaceSlotsForLod(incomingPrepared,
+                                             lodIndex,
+                                             seg1FamilySlots_,
+                                             /*bypassUploadBudget*/true) &&
+               !HasMissingRequiredFaceTextureSlots(incomingPrepared.lodState.currentFaceSlots,
+                                                   &incomingPrepared.lodState.faceFamilyIds);
+    };
+
+    // Prefer exact LOD for the tail rank; on VDP1 pressure flush retired slots
+    // and retry, then fall back to the opposite band (32↔64) so the window
+    // keeps sliding instead of freezing mid-track.
+    bool incomingRebuilt = tryRebuildIncomingSlots(incomingPrepared.lodState.currentLodIndex);
     if (!incomingRebuilt)
     {
-        slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
+        workRamMaintenance_.releasedEndFrameSlotsThisFrame = static_cast<uint16_t>(
+            std::min<uint32_t>(
+                static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+                static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
+                    static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
+        incomingRebuilt = tryRebuildIncomingSlots(incomingPrepared.lodState.currentLodIndex);
+    }
+    if (!incomingRebuilt)
+    {
+        const uint8_t fallbackLod =
+            (incomingPrepared.lodState.currentLodIndex == kTrackLod64Index)
+                ? kTrackLod32Index
+                : kTrackLod64Index;
+        if (tryRebuildIncomingSlots(fallbackLod))
+        {
+            incomingPrepared.lodState.currentLodIndex = fallbackLod;
+            incomingPrepared.lodState.desiredLodIndex = fallbackLod;
+            incomingRebuilt = true;
+        }
+    }
+    if (!incomingRebuilt)
+    {
+        // Degraded admit: keep sliding with partial textures (pop-in > freeze).
         const uint32_t missingIncoming = CountMissingOrDeadRequiredFaceTextureSlots(
             incomingPrepared.lodState.currentFaceSlots,
             &incomingPrepared.lodState.faceFamilyIds);
-        SRL::Debug::Print(1, 11, "PKG tail miss id:%d md:%u ms:%u",
+        SRL::Debug::Print(1, 11, "PKG tail soft id:%d ms:%u",
                           nextId,
-                          static_cast<unsigned>(prefetchMetadataReady() ? 1u : 0u),
                           static_cast<unsigned>(missingIncoming));
-        slideScratchRenderer_ = std::move(incomingPrepared.renderer);
-        rollbackAddedIncomingFamilies();
-        return false;
+        (void)RebuildSegmentFaceSlotsForLod(incomingPrepared,
+                                            kTrackLod32Index,
+                                            seg1FamilySlots_,
+                                            /*bypassUploadBudget*/true);
+        incomingPrepared.lodState.currentLodIndex = kTrackLod32Index;
+        incomingPrepared.lodState.desiredLodIndex = kTrackLod32Index;
+        incomingRebuilt = true;
     }
 
     slideBackBuffer_.incomingCenter = incomingPrepared.center;
@@ -9432,17 +9499,13 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
             nextStartId + (dir > 0 ? static_cast<int32_t>(logicalRank)
                                    : -static_cast<int32_t>(logicalRank)),
             totalSegmentCount_);
-        if (segmentId <= 0)
-        {
-            rollbackAddedIncomingFamilies();
-            return false;
-        }
+        if (segmentId <= 0) continue;
 
         SegmentRenderEntry* entry = FindWindowEntryByIdFast(segmentId);
         if (!entry || !entry->renderer || !entry->lodState.Ready())
         {
-            rollbackAddedIncomingFamilies();
-            return false;
+            // Boundary prewarm is optional — never abort an otherwise-valid slide.
+            continue;
         }
 
         const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
@@ -9454,11 +9517,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
                                  HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
                                                                     &entry->lodState.faceFamilyIds);
         if (!needsUpdate) continue;
-        if (updateCount >= slideBackBuffer_.boundaryUpdates.size())
-        {
-            slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
-            return false;
-        }
+        if (updateCount >= slideBackBuffer_.boundaryUpdates.size()) break;
 
         auto& update = slideBackBuffer_.boundaryUpdates[updateCount];
         update.SetActive(true);
@@ -9479,18 +9538,14 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         if (!prepared ||
             HasMissingRequiredFaceTextureSlots(update.preparedFaceSlots, &entry->lodState.faceFamilyIds))
         {
+            // Soft-skip this boundary LOD; keep preparing the slide.
             update.SetActive(false);
             update.segmentId = -1;
             update.desiredLodIndex = 0xFF;
             update.desiredBaseRank = static_cast<int8_t>(-1);
             update.preparedFaceSlots.clear();
-            slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
-            SRL::Debug::Print(1, 11, "PKG bd fail id:%d r:%u l:%u",
-                              entry->id,
-                              static_cast<unsigned>(logicalRank),
-                              static_cast<unsigned>(desiredLodIndex));
-            rollbackAddedIncomingFamilies();
-            return false;
+            QueuePendingStabilizedLodRank(logicalRank);
+            continue;
         }
         ++updateCount;
     }
@@ -9634,10 +9689,12 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
     if (kEnableTrackRuntimeStabilization)
     {
         (void)allowSlotWarmup;
-        const bool prefetchMetadataReady =
+        bool prefetchMetadataReady =
             slidePrefetchSegmentId_ == segmentId &&
             !slidePrefetchFamilyIds_.empty();
-        // Retornar true somente quando metadata E renderer estiverem prontos
+        // Metadata alone is enough for slide commit path to proceed to geometry;
+        // full renderer is best-effort. Returning true only when both ready made
+        // budget drops look like "missing segment" (PKG pf fail md:0).
         if (prefetchMetadataReady && SlidePrefetchRendererReady())
         {
             return true;
@@ -9646,25 +9703,18 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
         if (slidePrefetchSegmentId_ > 0 && slidePrefetchSegmentId_ != segmentId)
         {
             ResetSlidePrefetchState();
+            prefetchMetadataReady = false;
         }
 
-        if (prefetchBuildAttemptsThisFrame_ >= prefetchBuildBudgetThisFrame_)
-        {
-            if (prefetchBuildBudgetDropsThisFrame_ < std::numeric_limits<uint8_t>::max())
-            {
-                ++prefetchBuildBudgetDropsThisFrame_;
-            }
-            return false;
-        }
-        ++prefetchBuildAttemptsThisFrame_;
-
-        // Fase 1: carregar metadata de famÃ­lia (reutilizar scratch â€” sem alloc LWR)
+        // Fase 1: family metadata is free of per-frame budget (cheap CD/map load).
+        // Without this, a spent budget blocked even reading families → permanent stall.
         if (!prefetchMetadataReady)
         {
             slideScratchEntry_.lodState.faceFamilyIds.clear();
             if (!LoadRuntimeFamilyIdsForSegment(segmentId, slideScratchEntry_.lodState.faceFamilyIds)
                 || slideScratchEntry_.lodState.faceFamilyIds.empty())
             {
+                SRL::Debug::Print(1, 15, "PKG fam miss id:%d", segmentId);
                 return false;
             }
             slidePrefetchSegmentId_ = segmentId;
@@ -9684,11 +9734,23 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
             EnsureVectorCapacityFloor(slidePrefetchFaceSlots_, slotFaceCapacityFloor_);
             SetSlidePrefetchRendererReady(false);
             SetSlidePrefetchLodReady(false);
+            prefetchMetadataReady = true;
         }
 
-        // Fase 2: prÃ©-construir renderer no scratch para eliminar build sÃ­ncrono no frame do slide
+        // Fase 2: optional renderer prebuild — budgeted.
         if (!SlidePrefetchRendererReady())
         {
+            if (prefetchBuildAttemptsThisFrame_ >= prefetchBuildBudgetThisFrame_)
+            {
+                if (prefetchBuildBudgetDropsThisFrame_ < std::numeric_limits<uint8_t>::max())
+                {
+                    ++prefetchBuildBudgetDropsThisFrame_;
+                }
+                // Metadata is ready; slide can still BuildSegmentIntoSlideScratch sync.
+                return prefetchMetadataReady;
+            }
+            ++prefetchBuildAttemptsThisFrame_;
+
             if (!slideScratchRenderer_)
                 slideScratchRenderer_ = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
             if (slideScratchRenderer_)
@@ -9700,9 +9762,12 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
                                              slideScratchEntry_.lodState.faceFamilyIds))
                 {
                     slidePrefetchCenter_ = buildCenter;
-                    slidePrefetchFamilyIds_.assign(slideScratchEntry_.lodState.faceFamilyIds.begin(),
-                                                   slideScratchEntry_.lodState.faceFamilyIds.end());
-                    EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
+                    if (!slideScratchEntry_.lodState.faceFamilyIds.empty())
+                    {
+                        slidePrefetchFamilyIds_.assign(slideScratchEntry_.lodState.faceFamilyIds.begin(),
+                                                       slideScratchEntry_.lodState.faceFamilyIds.end());
+                        EnsureVectorCapacityFloor(slidePrefetchFamilyIds_, slotFaceCapacityFloor_);
+                    }
                     SetSlidePrefetchRendererReady(true);
                     SetSlidePrefetchLodReady(false);
                 }
@@ -11533,8 +11598,11 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             slideHwrTrace_.segmentId = nextId;
             const auto hasResidentPrefetchForNextId = [&]() -> bool
             {
-                return slidePrefetchSegmentId_ == nextId &&
-                       !slidePrefetchFamilyIds_.empty();
+                // Metadata OR hot scratch for this id — keep tail warm under low HWR.
+                return (slidePrefetchSegmentId_ == nextId &&
+                        !slidePrefetchFamilyIds_.empty()) ||
+                       (slidePrefetchSegmentId_ == nextId &&
+                        SlidePrefetchRendererReady());
             };
 
             bool freeValid = false;
@@ -11560,6 +11628,12 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
                                       static_cast<unsigned>(freeBytes),
                                       freeValid ? 1u : 0u);
                 }
+                // Drain retired VDP1 slots before low-mem trim so uploads can reuse.
+                workRamMaintenance_.releasedEndFrameSlotsThisFrame = static_cast<uint16_t>(
+                    std::min<uint32_t>(
+                        static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+                        static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
+                            static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
                 uint32_t trackOwnedHwrBytes =
                     ResolveTrackOwnedHighWorkBytesForPressure(
                         static_cast<uint32_t>(EstimateWorkRamRetainedBytes()));
@@ -12538,8 +12612,10 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
 {
     if (seg1FamilySlots_.empty()) return;
     const bool strictWindowRecycling = kEnableTrackRuntimeStabilization;
+    // Grace ≥1 even in isolation: retiring the same frame a slot left the window
+    // caused re-upload thrash and slide stalls (PKG tail miss) mid-drive.
     const uint8_t graceFrames = kEnableTrackLeakIsolationFixed64Pipeline
-        ? 0u
+        ? 1u
         : strictWindowRecycling
         ? 1u
         : (workRamMaintenance_.memoryPressureLevelThisFrame >= static_cast<uint8_t>(MemoryPressureLevel::Critical)) ? 0u :
@@ -12557,7 +12633,7 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
             // pinned forever here, which let far-band slots accumulate lap after
             // lap even after their source segments left the 20-segment window.
             const uint8_t lodGraceFrames = strictWindowRecycling
-                ? (kEnableTrackLeakIsolationFixed64Pipeline ? 0u : 1u)
+                ? 1u
                 : (kEnableTrackRuntimeStabilization &&
                    kEnableTrackLodBandsInStabilization &&
                    li == kTrackLod32Index)
@@ -14712,15 +14788,27 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                 if (backlog < 0) backlog += total;
                 if (backlog > 0 && backlog < (total / 2))
                 {
-                    // Safe mode must still behave as a strict sliding window, but
-                    // when the car moves faster than one segment per frame we need
-                    // limited catch-up. Otherwise the car outruns the 20-segment
-                    // window even without an explicit slide stall.
-                    // Avoid 2-slide bursts in normal pressure; they create visible
-                    // frame spikes exactly at segment boundaries.
-                    const uint8_t maxCatchupSlides = 1u;
+                    // Catch-up: prefer draining backlog. REDRIVER2-style streaming
+                    // keeps the working set under the car — stalling freezes the map.
+                    bool freeValidCatchup = false;
+                    const size_t freeCatchup = GetHighWorkRamFreeBytesSafe(&freeValidCatchup);
+                    const bool freeTight =
+                        freeValidCatchup &&
+                        freeCatchup <= (kWorkRamHardFloorBytes + (24u * 1024u));
+                    const uint8_t maxCatchupSlides =
+                        freeTight ? 1u :
+                        (backlog >= 3 ? 3u : (backlog >= 2 ? 2u : 1u));
                     const uint8_t slideBudget = static_cast<uint8_t>(
                         std::min<int32_t>(backlog, static_cast<int32_t>(maxCatchupSlides)));
+                    // Before catch-up: free retired VDP1 slots for tail uploads.
+                    workRamMaintenance_.releasedEndFrameSlotsThisFrame = static_cast<uint16_t>(
+                        std::min<uint32_t>(
+                            static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+                            static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
+                                static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
+                    // Don't let a prior stall block target updates during catch-up.
+                    activeWindowSwitchCooldown_ = 0u;
+                    prefetchRetryCooldown_ = 0u;
                     for (uint8_t i = 0; i < slideBudget; ++i)
                     {
                         TryPrefetchUpcomingSegment();
@@ -14729,13 +14817,15 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                             bool freeValid = false;
                             const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
                             const uint8_t stallCooldown =
-                                (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u))) ? 6u :
-                                (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (32u * 1024u))) ? 3u :
-                                2u;
+                                (freeValid && freeBytes <= (kWorkRamHardFloorBytes + (8u * 1024u))) ? 2u : 1u;
                             activeWindowSwitchCooldown_ =
                                 std::max<uint8_t>(activeWindowSwitchCooldown_, stallCooldown);
-                            prefetchRetryCooldown_ =
-                                std::max<uint8_t>(prefetchRetryCooldown_, stallCooldown);
+                            prefetchRetryCooldown_ = 0u; // keep trying prefetch next frame
+                            workRamMaintenance_.releasedEndFrameSlotsThisFrame = static_cast<uint16_t>(
+                                std::min<uint32_t>(
+                                    static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+                                    static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
+                                        static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
                             break;
                         }
 

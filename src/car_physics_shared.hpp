@@ -58,6 +58,8 @@ struct GroundState
     bool edgeRightLost = false;
     bool lastStablePlanarInitialized = false;
     bool surfaceYInitialized = false;
+    // Frames to keep last Y after a probe miss (anti-stuck / anti-pop).
+    uint8_t surfaceContactFrames = 0u;
     bool surfaceYFilterInitialized = false;
     bool lastWallQueryHit = false;
     Fxp lastWallPushX = Fxp::BuildRaw(0);
@@ -317,6 +319,9 @@ struct Tunables
     static constexpr Fxp kCoastNoSlideYawDamping = Fxp::BuildRaw(0x0000D000);       // 0.8125
     static constexpr Fxp kCoastNoSlideLateralCutoff = Fxp::BuildRaw(0x00002000);    // 0.125
     static constexpr Fxp kCoastNoSlideYawCutoff = Fxp::BuildRaw(0x00002000);        // 0.125 deg/frame
+    // Minimum |speed| to keep full steering while coasting (throttle released).
+    // Below this and no steer: residual yaw kill / no-slide still apply.
+    static constexpr Fxp kCoastSteerMinSpeed = Fxp::BuildRaw(0x0000C000);           // ~0.75 wu/frame
     static constexpr Fxp kBrakeLateralDampingCoeff = Fxp::BuildRaw(0x0000D000); // ~0.8125
     static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
     static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x0001D1DF); // ~1.8198

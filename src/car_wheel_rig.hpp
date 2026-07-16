@@ -48,31 +48,31 @@ private:
     };
 
     static constexpr int32_t kMaxSteerDegX16 = 12 << 16;
-    // Keep visual pitch modest; probe noise / segment seams invent "hills".
-    static constexpr int32_t kMaxPitchDegX16 = 12 << 16;
+    // Allow clearer nose-up/down on real grades (Senna S, climbs).
+    static constexpr int32_t kMaxPitchDegX16 = 18 << 16;
     static constexpr int32_t kMaxRollDegX16 = 8 << 16;
-    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00002000); // ~0.125 short travel
+    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00004000); // ~0.25 short travel
     static constexpr int32_t kSteerFilterShift = 2;  // 1/4
-    // Heavier pitch filter: 1/16 per frame (was 1/8 — snaps at segment seams).
-    static constexpr int32_t kPitchFilterShift = 4;
-    static constexpr int32_t kPitchFilterShiftBrake = 5; // 1/32 while braking / stopped
+    // Responsive pitch: 1/4 per frame (was 1/16 — car never leaned on grades).
+    static constexpr int32_t kPitchFilterShift = 2;
+    static constexpr int32_t kPitchFilterShiftBrake = 3; // 1/8 while braking / stopped
     static constexpr int32_t kRollFilterShift = 4;   // 1/16
-    static constexpr int32_t kSuspFilterShift = 4;   // 1/16 smoother wheel travel
+    static constexpr int32_t kSuspFilterShift = 3;   // 1/8
     static constexpr int32_t kSpinDegPerKmhX16 = 2200; // tune visual spin
     // Full wheelbase ≈ 1.70 (2 * kProbeHalfWheelBase) in 16.16.
     static constexpr int32_t kWheelbaseRaw = 0x0001B332;
-    // Softer than true atan*57 so small ΔY does not nose-dive the mesh.
-    static constexpr int32_t kRadToDegApprox = 28;
-    // Ignore front/rear grade below this (probe triangulation noise on flat).
-    static constexpr int32_t kPitchDeadzoneRaw = 10 << 16;
-    // Below this speed, flatten pitch (stops front bob when parked).
-    static constexpr int32_t kPitchHoldSpeedKmh = 12;
-    // Low-pass on ΔY before converting to degrees (heavier = smoother seams).
-    static constexpr int32_t kDeltaFilterShift = 3; // 1/8 toward sample
-    // One-frame |ΔY| jump larger than this is treated as a segment seam spike.
-    static constexpr int32_t kMaxDeltaJumpRaw = 18 << 16;
-    // Hard cap on visual pitch change per frame (~0.75 deg) after filtering.
-    static constexpr int32_t kMaxPitchStepDegX16 = (3 << 16) / 4;
+    // Closer to atan*57 so grade ΔY maps to visible chassis pitch.
+    static constexpr int32_t kRadToDegApprox = 45;
+    // Only ignore tiny probe noise on flat (was 10 — hid real mild slopes).
+    static constexpr int32_t kPitchDeadzoneRaw = 2 << 16;
+    // Flatten pitch only when nearly stopped (was 12 — killed pitch while rolling).
+    static constexpr int32_t kPitchHoldSpeedKmh = 4;
+    // Low-pass on ΔY (1/4) — still smooth seams, reacts to grades.
+    static constexpr int32_t kDeltaFilterShift = 2; // 1/4 toward sample
+    // Allow larger one-frame grade change (declines/climbs across faces).
+    static constexpr int32_t kMaxDeltaJumpRaw = 40 << 16;
+    // Hard cap on visual pitch change per frame (~2.5 deg).
+    static constexpr int32_t kMaxPitchStepDegX16 = (5 << 16) / 2;
 
     bool DetectWheelIdsFromMeshtex(size_t meshCount, std::array<size_t, 4>& outIds, size_t& outCount) const;
     bool DetectWheelIdsFromMeshStats(ModelObject& model,

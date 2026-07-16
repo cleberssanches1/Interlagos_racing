@@ -211,10 +211,16 @@ public:
             ioState.forwardSpeed = Fxp::BuildRaw(0);
         }
 
+        // Coasting with real speed + steer must still turn (inertia). Only treat
+        // as "no-slide coast" when the driver is not commanding a turn (or crawl).
+        const bool canSteerWhileCoasting =
+            hasSteerCommand &&
+            (outStep.speedAbs > Tunables::kCoastSteerMinSpeed);
         const bool coastNoSlideMode =
             (ioFrameState.throttle == 0) &&
             !ioFrameState.braking &&
-            (ioState.forwardSpeed.Abs() < Tunables::kCoastNoSlideSpeedThreshold);
+            (ioState.forwardSpeed.Abs() < Tunables::kCoastNoSlideSpeedThreshold) &&
+            !canSteerWhileCoasting;
         const Fxp steerScale =
             coastNoSlideMode ? Tunables::kCoastNoSlideSteerScale : Fxp::BuildRaw(1 << 16);
         const Fxp targetSteerDeg = (steerNorm * steerScale) * Tunables::kMaxSteerDeg;
@@ -269,7 +275,7 @@ public:
         // Keep minimum steering authority while user is actively commanding
         // accel or brake/reverse, so direction can be changed repeatedly in reverse.
         Fxp steerGate = steerSpeedGate;
-        if (ioFrameState.braking || ioFrameState.throttle > 0)
+        if (ioFrameState.braking || ioFrameState.throttle > 0 || canSteerWhileCoasting)
         {
             const Fxp kCommandSteerMinGate = Fxp::BuildRaw(0x0000599A); // ~0.35
             if (steerGate < kCommandSteerMinGate) steerGate = kCommandSteerMinGate;
@@ -504,10 +510,12 @@ public:
             ioState.forwardLaunchLateralLockFrames = 0u;
         }
 
-        // Hard safety: if almost stopped and not accelerating or braking, do not rotate.
+        // Hard safety: almost stopped + no drive + no steer → do not spin in place.
+        // Keep yaw when coasting with steer and meaningful speed (inertia turn).
         if (outStep.speedAbs < Fxp::BuildRaw(0x00006000) &&
             ioFrameState.throttle == 0 &&
-            !ioFrameState.braking)
+            !ioFrameState.braking &&
+            !canSteerWhileCoasting)
         {
             ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
             ioState.yawAccumulatorDegRaw = 0;
@@ -515,20 +523,25 @@ public:
 
         if (ioFrameState.throttle == 0 && !ioFrameState.braking)
         {
+            // Always damp sideways drift on coast; do NOT kill yaw while steering
+            // at speed (was zeroing arcade yaw every frame below ~60 km/h).
             ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kCoastLateralDampingCoeff;
-            ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastYawDampingCoeff;
-            if (coastNoSlideMode)
+            if (!canSteerWhileCoasting)
             {
-                ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kCoastNoSlideLateralDamping;
-                ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastNoSlideYawDamping;
-                if (ioState.lateralSpeed.Abs() < Tunables::kCoastNoSlideLateralCutoff)
+                ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastYawDampingCoeff;
+                if (coastNoSlideMode)
                 {
-                    ioState.lateralSpeed = Fxp::BuildRaw(0);
-                }
-                if (ioState.yawRateDegPerFrame.Abs() < Tunables::kCoastNoSlideYawCutoff)
-                {
-                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
-                    ioState.yawAccumulatorDegRaw = 0;
+                    ioState.lateralSpeed -= ioState.lateralSpeed * Tunables::kCoastNoSlideLateralDamping;
+                    ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * Tunables::kCoastNoSlideYawDamping;
+                    if (ioState.lateralSpeed.Abs() < Tunables::kCoastNoSlideLateralCutoff)
+                    {
+                        ioState.lateralSpeed = Fxp::BuildRaw(0);
+                    }
+                    if (ioState.yawRateDegPerFrame.Abs() < Tunables::kCoastNoSlideYawCutoff)
+                    {
+                        ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                        ioState.yawAccumulatorDegRaw = 0;
+                    }
                 }
             }
 
@@ -546,7 +559,8 @@ public:
                 {
                     ioState.lateralSpeed = Fxp::BuildRaw(0);
                 }
-                if (ioState.yawRateDegPerFrame.Abs() < Tunables::kCoastResidualYawCutoff)
+                if (!canSteerWhileCoasting &&
+                    ioState.yawRateDegPerFrame.Abs() < Tunables::kCoastResidualYawCutoff)
                 {
                     ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
                     ioState.yawAccumulatorDegRaw = 0;

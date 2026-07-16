@@ -182,80 +182,19 @@ public:
             (steeringAbs <= Tunables::kMediumDynamicsSteeringThreshold) &&
             (ioFrameState.speedProxy >= Tunables::kMediumDynamicsSpeedProxyMin) &&
             (ioFrameState.speedProxy <= Tunables::kMediumDynamicsSpeedProxyMax);
-        // Cost cut 1b: centerline 2-probe more often. Only force full probes on
-        // real grades (threshold above typical flat-asphalt probe noise of ±2–4).
-        constexpr int16_t kSteepSlopeAbsY = 8;
+        // Always sample surface Y every frame (REDRIVER2 MapHeight style).
+        // Reduced 2-probe only on true flat + low dynamics for CPU.
+        constexpr int16_t kSteepSlopeAbsY = 1;
         const bool steepTerrain = (ioState.lastSlopeAbsY >= kSteepSlopeAbsY);
-        const bool reducedProbeByCostProfile =
-            Tunables::kPreferReducedGroundProbe &&
-            (!ioFrameState.braking) &&
-            (steeringAbs <= 42) &&
-            (!steepTerrain);
         const bool useReducedProbe =
-            (!steepTerrain) && (reducedProbeByCostProfile || mediumDynamicsInputs);
-        uint8_t probeReuseInterval = 0u;
-        if (!steepTerrain)
-        {
-            probeReuseInterval = lowDynamicsInputs
-                ? Tunables::kLowDynamicsProbeIntervalFrames
-                : (mediumDynamicsInputs ? Tunables::kMediumDynamicsProbeIntervalFrames
-                                        : 0u);
-        }
-        const bool canReuseLastSurface =
-            (probeReuseInterval > 0u) &&
-            ioState.surfaceYInitialized &&
-            (ioState.lastSurfaceSegmentId > 0);
-        if (canReuseLastSurface && ioState.surfaceProbeCooldown > 0u)
-        {
-            --ioState.surfaceProbeCooldown;
-            ioState.hasGroundSupport = true;
-            ioState.edgeLeftLost = false;
-            ioState.edgeRightLost = false;
-            ioState.correctionX = Fxp::BuildRaw(0);
-            ioState.correctionZ = Fxp::BuildRaw(0);
-            // Low-cost wall refresh even during probe reuse.
-            // Without this, sustained acceleration can cross walls on skipped probe frames.
-            if (Tunables::kEnableWallPlanarPush)
-            {
-                Vector3D wallPush{};
-                ioState.lastWallQueryHit = ResolveWallPushMultiProbe(
-                    trackQuery,
-                    worldPosition,
-                    step.sinYaw,
-                    step.cosYaw,
-                    Tunables::kWallCollisionRadius,
-                    static_cast<int32_t>(ioState.lastSurfaceSegmentId),
-                    wallPush,
-                    &ioState.lastWallQuerySegmentId);
-                ioState.lastWallQueryFrameId = static_cast<int32_t>(ioFrameState.frameId);
-                ioState.lastWallPushX = ioState.lastWallQueryHit ? wallPush.X : Fxp::BuildRaw(0);
-                ioState.lastWallPushZ = ioState.lastWallQueryHit ? wallPush.Z : Fxp::BuildRaw(0);
-
-                if (ioState.lastWallQueryHit)
-                {
-                    ioState.correctionX = Clamp(ioState.lastWallPushX,
-                        Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
-                        Tunables::kMaxPlanarCorrectionPerFrame);
-                    ioState.correctionZ = Clamp(ioState.lastWallPushZ,
-                        Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
-                        Tunables::kMaxPlanarCorrectionPerFrame);
-                    ioFrameState.debugWallHit = 1u;
-                    ioFrameState.debugWallSegmentId = ioState.lastWallQuerySegmentId;
-                    ioFrameState.debugWallPushX = FxpToDebugInt(ioState.lastWallPushX);
-                    ioFrameState.debugWallPushZ = FxpToDebugInt(ioState.lastWallPushZ);
-                }
-            }
-            ioFrameState.groundFaceIndex = ioState.lastSurfaceFaceIndex;
-            ioFrameState.groundFamilyId = ioState.lastSurfaceFamilyId;
-            ioFrameState.groundSurfaceType = ioState.lastSurfaceType;
-            return static_cast<int32_t>(ioState.lastSurfaceSegmentId);
-        }
+            (!steepTerrain) &&
+            lowDynamicsInputs &&
+            (steeringAbs <= 20) &&
+            (ioFrameState.speedProxy <= 40);
+        ioState.surfaceProbeCooldown = 0u;
+        (void)mediumDynamicsInputs;
 
         int32_t sampledSegmentId = -1;
-        if (probeReuseInterval > 0u && ioState.lastSurfaceSegmentId > 0)
-        {
-            sampledSegmentId = static_cast<int32_t>(ioState.lastSurfaceSegmentId);
-        }
         if (sampledSegmentId <= 0)
         {
             Vector3D sampledNormal{};
@@ -271,15 +210,6 @@ public:
                            ioState,
                            ioFrameState);
 
-        if (canReuseLastSurface)
-        {
-            ioState.surfaceProbeCooldown = probeReuseInterval;
-        }
-        else
-        {
-            ioState.surfaceProbeCooldown = 0u;
-        }
-
         if (sampledSegmentId <= 0 && ioState.lastSurfaceSegmentId > 0)
         {
             sampledSegmentId = static_cast<int32_t>(ioState.lastSurfaceSegmentId);
@@ -289,6 +219,9 @@ public:
 
     static void ApplyVerticalAdhesion(GroundState& ioState, Vector3D& ioCarWorldPosition)
     {
+        // Wall/edge planar push only — never freeze XZ when probes miss.
+        // (Freezing lastStable XZ made the car "stuck" on declines when a probe
+        // failed for a frame; REDRIVER2 MapHeight keeps planar motion free.)
         ioCarWorldPosition.X += ioState.correctionX;
         ioCarWorldPosition.Z += ioState.correctionZ;
         ioState.correctionX = Fxp::BuildRaw(0);
@@ -296,84 +229,27 @@ public:
 
         if (!ioState.surfaceYInitialized)
         {
-            ioState.verticalVelocity = Fxp::BuildRaw(0);
-            ioState.surfaceYFilterInitialized = false;
-            if (!ioState.hasGroundSupport && ioState.lastStablePlanarInitialized)
+            // Hold last good Y for a few frames of miss instead of ungluing.
+            if (ioState.surfaceContactFrames > 0u)
             {
-                ioCarWorldPosition.X = ioState.lastStableX;
-                ioCarWorldPosition.Z = ioState.lastStableZ;
+                --ioState.surfaceContactFrames;
+                ioCarWorldPosition.Y = ioState.surfaceYFiltered;
+            }
+            else
+            {
+                ioState.verticalVelocity = Fxp::BuildRaw(0);
+                ioState.surfaceYFilterInitialized = false;
             }
             return;
         }
 
-        if constexpr (Tunables::kEnableSaturnLowCostPhysics)
-        {
-            ioCarWorldPosition.Y = ioState.surfaceYTarget;
-            ioState.surfaceYFiltered = ioState.surfaceYTarget;
-            ioState.verticalVelocity = Fxp::BuildRaw(0);
-            ioState.surfaceYFilterInitialized = true;
-
-            if (ioState.hasGroundSupport)
-            {
-                ioState.lastStableX = ioCarWorldPosition.X;
-                ioState.lastStableZ = ioCarWorldPosition.Z;
-                ioState.lastStablePlanarInitialized = true;
-            }
-            else if (ioState.lastStablePlanarInitialized)
-            {
-                ioCarWorldPosition.X = ioState.lastStableX;
-                ioCarWorldPosition.Z = ioState.lastStableZ;
-            }
-            return;
-        }
-
-        // Smooth target Y to reduce visual hops on sharp joints between faces.
-        if (!ioState.surfaceYFilterInitialized)
-        {
-            ioState.surfaceYFiltered = ioState.surfaceYTarget;
-            ioState.verticalVelocity = Fxp::BuildRaw(0);
-            ioState.surfaceYFilterInitialized = true;
-        }
-        else
-        {
-            const Fxp filterDelta = ioState.surfaceYTarget - ioState.surfaceYFiltered;
-            ioState.surfaceYFiltered += filterDelta * Tunables::kChassisVerticalFollowAlpha;
-        }
-
-        Fxp deltaY = ioState.surfaceYFiltered - ioCarWorldPosition.Y;
-        const Fxp absDeltaY = deltaY.Abs();
-        if (absDeltaY > Tunables::kChassisVerticalHardSnapThreshold)
-        {
-            ioCarWorldPosition.Y = ioState.surfaceYFiltered;
-            ioState.verticalVelocity = Fxp::BuildRaw(0);
-            deltaY = Fxp::BuildRaw(0);
-        }
-
-        Fxp frameStepY = deltaY;
-        if constexpr (Tunables::kEnableVerticalBounceSmoothing)
-        {
-            ioState.verticalVelocity =
-                (ioState.verticalVelocity * Tunables::kVerticalBounceDamping) +
-                (deltaY * Tunables::kVerticalBounceFollow);
-            frameStepY = ioState.verticalVelocity;
-        }
-
-        if (frameStepY > Tunables::kMaxYStepDownPerFrame)
-        {
-            frameStepY = Tunables::kMaxYStepDownPerFrame;
-            ioState.verticalVelocity = frameStepY;
-        }
-        else
-        {
-            const Fxp minStepUp = Fxp::BuildRaw(-Tunables::kMaxYStepUpPerFrame.RawValue());
-            if (frameStepY < minStepUp)
-            {
-                frameStepY = minStepUp;
-                ioState.verticalVelocity = frameStepY;
-            }
-        }
-
-        ioCarWorldPosition.Y += frameStepY;
+        // REDRIVER2-style: MapHeight every frame → place body on surface.
+        // Direct assign removes stair-steps (no lag filter fighting the grade).
+        ioState.surfaceYFiltered = ioState.surfaceYTarget;
+        ioState.surfaceYFilterInitialized = true;
+        ioCarWorldPosition.Y = ioState.surfaceYTarget;
+        ioState.verticalVelocity = Fxp::BuildRaw(0);
+        ioState.surfaceContactFrames = 8u;
 
         if (ioState.hasGroundSupport)
         {
@@ -381,11 +257,7 @@ public:
             ioState.lastStableZ = ioCarWorldPosition.Z;
             ioState.lastStablePlanarInitialized = true;
         }
-        else if (ioState.lastStablePlanarInitialized)
-        {
-            ioCarWorldPosition.X = ioState.lastStableX;
-            ioCarWorldPosition.Z = ioState.lastStableZ;
-        }
+        // Intentionally do NOT teleport XZ back to lastStable when support drops.
     }
 
     static void Reset(GroundState& ioState)
@@ -410,6 +282,7 @@ public:
         ioState.lastStablePlanarInitialized = false;
         ioState.surfaceYInitialized = false;
         ioState.surfaceYFilterInitialized = false;
+        ioState.surfaceContactFrames = 0u;
         ioState.lastWallQueryFrameId = -1;
         ioState.lastWallApplyFrameId = -1;
         ioState.lastWallQueryHit = false;
@@ -775,8 +648,9 @@ private:
 
         if (!ioState.hasGroundSupport)
         {
+            // Keep last surfaceYFiltered for contact hold — do not zero it.
             ioState.surfaceYInitialized = false;
-            ioFrameState.debugGroundYTarget = 0;
+            ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYFiltered);
             return;
         }
 
@@ -789,7 +663,7 @@ private:
         if (validCount <= 0)
         {
             ioState.surfaceYInitialized = false;
-            ioFrameState.debugGroundYTarget = 0;
+            ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYFiltered);
             return;
         }
 
