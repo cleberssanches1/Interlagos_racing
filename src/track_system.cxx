@@ -4308,11 +4308,12 @@ static bool BuildRendererFromRdr(int segmentId,
         attr.Visibility = (sa.visibility != 0)
             ? SRL::Types::Attribute::FaceVisibility::DoubleSided
             : SRL::Types::Attribute::FaceVisibility::SingleSided;
-        attr.Sort = sa.sort;
+        // Strip UseGouraud/UseLight option bits from sort; keep sort mode + other flags.
+        attr.Sort = static_cast<uint8_t>(sa.sort & static_cast<uint8_t>(~(UseLight | UseGouraud)));
         attr.Texture = sa.texture;
-        attr.Display = sa.display;
+        attr.Display = static_cast<uint16_t>(sa.display & ~static_cast<uint16_t>(CL_Gouraud));
         attr.ColorMode = sa.colorMode;
-        attr.Gouraud = sa.gouraud;
+        attr.Gouraud = No_Gouraud;
         attr.Direction = sa.direction;
         attrs.push_back(attr);
     }
@@ -4420,20 +4421,23 @@ static bool BuildRendererFromSdr(int segmentId,
                 ? SRL::Types::Attribute::FaceVisibility::SingleSided
                 : SRL::Types::Attribute::FaceVisibility::DoubleSided;
         const auto sortMode = DecodeSortMode(sa.sortMode);
-        const uint16_t gouraud = sa.gouraudMode ? sa.gouraudMode : CL32KRGB;
+        // Never enable real-time gouraud on track faces: shared pool occupancy
+        // changes as segments leave the camera and was re-shading the car.
         const uint16_t keepFlags = static_cast<uint16_t>(sa.flags & (CL_Trans | CL_Half | MESHon | MESHoff));
-        const uint16_t display = static_cast<uint16_t>((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags);
+        const uint16_t display = static_cast<uint16_t>(
+            ((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags) & ~static_cast<uint16_t>(CL_Gouraud));
         const uint16_t spriteMode = sa.spriteMode ? sa.spriteMode : sprPolygon;
-        const uint16_t direction = sa.useLight ? UseLight : UseGouraud;
+        // options arg: no UseGouraud / UseLight (unlit texture; stable vs segment set)
+        const uint16_t options = 0;
         return SRL::Types::Attribute(
             visibility,
             sortMode,
             No_Texture,
             sa.baseColor,
-            gouraud,
+            No_Gouraud,
             display,
             spriteMode,
-            direction);
+            options);
     };
 
     for (uint32_t fi = 0; fi < sdrView.header.faceCount; ++fi)
@@ -4604,20 +4608,23 @@ static bool BuildRendererFromBdrBatch(int firstId,
                 ? SRL::Types::Attribute::FaceVisibility::SingleSided
                 : SRL::Types::Attribute::FaceVisibility::DoubleSided;
         const auto sortMode = DecodeSortMode(sa.sortMode);
-        const uint16_t gouraud = sa.gouraudMode ? sa.gouraudMode : CL32KRGB;
+        // Never enable real-time gouraud on track faces: shared pool occupancy
+        // changes as segments leave the camera and was re-shading the car.
         const uint16_t keepFlags = static_cast<uint16_t>(sa.flags & (CL_Trans | CL_Half | MESHon | MESHoff));
-        const uint16_t display = static_cast<uint16_t>((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags);
+        const uint16_t display = static_cast<uint16_t>(
+            ((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags) & ~static_cast<uint16_t>(CL_Gouraud));
         const uint16_t spriteMode = sa.spriteMode ? sa.spriteMode : sprPolygon;
-        const uint16_t direction = sa.useLight ? UseLight : UseGouraud;
+        // options arg: no UseGouraud / UseLight (unlit texture; stable vs segment set)
+        const uint16_t options = 0;
         return SRL::Types::Attribute(
             visibility,
             sortMode,
             No_Texture,
             sa.baseColor,
-            gouraud,
+            No_Gouraud,
             display,
             spriteMode,
-            direction);
+            options);
     };
 
     for (uint32_t fi = 0; fi < bdrView.header.faceCount; ++fi)
@@ -4738,20 +4745,23 @@ static bool AppendSdrSegmentToBatch(int segmentId,
                 ? SRL::Types::Attribute::FaceVisibility::SingleSided
                 : SRL::Types::Attribute::FaceVisibility::DoubleSided;
         const auto sortMode = DecodeSortMode(sa.sortMode);
-        const uint16_t gouraud = sa.gouraudMode ? sa.gouraudMode : CL32KRGB;
+        // Never enable real-time gouraud on track faces: shared pool occupancy
+        // changes as segments leave the camera and was re-shading the car.
         const uint16_t keepFlags = static_cast<uint16_t>(sa.flags & (CL_Trans | CL_Half | MESHon | MESHoff));
-        const uint16_t display = static_cast<uint16_t>((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags);
+        const uint16_t display = static_cast<uint16_t>(
+            ((sa.colorMode ? sa.colorMode : CL32KRGB) | keepFlags) & ~static_cast<uint16_t>(CL_Gouraud));
         const uint16_t spriteMode = sa.spriteMode ? sa.spriteMode : sprPolygon;
-        const uint16_t direction = sa.useLight ? UseLight : UseGouraud;
+        // options arg: no UseGouraud / UseLight (unlit texture; stable vs segment set)
+        const uint16_t options = 0;
         return SRL::Types::Attribute(
             visibility,
             sortMode,
             No_Texture,
             sa.baseColor,
-            gouraud,
+            No_Gouraud,
             display,
             spriteMode,
-            direction);
+            options);
     };
 
     for (uint32_t fi = 0; fi < sdrView.header.faceCount; ++fi)
@@ -14237,11 +14247,13 @@ bool TrackSystem::Initialize(const Config& config)
                             {
                                 texIndex = slot;
                                 baseColor = No_Palet;
-                                drawMode = static_cast<uint16_t>(CL32KRGB | CL_Gouraud);
+                                // No CL_Gouraud: shared table thrash when segments leave camera
+                                // was bleeding into car shading. Track asphalt stays unlit texture.
+                                drawMode = static_cast<uint16_t>(CL32KRGB);
                                 directionFlags =
                                     static_cast<uint32_t>(sprNoflip) |
                                     (static_cast<uint32_t>(ECdis) << 24);
-                                shading = UseLight;
+                                shading = 0;
                             }
                         }
                     }
@@ -14252,7 +14264,7 @@ bool TrackSystem::Initialize(const Config& config)
                         SRL::Types::Attribute::SortMode::Center,
                         texIndex,
                         baseColor,
-                        CL32KRGB,
+                        No_Gouraud,
                         drawMode,
                         directionFlags,
                         shading));
@@ -15450,10 +15462,9 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
     std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
     bool& segment01Prepared)
 {
-    // Two pass stabilized draw:
-    // pass 1 draws segments outside the local car neighborhood,
-    // pass 2 draws segments near the car segment window rank (±2 ranks).
-    // This reduces seam overdraw flicker near the car during segment transitions.
+    // Stabilized draw: all prepared segments share one world offset so edges meet.
+    // Car/asphalt z-sort uses SORT_MIN/MAX (see model ForceSortMode / track attrs),
+    // not per-segment geometry bias (bias caused visible gaps between segments).
     std::array<SegmentRenderEntry*, kTrackSegmentLimit> preparedEntries{};
     size_t preparedCount = 0;
     auto backupRuntimeFaceSlots = [&](const SegmentRenderEntry& entry)
@@ -15780,78 +15791,14 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
     };
 
-    // Near-car seam sink: keep modest (Y+ = down). Large sinks + WorkArea
-    // overflow were linked to boot instability; lift on car does most of the work.
-    constexpr int32_t kNearSegmentSeamSinkUnits = 2;
-    Vector3D nearTrackOffset = trackOffset;
-    nearTrackOffset.Y += Fxp::BuildRaw(kNearSegmentSeamSinkUnits << 16);
-
-    std::array<uint8_t, kTrackSegmentLimit> farOrder{};
-    std::array<uint8_t, kTrackSegmentLimit> nearOrder{};
-    size_t farCount = 0u;
-    size_t nearCount = 0u;
-
-    size_t windowCount = segmentRenderers_.size();
-    if (windowCount == 0u) windowCount = preparedCount;
-    const int32_t carRefSegmentId =
-        (observedCarSegmentId_ > 0)
-            ? WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_)
-            : (TrackedCarSegmentValid() ? WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_) : -1);
-    size_t carRank = 0u;
-    const bool hasCarRank =
-        (carRefSegmentId > 0) &&
-        TryGetWindowLogicalRank(carRefSegmentId, carRank);
-
-    // Build deterministic two pass order by local window rank distance to car.
+    // Seam strategy without moving geometry:
+    // - SORT_MAX on track / SORT_MIN on car handles asphalt-over-car at camera exit.
+    // - Do NOT apply per-segment sink/depth-push: that opened visible gaps between
+    //   "near" and "far" segment windows (and between differently pushed neighbors).
+    // Single shared world offset keeps segment edges flush.
     for (size_t i = 0; i < preparedCount; ++i)
     {
-        SegmentRenderEntry* entry = preparedEntries[i];
-        if (!entry)
-        {
-            if (farCount < farOrder.size()) farOrder[farCount++] = static_cast<uint8_t>(i);
-            continue;
-        }
-
-        bool isNearCar = false;
-        if (hasCarRank)
-        {
-            size_t entryRank = 0u;
-            if (TryGetWindowLogicalRank(entry->id, entryRank) && windowCount > 0u)
-            {
-                const size_t linearDist =
-                    (entryRank > carRank) ? (entryRank - carRank) : (carRank - entryRank);
-                const size_t wrapDist = (linearDist <= windowCount)
-                    ? std::min(linearDist, windowCount - std::min(linearDist, windowCount))
-                    : linearDist;
-                // Wider neighborhood (±2): more seam faces draw after far segs,
-                // then car (reduces asphalt-over-car at segment junctions).
-                isNearCar = (wrapDist <= 2u);
-            }
-        }
-
-        if (isNearCar)
-        {
-            if (nearCount < nearOrder.size()) nearOrder[nearCount++] = static_cast<uint8_t>(i);
-        }
-        else
-        {
-            if (farCount < farOrder.size()) farOrder[farCount++] = static_cast<uint8_t>(i);
-        }
-    }
-
-    // Pass 1: draw far from car (normal track offset).
-    for (size_t i = 0; i < farCount; ++i)
-    {
-        const size_t idx = static_cast<size_t>(farOrder[i]);
-        if (idx >= preparedCount) continue;
-        renderPreparedEntry(preparedEntries[idx], trackOffset);
-    }
-    // Pass 2: local seam neighborhood — sunk Y so coplanar asphalt loses to car.
-    for (size_t i = 0; i < nearCount; ++i)
-    {
-        const size_t idx = static_cast<size_t>(nearOrder[i]);
-        if (idx >= preparedCount) continue;
-        renderPreparedEntry(preparedEntries[idx], nearTrackOffset);
+        renderPreparedEntry(preparedEntries[i], trackOffset);
     }
 }
 
@@ -16833,6 +16780,9 @@ void TrackSystem::RenderFrame(bool renderTrack,
     {
         return;
     }
+
+    seamCarWorldPosition_ = carWorldPosition;
+    seamCarWorldValid_ = true;
 
     Sh2FrtProfiler::EnsureInitialized();
     const uint16_t frameTicksStart = Sh2FrtProfiler::Now();

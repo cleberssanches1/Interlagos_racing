@@ -1982,6 +1982,37 @@ public:
         }
     }
 
+    /**
+     * @brief Draw mesh via slPutPolygon (flat PDATA), never slPutPolygonX.
+     *
+     * Smooth assets (XPDATA) share the PDATA prefix; drawing as flat avoids the
+     * SGL real-time gouraud/light path that rewrites the shared gouraud pool as
+     * track segments enter/leave the camera.
+     */
+    void DrawAsFlat(size_t mesh)
+    {
+        if (mesh >= this->meshCount || !this->meshes) return;
+        if (this->type == 0)
+        {
+            SRL::Scene3D::DrawMesh(((SRL::Types::Mesh*)this->meshes)[mesh]);
+            return;
+        }
+        auto& smooth = ((SRL::Types::SmoothMesh*)this->meshes)[mesh];
+        if (smooth.FaceCount == 0 || smooth.VertexCount == 0 || !smooth.Attributes) return;
+
+        // XPDATA layout begins with PDATA fields — borrow as temporary Mesh.
+        SRL::Types::Mesh flatView{};
+        flatView.Vertices = smooth.Vertices;
+        flatView.VertexCount = smooth.VertexCount;
+        flatView.Faces = smooth.Faces;
+        flatView.FaceCount = smooth.FaceCount;
+        flatView.Attributes = smooth.Attributes;
+        SRL::Scene3D::DrawMesh(flatView);
+        flatView.Vertices = nullptr;
+        flatView.Faces = nullptr;
+        flatView.Attributes = nullptr;
+    }
+
     /** @brief Draw specified mesh
      * @note Used only with smooth type mesh data
      * @param mesh Mesh index
@@ -1991,10 +2022,9 @@ public:
     {
         if (mesh < this->meshCount && this->type == 1)
         {
-            // slPutPolygonX may mutate the light vector argument; use a local copy
-            // so one model render cannot alter global/environment lighting.
-            auto lightCopy = light;
-            SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], lightCopy);
+            // Prefer flat path: slPutPolygonX is the root of segment-linked re-shading.
+            (void)light;
+            DrawAsFlat(mesh);
         }
     }
 
@@ -2018,12 +2048,12 @@ public:
      */
     void Draw(SRL::Math::Types::Vector3D& light)
     {
+        (void)light;
         if (this->type == 1)
         {
             for (size_t mesh = 0; mesh < this->meshCount; mesh++)
             {
-                auto lightCopy = light;
-                SRL::Scene3D::DrawSmoothMesh(((SRL::Types::SmoothMesh*)this->meshes)[mesh], lightCopy);
+                DrawAsFlat(mesh);
             }
         }
     }
@@ -2117,6 +2147,92 @@ public:
     {
         return this->type == 1;
     }
+
+    /** @brief Force VDP1/SGL sort key for all faces (SORT_MIN/MAX/CEN).
+     *  Minimum uses the foremost vertex — helps the car win coplanar fights with asphalt.
+     */
+    void ForceSortMode(const SRL::Types::Attribute::SortMode sortMode)
+    {
+        if (!this->meshes) return;
+
+        auto applyAttr = [&](SRL::Types::Attribute& attr)
+        {
+            // Lower 2 bits of ATTR.sort select SORT_*; keep option bits above.
+            attr.Sort = static_cast<uint8_t>(
+                (attr.Sort & ~static_cast<uint8_t>(0x03)) |
+                (static_cast<uint8_t>(sortMode) & 0x03u));
+        };
+
+        ForEachAttribute(applyAttr);
+    }
+
+    /**
+     * @brief Stable car/track shading independent of SGL light + gouraud pool.
+     *
+     * Clears UseLight, UseGouraud and CL_Gouraud. Textures/sort/palette stay.
+     * Combined with DrawAsFlat (slPutPolygon), shading no longer tracks how many
+     * track segments are in view — the previous residual was still going through
+     * slPutPolygonX / light even after gouraud flags were stripped.
+     */
+    void ForceStableFlatLightingKeepTextures()
+    {
+        ForceUnlitKeepTextures();
+    }
+
+    /** @brief Full unlit textured faces (no UseLight / UseGouraud / CL_Gouraud). */
+    void ForceUnlitKeepTextures()
+    {
+        if (!this->meshes) return;
+
+        auto applyAttr = [&](SRL::Types::Attribute& attr)
+        {
+            // ATTR.sort: bits 0-1 = sort mode; option flags include UseLight/UseGouraud.
+            const uint8_t sortModeBits = static_cast<uint8_t>(attr.Sort & 0x03u);
+            const uint8_t keepOptions = static_cast<uint8_t>(
+                attr.Sort & static_cast<uint8_t>(~(UseLight | UseGouraud | UseDepth | 0x03u)));
+            attr.Sort = static_cast<uint8_t>(sortModeBits | keepOptions);
+
+            // No gouraud color-calc; no depth cue that varies with camera distance.
+            attr.Display = static_cast<uint16_t>(
+                attr.Display & ~static_cast<uint16_t>(CL_Gouraud | CL_Half | CL_Shadow));
+            attr.Gouraud = No_Gouraud;
+        };
+
+        ForEachAttribute(applyAttr);
+    }
+
+private:
+    template <typename Fn>
+    void ForEachAttribute(Fn&& applyAttr)
+    {
+        if (!this->meshes) return;
+        if (this->type == 0)
+        {
+            SRL::Types::Mesh* m = (SRL::Types::Mesh*)this->meshes;
+            for (size_t mi = 0; mi < this->meshCount; ++mi)
+            {
+                if (!m[mi].Attributes) continue;
+                for (size_t fi = 0; fi < m[mi].FaceCount; ++fi)
+                {
+                    applyAttr(m[mi].Attributes[fi]);
+                }
+            }
+        }
+        else
+        {
+            SRL::Types::SmoothMesh* m = (SRL::Types::SmoothMesh*)this->meshes;
+            for (size_t mi = 0; mi < this->meshCount; ++mi)
+            {
+                if (!m[mi].Attributes) continue;
+                for (size_t fi = 0; fi < m[mi].FaceCount; ++fi)
+                {
+                    applyAttr(m[mi].Attributes[fi]);
+                }
+            }
+        }
+    }
+
+public:
 
     /** @brief Fora todas as faces a usarem uma cor slida (sem textura)
      * @param color Cor desejada

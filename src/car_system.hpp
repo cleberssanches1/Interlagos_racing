@@ -36,6 +36,8 @@ public:
     explicit CarSystem(ModelObject* carObj, bool smooth, const Config& config);
 
     bool Valid() const { return renderer_ != nullptr; }
+    ModelObject* Model() { return carObj_; }
+    const ModelObject* Model() const { return carObj_; }
 
     // Update wheel spin state from external start/stop events.
     void UpdateWheels(bool start, bool stop);
@@ -248,6 +250,16 @@ public:
     // Visual chassis attitude (16.16 degrees) for camera/debug terrain follow.
     int32_t BodyPitchDegX16() const { return wheelRig_.BodyPitchDegX16(); }
     int32_t BodyRollDegX16() const { return wheelRig_.BodyRollDegX16(); }
+
+    // Re-bind fixed scene light onto the mesh renderer each frame (SGL may mutate light).
+    void SetLightDirection(const Vector3D& dir)
+    {
+        config_.lightDirection = dir;
+        if (renderer_)
+        {
+            renderer_->SetLightDirection(dir);
+        }
+    }
 
 private:
     static int32_t NormalizeYawDeg(int32_t yawDeg)

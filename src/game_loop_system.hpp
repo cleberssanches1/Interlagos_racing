@@ -117,7 +117,9 @@ public:
         SRL::Math::Types::Vector3D trackSegOffset{};
         SRL::Math::Types::Vector3D modelOffset{};
         SRL::Math::Types::Vector3D carWorldPosition{};
+        // Fixed world light (re-applied every frame — slPutPolygonX can dirty SGL light state).
         SRL::Math::Types::Vector3D lightDirection{};
+        SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
         BackgroundManager* bgManager = nullptr;
         CameraSystem* cameraSystem = nullptr;
         TrackSystem* trackSystem = nullptr;
@@ -1091,9 +1093,7 @@ private:
     int32_t ResolveCarRenderDepthBiasUnits(
         const Game::CarSystem::RuntimeDebugSnapshot& runtimeDebug) const
     {
-        // Planar pull-toward-camera does NOT break coplanarity with the road
-        // (Y unchanged) and made segment-seam fighting worse at 16 units.
-        // Keep bias off; use visual Y-lift instead (see RenderCar).
+        // Do not pull/lift the car — flying look. Seam fix is track-side bias + SORT_MIN.
         (void)runtimeDebug;
         return 0;
     }
@@ -1244,11 +1244,10 @@ private:
         if (!car) return;
 
         const auto renderInputs = ResolveCarRenderRuntimeInputs(*car);
-        // Break coplanar sort fights with asphalt at segment seams (VDP1 has no
-        // Z-buffer). Lift only for render; physics/collision stay on ground.
-        // Pairs with near-segment Y-sink in track two-pass draw.
-        // Rollback: 4 if car floats too much.
-        constexpr int32_t kCarVisualLiftUnits = 6;
+        // Car stays on the ground (no visual lift). Seam fighting is handled by
+        // track near-pass depth push/sink + SORT_MIN on car faces (see main.cxx /
+        // track_system two-pass). Lift 0 = grounded; do not reintroduce large lift.
+        constexpr int32_t kCarVisualLiftUnits = 0;
         const auto renderPacket = GameLoopRuntime::BuildCarRenderRuntimePacket(
             renderInputs.renderPosition,
             camera.location,
@@ -1260,6 +1259,15 @@ private:
             renderInputs.depthBiasUnits);
 
         RenderCarShadowIfEnabled(renderPacket);
+        // Car is drawn unlit/flat (DrawAsFlat). Still rebind light so any residual
+        // SGL global light state from track does not linger into other systems.
+        car->SetLightDirection(context_.lightDirection);
+        if (ModelObject* carModel = car->Model())
+        {
+            // Streaming/debug must never re-enable gouraud on the live car mesh.
+            carModel->ForceUnlitKeepTextures();
+            carModel->ForceSortMode(SRL::Types::Attribute::SortMode::Minimum);
+        }
         GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, renderInputs.gameplayYawDeg);
         const auto telemetry =
             GameLoopRuntime::SubmitCarRenderRuntime(*context_.renderPipeline, *car);
@@ -1319,6 +1327,16 @@ private:
         SRL::Scene3D::LookAt(camera.location, camera.lookTarget, Angle::FromDegrees(0.0));
     }
 
+    // Re-bind the fixed directional light after track/car draws. SGL smooth
+    // lighting (slPutPolygonX) may mutate the light vector argument and leave
+    // global slLight state inconsistent across segment batch boundaries.
+    void RestoreDirectionalLight() const
+    {
+        auto lightCopy = context_.lightDirection;
+        SRL::Scene3D::SetDirectionalLight(lightCopy);
+        SRL::Scene3D::LightSetColor(context_.lightColor);
+    }
+
     void CaptureIdleTrackAndCarTraces()
     {
         CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
@@ -1342,9 +1360,12 @@ private:
         }
 
         ConfigureScene3dView(camera);
+        RestoreDirectionalLight();
         RenderTrackFrame(camera);
 
+        // Track DrawSmoothMesh may have mutated light state; rebind before car.
         ConfigureScene3dView(camera);
+        RestoreDirectionalLight();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Car);
         RenderCar(camera);
         CaptureWorkRamStage(hwrStageTrace_.car, lwrStageTrace_.car);

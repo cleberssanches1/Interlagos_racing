@@ -128,6 +128,22 @@ public:
         vertexCount_ = trackObj_->GetVertexCount();
         bounds_ = ComputeBounds(*trackObj_, isSmooth_);
 
+        // SORT_MAX: large asphalt quads that straddle the near plane / leave the
+        // camera get a sort key from their farthest vertex, so clipped near verts
+        // no longer pull average-Z in front of the car (VDP1 has no Z-buffer).
+        trackObj_->ForceSortMode(SRL::Types::Attribute::SortMode::Maximum);
+        // Drop real-time gouraud on track meshes so segment visibility changes do
+        // not thrash the shared gouraud work table (was re-shading the car).
+        trackObj_->ForceStableFlatLightingKeepTextures();
+        for (auto& a : componentAttrs_)
+        {
+            a.Sort = static_cast<uint8_t>(
+                (a.Sort & ~static_cast<uint8_t>(0x03)) |
+                (static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Maximum) & 0x03u));
+            a.Display = static_cast<uint16_t>(a.Display & ~static_cast<uint16_t>(CL_Gouraud));
+            a.Gouraud = No_Gouraud;
+        }
+
         memStats_.verts = (uint32_t)vertexCount_;
         memStats_.faces = (uint32_t)faceCount_;
         memStats_.bytes = (uint32_t)(vertexCount_ * sizeof(SRL::Math::Types::Vector3D));
@@ -331,6 +347,12 @@ public:
             componentAttrs_.insert(componentAttrs_.end(),
                                    std::make_move_iterator(attrs.begin()),
                                    std::make_move_iterator(attrs.end()));
+            for (auto& a : componentAttrs_)
+            {
+                a.Sort = static_cast<uint8_t>(
+                    (a.Sort & ~static_cast<uint8_t>(0x03)) |
+                    (static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Maximum) & 0x03u));
+            }
             verts.clear();
             faces.clear();
             attrs.clear();
@@ -581,7 +603,8 @@ public:
 
         size_t drawn = 0;
         uint32_t drawnFaces = 0;
-        auto lightCopy = light;
+        // Track is drawn flat/unlit — light argument unused (kept for API compatibility).
+        (void)light;
         // Cache is only required for custom direct paths.
         const bool needsCache = useSglDirect_ || useDirect2D_ || !useOriginal_;
 
@@ -840,23 +863,30 @@ public:
                             {
                                 attr.Visibility = SRL::Types::Attribute::FaceVisibility::DoubleSided;
                             }
-                            SRL::Types::SmoothMesh tmp;
-                            tmp.Vertices = mesh->Vertices;
-                            tmp.VertexCount = mesh->VertexCount;
-                            tmp.Faces = mesh->Faces;
-                            tmp.FaceCount = mesh->FaceCount;
-                            tmp.Attributes = attrs.data();
-                            tmp.Normals = mesh->Normals;
-                            SRL::Scene3D::DrawSmoothMesh(tmp, lightCopy);
-                            // Prevent temporary wrapper from freeing foreign pointers.
-                            tmp.Vertices = nullptr;
-                            tmp.Faces = nullptr;
-                            tmp.Attributes = nullptr;
-                            tmp.Normals = nullptr;
+                            // Flat PDATA path only — never slPutPolygonX (shared gouraud thrash).
+                            SRL::Types::Mesh flatTmp{};
+                            flatTmp.Vertices = mesh->Vertices;
+                            flatTmp.VertexCount = mesh->VertexCount;
+                            flatTmp.Faces = mesh->Faces;
+                            flatTmp.FaceCount = mesh->FaceCount;
+                            flatTmp.Attributes = attrs.data();
+                            SRL::Scene3D::DrawMesh(flatTmp);
+                            flatTmp.Vertices = nullptr;
+                            flatTmp.Faces = nullptr;
+                            flatTmp.Attributes = nullptr;
                         }
                         else
                         {
-                            SRL::Scene3D::DrawSmoothMesh(*mesh, lightCopy);
+                            SRL::Types::Mesh flatTmp{};
+                            flatTmp.Vertices = mesh->Vertices;
+                            flatTmp.VertexCount = mesh->VertexCount;
+                            flatTmp.Faces = mesh->Faces;
+                            flatTmp.FaceCount = mesh->FaceCount;
+                            flatTmp.Attributes = mesh->Attributes;
+                            SRL::Scene3D::DrawMesh(flatTmp);
+                            flatTmp.Vertices = nullptr;
+                            flatTmp.Faces = nullptr;
+                            flatTmp.Attributes = nullptr;
                         }
                     }
                     else
@@ -943,7 +973,19 @@ public:
                         }
                     }
                     drawnFaces += (uint32_t)tmp.FaceCount;
-                    SRL::Scene3D::DrawSmoothMesh(tmp, lightCopy);
+                    {
+                        // Flat draw of smooth-cache data (skip gouraud light path).
+                        SRL::Types::Mesh flatTmp{};
+                        flatTmp.Vertices = tmp.Vertices;
+                        flatTmp.VertexCount = tmp.VertexCount;
+                        flatTmp.Faces = tmp.Faces;
+                        flatTmp.FaceCount = tmp.FaceCount;
+                        flatTmp.Attributes = tmp.Attributes;
+                        SRL::Scene3D::DrawMesh(flatTmp);
+                        flatTmp.Vertices = nullptr;
+                        flatTmp.Faces = nullptr;
+                        flatTmp.Attributes = nullptr;
+                    }
                     // Prevent temporary wrapper from freeing vector-owned pointers.
                     tmp.Vertices = nullptr;
                     tmp.Faces = nullptr;
@@ -1201,9 +1243,15 @@ public:
                 break;
             }
 
-            attr.Sort = static_cast<uint8_t>((attr.Sort & ~0x1Cu) | ((texturedDir >> 16) & 0x1Cu));
-            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk)) | colorMode;
+            // Force SORT_MAX (bits 0-1): far vertex wins when large asphalt leaves the camera.
+            // Strip UseGouraud/UseLight options from sort — track textures are unlit so
+            // segment enter/leave does not rewrite the shared gouraud pool the car used to share.
+            attr.Sort = static_cast<uint8_t>(
+                (static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Maximum) & 0x03u) |
+                ((texturedDir >> 16) & 0x1Cu));
+            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk | CL_Gouraud)) | colorMode;
             attr.Display = static_cast<uint16_t>((attr.Display & ~0x00C0u) | ((texturedDir >> 24) & 0x00C0u));
+            attr.Gouraud = No_Gouraud;
             attr.ColorMode = palette;
             attr.Direction = static_cast<uint16_t>(texturedDir & 0x003Fu);
         };
@@ -1318,9 +1366,15 @@ public:
                 break;
             }
 
-            attr.Sort = static_cast<uint8_t>((attr.Sort & ~0x1Cu) | ((texturedDir >> 16) & 0x1Cu));
-            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk)) | colorMode;
+            // Force SORT_MAX (bits 0-1): far vertex wins when large asphalt leaves the camera.
+            // Strip UseGouraud/UseLight options from sort — track textures are unlit so
+            // segment enter/leave does not rewrite the shared gouraud pool the car used to share.
+            attr.Sort = static_cast<uint8_t>(
+                (static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Maximum) & 0x03u) |
+                ((texturedDir >> 16) & 0x1Cu));
+            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk | CL_Gouraud)) | colorMode;
             attr.Display = static_cast<uint16_t>((attr.Display & ~0x00C0u) | ((texturedDir >> 24) & 0x00C0u));
+            attr.Gouraud = No_Gouraud;
             attr.ColorMode = palette;
             attr.Direction = static_cast<uint16_t>(texturedDir & 0x003Fu);
         };
@@ -1480,9 +1534,15 @@ public:
                 break;
             }
 
-            attr.Sort = static_cast<uint8_t>((attr.Sort & ~0x1Cu) | ((texturedDir >> 16) & 0x1Cu));
-            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk)) | colorMode;
+            // Force SORT_MAX (bits 0-1): far vertex wins when large asphalt leaves the camera.
+            // Strip UseGouraud/UseLight options from sort — track textures are unlit so
+            // segment enter/leave does not rewrite the shared gouraud pool the car used to share.
+            attr.Sort = static_cast<uint8_t>(
+                (static_cast<uint8_t>(SRL::Types::Attribute::SortMode::Maximum) & 0x03u) |
+                ((texturedDir >> 16) & 0x1Cu));
+            attr.Display = (attr.Display & ~(CL32KRGB | CL16Bnk | CL64Bnk | CL128Bnk | CL256Bnk | CL_Gouraud)) | colorMode;
             attr.Display = static_cast<uint16_t>((attr.Display & ~0x00C0u) | ((texturedDir >> 24) & 0x00C0u));
+            attr.Gouraud = No_Gouraud;
             attr.ColorMode = palette;
             attr.Direction = static_cast<uint16_t>(texturedDir & 0x003Fu);
         };

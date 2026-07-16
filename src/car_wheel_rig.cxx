@@ -217,7 +217,7 @@ void CarWheelRig::Update(const Input& input)
                 ? input.groundFrontYRaw
                 : (static_cast<int32_t>(input.groundFrontY) << 16);
         // More negative Y = higher. Pitch from filtered front−rear grade.
-        const int32_t sampleDelta = frontYRaw - rearYRaw;
+        int32_t sampleDelta = frontYRaw - rearYRaw;
         if (!deltaFilterInit_)
         {
             filteredDeltaYRaw_ = sampleDelta;
@@ -225,7 +225,17 @@ void CarWheelRig::Update(const Input& input)
         }
         else
         {
-            // Low-pass ΔY (rejects one-frame probe spikes on brake).
+            // Segment seams often produce one-frame grade spikes when probes
+            // jump between adjacent track meshes — clamp the jump then low-pass.
+            const int32_t jump = sampleDelta - filteredDeltaYRaw_;
+            if (jump > kMaxDeltaJumpRaw)
+            {
+                sampleDelta = filteredDeltaYRaw_ + kMaxDeltaJumpRaw;
+            }
+            else if (jump < -kMaxDeltaJumpRaw)
+            {
+                sampleDelta = filteredDeltaYRaw_ - kMaxDeltaJumpRaw;
+            }
             const int32_t d = sampleDelta - filteredDeltaYRaw_;
             filteredDeltaYRaw_ += (d >> kDeltaFilterShift);
         }
@@ -264,7 +274,20 @@ void CarWheelRig::Update(const Input& input)
 
     const int32_t pitchShift =
         flattenPitch ? kPitchFilterShiftBrake : kPitchFilterShift;
+    const int32_t previousPitch = bodyPitchDegX16_;
     bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, pitchShift);
+    // Rate-limit residual snaps that survive the grade filter (segment edges).
+    {
+        const int32_t pitchStep = bodyPitchDegX16_ - previousPitch;
+        if (pitchStep > kMaxPitchStepDegX16)
+        {
+            bodyPitchDegX16_ = previousPitch + kMaxPitchStepDegX16;
+        }
+        else if (pitchStep < -kMaxPitchStepDegX16)
+        {
+            bodyPitchDegX16_ = previousPitch - kMaxPitchStepDegX16;
+        }
+    }
 
     const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
     int32_t rollDriverX16 = steerDegX16_;

@@ -150,15 +150,15 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
 
 uint32_t MeshRenderer::DrawMesh(size_t meshId)
 {
-    // Robust draw path:
-    // Some assets/runtime states may report a mismatched mesh kind flag.
-    // Try preferred path first, then fallback to the opposite kind.
+    // Always draw flat (slPutPolygon). Smooth car assets used slPutPolygonX and
+    // re-shaded whenever the track gouraud/light pool occupancy changed (segments
+    // leaving the camera). DrawAsFlat keeps textures and ignores light vector.
     if (isSmooth_)
     {
         auto* mesh = model_.GetMesh<SRL::Types::SmoothMesh>(meshId);
         if (mesh && mesh->FaceCount > 0 && mesh->VertexCount > 0)
         {
-            model_.Draw(meshId, config_.lightDirection);
+            model_.DrawAsFlat(meshId);
             return static_cast<uint32_t>(mesh->FaceCount);
         }
 
@@ -181,7 +181,7 @@ uint32_t MeshRenderer::DrawMesh(size_t meshId)
         auto* smoothMesh = model_.GetMesh<SRL::Types::SmoothMesh>(meshId);
         if (smoothMesh && smoothMesh->FaceCount > 0 && smoothMesh->VertexCount > 0)
         {
-            model_.Draw(meshId, config_.lightDirection);
+            model_.DrawAsFlat(meshId);
             return static_cast<uint32_t>(smoothMesh->FaceCount);
         }
     }

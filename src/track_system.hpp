@@ -814,6 +814,9 @@ private:
     int16_t targetWindowStartId_ = 1;
     int16_t trackedCarSegmentId_ = 1;
     int16_t observedCarSegmentId_ = -1;
+    // Snapshot for seam two-pass near classification (set each RenderFrame).
+    SRL::Math::Types::Vector3D seamCarWorldPosition_{};
+    bool seamCarWorldValid_ = false;
     int32_t lastLapWrapProbeSegmentId_ = -1;
     uint8_t lapWrapScrubCooldown_ = 0;
     uint16_t slotFaceCapacityFloor_ = 0;

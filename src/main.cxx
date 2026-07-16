@@ -54,6 +54,8 @@ constexpr bool kEnableMinimalFpsOverlay = true;
 constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
+// Car smooth-face GRDA base in VDP1 gouraud VRAM (ATTR.Gouraud = 0xe000 + offset).
+// Must stay above any track dynamic-light face count written into the shared pool.
 static constexpr size_t kCarGouraudOffset = 4096;
 static constexpr int32_t kFixedSpawnX = 5177;
 static constexpr int32_t kFixedSpawnY = 208;
@@ -550,6 +552,15 @@ static void SyncLoadedCarState(ModelObject* carPtr,
         MLOG(0, 7, "Carro nao carregou (meshes/faces zero)");
     }
     ValidateCarTextureSlots(carPtr, outMeshCount, outIsSmoothMesh);
+    // SORT_MIN: sort by foremost vertex so car tends to win coplanar asphalt seams
+    // (VDP1 has no Z-buffer; Center sort was fighting road faces at segment joins).
+    // Unlit textured faces + DrawAsFlat (slPutPolygon) — no UseLight/UseGouraud and
+    // no slPutPolygonX, so shading cannot track track-segment visibility.
+    if (carPtr && carValid)
+    {
+        carPtr->ForceSortMode(SRL::Types::Attribute::SortMode::Minimum);
+        carPtr->ForceUnlitKeepTextures();
+    }
 }
 
 static Vector3D ComputeCarModelCenter(ModelObject* carPtr, uint32_t meshCount, bool isSmoothMesh)
@@ -866,6 +877,7 @@ static GameLoopSystem::Context BuildGameLoopContext(bool* cartOkFlag,
     loopContext.modelOffset = modelOffset;
     loopContext.carWorldPosition = carWorldPosition;
     loopContext.lightDirection = lightDirection;
+    loopContext.lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
     loopContext.bgManager = &bgManager;
     loopContext.cameraSystem = &cameraSystem;
     loopContext.trackSystem = &trackSystem;
@@ -1608,42 +1620,17 @@ int GameApp::Run()
     (void)trackSystemReady;
     AppState::PresentOverlay(2);
 
-    uint32_t gouraudFaceCapacity = 0;
-    uint32_t gouraudVertexCapacity = 0;
-    if (carPtr && carWasSmooth)
-    {
-        // Car uses a dedicated gouraud offset range to avoid lighting aliasing with track.
-        gouraudFaceCapacity = std::max(gouraudFaceCapacity, static_cast<uint32_t>(kCarGouraudOffset + faceCount + 64));
-        gouraudVertexCapacity = std::max(gouraudVertexCapacity, vertexCount);
-    }
-    if (renderTrack && trackSystemReady && trackSystem.HasSmoothSegments())
-    {
-        gouraudFaceCapacity = std::max(gouraudFaceCapacity, trackSystem.MaxSegmentFaceCount());
-        gouraudVertexCapacity = std::max(gouraudVertexCapacity, trackSystem.MaxSegmentVertexCount());
-    }
-    // Guard smooth lighting allocation when High Work RAM is tight.
-    const size_t hwrFreeBeforeLighting = SRL::Memory::HighWorkRam::GetFreeSpace();
-    const size_t lightingBytesEstimate =
-        (static_cast<size_t>(gouraudFaceCapacity) << 2) * sizeof(HighColor) +
-        static_cast<size_t>(gouraudVertexCapacity) * sizeof(uint8_t) +
-        (32u * 1024u);
-    const bool enableSmoothLighting =
-        (gouraudFaceCapacity > 0) &&
-        (gouraudVertexCapacity > 0) &&
-        (hwrFreeBeforeLighting > lightingBytesEstimate);
-    // Stability guard: disable VBlank gouraud callback until crash root-cause is fully isolated.
-    const bool enableVblankGouraudCopy = false;
-    if (enableSmoothLighting)
-    {
-        workTable.resize(static_cast<size_t>(gouraudFaceCapacity) << 2);
-        vertWork.resize(static_cast<size_t>(gouraudVertexCapacity));
-        SRL::Scene3D::LightInitGouraudTable(0, vertWork.data(), workTable.data(), gouraudFaceCapacity);
-        SRL::Scene3D::LightSetGouraudTable(shadingTable);
-        if (enableVblankGouraudCopy)
-        {
-            SRL::Core::OnVblank += SRL::Scene3D::LightCopyGouraudTable;
-        }
-    }
+    // Real-time gouraud/light pool DISABLED.
+    // Car and track are forced unlit + drawn with slPutPolygon (flat). Using
+    // LightInitGouraudTable + slPutPolygonX made car shading track how many
+    // track faces were submitted as segments left the camera.
+    const bool enableSmoothLighting = false;
+    (void)workTable;
+    (void)vertWork;
+    (void)shadingTable;
+    (void)carWasSmooth;
+    SRL::Scene3D::SetDirectionalLight(lightDirection);
+    SRL::Scene3D::LightSetColor(lightColor);
 
     auto bootstrapCar = BuildBootstrapCarRuntimeState(carPtr,
                                                       carValid,
