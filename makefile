@@ -16,8 +16,8 @@ SRL_ENABLE_FREQ_ANALYSIS = 1    # Set to 1 if you want to enable frequency analy
 # WorkArea is fixed at 0x060C0000; TransList at 0x060FB800 (~238 KB max).
 # 2500/1700 overflowed into TransList and caused Master invalid opcode at boot
 # (PC in Core::Initialize / sound path). Keep total WorkArea under ~230 KB.
-SGL_MAX_VERTICES = 2200
-SGL_MAX_POLYGONS = 1500
+SGL_MAX_VERTICES = 2400
+SGL_MAX_POLYGONS = 2000
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 

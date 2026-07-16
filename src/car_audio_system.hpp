@@ -5,6 +5,7 @@
 #include "car_audio_profile.hpp"
 #include "interfaces.hpp"
 #include "memory_budget_runtime_bridge.hpp"
+#include "scsp_engine_loop.hpp"
 
 namespace Game
 {
@@ -85,7 +86,8 @@ private:
         TireSkid
     };
 
-    SRL::Sound::Pcm::WaveSound* engineSample_ = nullptr;
+    ScspEngineLoop engineLoop_{};
+    SRL::Sound::Pcm::WaveSound* engineSample_ = nullptr; // SGL fallback only
     SRL::Sound::Pcm::WaveSound* shiftUpSample_ = nullptr;
     SRL::Sound::Pcm::WaveSound* shiftDownSample_ = nullptr;
     SRL::Sound::Pcm::WaveSound* tireSample_ = nullptr;
@@ -96,6 +98,7 @@ private:
         uint16_t audioRpmTarget = kEngineIdleRpm;
         int16_t lastGear = 0;
         bool engineActive = false;
+        bool useScspLoop = false;
         bool skidActive = false;
         bool gearInitialized = false;
         uint32_t lastShiftSoundFrameId = 0u;
@@ -147,7 +150,6 @@ inline void CarAudioSystem::Initialize()
 
     MemoryBudgetRuntimeBridge::ConfigurePcmStreamingBudgetFromPolicy();
 
-    engineSample_ = TryLoadWaveCue(AudioCue::Engine);
     shiftUpSample_ = TryLoadWaveCue(AudioCue::ShiftUp);
     shiftDownSample_ = TryLoadWaveCue(AudioCue::ShiftDown);
     tireSample_ = TryLoadWaveCue(AudioCue::TireSkid);
@@ -158,15 +160,30 @@ inline void CarAudioSystem::Initialize()
     state_.lastGear = 0;
     snapshot_ = {};
 
-    if (engineSample_)
+    // Single SCSP hardware loop (known-good). Fallback to SGL one-shot.
+    const char* engineName = ResolveAssetName(AudioCue::Engine, GetActiveCarAudioProfile());
+    if (engineName != nullptr && engineLoop_.LoadWave(engineName))
     {
-        state_.engineActive = engineSample_->PlayOnVoice(ResolveVoice(AudioVoiceGroup::CarEngine),
-                                                         kEngineVolume,
-                                                         0);
-        if (state_.engineActive)
+        const uint16_t pitchWord = ComputeEnginePitchWord(kEngineIdleRpm);
+        state_.useScspLoop = engineLoop_.Start(pitchWord, kEngineVolume);
+        state_.engineActive = state_.useScspLoop;
+        engineSample_ = nullptr;
+    }
+    else
+    {
+        state_.useScspLoop = false;
+        engineSample_ = TryLoadWaveCue(AudioCue::Engine);
+        if (engineSample_)
         {
-            SetVoicePitch(ResolveVoice(AudioVoiceGroup::CarEngine),
-                          ComputeEnginePitchWord(kEngineIdleRpm));
+            state_.engineActive =
+                engineSample_->PlayOnVoice(ResolveVoice(AudioVoiceGroup::CarEngine),
+                                           kEngineVolume,
+                                           0);
+            if (state_.engineActive)
+            {
+                SetVoicePitch(ResolveVoice(AudioVoiceGroup::CarEngine),
+                              ComputeEnginePitchWord(kEngineIdleRpm));
+            }
         }
     }
 }
@@ -175,8 +192,6 @@ inline void CarAudioSystem::OnFrame(const GameplayFrameState& frameState)
 {
     TickVoiceLifetime();
 
-    // Order matters: shift state may momentarily override engine RPM,
-    // then tire skid is evaluated from the final frame snapshot.
     TickGearShift(frameState);
     TickEngine(frameState);
     TickTire(frameState);
@@ -184,7 +199,6 @@ inline void CarAudioSystem::OnFrame(const GameplayFrameState& frameState)
 
 inline void CarAudioSystem::TickEngine(const GameplayFrameState& fs)
 {
-    // Engine loop synthesis from authoritative drivetrain RPM.
     state_.audioRpmTarget = GetPhysicsRpm(fs);
     if ((state_.forcedShiftFrames > 0u) &&
         (state_.forcedShiftRpm >= kEngineIdleRpm))
@@ -198,26 +212,45 @@ inline void CarAudioSystem::TickEngine(const GameplayFrameState& fs)
         state_.audioRpmCurrent = SmoothRpm(state_.audioRpmCurrent, state_.audioRpmTarget);
     }
 
-    if (IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarEngine)))
-    {
-        state_.engineActive = false;
-    }
+    const uint8_t engineVolume =
+        (state_.engineShiftDuckFrames > 0u) ? kEngineShiftDuckVolume : kEngineVolume;
+    const uint16_t pitchWord = ComputeEnginePitchWord(state_.audioRpmCurrent);
 
-    EnsureEngineVoiceStarted();
-
-    if (state_.engineActive)
+    if (state_.useScspLoop)
     {
-        const uint8_t engineVolume =
-            (state_.engineShiftDuckFrames > 0u) ? kEngineShiftDuckVolume : kEngineVolume;
-        const uint16_t pitchWord = ComputeEnginePitchWord(state_.audioRpmCurrent);
-        SetVoiceVolumePan(ResolveVoice(AudioVoiceGroup::CarEngine), engineVolume, 0);
-        SetVoicePitch(ResolveVoice(AudioVoiceGroup::CarEngine), pitchWord);
+        // Hardware loop: never re-key. Only pitch + volume registers.
+        if (!engineLoop_.IsPlaying())
+        {
+            state_.engineActive = engineLoop_.Start(pitchWord, engineVolume);
+        }
+        else
+        {
+            engineLoop_.Update(pitchWord, engineVolume);
+            state_.engineActive = true;
+        }
         UpdateEngineSnapshot(pitchWord);
     }
     else
     {
-        UpdateEngineSnapshot(ComputeEnginePitchWord(state_.audioRpmCurrent));
+        if (IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarEngine)))
+        {
+            state_.engineActive = false;
+        }
+
+        EnsureEngineVoiceStarted();
+
+        if (state_.engineActive)
+        {
+            SetVoiceVolumePan(ResolveVoice(AudioVoiceGroup::CarEngine), engineVolume, 0);
+            SetVoicePitch(ResolveVoice(AudioVoiceGroup::CarEngine), pitchWord);
+            UpdateEngineSnapshot(pitchWord);
+        }
+        else
+        {
+            UpdateEngineSnapshot(pitchWord);
+        }
     }
+
     if (state_.engineShiftDuckFrames > 0u)
     {
         --state_.engineShiftDuckFrames;
@@ -226,7 +259,6 @@ inline void CarAudioSystem::TickEngine(const GameplayFrameState& fs)
 
 inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 {
-    // Shift SFX are edge-triggered from drivetrain telemetry.
     const int16_t gear = fs.carGear;
     const bool shiftStartedThisFrame =
         (fs.carShiftFrames > 0u) &&
@@ -300,7 +332,6 @@ inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 
 inline void CarAudioSystem::TickTire(const GameplayFrameState& fs)
 {
-    // Tire skid runs as an independent one-voice layer.
     const bool shouldSkid =
         (fs.carSpeedKmh > kSkidSpeedThreshold) &&
         (fs.wheelsSpinning || fs.braking);
@@ -365,16 +396,16 @@ inline uint16_t CarAudioSystem::ComputeEnginePitchWord(const uint16_t rpm)
         uint32_t hz;
     };
 
+    // Keep target Hz within ComputePitchWord clamp (≤ 44100) for stable SCSP.
     static constexpr AcousticPoint kAcousticCurve[] = {
         { 4200u, 22050u },
         { 7000u, 27563u },
         { 8500u, 31973u },
         { 9200u, 35280u },
         { 10000u, 38588u },
-        { 11000u, 42998u },
-        { 12000u, 47408u },
-        { 12500u, 49613u },
-        { 15000u, 54023u }
+        { 11000u, 41895u },
+        { 12500u, 44100u },
+        { 15000u, 44100u }
     };
 
     if (rpm <= kAcousticCurve[0].rpm)
