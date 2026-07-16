@@ -22,6 +22,7 @@ public:
         int32_t groundRearYRaw = 0;
         int32_t groundFrontYRaw = 0;
         uint8_t groundMask = 0;
+        uint8_t braking = 0;
     };
 
     bool Initialize(ModelObject& model,
@@ -34,6 +35,9 @@ public:
     bool Ready() const { return wheelCount_ == 4u; }
 
     const std::array<size_t, 4>& WheelMeshIds() const { return wheelMeshIds_; }
+    // Visual chassis attitude (16.16 degrees) for camera terrain follow.
+    int32_t BodyPitchDegX16() const { return bodyPitchDegX16_; }
+    int32_t BodyRollDegX16() const { return bodyRollDegX16_; }
 
 private:
     struct WheelSlot
@@ -44,15 +48,27 @@ private:
     };
 
     static constexpr int32_t kMaxSteerDegX16 = 12 << 16;
-    static constexpr int32_t kMaxPitchDegX16 = 18 << 16;
+    // Keep visual pitch modest; probe noise easily invents "hills".
+    static constexpr int32_t kMaxPitchDegX16 = 14 << 16;
     static constexpr int32_t kMaxRollDegX16 = 8 << 16;
     static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00002000); // ~0.125 short travel
     static constexpr int32_t kSteerFilterShift = 2;  // 1/4
-    static constexpr int32_t kPitchFilterShift = 1;  // 1/2 (faster body pitch response)
+    // Heavier pitch filter: 1/8 per frame (was 1/2 — bobbed on probe noise).
+    static constexpr int32_t kPitchFilterShift = 3;
+    static constexpr int32_t kPitchFilterShiftBrake = 4; // 1/16 while braking / stopped
     static constexpr int32_t kRollFilterShift = 3;   // 1/8
     static constexpr int32_t kSuspFilterShift = 4;   // 1/16 smoother wheel travel
     static constexpr int32_t kSpinDegPerKmhX16 = 2200; // tune visual spin
-    static constexpr int32_t kPitchDegPerUnitX16 = 1 << 16; // 50 percent lower pitch gain
+    // Full wheelbase ≈ 1.70 (2 * kProbeHalfWheelBase) in 16.16.
+    static constexpr int32_t kWheelbaseRaw = 0x0001B332;
+    // Softer than true atan*57 so small ΔY does not nose-dive the mesh.
+    static constexpr int32_t kRadToDegApprox = 28;
+    // Ignore front/rear grade below this (probe triangulation noise on flat).
+    static constexpr int32_t kPitchDeadzoneRaw = 6 << 16;
+    // Below this speed, flatten pitch (stops front bob when parked).
+    static constexpr int32_t kPitchHoldSpeedKmh = 12;
+    // Low-pass on ΔY before converting to degrees.
+    static constexpr int32_t kDeltaFilterShift = 2; // 1/4 toward sample
 
     bool DetectWheelIdsFromMeshtex(size_t meshCount, std::array<size_t, 4>& outIds, size_t& outCount) const;
     bool DetectWheelIdsFromMeshStats(ModelObject& model,
@@ -77,6 +93,8 @@ private:
     int32_t steerDegX16_ = 0;
     int32_t bodyPitchDegX16_ = 0;
     int32_t bodyRollDegX16_ = 0;
+    int32_t filteredDeltaYRaw_ = 0;
+    bool deltaFilterInit_ = false;
     std::array<int32_t, 4> wheelSpinDegX16_{0, 0, 0, 0};
     std::array<int32_t, 4> wheelSuspensionOffsetX16_{0, 0, 0, 0};
 };

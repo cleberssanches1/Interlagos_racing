@@ -1031,69 +1031,10 @@ private:
         SRL::Math::Types::Vector3D rawLookTarget =
             context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
 
-        // Follow track slope by lifting camera on uphill and relaxing on level ground.
-        // Ground probes are already in world Y units used by telemetry.
-        {
-            const Game::CarSystem::RuntimeDebugSnapshot carDebug = CarRuntimeDebugSnapshot();
-            const int32_t slopeDelta = static_cast<int32_t>(carDebug.groundFrontY) -
-                                       static_cast<int32_t>(carDebug.groundRearY);
-            const int32_t uphillDelta = std::max<int32_t>(0, slopeDelta);
-            enum class SlopeCamProfile : int32_t { Suave = 0, Medio = 1, Forte = 2 };
-            constexpr SlopeCamProfile kSlopeCamProfile = SlopeCamProfile::Medio;
-            int32_t kSlopeDeadZone = 4;
-            int32_t kSlopeGainNum = 1;
-            int32_t kSlopeGainDen = 2;
-            int32_t kSlopeLiftMax = 36;
-            int32_t kSlopeBlendRaw = (1 << 15); // 0.5
-
-            switch (kSlopeCamProfile)
-            {
-            case SlopeCamProfile::Suave:
-                kSlopeDeadZone = 6;
-                kSlopeGainNum = 1;
-                kSlopeGainDen = 3;
-                kSlopeLiftMax = 24;
-                kSlopeBlendRaw = (1 << 14); // 0.25
-                break;
-            case SlopeCamProfile::Forte:
-                kSlopeDeadZone = 2;
-                kSlopeGainNum = 1;
-                kSlopeGainDen = 1;
-                kSlopeLiftMax = 52;
-                kSlopeBlendRaw = (3 << 14); // 0.75
-                break;
-            case SlopeCamProfile::Medio:
-            default:
-                break;
-            }
-
-            int32_t targetLiftUnits = 0;
-            if (uphillDelta > kSlopeDeadZone)
-            {
-                const int32_t effective = uphillDelta - kSlopeDeadZone;
-                targetLiftUnits = (effective * kSlopeGainNum) / kSlopeGainDen;
-                targetLiftUnits = std::clamp<int32_t>(targetLiftUnits, 0, kSlopeLiftMax);
-            }
-
-            // Smooth response so camera does not jitter on uneven faces.
-            cameraSlopeLiftRaw_ = cameraSlopeLiftRaw_ +
-                                  static_cast<int32_t>(
-                                      (static_cast<int64_t>(targetLiftUnits - cameraSlopeLiftRaw_) * kSlopeBlendRaw) >> 16);
-
-            const SRL::Math::Types::Fxp lift =
-                SRL::Math::Types::Fxp::BuildRaw(cameraSlopeLiftRaw_ << 16);
-            // In this project, negative Y is up.
-            rawCameraLocation.Y -= lift;
-            rawLookTarget.Y -= lift;
-
-            if (context_.VerboseFrameLogs())
-            {
-                SRL::Debug::Print(1, 31, "CAM slp p:%d dy:%d lf:%d",
-                                  static_cast<int>(kSlopeCamProfile),
-                                  static_cast<int>(uphillDelta),
-                                  static_cast<int>(cameraSlopeLiftRaw_));
-            }
-        }
+        // Camera terrain pitch intentionally off (boot stability).
+        // Probe-based look.Y hacks (and brake filters on top) closed the emulator.
+        // Car mesh still pitches via CarWheelRig; reintroduce camera grade later
+        // via PATH/bodyPitch with a single small, tested path — not here inline.
 
         const SRL::Math::Types::Vector3D resolvedCameraLocation = rawCameraLocation;
         const bool cameraReady =
@@ -1304,9 +1245,10 @@ private:
 
         const auto renderInputs = ResolveCarRenderRuntimeInputs(*car);
         // Break coplanar sort fights with asphalt at segment seams (VDP1 has no
-        // Z-buffer). Small lift only for render; physics/collision stay on ground.
-        // Rollback: 0 if car looks to float. Raise to 3-4 only if seams still win.
-        constexpr int32_t kCarVisualLiftUnits = 2;
+        // Z-buffer). Lift only for render; physics/collision stay on ground.
+        // Pairs with near-segment Y-sink in track two-pass draw.
+        // Rollback: 4 if car floats too much.
+        constexpr int32_t kCarVisualLiftUnits = 6;
         const auto renderPacket = GameLoopRuntime::BuildCarRenderRuntimePacket(
             renderInputs.renderPosition,
             camera.location,
@@ -2550,7 +2492,7 @@ private:
     GameLoopRuntime::TrackReuseRuntimeState trackReuseState_{};
     int16_t latestActiveSegmentId_ = -1;
     ShadowDebugState shadowDebug_{};
-    int32_t cameraSlopeLiftRaw_ = 0;
+
     OverlayEventState overlayEventState_{};
     bool trackProducerHintCached_ = false;
     bool trackProducerJobInFlightHint_ = false;

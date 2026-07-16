@@ -245,6 +245,9 @@ public:
     void SetVisualYawOffsetDegrees(int32_t offsetDeg) { visualYawOffsetDeg_ = NormalizeSignedYawDeg(offsetDeg); }
     int32_t VisualYawOffsetDegrees() const { return visualYawOffsetDeg_; }
     int32_t RenderYawDegrees() const { return CurrentRenderYawDeg(); }
+    // Visual chassis attitude (16.16 degrees) for camera/debug terrain follow.
+    int32_t BodyPitchDegX16() const { return wheelRig_.BodyPitchDegX16(); }
+    int32_t BodyRollDegX16() const { return wheelRig_.BodyRollDegX16(); }
 
 private:
     static int32_t NormalizeYawDeg(int32_t yawDeg)

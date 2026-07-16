@@ -15452,7 +15452,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
 {
     // Two pass stabilized draw:
     // pass 1 draws segments outside the local car neighborhood,
-    // pass 2 draws segments near the car segment window rank.
+    // pass 2 draws segments near the car segment window rank (±2 ranks).
     // This reduces seam overdraw flicker near the car during segment transitions.
     std::array<SegmentRenderEntry*, kTrackSegmentLimit> preparedEntries{};
     size_t preparedCount = 0;
@@ -15739,7 +15739,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
     }
 
-    auto renderPreparedEntry = [&](SegmentRenderEntry* entry)
+    auto renderPreparedEntry = [&](SegmentRenderEntry* entry, const Vector3D& drawOffset)
     {
         if (!entry || !entry->renderer) return;
         if (kEnableLeakABSkipTrackRenderSubmit)
@@ -15747,7 +15747,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             ++runtimeSafeNoDrawThisFrame_;
             return;
         }
-        entry->renderer->SetOffset(trackOffset);
+        entry->renderer->SetOffset(drawOffset);
         SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackBackend);
         entry->renderer->Render(lightDirection, cameraLocation);
         SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
@@ -15779,6 +15779,12 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
             }
         }
     };
+
+    // Near-car seam sink: keep modest (Y+ = down). Large sinks + WorkArea
+    // overflow were linked to boot instability; lift on car does most of the work.
+    constexpr int32_t kNearSegmentSeamSinkUnits = 2;
+    Vector3D nearTrackOffset = trackOffset;
+    nearTrackOffset.Y += Fxp::BuildRaw(kNearSegmentSeamSinkUnits << 16);
 
     std::array<uint8_t, kTrackSegmentLimit> farOrder{};
     std::array<uint8_t, kTrackSegmentLimit> nearOrder{};
@@ -15817,7 +15823,9 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
                 const size_t wrapDist = (linearDist <= windowCount)
                     ? std::min(linearDist, windowCount - std::min(linearDist, windowCount))
                     : linearDist;
-                isNearCar = (wrapDist <= 1u);
+                // Wider neighborhood (±2): more seam faces draw after far segs,
+                // then car (reduces asphalt-over-car at segment junctions).
+                isNearCar = (wrapDist <= 2u);
             }
         }
 
@@ -15831,19 +15839,19 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
     }
 
-    // Pass 1: draw far from car.
+    // Pass 1: draw far from car (normal track offset).
     for (size_t i = 0; i < farCount; ++i)
     {
         const size_t idx = static_cast<size_t>(farOrder[i]);
         if (idx >= preparedCount) continue;
-        renderPreparedEntry(preparedEntries[idx]);
+        renderPreparedEntry(preparedEntries[idx], trackOffset);
     }
-    // Pass 2: draw local seam neighborhood around car.
+    // Pass 2: local seam neighborhood — sunk Y so coplanar asphalt loses to car.
     for (size_t i = 0; i < nearCount; ++i)
     {
         const size_t idx = static_cast<size_t>(nearOrder[i]);
         if (idx >= preparedCount) continue;
-        renderPreparedEntry(preparedEntries[idx]);
+        renderPreparedEntry(preparedEntries[idx], nearTrackOffset);
     }
 }
 

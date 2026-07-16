@@ -182,16 +182,25 @@ public:
             (steeringAbs <= Tunables::kMediumDynamicsSteeringThreshold) &&
             (ioFrameState.speedProxy >= Tunables::kMediumDynamicsSpeedProxyMin) &&
             (ioFrameState.speedProxy <= Tunables::kMediumDynamicsSpeedProxyMax);
-        // Cost cut 1b: use centerline 2-probe more often. Rollback: 42 -> 35.
+        // Cost cut 1b: centerline 2-probe more often. Only force full probes on
+        // real grades (threshold above typical flat-asphalt probe noise of ±2–4).
+        constexpr int16_t kSteepSlopeAbsY = 8;
+        const bool steepTerrain = (ioState.lastSlopeAbsY >= kSteepSlopeAbsY);
         const bool reducedProbeByCostProfile =
             Tunables::kPreferReducedGroundProbe &&
             (!ioFrameState.braking) &&
-            (steeringAbs <= 42);
+            (steeringAbs <= 42) &&
+            (!steepTerrain);
         const bool useReducedProbe =
-            reducedProbeByCostProfile || mediumDynamicsInputs;
-        const uint8_t probeReuseInterval = lowDynamicsInputs
-            ? Tunables::kLowDynamicsProbeIntervalFrames
-            : (mediumDynamicsInputs ? Tunables::kMediumDynamicsProbeIntervalFrames : 0u);
+            (!steepTerrain) && (reducedProbeByCostProfile || mediumDynamicsInputs);
+        uint8_t probeReuseInterval = 0u;
+        if (!steepTerrain)
+        {
+            probeReuseInterval = lowDynamicsInputs
+                ? Tunables::kLowDynamicsProbeIntervalFrames
+                : (mediumDynamicsInputs ? Tunables::kMediumDynamicsProbeIntervalFrames
+                                        : 0u);
+        }
         const bool canReuseLastSurface =
             (probeReuseInterval > 0u) &&
             ioState.surfaceYInitialized &&
@@ -753,6 +762,16 @@ private:
         ioFrameState.debugGroundYFront = frontValid ? FxpToDebugInt(frontY) : 0;
         ioFrameState.debugGroundYRearRaw = rearValid ? rearY.RawValue() : 0;
         ioFrameState.debugGroundYFrontRaw = frontValid ? frontY.RawValue() : 0;
+
+        ioState.lastSlopeAbsY = 0;
+        if (frontValid && rearValid)
+        {
+            int32_t d = static_cast<int32_t>(ioFrameState.debugGroundYFront) -
+                        static_cast<int32_t>(ioFrameState.debugGroundYRear);
+            if (d < 0) d = -d;
+            if (d > 32767) d = 32767;
+            ioState.lastSlopeAbsY = static_cast<int16_t>(d);
+        }
 
         if (!ioState.hasGroundSupport)
         {

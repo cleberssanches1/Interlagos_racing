@@ -277,6 +277,7 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     wheelInput_.groundRearYRaw = frameState.debugGroundYRearRaw;
     wheelInput_.groundFrontYRaw = frameState.debugGroundYFrontRaw;
     wheelInput_.groundMask = frameState.debugGroundMask;
+    wheelInput_.braking = frameState.braking ? 1u : 0u;
 }
 
 void CarSystem::ApplyGameplayInput(const GameplayInputSnapshot& input,

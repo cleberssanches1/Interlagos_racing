@@ -202,7 +202,11 @@ void CarWheelRig::Update(const Input& input)
     int32_t targetRearSusp = 0;
     const bool rearValid = (input.groundMask & 0x1u) != 0u;
     const bool frontValid = (input.groundMask & 0x4u) != 0u;
-    if (rearValid && frontValid)
+    // Parked / crawl: do not chase probe noise (front bob when stopped).
+    const bool flattenPitch =
+        (clampedSpeed < kPitchHoldSpeedKmh) || (input.braking != 0);
+
+    if (rearValid && frontValid && !flattenPitch)
     {
         const int32_t rearYRaw =
             (input.groundRearYRaw != 0)
@@ -212,31 +216,63 @@ void CarWheelRig::Update(const Input& input)
             (input.groundFrontYRaw != 0)
                 ? input.groundFrontYRaw
                 : (static_cast<int32_t>(input.groundFrontY) << 16);
-        const int32_t deltaYRaw = frontYRaw - rearYRaw;
+        // More negative Y = higher. Pitch from filtered front−rear grade.
+        const int32_t sampleDelta = frontYRaw - rearYRaw;
+        if (!deltaFilterInit_)
+        {
+            filteredDeltaYRaw_ = sampleDelta;
+            deltaFilterInit_ = true;
+        }
+        else
+        {
+            // Low-pass ΔY (rejects one-frame probe spikes on brake).
+            const int32_t d = sampleDelta - filteredDeltaYRaw_;
+            filteredDeltaYRaw_ += (d >> kDeltaFilterShift);
+        }
+
+        int32_t deltaYRaw = filteredDeltaYRaw_;
         const int32_t absDeltaYRaw = std::abs(deltaYRaw);
-        const bool smallSlope = absDeltaYRaw < (4 << 16);
-        targetPitch =
-            ClampInt(-static_cast<int32_t>((static_cast<int64_t>(deltaYRaw) * kPitchDegPerUnitX16) >> 16),
-                     -kMaxPitchDegX16,
-                     kMaxPitchDegX16);
-        // Keep suspension effect short and smooth to mimic a stiff race damper.
+        // Deadzone: flat asphalt still has ±few units of triangulation noise.
+        if (absDeltaYRaw < kPitchDeadzoneRaw)
+        {
+            deltaYRaw = 0;
+            filteredDeltaYRaw_ = (filteredDeltaYRaw_ >> 1); // bleed residual
+        }
+
+        const bool smallSlope = absDeltaYRaw < kPitchDeadzoneRaw;
+        int64_t pitchDegX16 = 0;
+        if (deltaYRaw != 0 && kWheelbaseRaw != 0)
+        {
+            pitchDegX16 = -(static_cast<int64_t>(deltaYRaw) * 65536 / kWheelbaseRaw);
+            pitchDegX16 *= kRadToDegApprox;
+        }
+        if (pitchDegX16 > kMaxPitchDegX16) pitchDegX16 = kMaxPitchDegX16;
+        if (pitchDegX16 < -kMaxPitchDegX16) pitchDegX16 = -kMaxPitchDegX16;
+        targetPitch = static_cast<int32_t>(pitchDegX16);
         targetFrontSusp = smallSlope ? 0 : ClampInt((deltaYRaw >> 8),
                                    -kMaxSuspensionOffsetX16,
                                    kMaxSuspensionOffsetX16);
         targetRearSusp = -targetFrontSusp;
     }
+    else
+    {
+        // Stopped or braking: flatten chassis; reset grade filter.
+        targetPitch = 0;
+        filteredDeltaYRaw_ = 0;
+        deltaFilterInit_ = false;
+    }
 
-    bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, kPitchFilterShift);
+    const int32_t pitchShift =
+        flattenPitch ? kPitchFilterShiftBrake : kPitchFilterShift;
+    bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, pitchShift);
 
     const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
     int32_t rollDriverX16 = steerDegX16_;
     if (input.yawStepDeg != 0)
     {
         constexpr int32_t kRollYawStepGain = 6;
-        // Follow actual turn direction first to avoid visual lean inversion.
         rollDriverX16 = (static_cast<int32_t>(input.yawStepDeg) << 16) * kRollYawStepGain;
     }
-    // Keep chassis roll aligned with steering/yaw direction from gameplay.
     constexpr int32_t kVisualRollSign = 1;
     const int32_t targetRoll =
         ClampInt(((rollDriverX16 * kVisualRollSign) * speedNorm256) / 1536,
@@ -671,6 +707,8 @@ void CarWheelRig::ResetState()
     steerDegX16_ = 0;
     bodyPitchDegX16_ = 0;
     bodyRollDegX16_ = 0;
+    filteredDeltaYRaw_ = 0;
+    deltaFilterInit_ = false;
     wheelSpinDegX16_ = {0, 0, 0, 0};
     wheelSuspensionOffsetX16_ = {0, 0, 0, 0};
 }

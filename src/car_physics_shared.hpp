@@ -62,6 +62,8 @@ struct GroundState
     bool lastWallQueryHit = false;
     Fxp lastWallPushX = Fxp::BuildRaw(0);
     Fxp lastWallPushZ = Fxp::BuildRaw(0);
+    // Previous-frame |front-rear| grade (world Y). Forces full probes on ramps.
+    int16_t lastSlopeAbsY = 0;
 };
 
 struct SurfaceQueryResult
