@@ -1,6 +1,7 @@
 #include "track_system.hpp"
 #include "physics_feature_flags.hpp"
 #include "interfaces.hpp"
+#include "surface_classify.hpp"
 
 #include <algorithm>
 #include <array>
@@ -7844,9 +7845,8 @@ bool TrackSystem::EnsureWallSegmentCache(SegmentRenderEntry& entry) const
             nyRaw = ((abz * acx) - (abx * acz)) >> 16;
             nzRaw = ((abx * acy) - (aby * acx)) >> 16;
         }
-        const int64_t planarNormalAbs = std::max(abs64(nxRaw), abs64(nzRaw));
-        if (planarNormalAbs <= 0) continue;
-        if ((planarNormalAbs * 2) < abs64(nyRaw)) continue;
+        // Walls only: slope >= ~70° from horizontal. Driveable ramps stay out.
+        if (!Game::SurfaceClassify::IsWallFaceNormalRaw(nxRaw, nyRaw, nzRaw)) continue;
 
         int32_t minXRaw = px[0];
         int32_t maxXRaw = px[0];
@@ -8559,6 +8559,22 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
 
     const int32_t wrappedStartId = WrapSegmentIdToRange(startSegmentId, totalSegmentCount_);
     if (wrappedStartId <= 0) return false;
+
+    // Preserve previous window identity so a failed rebuild never blanks the track.
+    const int32_t previousStartId = activeWindowStartId_;
+    const int8_t previousDirection = windowDirection_;
+    const bool hadReadyWindow =
+        SegmentsReady() &&
+        !segmentRenderers_.empty();
+
+    // Free retired VDP1 slots before a full rebuild — low free HWR after a
+    // cleanup pass is the usual cause of mid-track window collapse (~seg 98).
+    workRamMaintenance_.releasedEndFrameSlotsThisFrame = static_cast<uint16_t>(
+        std::min<uint32_t>(
+            static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
+            static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
+                static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
+
     activeWindowStartId_ = wrappedStartId;
     windowDirection_ = direction;
 
@@ -8744,23 +8760,58 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
     }
 
     const bool fullWindowBuilt = (builtCount == windowCount);
-    SetSegmentsReady(fullWindowBuilt);
-    if (!SegmentsReady())
+    if (!fullWindowBuilt)
     {
-        segmentEntries_.clear();
-        segmentRenderers_.clear();
-        segmentHandles_.clear();
-        segmentPool_.Reset();
-        activeWindowHead_ = 0;
-        slideScratchRenderer_.reset();
-        ResetSlidePrefetchState();
-        if (runtimeDiagnostics_.RuntimeStatsLogsEnabled())
+        // NEVER wipe the live window on partial/failed rebuild.
+        // Clearing segmentRenderers_ made the entire track disappear until the
+        // next successful rebuild (user report: segments vanish near id ~98).
+        if (builtCount > 0)
         {
+            // Partial success: keep what was built; disable unfilled tail slots
+            // so stale geometry from a previous window does not render.
+            for (size_t i = builtCount; i < segmentRenderers_.size(); ++i)
+            {
+                segmentRenderers_[i].lodState.SetReady(false);
+            }
+            SetSegmentsReady(true);
+            SRL::Debug::Print(1, 11, "PKG window partial built:%u need:%u",
+                              static_cast<unsigned>(builtCount),
+                              static_cast<unsigned>(windowCount));
+            // Continue finalize path with partial window (still better than blank).
+        }
+        else if (hadReadyWindow && useFixedWindowStorage && !segmentRenderers_.empty())
+        {
+            // Zero slots rebuilt — restore previous window identity and keep
+            // whatever geometry is still in the fixed slots.
+            activeWindowStartId_ = previousStartId;
+            windowDirection_ = previousDirection;
+            SetSegmentsReady(true);
+            SRL::Debug::Print(1, 11, "PKG window rebuild abort keep start:%d",
+                              previousStartId);
+            return false;
+        }
+        else
+        {
+            segmentEntries_.clear();
+            if (!useFixedWindowStorage)
+            {
+                segmentRenderers_.clear();
+            }
+            segmentHandles_.clear();
+            segmentPool_.Reset();
+            activeWindowHead_ = 0;
+            slideScratchRenderer_.reset();
+            ResetSlidePrefetchState();
+            SetSegmentsReady(false);
             SRL::Debug::Print(1, 11, "PKG window incomplete built:%u need:%u",
                               static_cast<unsigned>(builtCount),
                               static_cast<unsigned>(windowCount));
+            return false;
         }
-        return false;
+    }
+    else
+    {
+        SetSegmentsReady(true);
     }
     activeWindowHead_ = 0;
 
@@ -12981,9 +13032,11 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
     const int32_t half = static_cast<int32_t>(totalSegmentCount_) / 2;
     const int32_t alongDistance = (desiredDirection > 0) ? forwardDistance : backwardDistance;
 
-    // If the new direction target is still close, avoid hard rebuild.
-    // Let sliding converge to prevent transient full-window holes.
-    if (alongDistance > 0 && alongDistance <= static_cast<int32_t>(windowCount))
+    // Prefer incremental catch-up slides over full rebuild. A failed rebuild
+    // under memory pressure used to wipe the live window (blank track near
+    // mid-lap segments). Stabilized runtime always defers to target+slide.
+    if (kEnableTrackRuntimeStabilization ||
+        (alongDistance > 0 && alongDistance <= static_cast<int32_t>(windowCount)))
     {
         targetWindowStartId_ = desiredStartId;
         trackedCarSegmentId_ = anchorId;
@@ -18011,7 +18064,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     int32_t bestInsideSeedDistance = std::numeric_limits<int32_t>::max();
     uint16_t bestInsideFamilyId = 0u;
     int16_t bestInsideFaceIndex = -1;
-    
+
     bool foundFallback = false;
     uint8_t bestFallbackClass = 0xFFu;
     int64_t bestFallbackPlanar = std::numeric_limits<int64_t>::max();
@@ -18033,13 +18086,12 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         return std::min(delta, wrapped);
     };
 
+    // Cheap ranking (original): support class + gap to probe Y + seed distance.
+    // Continuity multi-key ranking + non-returning cache were too expensive on SH2.
     auto updateInsideCandidate = [&](int64_t yRaw, int32_t segmentId, uint16_t familyId, int16_t faceIndex)
     {
         static constexpr int64_t kSupportToleranceRaw = (1 << 14); // ~0.25 in 16.16
         static constexpr int64_t kEarlyAcceptGapRaw = (1 << 13);   // ~0.125 in 16.16
-        // Current world convention uses negative Y as up, therefore larger Y
-        // means lower altitude. A supporting road candidate should be at or
-        // below the probe height (>= py - tolerance).
         const bool preferAsSupport = (yRaw >= pyRaw - kSupportToleranceRaw);
         const uint8_t candidateClass = preferAsSupport ? 0u : 1u;
         const int64_t candidateGapY = preferAsSupport
@@ -18167,6 +18219,8 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
 
         // Keep only floor-like polygons for road-height sampling.
         // 0.50 (32768 in 16.16) matches the pipeline ground classification.
+        // Cheap |ny| test — full SurfaceClassify + cross-product is too heavy
+        // when run per face per probe on SH2.
         if (abs64(static_cast<int64_t>(face.Normal.Y.RawValue())) < (1 << 15)) return false;
 
         const bool inTri0 = isPointInTriangleXZ(a, b, c);
@@ -18315,6 +18369,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                           inside) &&
                     inside)
                 {
+                    // Fast path: reuse last face (critical for FPS on SH2).
                     SaturatingIncrementU16(surfaceQueryCacheHitsThisFrame_);
                     outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(yRaw));
                     if (outSegmentId) *outSegmentId = cacheEntry->id;

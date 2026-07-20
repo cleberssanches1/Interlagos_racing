@@ -487,6 +487,12 @@ private:
         }
         CarPhysics::GroundFollower::ApplyVerticalAdhesion(groundState_, ioCarWorldPosition);
 
+        // NOTE: do NOT project planar speed onto an approximate ground normal.
+        // Probe front/rear deltas are noisy on segment seams; projecting with a
+        // large dY/dS annihilates forwardSpeed every frame (car "empaca" on
+        // mild climbs/declines). Vertical adhesion already snaps Y to the road;
+        // wall response remains the only planar velocity kill path.
+
         if (trackQuery && CarPhysics::Tunables::kEnableWallPlanarPush &&
             groundState_.lastWallQueryHit)
         {

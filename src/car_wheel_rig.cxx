@@ -216,7 +216,9 @@ void CarWheelRig::Update(const Input& input)
             (input.groundFrontYRaw != 0)
                 ? input.groundFrontYRaw
                 : (static_cast<int32_t>(input.groundFrontY) << 16);
-        // More negative Y = higher. Pitch from filtered front−rear grade.
+        // Larger Y = lower altitude. Decline: front lower ⇒ frontY > rearY ⇒
+        // positive delta. Mesh is drawn with model X180; positive pitchDeg tilts
+        // the nose DOWN onto the asphalt (user report: negative sign lifted nose).
         int32_t sampleDelta = frontYRaw - rearYRaw;
         if (!deltaFilterInit_)
         {
@@ -253,7 +255,8 @@ void CarWheelRig::Update(const Input& input)
         int64_t pitchDegX16 = 0;
         if (deltaYRaw != 0 && kWheelbaseRaw != 0)
         {
-            pitchDegX16 = -(static_cast<int64_t>(deltaYRaw) * 65536 / kWheelbaseRaw);
+            // Positive delta (front lower) → positive pitch → nose down.
+            pitchDegX16 = (static_cast<int64_t>(deltaYRaw) * 65536 / kWheelbaseRaw);
             pitchDegX16 *= kRadToDegApprox;
         }
         if (pitchDegX16 > kMaxPitchDegX16) pitchDegX16 = kMaxPitchDegX16;

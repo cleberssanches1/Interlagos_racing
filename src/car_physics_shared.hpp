@@ -64,7 +64,7 @@ struct GroundState
     bool lastWallQueryHit = false;
     Fxp lastWallPushX = Fxp::BuildRaw(0);
     Fxp lastWallPushZ = Fxp::BuildRaw(0);
-    // Previous-frame |front-rear| grade (world Y). Forces full probes on ramps.
+    // Previous-frame |front-rear| grade (world Y) — debug / telemetry.
     int16_t lastSlopeAbsY = 0;
 };
 
@@ -322,20 +322,30 @@ struct Tunables
     // Minimum |speed| to keep full steering while coasting (throttle released).
     // Below this and no steer: residual yaw kill / no-slide still apply.
     static constexpr Fxp kCoastSteerMinSpeed = Fxp::BuildRaw(0x0000C000);           // ~0.75 wu/frame
+    // Residual kill when braking WITHOUT steer (straight-line stop).
     static constexpr Fxp kBrakeLateralDampingCoeff = Fxp::BuildRaw(0x0000D000); // ~0.8125
     static constexpr Fxp kBrakeYawDampingCoeff = Fxp::BuildRaw(0x0000C000);     // 0.75
+    // Trail-brake (brake + steer while rolling): keep most commanded yaw.
+    // High-speed understeer is handled by kBrakeSteerLoss * brakeSlip, not by
+    // wiping yawRate every frame (that made "brake = no turn").
+    static constexpr Fxp kBrakeSteerYawDampingCoeff = Fxp::BuildRaw(0x00002000); // 0.125
+    static constexpr Fxp kBrakeSteerLateralDampingCoeff = Fxp::BuildRaw(0x00004000); // 0.25
+    // Min steer gate while trail-braking at crawl (arcade: still turn into the hairpin).
+    static constexpr Fxp kBrakeSteerMinGate = Fxp::BuildRaw(0x0000A666);        // ~0.65
     static constexpr Fxp kBrakeResidualLateralCutoff = Fxp::BuildRaw(0x0001D1DF); // ~1.8198
     static constexpr Fxp kBrakeResidualYawCutoff = Fxp::BuildRaw(0x00004000);     // 0.25 deg/frame
-    // Brake skid / understeer model:
-    // increase perceived slide under braking using only speed, steer and grip,
-    // without reintroducing an expensive tire model on Saturn.
+    // Brake skid / understeer model (high speed only):
+    // reduce steer authority and add light lateral skid — arcade inertia, not sim.
+    // Starts ~100 km/h, full effect ~226 km/h.
     static constexpr Fxp kBrakeSkidStartSpeed = Fxp::BuildRaw(0x001232B9);      // ~18.20 wu/f ~= 100 km/h
     static constexpr Fxp kBrakeSkidFullSpeed = Fxp::BuildRaw(0x00292F0F);       // ~41.18 wu/f ~= 226 km/h
     static constexpr Fxp kBrakeSkidBase = Fxp::BuildRaw(0x00003333);            // 0.20
     static constexpr Fxp kBrakeSkidGripGain = Fxp::BuildRaw(0x00008000);        // 0.50
     static constexpr Fxp kBrakeSkidLateralDampingRelease = Fxp::BuildRaw(0x0000599A); // ~0.35
     static constexpr Fxp kBrakeSkidYawDampingRelease = Fxp::BuildRaw(0x00004000);     // 0.25
-    static constexpr Fxp kBrakeSteerLoss = Fxp::BuildRaw(0x00008000);           // 0.50
+    // Max fraction of steer authority lost under full high-speed brake (understeer).
+    // 0.35 keeps ~65% turn so the car still rotates into the corner.
+    static constexpr Fxp kBrakeSteerLoss = Fxp::BuildRaw(0x0000599A);           // ~0.35 (was 0.50)
     static constexpr int16_t kBrakeDriftMinSteerPercent = 12;
     static constexpr uint8_t kBrakeDriftEntryFrames = 10u;
     static constexpr Fxp kBrakeDriftDecelScale = Fxp::BuildRaw(0x00007333);      // 0.45
@@ -364,6 +374,9 @@ struct Tunables
     static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00014000);    // 1.25
     static constexpr Fxp kSnapDownThreshold = Fxp::BuildRaw(0x00008000);       // 0.5
     static constexpr Fxp kSnapUpThreshold = Fxp::BuildRaw(0x00008000);         // 0.5
+    // Planar speed below this ⇒ no yaw authority (brake+steer at rest must not spin).
+    // ~0.35 wu/frame ≈ ~1.9 km/h with PATH scale.
+    static constexpr Fxp kStationaryYawLockSpeed = Fxp::BuildRaw(0x00005A00);
     static constexpr Fxp kSurfaceSampleDownBias = Fxp::BuildRaw(0x00020000);   // 2.0
     static constexpr Fxp kProbeFrontBase = Fxp::BuildRaw(0x00014000);          // 1.25
     static constexpr Fxp kProbeFrontSpeedScale = Fxp::BuildRaw(0x00003000);    // 0.1875

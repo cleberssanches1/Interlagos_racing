@@ -210,12 +210,19 @@ public:
         {
             ioState.forwardSpeed = Fxp::BuildRaw(0);
         }
+        // Keep speedAbs in sync after stop clamp — gates and yaw lock depend on it.
+        outStep.speedAbs = ioState.forwardSpeed.Abs();
 
         // Coasting with real speed + steer must still turn (inertia). Only treat
         // as "no-slide coast" when the driver is not commanding a turn (or crawl).
         const bool canSteerWhileCoasting =
             hasSteerCommand &&
             (outStep.speedAbs > Tunables::kCoastSteerMinSpeed);
+        // Trail-brake: brake + steer while still rolling (arcade hairpin entry).
+        const bool canSteerWhileBraking =
+            hasSteerCommand &&
+            ioFrameState.braking &&
+            (outStep.speedAbs >= Tunables::kStationaryYawLockSpeed);
         const bool coastNoSlideMode =
             (ioFrameState.throttle == 0) &&
             !ioFrameState.braking &&
@@ -263,29 +270,52 @@ public:
             brakeSlip = Clamp(brakeSlip, Fxp::BuildRaw(0), Fxp::BuildRaw(1 << 16));
         }
         // No in-place rotation: steering authority fades out near zero speed.
+        // Arcade/retro (Ridge Racer / OutRun style):
+        //  - rest + brake/coast: no spin on axis
+        //  - rolling + brake + steer: trail-brake turns (strong at low/mid speed)
+        //  - high-speed brake: understeer via brakeSlip (still turns, less sharp)
+        //  - launch (throttle): can turn from standstill
+        const bool stationaryYawLock =
+            (outStep.speedAbs < Tunables::kStationaryYawLockSpeed) &&
+            !isIntentionalReverse &&
+            !hasForwardDriveIntent;
         const Fxp steerSpeedGate =
-            Clamp((outStep.speedAbs - Fxp::BuildRaw(0x00004000)) / Fxp::BuildRaw(0x0000C000),
-                  Fxp::BuildRaw(0),
-                  Fxp::BuildRaw(1 << 16));
+            stationaryYawLock
+                ? Fxp::BuildRaw(0)
+                : Clamp((outStep.speedAbs - Fxp::BuildRaw(0x00002000)) / Fxp::BuildRaw(0x0000A000),
+                        Fxp::BuildRaw(0),
+                        Fxp::BuildRaw(1 << 16));
         Fxp steerAuthority = Fxp::BuildRaw(1 << 16) - (speedRatio * Tunables::kHighSpeedSteerLoss * gripScale);
         if (steerAuthority < Tunables::kSteerAuthorityMin)
         {
             steerAuthority = Tunables::kSteerAuthorityMin;
         }
-        // Keep minimum steering authority while user is actively commanding
-        // accel or brake/reverse, so direction can be changed repeatedly in reverse.
         Fxp steerGate = steerSpeedGate;
-        if (ioFrameState.braking || ioFrameState.throttle > 0 || canSteerWhileCoasting)
+        if (canSteerWhileBraking)
+        {
+            // Trail-brake: keep strong gate so low-speed brake+turn feels sharp.
+            if (steerGate < Tunables::kBrakeSteerMinGate)
+            {
+                steerGate = Tunables::kBrakeSteerMinGate;
+            }
+        }
+        else if (!stationaryYawLock &&
+                 (ioFrameState.throttle > 0 || canSteerWhileCoasting))
         {
             const Fxp kCommandSteerMinGate = Fxp::BuildRaw(0x0000599A); // ~0.35
             if (steerGate < kCommandSteerMinGate) steerGate = kCommandSteerMinGate;
         }
-        if (isIntentionalReverse)
+        if (isIntentionalReverse && !stationaryYawLock)
         {
             steerGate = Fxp::BuildRaw(1 << 16);
         }
+        if (stationaryYawLock)
+        {
+            steerGate = Fxp::BuildRaw(0);
+        }
         steerAuthority = steerAuthority * steerGate;
-        if (ioFrameState.braking && !isIntentionalReverse)
+        // High-speed brake understeer only (brakeSlip is 0 below ~100 km/h).
+        if (ioFrameState.braking && !isIntentionalReverse && brakeSlip.RawValue() > 0)
         {
             const Fxp brakeSteerFactor =
                 Fxp::BuildRaw(1 << 16) - (brakeSlip * Tunables::kBrakeSteerLoss);
@@ -325,6 +355,14 @@ public:
             outStep.wasKinematicMode = true;
             if constexpr (Tunables::kEnableSaturnLowCostPhysics)
             {
+                if (stationaryYawLock)
+                {
+                    // Stopped (or crawl) with brake/no reverse: hard zero yaw.
+                    ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+                    ioState.yawAccumulatorDegRaw = 0;
+                }
+                else
+                {
                 Fxp steerArcadeNorm = ioState.steerDeg * Tunables::kInvMaxSteerDeg;
                 if (reverseMotionActive)
                 {
@@ -336,16 +374,23 @@ public:
                 {
                     arcadeSteerAuthority = Tunables::kArcadeSteerAuthorityMin;
                 }
+                // Scale arcade yaw by planar speed gate (no pivot at rest).
+                // Do this AFTER reverse full-authority so reverse at crawl still
+                // requires motion; reverse-at-rest uses intentional reverse only
+                // when throttle is held (isIntentionalReverse).
                 if (isIntentionalReverse)
                 {
                     arcadeSteerAuthority = Fxp::BuildRaw(1 << 16);
                 }
-                else if (ioFrameState.braking)
+                else if (ioFrameState.braking && brakeSlip.RawValue() > 0)
                 {
+                    // High-speed brake understeer only — low-speed trail-brake
+                    // keeps full arcade yaw (Ridge Racer hairpin style).
                     const Fxp brakeSteerFactor =
                         Fxp::BuildRaw(1 << 16) - (brakeSlip * Tunables::kBrakeSteerLoss);
                     arcadeSteerAuthority = arcadeSteerAuthority * brakeSteerFactor;
                 }
+                arcadeSteerAuthority = arcadeSteerAuthority * steerGate;
                 const Fxp arcadeYawRate =
                     isIntentionalReverse
                         ? Tunables::kReverseArcadeYawRateDegPerFrame
@@ -355,6 +400,7 @@ public:
                 ioState.yawRateDegPerFrame +=
                     (Fxp::BuildRaw(-yawTarget.RawValue()) - ioState.yawRateDegPerFrame) *
                     Tunables::kYawRateResponse;
+                }
             }
             else
             {
@@ -510,12 +556,18 @@ public:
             ioState.forwardLaunchLateralLockFrames = 0u;
         }
 
-        // Hard safety: almost stopped + no drive + no steer → do not spin in place.
-        // Keep yaw when coasting with steer and meaningful speed (inertia turn).
-        if (outStep.speedAbs < Fxp::BuildRaw(0x00006000) &&
-            ioFrameState.throttle == 0 &&
-            !ioFrameState.braking &&
-            !canSteerWhileCoasting)
+        // Hard safety: only true standstill / crawl without turn intent.
+        // Never kill yaw while trail-braking or coast-steering.
+        if (stationaryYawLock)
+        {
+            ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+            ioState.yawAccumulatorDegRaw = 0;
+        }
+        else if (outStep.speedAbs < Fxp::BuildRaw(0x00006000) &&
+                 ioFrameState.throttle == 0 &&
+                 !canSteerWhileCoasting &&
+                 !canSteerWhileBraking &&
+                 !(isIntentionalReverse && outStep.speedAbs > Fxp::BuildRaw(0)))
         {
             ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
             ioState.yawAccumulatorDegRaw = 0;
@@ -570,15 +622,27 @@ public:
 
         if (ioFrameState.braking)
         {
-            Fxp brakeLateralDamping =
-                Tunables::kBrakeLateralDampingCoeff -
-                (brakeSlip * Tunables::kBrakeSkidLateralDampingRelease);
-            Fxp brakeYawDamping =
-                Tunables::kBrakeYawDampingCoeff -
-                (brakeSlip * Tunables::kBrakeSkidYawDampingRelease);
-            const Fxp kMinBrakeDamping = Fxp::BuildRaw(0x00004000); // 0.25
-            if (brakeLateralDamping < kMinBrakeDamping) brakeLateralDamping = kMinBrakeDamping;
-            if (brakeYawDamping < kMinBrakeDamping) brakeYawDamping = kMinBrakeDamping;
+            // Trail-brake: light damp so commanded yaw from the arcade path survives.
+            // Straight-line brake: heavy damp to kill residual spin.
+            Fxp brakeLateralDamping;
+            Fxp brakeYawDamping;
+            if (canSteerWhileBraking)
+            {
+                brakeLateralDamping = Tunables::kBrakeSteerLateralDampingCoeff;
+                brakeYawDamping = Tunables::kBrakeSteerYawDampingCoeff;
+            }
+            else
+            {
+                brakeLateralDamping =
+                    Tunables::kBrakeLateralDampingCoeff -
+                    (brakeSlip * Tunables::kBrakeSkidLateralDampingRelease);
+                brakeYawDamping =
+                    Tunables::kBrakeYawDampingCoeff -
+                    (brakeSlip * Tunables::kBrakeSkidYawDampingRelease);
+                const Fxp kMinBrakeDamping = Fxp::BuildRaw(0x00004000); // 0.25
+                if (brakeLateralDamping < kMinBrakeDamping) brakeLateralDamping = kMinBrakeDamping;
+                if (brakeYawDamping < kMinBrakeDamping) brakeYawDamping = kMinBrakeDamping;
+            }
             ioState.lateralSpeed -= ioState.lateralSpeed * brakeLateralDamping;
             ioState.yawRateDegPerFrame -= ioState.yawRateDegPerFrame * brakeYawDamping;
             if (ioState.forwardSpeed == Fxp::BuildRaw(0) &&
@@ -659,11 +723,18 @@ public:
                                            Fxp::BuildRaw(-Tunables::kMaxYawRateDegPerFrame.RawValue()),
                                            Tunables::kMaxYawRateDegPerFrame);
 
-        // Prevent spin-in-place when throttle/steer are released near standstill.
-        if (outStep.speedAbs < Fxp::BuildRaw(0x00008000) && // ~0.5 world units/frame
-            ioFrameState.throttle == 0 &&
-            !ioFrameState.braking &&
-            ioState.steerDeg.Abs() < Fxp::BuildRaw(0x00008000)) // ~0.5 deg
+        // Final standstill kill only — do not strip trail-brake yaw.
+        if (stationaryYawLock)
+        {
+            ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
+            ioState.yawAccumulatorDegRaw = 0;
+        }
+        else if (outStep.speedAbs < Fxp::BuildRaw(0x00008000) && // ~0.5 world units/frame
+                 ioFrameState.throttle == 0 &&
+                 !canSteerWhileBraking &&
+                 !canSteerWhileCoasting &&
+                 ioState.steerDeg.Abs() < Fxp::BuildRaw(0x00008000) && // ~0.5 deg
+                 !isIntentionalReverse)
         {
             ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
             ioState.yawAccumulatorDegRaw = 0;

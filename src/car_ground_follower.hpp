@@ -182,15 +182,14 @@ public:
             (steeringAbs <= Tunables::kMediumDynamicsSteeringThreshold) &&
             (ioFrameState.speedProxy >= Tunables::kMediumDynamicsSpeedProxyMin) &&
             (ioFrameState.speedProxy <= Tunables::kMediumDynamicsSpeedProxyMax);
-        // Always sample surface Y every frame (REDRIVER2 MapHeight style).
-        // Reduced 2-probe only on true flat + low dynamics for CPU.
-        constexpr int16_t kSteepSlopeAbsY = 1;
-        const bool steepTerrain = (ioState.lastSlopeAbsY >= kSteepSlopeAbsY);
+        // Always sample surface Y every frame. On Saturn low-cost: always use
+        // 2 centerline probes (front/rear) — 4 corner probes + heavy surface
+        // scans destroyed FPS on declines. Pitch still works from front/rear.
         const bool useReducedProbe =
-            (!steepTerrain) &&
-            lowDynamicsInputs &&
-            (steeringAbs <= 20) &&
-            (ioFrameState.speedProxy <= 40);
+            Tunables::kEnableSaturnLowCostPhysics ||
+            (lowDynamicsInputs &&
+             (steeringAbs <= 20) &&
+             (ioFrameState.speedProxy <= 40));
         ioState.surfaceProbeCooldown = 0u;
         (void)mediumDynamicsInputs;
 
@@ -243,11 +242,32 @@ public:
             return;
         }
 
-        // REDRIVER2-style: MapHeight every frame → place body on surface.
-        // Direct assign removes stair-steps (no lag filter fighting the grade).
-        ioState.surfaceYFiltered = ioState.surfaceYTarget;
-        ioState.surfaceYFilterInitialized = true;
-        ioCarWorldPosition.Y = ioState.surfaceYTarget;
+        // Soft follow (cheap): full snap for small deltas, 1/2 step for larger
+        // segment-seam jumps. Avoids stairs without multi-segment re-scans.
+        const Fxp targetY = ioState.surfaceYTarget;
+        if (!ioState.surfaceYFilterInitialized)
+        {
+            ioState.surfaceYFiltered = targetY;
+            ioState.surfaceYFilterInitialized = true;
+        }
+        else
+        {
+            const int32_t cur = ioState.surfaceYFiltered.RawValue();
+            const int32_t tgt = targetY.RawValue();
+            int32_t d = tgt - cur;
+            const int32_t ad = (d < 0) ? -d : d;
+            // ~0.5 world units: continuous grade within a face.
+            if (ad <= (1 << 15))
+            {
+                ioState.surfaceYFiltered = targetY;
+            }
+            else
+            {
+                // Approach halfway each frame — smooths package seams.
+                ioState.surfaceYFiltered = Fxp::BuildRaw(cur + (d >> 1));
+            }
+        }
+        ioCarWorldPosition.Y = ioState.surfaceYFiltered;
         ioState.verticalVelocity = Fxp::BuildRaw(0);
         ioState.surfaceContactFrames = 8u;
 
@@ -667,26 +687,24 @@ private:
             return;
         }
 
+        // Body height from front/rear centerline (matches 2-probe Saturn path).
+        // When all 4 corners are valid, blend lightly with average for roll.
         const Fxp avgY = Fxp::BuildRaw(static_cast<int32_t>(sumYRaw / validCount));
         const Fxp centerlineY = (frontY + rearY) / 2;
-        Fxp lateralY = centerlineY;
-        if (leftValid && rightValid)
+        Fxp blendedY = centerlineY;
+        if (frontValid && rearValid && leftValid && rightValid)
         {
-            lateralY = (leftY + rightY) / 2;
+            const Fxp lateralY = (leftY + rightY) / 2;
+            blendedY = Fxp::BuildRaw(static_cast<int32_t>(
+                (static_cast<int64_t>(avgY.RawValue()) +
+                 static_cast<int64_t>(centerlineY.RawValue()) +
+                 static_cast<int64_t>(lateralY.RawValue())) / 3));
         }
-        else if (leftValid)
+        else if (!frontValid || !rearValid)
         {
-            lateralY = leftY;
+            blendedY = avgY;
         }
-        else if (rightValid)
-        {
-            lateralY = rightY;
-        }
-        const int64_t blendedYRaw =
-            (static_cast<int64_t>(avgY.RawValue()) +
-             static_cast<int64_t>(centerlineY.RawValue()) +
-             static_cast<int64_t>(lateralY.RawValue())) / 3;
-        const Fxp blendedY = Fxp::BuildRaw(static_cast<int32_t>(blendedYRaw));
+
         ioState.surfaceYTarget = blendedY + GetRideHeightOffset();
         ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYTarget);
         ioState.surfaceYInitialized = true;
