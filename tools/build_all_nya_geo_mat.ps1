@@ -33,12 +33,18 @@ function Resolve-DefaultSourceObjDir {
         return $RequestedSourceObjDir
     }
 
+    # 3 Levels of Design: prefer lod_0 (max faces) for map/GEO authority.
     $candidates = @(
+        (Join-Path $ResultRootDir "lod_0"),
+        (Join-Path $ResultRootDir "lod_1"),
+        (Join-Path $ResultRootDir "lod_2"),
+        # Legacy 4-folder layout (fallback)
         (Join-Path $ResultRootDir "obj_64"),
         (Join-Path $ResultRootDir "obj_32"),
         (Join-Path $ResultRootDir "obj_16"),
         (Join-Path $ResultRootDir "obj_8"),
         $ResultRootDir,
+        "C:\Models\png\sectors\source\lod_0",
         "C:\Models\png\sectors\source\obj_64",
         "C:\Models\png\sectors\source"
     )
@@ -883,13 +889,49 @@ if ($AuditWalls) {
         -Strict:$AuditWallsStrict
 }
 
-Write-Host "=== Etapa 3/7: Gerar GEO/MAT para cada LOD ==="
-$lodDirs = @(
-    @{ Lod = 8; Dir = Join-Path $ResultDir "obj_8" },
-    @{ Lod = 16; Dir = Join-Path $ResultDir "obj_16" },
-    @{ Lod = 32; Dir = Join-Path $ResultDir "obj_32" },
-    @{ Lod = 64; Dir = Join-Path $ResultDir "obj_64" }
-)
+Write-Host "=== Etapa 3/7: Gerar GEO/MAT (3 Levels of Design: lod_0/1/2) ==="
+# Fase 2 dual mesh:
+# - lod_0: S###.GEO + S###M64/M32 (alta, ranks 0-1 + MapHeight authority)
+# - lod_1: S###L.GEO + S###LM64 (media, ranks 2-9)
+# - lod_2: S###LM32 (far tex, ranks 10-19; reusa malha L)
+$lod0Dir = Join-Path $ResultDir "lod_0"
+$lod1Dir = Join-Path $ResultDir "lod_1"
+$lod2Dir = Join-Path $ResultDir "lod_2"
+$legacy64 = Join-Path $ResultDir "obj_64"
+$legacy32 = Join-Path $ResultDir "obj_32"
+
+$designPasses = @()
+if (Test-Path -LiteralPath $lod0Dir) {
+    $designPasses += @(
+        @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 64; SkipGeo = $false; AssetTag = "" },
+        @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 32; SkipGeo = $true;  AssetTag = "" }
+    )
+}
+elseif (Test-Path -LiteralPath $legacy64) {
+    Write-Host "Aviso: lod_0 ausente; usando legacy obj_64 como malha densa."
+    $designPasses += @(
+        @{ Name = "obj_64"; Dir = $legacy64; Lod = 64; SkipGeo = $false; AssetTag = "" },
+        @{ Name = "obj_64"; Dir = $legacy64; Lod = 32; SkipGeo = $true;  AssetTag = "" }
+    )
+}
+else {
+    throw "Nenhuma pasta lod_0 (nem obj_64) em $ResultDir"
+}
+
+$lowDir = $null
+if (Test-Path -LiteralPath $lod1Dir) { $lowDir = $lod1Dir }
+elseif (Test-Path -LiteralPath $legacy32) { $lowDir = $legacy32 }
+
+if ($null -ne $lowDir) {
+    $designPasses += @(
+        @{ Name = "lod_1"; Dir = $lowDir; Lod = 64; SkipGeo = $false; AssetTag = "L" },
+        @{ Name = "lod_1"; Dir = $lowDir; Lod = 32; SkipGeo = $true;  AssetTag = "L" }
+    )
+}
+# lod_2 textures: if separate folder with same mesh as lod_1, rewrite LM32 from lod_2 ARQ materials
+if ((Test-Path -LiteralPath $lod2Dir) -and ($lod2Dir -ne $lowDir)) {
+    $designPasses += @{ Name = "lod_2"; Dir = $lod2Dir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
+}
 
 $componentScriptPath = $script:componentScript
 if (-not (Test-Path -LiteralPath $componentScriptPath)) {
@@ -900,39 +942,62 @@ $seamOwnershipPath = ""
 if ($EnableSeamFaceDedup) {
     Write-Host "=== Etapa 2.98/7: Gerar ownership de faces de costura ==="
     $seamOwnershipPath = Join-Path $PackageDir "seam_face_ownership.json"
-    & $script:seamOwnershipScript `
-        -ResultDir $ResultDir `
-        -Pattern $Pattern `
-        -OutJsonPath $seamOwnershipPath
+    if (Test-Path -LiteralPath $script:seamOwnershipScript) {
+        & $script:seamOwnershipScript `
+            -ResultDir $ResultDir `
+            -Pattern $Pattern `
+            -OutJsonPath $seamOwnershipPath
+    }
+    else {
+        Write-Host "Aviso: seam ownership script ausente; seguindo sem dedup de costura."
+        $seamOwnershipPath = ""
+    }
+}
+
+function Get-GeoFaceCount([string]$GeoPath) {
+    if (-not (Test-Path -LiteralPath $GeoPath)) { return -1 }
+    [byte[]]$b = [System.IO.File]::ReadAllBytes($GeoPath)
+    if ($b.Length -lt 24) { return -1 }
+    return [int][System.BitConverter]::ToUInt32($b, 20) # faces after verts count at offset 16: verts@16 faces@20
 }
 
 $segmentsDone = New-Object System.Collections.Generic.HashSet[int]
-foreach ($entry in $lodDirs) {
+foreach ($entry in $designPasses) {
     if (-not (Test-Path -LiteralPath $entry.Dir)) {
-        Write-Host "Aviso: pasta LOD ausente, pulando: $($entry.Dir)"
+        Write-Host "Aviso: pasta design ausente, pulando: $($entry.Dir)"
         continue
     }
+    $assetTag = if ($entry.ContainsKey("AssetTag")) { [string]$entry.AssetTag } else { "" }
+    Write-Host ("--- Design {0} Lod={1} SkipGeo={2} Tag='{3}' ---" -f $entry.Name, $entry.Lod, [bool]$entry.SkipGeo, $assetTag)
     $objs = Get-ChildItem -LiteralPath $entry.Dir -Filter $Pattern | Sort-Object Name
     foreach ($obj in $objs) {
         $id = Get-SegmentIdFromFile $obj.BaseName
         if ($null -eq $id) { continue }
         $segmentsDone.Add($id) | Out-Null
         try {
-            & $componentScriptPath `
-                -SegmentId $id `
-                -ObjDir $entry.Dir `
-                -JsonPath $jsonPath `
-                -OutDir $PackageDir `
-                -Lod $entry.Lod `
-                -SeamOwnershipPath $seamOwnershipPath
+            $argList = @{
+                SegmentId = $id
+                ObjDir = $entry.Dir
+                JsonPath = $jsonPath
+                OutDir = $PackageDir
+                Lod = $entry.Lod
+                SeamOwnershipPath = $seamOwnershipPath
+                AssetTag = $assetTag
+            }
+            if ($entry.SkipGeo) {
+                & $componentScriptPath @argList -SkipGeo
+            }
+            else {
+                & $componentScriptPath @argList
+            }
         }
         catch {
-            Write-Host ("Falha LOD{0} SEG_{1:D3}: {2}" -f $entry.Lod, $id, $_.Exception.Message)
+            Write-Host ("Falha {0} LOD{1} SEG_{2:D3}: {3}" -f $entry.Name, $entry.Lod, $id, $_.Exception.Message)
         }
     }
 }
 
-Write-Host ("Concluido GEO/MAT por LOD: {0} segmentos distintos encontrados" -f $segmentsDone.Count)
+Write-Host ("Concluido GEO/MAT design LOD: {0} segmentos distintos" -f $segmentsDone.Count)
 
 function Test-GeoMatPayload {
     param(
@@ -993,23 +1058,48 @@ if ($payloadErrors.Count -gt 0) {
     throw "GEO/MAT invalidos. Interrompido antes da etapa SDR para evitar propagar corrupcao."
 }
 
-Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 ==="
+Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 (high + low) ==="
+# High mesh SDR (lod_0)
 & $script:sdrScript `
     -DataDir $PackageDir `
     -OutDir $PackageDir `
-    -Lod 8 `
+    -Lod 64 `
+    -AssetTag "" `
     -AllSegments `
     -SegmentsMapPath $jsonPath `
     -CanonicalizeQuadUvOrder `
     -QuadUvEdgeTolerance 256 `
     -QuadUvHighTolerance 1024 `
     -CanonicalizeHighToleranceAllFamilies
+# Low mesh SDR (lod_1) if present
+$lowGeoSample = @(Get-ChildItem -LiteralPath $PackageDir -File -Filter "S???L.GEO" -ErrorAction SilentlyContinue)
+if ($lowGeoSample.Count -gt 0) {
+    & $script:sdrScript `
+        -DataDir $PackageDir `
+        -OutDir $PackageDir `
+        -Lod 64 `
+        -AssetTag "L" `
+        -AllSegments `
+        -SegmentsMapPath $jsonPath `
+        -CanonicalizeQuadUvOrder `
+        -QuadUvEdgeTolerance 256 `
+        -QuadUvHighTolerance 1024 `
+        -CanonicalizeHighToleranceAllFamilies
+}
 
-Write-Host "=== Etapa 3.6/7: Gerar blobs runtime RDR1 ==="
+Write-Host "=== Etapa 3.6/7: Gerar blobs runtime RDR1 (high + low) ==="
 & $script:rdrScript `
     -DataDir $PackageDir `
     -OutDir $PackageDir `
+    -AssetTag "" `
     -AllSegments
+if ($lowGeoSample.Count -gt 0) {
+    & $script:rdrScript `
+        -DataDir $PackageDir `
+        -OutDir $PackageDir `
+        -AssetTag "L" `
+        -AllSegments
+}
 
 Write-Host "=== Etapa 3.7/7: Gerar batches draw-ready BDR1 ==="
 & $script:bdrScript `
@@ -1113,10 +1203,18 @@ Write-Host "=== Etapa 7/7: Empacotar por tipo (*.BIN) incluindo imagens ==="
     -ManifestDir $PackageDir `
     -IncludeTga
 
-Write-Host "=== Etapa 7.1/7: Gerar pack runtime dedicado TRKRDR.BIN ==="
+Write-Host "=== Etapa 7.1/7: Gerar pack runtime TRKRDR.BIN (high) + TRKRDRL.BIN (low) ==="
 & $script:trkRdrPackScript `
     -DataDir $PackageDir `
-    -OutPath (Join-Path $CdDataDir "TRKRDR.BIN")
+    -OutPath (Join-Path $CdDataDir "TRKRDR.BIN") `
+    -AssetTag ""
+$lowRdrSample = @(Get-ChildItem -LiteralPath $PackageDir -File -Filter "S???L.RDR" -ErrorAction SilentlyContinue)
+if ($lowRdrSample.Count -gt 0) {
+    & $script:trkRdrPackScript `
+        -DataDir $PackageDir `
+        -OutPath (Join-Path $CdDataDir "TRKRDRL.BIN") `
+        -AssetTag "L"
+}
 
 Write-Host "=== Limpeza: Remover auxiliares de cd/data ==="
 Remove-CdDataAuxFiles -TargetDirs $targetDirs
@@ -1149,6 +1247,7 @@ $hasPacksManifest = Test-Path -LiteralPath $packsManifestPath
 $hasGeoBin = Test-Path -LiteralPath (Join-Path $CdDataDir "GEO.BIN")
 $hasRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "RDR.BIN")
 $hasTrkRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDR.BIN")
+$hasTrkRdrLowBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDRL.BIN")
 $hasSurfaceFamilyMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SFMAP.BIN")
 $hasSegmentCollisionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SCMAP.BIN")
 $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
@@ -1168,6 +1267,7 @@ Write-Host ("HAS S001FAM.BIN   : {0}" -f $hasSeg1Fam)
 Write-Host ("HAS GEO.BIN       : {0}" -f $hasGeoBin)
 Write-Host ("HAS RDR.BIN       : {0}" -f $hasRdrBin)
 Write-Host ("HAS TRKRDR.BIN    : {0}" -f $hasTrkRdrBin)
+Write-Host ("HAS TRKRDRL.BIN   : {0}" -f $hasTrkRdrLowBin)
 Write-Host ("HAS SFMAP.BIN     : {0}" -f $hasSurfaceFamilyMapBin)
 Write-Host ("HAS SCMAP.BIN     : {0}" -f $hasSegmentCollisionMapBin)
 Write-Host ("HAS MAT8.BIN      : {0}" -f $hasMat8Bin)

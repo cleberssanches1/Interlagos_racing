@@ -170,31 +170,15 @@ public:
                 : -1;
         }
 
-        const int16_t steeringAbs = (ioFrameState.steering < 0)
-            ? static_cast<int16_t>(-ioFrameState.steering)
-            : ioFrameState.steering;
-        const bool lowDynamicsInputs =
-            (!ioFrameState.braking) &&
-            (steeringAbs <= Tunables::kLowDynamicsSteeringThreshold) &&
-            (ioFrameState.speedProxy <= Tunables::kLowDynamicsSpeedProxyThreshold);
-        const bool mediumDynamicsInputs =
-            (!ioFrameState.braking) &&
-            (steeringAbs <= Tunables::kMediumDynamicsSteeringThreshold) &&
-            (ioFrameState.speedProxy >= Tunables::kMediumDynamicsSpeedProxyMin) &&
-            (ioFrameState.speedProxy <= Tunables::kMediumDynamicsSpeedProxyMax);
-        // Always sample surface Y every frame. On Saturn low-cost: always use
-        // 2 centerline probes (front/rear) — 4 corner probes + heavy surface
-        // scans destroyed FPS on declines. Pitch still works from front/rear.
+        // Wheel-plane probes: 4 corners when enabled (pitch+roll from wheel heights).
+        // Reduced = 2 axle centerline only (cheaper, pitch only).
         const bool useReducedProbe =
-            Tunables::kEnableSaturnLowCostPhysics ||
-            (lowDynamicsInputs &&
-             (steeringAbs <= 20) &&
-             (ioFrameState.speedProxy <= 40));
+            !Tunables::kEnableFourWheelPlaneProbes ||
+            Tunables::kForceAxleCenterlineProbes ||
+            Tunables::kPreferReducedGroundProbe;
         ioState.surfaceProbeCooldown = 0u;
-        (void)mediumDynamicsInputs;
 
         int32_t sampledSegmentId = -1;
-        if (sampledSegmentId <= 0)
         {
             Vector3D sampledNormal{};
             (void)trackQuery->Sample(worldPosition, sampledNormal, sampledSegmentId);
@@ -214,6 +198,76 @@ public:
             sampledSegmentId = static_cast<int32_t>(ioState.lastSurfaceSegmentId);
         }
         return sampledSegmentId;
+    }
+
+    // After planar XZ integrate: nudge Y along last-frame grade so the next
+    // surface probe samples on the ramp (aligned path, not flat + vertical glue).
+    static void PredictYAlongGrade(GroundState& ioState,
+                                   const Fxp& forwardSpeed,
+                                   Vector3D& ioCarWorldPosition)
+    {
+        if constexpr (!Tunables::kEnableGradePredictY)
+        {
+            return;
+        }
+        if (!ioState.gradeValid || !ioState.surfaceYFilterInitialized)
+        {
+            return;
+        }
+
+        // dy ≈ tanθ · s_forward (body longitudinal). Y-down: +tan · +speed ⇒ +Y (downhill).
+        const int64_t dyRaw64 =
+            (static_cast<int64_t>(ioState.gradeTanRaw) *
+             static_cast<int64_t>(forwardSpeed.RawValue())) >> 16;
+        int32_t dyRaw = static_cast<int32_t>(
+            std::clamp<int64_t>(dyRaw64,
+                                -static_cast<int64_t>(Tunables::kGradePredictYMax.RawValue()),
+                                static_cast<int64_t>(Tunables::kGradePredictYMax.RawValue())));
+        if (dyRaw == 0)
+        {
+            return;
+        }
+        ioCarWorldPosition.Y = Fxp::BuildRaw(ioCarWorldPosition.Y.RawValue() + dyRaw);
+    }
+
+    // Mild arcade gravity along the body longitudinal axis from road grade.
+    // Does not project or kill planar speed (that path "empaca" on mild climbs).
+    static void ApplySlopeGravity(GroundState& ioState, DynamicsState& ioDynamics)
+    {
+        if constexpr (!Tunables::kEnableSlopePathAssist)
+        {
+            return;
+        }
+        if (!ioState.gradeValid || !ioState.hasGroundSupport)
+        {
+            return;
+        }
+
+        int32_t tanRaw = ioState.gradeTanRaw;
+        const int32_t tanMax = Tunables::kSlopeTanMax.RawValue();
+        if (tanRaw > tanMax) tanRaw = tanMax;
+        if (tanRaw < -tanMax) tanRaw = -tanMax;
+        const int32_t tanAbs = (tanRaw < 0) ? -tanRaw : tanRaw;
+        if (tanAbs < Tunables::kSlopeTanDeadzone.RawValue())
+        {
+            return;
+        }
+
+        // accel = g * tanθ  (body-frame: downhill forward when tan>0).
+        const int64_t accelRaw64 =
+            (static_cast<int64_t>(Tunables::kSlopeGravityPerFrame.RawValue()) *
+             static_cast<int64_t>(tanRaw)) >> 16;
+        const int32_t accelRaw = static_cast<int32_t>(
+            std::clamp<int64_t>(accelRaw64, -(1 << 14), (1 << 14))); // ±0.25 hard cap
+        if (accelRaw == 0)
+        {
+            return;
+        }
+        ioDynamics.forwardSpeed =
+            Fxp::BuildRaw(ioDynamics.forwardSpeed.RawValue() + accelRaw);
+        ioDynamics.forwardSpeed = Clamp(ioDynamics.forwardSpeed,
+                                        Fxp::BuildRaw(-Tunables::kMaxReverseSpeed.RawValue()),
+                                        Tunables::kMaxForwardSpeed);
     }
 
     static void ApplyVerticalAdhesion(GroundState& ioState, Vector3D& ioCarWorldPosition)
@@ -242,8 +296,8 @@ public:
             return;
         }
 
-        // Soft follow (cheap): full snap for small deltas, 1/2 step for larger
-        // segment-seam jumps. Avoids stairs without multi-segment re-scans.
+        // Natural descent: follow MapHeight target with ASYMMETRIC rates.
+        // Y-down: d>0 means asphalt is lower → descend fast; climb is conservative.
         const Fxp targetY = ioState.surfaceYTarget;
         if (!ioState.surfaceYFilterInitialized)
         {
@@ -256,16 +310,62 @@ public:
             const int32_t tgt = targetY.RawValue();
             int32_t d = tgt - cur;
             const int32_t ad = (d < 0) ? -d : d;
-            // ~0.5 world units: continuous grade within a face.
-            if (ad <= (1 << 15))
+            const bool topoDrop = (ioState.topologyDropFrames > 0u);
+
+            if (d > 0)
             {
-                ioState.surfaceYFiltered = targetY;
+                // DESCEND toward MapHeight under the car.
+                // Smooth step on continuous grade (avoids "stairs" on subdivided faces).
+                // Full snap only when flying / large topology gap (|dY| hard).
+                const bool gradeDecline = ioState.gradeValid &&
+                    (ioState.gradeTanRaw > Tunables::kTopoGradeDeclineMin.RawValue());
+                if (ad >= Tunables::kTopoDropHardY.RawValue() ||
+                    (topoDrop && ad >= Tunables::kSnapDownThreshold.RawValue()))
+                {
+                    // Flying or big face gap: stick this frame.
+                    ioState.surfaceYFiltered = targetY;
+                }
+                else if (ad <= (Tunables::kSnapDownThreshold.RawValue() >> 2))
+                {
+                    // Tiny residual: glue.
+                    ioState.surfaceYFiltered = targetY;
+                }
+                else
+                {
+                    int32_t step = d;
+                    int32_t maxDown = Tunables::kMaxYStepDownPerFrame.RawValue();
+                    // Decline / topology: allow full step budget (still rate-limited).
+                    if (!(topoDrop || gradeDecline))
+                    {
+                        // Flat-ish: slightly softer to reduce seam pops.
+                        maxDown = maxDown >> 1;
+                        if (maxDown < (1 << 16)) maxDown = (1 << 16);
+                    }
+                    if (step > maxDown) step = maxDown;
+                    ioState.surfaceYFiltered = Fxp::BuildRaw(cur + step);
+                }
             }
-            else
+            else if (d < 0)
             {
-                // Approach halfway each frame — smooths package seams.
-                ioState.surfaceYFiltered = Fxp::BuildRaw(cur + (d >> 1));
+                // CLIMB: mild approach to avoid empino, but eject hard if under asphalt.
+                // Y-down: tgt < cur ⇒ body is too deep (penetrating the face).
+                const int32_t snapUp = Tunables::kSnapUpThreshold.RawValue();
+                const int32_t maxUp = Tunables::kMaxYStepUpPerFrame.RawValue();
+                if (ad >= Tunables::kClimbPenetrateHardY.RawValue() || ad <= snapUp)
+                {
+                    ioState.surfaceYFiltered = targetY;
+                }
+                else
+                {
+                    int32_t step = d; // negative
+                    if (step < -maxUp) step = -maxUp;
+                    ioState.surfaceYFiltered = Fxp::BuildRaw(cur + step);
+                }
             }
+        }
+        if (ioState.topologyDropFrames > 0u)
+        {
+            --ioState.topologyDropFrames;
         }
         ioCarWorldPosition.Y = ioState.surfaceYFiltered;
         ioState.verticalVelocity = Fxp::BuildRaw(0);
@@ -276,8 +376,9 @@ public:
             ioState.lastStableX = ioCarWorldPosition.X;
             ioState.lastStableZ = ioCarWorldPosition.Z;
             ioState.lastStablePlanarInitialized = true;
+            ioState.lastAcceptedSurfaceYRaw = ioState.surfaceYTarget.RawValue();
+            ioState.lastAcceptedSurfaceYValid = true;
         }
-        // Intentionally do NOT teleport XZ back to lastStable when support drops.
     }
 
     static void Reset(GroundState& ioState)
@@ -309,6 +410,12 @@ public:
         ioState.lastWallQuerySegmentId = -1;
         ioState.lastWallPushX = Fxp::BuildRaw(0);
         ioState.lastWallPushZ = Fxp::BuildRaw(0);
+        ioState.lastSlopeAbsY = 0;
+        ioState.gradeTanRaw = 0;
+        ioState.gradeValid = false;
+        ioState.lastAcceptedSurfaceYRaw = 0;
+        ioState.lastAcceptedSurfaceYValid = false;
+        ioState.topologyDropFrames = 0u;
     }
 
 private:
@@ -579,6 +686,9 @@ private:
         return fallbackSegmentId;
     }
 
+    // Wheel-plane MapHeight (arcade / REDRIVER2-inspired):
+    //   4 corners FL/FR/RL/RR → body height = avg; pitch from F−R; roll from R−L.
+    //   Reduced mode: 2 axle centerline samples (pitch only, cheaper).
     static void ProbeSurfaceTarget(const ITrackCollisionQuery* trackQuery,
                                    const Vector3D& worldPosition,
                                    const Fxp& sinYaw,
@@ -595,14 +705,17 @@ private:
         ioState.correctionX = Fxp::BuildRaw(0);
         ioState.correctionZ = Fxp::BuildRaw(0);
 
-        const int32_t seedSegmentId = (ioState.lastSurfaceSegmentId > 0)
-            ? static_cast<int32_t>(ioState.lastSurfaceSegmentId)
-            : sampledSegmentId;
+        const int32_t seedSegmentId = (sampledSegmentId > 0)
+            ? sampledSegmentId
+            : ((ioState.lastSurfaceSegmentId > 0)
+                   ? static_cast<int32_t>(ioState.lastSurfaceSegmentId)
+                   : -1);
 
         const Fxp longFront = Tunables::kProbeHalfWheelBase;
         const Fxp longRear = Fxp::BuildRaw(-Tunables::kProbeHalfWheelBase.RawValue());
         const Fxp latLeft = Fxp::BuildRaw(-Tunables::kProbeHalfTrack.RawValue());
         const Fxp latRight = Tunables::kProbeHalfTrack;
+        const Fxp latCenter = Fxp::BuildRaw(0);
 
         SurfaceProbeSample fl{};
         SurfaceProbeSample fr{};
@@ -612,7 +725,6 @@ private:
         {
             SurfaceProbeSample fc{};
             SurfaceProbeSample rc{};
-            const Fxp latCenter = Fxp::BuildRaw(0);
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latCenter),
                                    seedSegmentId,
@@ -628,10 +740,23 @@ private:
         }
         else
         {
-            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latLeft), seedSegmentId, fl);
-            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latRight), seedSegmentId, fr);
-            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latLeft), seedSegmentId, rl);
-            (void)TryProbeSurfaceY(trackQuery, BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latRight), seedSegmentId, rr);
+            // 4 wheel corners — plane attitude from real L/R and F/R heights.
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latLeft),
+                                   seedSegmentId,
+                                   fl);
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latRight),
+                                   seedSegmentId,
+                                   fr);
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latLeft),
+                                   seedSegmentId,
+                                   rl);
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latRight),
+                                   seedSegmentId,
+                                   rr);
         }
 
         const bool frontValid = HasProbeSupport(fl, fr);
@@ -644,17 +769,48 @@ private:
         if (leftValid) ioFrameState.debugGroundMask |= 0x2u;
         if (frontValid) ioFrameState.debugGroundMask |= 0x4u;
         if (rightValid) ioFrameState.debugGroundMask |= 0x8u;
+        if (fl.valid) ioFrameState.debugGroundMask |= 0x10u;
+        if (fr.valid) ioFrameState.debugGroundMask |= 0x20u;
+        if (rl.valid) ioFrameState.debugGroundMask |= 0x40u;
+        if (rr.valid) ioFrameState.debugGroundMask |= 0x80u;
 
-        const Fxp fallbackY = ioState.surfaceYInitialized ? ioState.surfaceYTarget : worldPosition.Y;
-        const Fxp rearY = AveragePairY(rl, rr, fallbackY);
-        const Fxp frontY = AveragePairY(fl, fr, fallbackY);
-        const Fxp leftY = AveragePairY(fl, rl, fallbackY);
-        const Fxp rightY = AveragePairY(fr, rr, fallbackY);
+        auto publishWheel = [&](const SurfaceProbeSample& sample,
+                                int16_t& outSurfY,
+                                int16_t& outDist)
+        {
+            if (!sample.valid)
+            {
+                outSurfY = 0;
+                outDist = 0;
+                return;
+            }
+            outSurfY = FxpToDebugInt(sample.y);
+            outDist = FxpToDebugInt(sample.y - worldPosition.Y);
+        };
+        publishWheel(fl, ioFrameState.debugWheelSurfYFl, ioFrameState.debugWheelDistFl);
+        publishWheel(fr, ioFrameState.debugWheelSurfYFr, ioFrameState.debugWheelDistFr);
+        publishWheel(rl, ioFrameState.debugWheelSurfYRl, ioFrameState.debugWheelDistRl);
+        publishWheel(rr, ioFrameState.debugWheelSurfYRr, ioFrameState.debugWheelDistRr);
 
-        ioFrameState.debugGroundYRear = rearValid ? FxpToDebugInt(rearY) : 0;
+        // Do NOT fall back to body Y for a missing corner — that equalizes
+        // front/rear and snaps attitude upright. Use only valid corners;
+        // AveragePairY with zero fallback is only used when pair has a hit
+        // (HasProbeSupport already true for the pair).
+        const Fxp zeroY = Fxp::BuildRaw(0);
+        const Fxp frontY = AveragePairY(fl, fr, zeroY);
+        const Fxp rearY = AveragePairY(rl, rr, zeroY);
+        const Fxp leftY = AveragePairY(fl, rl, zeroY);
+        const Fxp rightY = AveragePairY(fr, rr, zeroY);
+
+        // Axle averages → pitch (wheel_rig). Side averages → road roll.
         ioFrameState.debugGroundYFront = frontValid ? FxpToDebugInt(frontY) : 0;
-        ioFrameState.debugGroundYRearRaw = rearValid ? rearY.RawValue() : 0;
+        ioFrameState.debugGroundYRear = rearValid ? FxpToDebugInt(rearY) : 0;
+        ioFrameState.debugGroundYLeft = leftValid ? FxpToDebugInt(leftY) : 0;
+        ioFrameState.debugGroundYRight = rightValid ? FxpToDebugInt(rightY) : 0;
         ioFrameState.debugGroundYFrontRaw = frontValid ? frontY.RawValue() : 0;
+        ioFrameState.debugGroundYRearRaw = rearValid ? rearY.RawValue() : 0;
+        ioFrameState.debugGroundYLeftRaw = leftValid ? leftY.RawValue() : 0;
+        ioFrameState.debugGroundYRightRaw = rightValid ? rightY.RawValue() : 0;
 
         ioState.lastSlopeAbsY = 0;
         if (frontValid && rearValid)
@@ -664,16 +820,52 @@ private:
             if (d < 0) d = -d;
             if (d > 32767) d = 32767;
             ioState.lastSlopeAbsY = static_cast<int16_t>(d);
+
+            const int32_t wheelbaseRaw =
+                Tunables::kProbeHalfWheelBase.RawValue() << 1;
+            int32_t sampleTan = 0;
+            if (wheelbaseRaw > 0)
+            {
+                sampleTan = static_cast<int32_t>(
+                    (static_cast<int64_t>(frontY.RawValue() - rearY.RawValue()) << 16) /
+                    static_cast<int64_t>(wheelbaseRaw));
+            }
+            const int32_t tanMax = Tunables::kSlopeTanMax.RawValue();
+            if (sampleTan > tanMax) sampleTan = tanMax;
+            if (sampleTan < -tanMax) sampleTan = -tanMax;
+
+            if (!ioState.gradeValid)
+            {
+                ioState.gradeTanRaw = sampleTan;
+                ioState.gradeValid = true;
+            }
+            else
+            {
+                const int32_t delta = sampleTan - ioState.gradeTanRaw;
+                ioState.gradeTanRaw += (delta >> Tunables::kGradeFilterShift);
+            }
+        }
+        else if (ioState.gradeValid)
+        {
+            ioState.gradeTanRaw -= (ioState.gradeTanRaw >> 2);
+            if (ioState.gradeTanRaw < (1 << 10) && ioState.gradeTanRaw > -(1 << 10))
+            {
+                ioState.gradeTanRaw = 0;
+                ioState.gradeValid = false;
+            }
         }
 
         if (!ioState.hasGroundSupport)
         {
-            // Keep last surfaceYFiltered for contact hold — do not zero it.
             ioState.surfaceYInitialized = false;
             ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYFiltered);
             return;
         }
 
+        // Body Y = point of the 4-wheel plane at chassis center (+ ride).
+        // With a rigid axle rectangle, center Y = average of the four corners
+        // (same as mid of F/R axle averages). Pitch/roll use the same samples
+        // in CarWheelRig so visual attitude matches adhesion height.
         int32_t validCount = 0;
         int64_t sumYRaw = 0;
         if (fl.valid) { sumYRaw += static_cast<int64_t>(fl.y.RawValue()); ++validCount; }
@@ -687,26 +879,98 @@ private:
             return;
         }
 
-        // Body height from front/rear centerline (matches 2-probe Saturn path).
-        // When all 4 corners are valid, blend lightly with average for roll.
-        const Fxp avgY = Fxp::BuildRaw(static_cast<int32_t>(sumYRaw / validCount));
-        const Fxp centerlineY = (frontY + rearY) / 2;
-        Fxp blendedY = centerlineY;
-        if (frontValid && rearValid && leftValid && rightValid)
+        Fxp blendedY = Fxp::BuildRaw(static_cast<int32_t>(sumYRaw / validCount));
+        // Preferred: F/R axle midpoints → plane center along longitudinal axis
+        // (matches pitch chord used by wheel_rig / grade tan).
+        if (frontValid && rearValid)
         {
-            const Fxp lateralY = (leftY + rightY) / 2;
             blendedY = Fxp::BuildRaw(static_cast<int32_t>(
-                (static_cast<int64_t>(avgY.RawValue()) +
-                 static_cast<int64_t>(centerlineY.RawValue()) +
-                 static_cast<int64_t>(lateralY.RawValue())) / 3));
-        }
-        else if (!frontValid || !rearValid)
-        {
-            blendedY = avgY;
+                (static_cast<int64_t>(frontY.RawValue()) +
+                 static_cast<int64_t>(rearY.RawValue())) / 2));
+            // If L/R also valid, fold lateral mid into the same plane center
+            // so roll does not bias body height away from the 4-corner plane.
+            if (leftValid && rightValid)
+            {
+                const int64_t lateralMid =
+                    (static_cast<int64_t>(leftY.RawValue()) +
+                     static_cast<int64_t>(rightY.RawValue())) / 2;
+                const int64_t longMid =
+                    (static_cast<int64_t>(frontY.RawValue()) +
+                     static_cast<int64_t>(rearY.RawValue())) / 2;
+                // Average of longitudinal and lateral mids = 4-corner center.
+                blendedY = Fxp::BuildRaw(static_cast<int32_t>((longMid + lateralMid) / 2));
+            }
         }
 
-        ioState.surfaceYTarget = blendedY + GetRideHeightOffset();
+        Fxp rideTarget = blendedY + GetRideHeightOffset();
+        // Do NOT clamp climb targets: soft-capping UP made steep ramps tunnel
+        // (body never saw the full MapHeight rise and stuck inside asphalt).
+        // Descent keeps full target; climb adhesion rate-limits in ApplyVerticalAdhesion
+        // except hard anti-penetration snap.
+        if (ioState.surfaceYFilterInitialized)
+        {
+            const int32_t cur = ioState.surfaceYFiltered.RawValue();
+            const int32_t tgt = rideTarget.RawValue();
+            // Per-frame topology under the car (not only segment seams).
+            bool drop = false;
+            // Body above new surface this frame.
+            if (tgt > cur + Tunables::kTopoDropYThreshold.RawValue())
+            {
+                drop = true;
+            }
+            // Surface fell vs last accepted height.
+            if (ioState.lastAcceptedSurfaceYValid &&
+                tgt > ioState.lastAcceptedSurfaceYRaw + Tunables::kTopoDropYThreshold.RawValue())
+            {
+                drop = true;
+            }
+            // Live decline chord under axles (Yf > Yr in Y-down).
+            if (frontValid && rearValid)
+            {
+                const int32_t chord =
+                    frontY.RawValue() - rearY.RawValue();
+                if (chord > Tunables::kTopoGradeDeclineMin.RawValue())
+                {
+                    drop = true;
+                }
+            }
+            if (drop)
+            {
+                ioState.topologyDropFrames = Tunables::kTopoDropHoldFrames;
+            }
+        }
+        else
+        {
+            // First init on a decline: still mark topology so adhesion sticks.
+            if (frontValid && rearValid &&
+                (frontY.RawValue() - rearY.RawValue()) >
+                    Tunables::kTopoGradeDeclineMin.RawValue())
+            {
+                ioState.topologyDropFrames = Tunables::kTopoDropHoldFrames;
+            }
+        }
+        ioState.surfaceYTarget = rideTarget;
         ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYTarget);
+        ioFrameState.debugGroundYBody = FxpToDebugInt(ioState.surfaceYFiltered);
+        {
+            const int32_t dy =
+                (ioState.surfaceYTarget.RawValue() - ioState.surfaceYFiltered.RawValue()) >> 16;
+            ioFrameState.debugGroundDY =
+                static_cast<int16_t>(std::clamp<int32_t>(dy, -32768, 32767));
+        }
+        ioFrameState.debugTopoDrop = (ioState.topologyDropFrames > 0u) ? 1u : 0u;
+        if (ioState.gradeValid)
+        {
+            // tan * 100 ≈ (gradeTanRaw * 100) >> 16
+            const int32_t g100 =
+                static_cast<int32_t>((static_cast<int64_t>(ioState.gradeTanRaw) * 100) >> 16);
+            ioFrameState.debugGradeTanX100 =
+                static_cast<int16_t>(std::clamp<int32_t>(g100, -32768, 32767));
+        }
+        else
+        {
+            ioFrameState.debugGradeTanX100 = 0;
+        }
         ioState.surfaceYInitialized = true;
 
         const int32_t targetSegmentId =

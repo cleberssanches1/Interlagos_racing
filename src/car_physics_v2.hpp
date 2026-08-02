@@ -472,6 +472,12 @@ private:
             ioCarWorldPosition.Z = preStepPosition.Z + (negCosYaw * localLong);
         }
 
+        // Pre-probe: move Y with the ramp using last-frame grade so probes land
+        // on the face (path follows decline/climb, not pure flat XZ).
+        CarPhysics::GroundFollower::PredictYAlongGrade(groundState_,
+                                                       dynamicsState_.forwardSpeed,
+                                                       ioCarWorldPosition);
+
         const int32_t sampledSegmentId =
             CarPhysics::GroundFollower::UpdateTarget(trackQuery,
                                                      ioCarWorldPosition,
@@ -487,11 +493,9 @@ private:
         }
         CarPhysics::GroundFollower::ApplyVerticalAdhesion(groundState_, ioCarWorldPosition);
 
-        // NOTE: do NOT project planar speed onto an approximate ground normal.
-        // Probe front/rear deltas are noisy on segment seams; projecting with a
-        // large dY/dS annihilates forwardSpeed every frame (car "empaca" on
-        // mild climbs/declines). Vertical adhesion already snaps Y to the road;
-        // wall response remains the only planar velocity kill path.
+        // Arcade slope force along body forward — coast slides downhill / slows uphill.
+        // Intentionally NOT a planar-velocity projection (that killed climb speed).
+        CarPhysics::GroundFollower::ApplySlopeGravity(groundState_, dynamicsState_);
 
         if (trackQuery && CarPhysics::Tunables::kEnableWallPlanarPush &&
             groundState_.lastWallQueryHit)
@@ -582,17 +586,9 @@ private:
 
         if (!groundState_.hasGroundSupport)
         {
+            // Damp speed but keep XZ free so the car can re-acquire asphalt
+            // (freezing XZ made the first corner "never find ground").
             CarPhysics::DynamicsModel::ApplyNoSupportRecovery(dynamicsState_);
-            if (groundState_.lastStablePlanarInitialized)
-            {
-                ioCarWorldPosition.X = groundState_.lastStableX;
-                ioCarWorldPosition.Z = groundState_.lastStableZ;
-            }
-            else
-            {
-                ioCarWorldPosition.X = preStepPosition.X;
-                ioCarWorldPosition.Z = preStepPosition.Z;
-            }
         }
         else if (groundState_.edgeLeftLost || groundState_.edgeRightLost)
         {
@@ -633,10 +629,26 @@ private:
         ioFrameState.activeSegmentId = physicsFrame.activeSegmentId;
         ioFrameState.debugGroundYRear = physicsFrame.debugGroundYRear;
         ioFrameState.debugGroundYFront = physicsFrame.debugGroundYFront;
+        ioFrameState.debugGroundYLeft = physicsFrame.debugGroundYLeft;
+        ioFrameState.debugGroundYRight = physicsFrame.debugGroundYRight;
         ioFrameState.debugGroundYTarget = physicsFrame.debugGroundYTarget;
+        ioFrameState.debugGroundYBody = physicsFrame.debugGroundYBody;
+        ioFrameState.debugGroundDY = physicsFrame.debugGroundDY;
+        ioFrameState.debugGradeTanX100 = physicsFrame.debugGradeTanX100;
         ioFrameState.debugGroundYRearRaw = physicsFrame.debugGroundYRearRaw;
         ioFrameState.debugGroundYFrontRaw = physicsFrame.debugGroundYFrontRaw;
+        ioFrameState.debugGroundYLeftRaw = physicsFrame.debugGroundYLeftRaw;
+        ioFrameState.debugGroundYRightRaw = physicsFrame.debugGroundYRightRaw;
         ioFrameState.debugGroundMask = physicsFrame.debugGroundMask;
+        ioFrameState.debugTopoDrop = physicsFrame.debugTopoDrop;
+        ioFrameState.debugWheelSurfYFl = physicsFrame.debugWheelSurfYFl;
+        ioFrameState.debugWheelSurfYFr = physicsFrame.debugWheelSurfYFr;
+        ioFrameState.debugWheelSurfYRl = physicsFrame.debugWheelSurfYRl;
+        ioFrameState.debugWheelSurfYRr = physicsFrame.debugWheelSurfYRr;
+        ioFrameState.debugWheelDistFl = physicsFrame.debugWheelDistFl;
+        ioFrameState.debugWheelDistFr = physicsFrame.debugWheelDistFr;
+        ioFrameState.debugWheelDistRl = physicsFrame.debugWheelDistRl;
+        ioFrameState.debugWheelDistRr = physicsFrame.debugWheelDistRr;
         ioFrameState.debugSteerDeg = physicsFrame.debugSteerDeg;
         ioFrameState.debugYawRateDeg = physicsFrame.debugYawRateDeg;
         ioFrameState.debugYawStepDeg = physicsFrame.debugYawStepDeg;

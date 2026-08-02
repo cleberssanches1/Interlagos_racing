@@ -352,9 +352,12 @@ private:
             // Resident state currently visible in the renderer.
             uint8_t currentLodIndex = 0xFF; // 2:32, 3:64 (0/1 reserved)
             int8_t currentBaseRank = -1;
+            // Design mesh tier: 0 = high (lod_0 / TRKRDR), 1 = low (lod_1+ / TRKRDRL).
+            uint8_t currentDesignGeoTier = 0xFF;
             // Desired state derived from the logical rank in the sliding window.
             uint8_t desiredLodIndex = 0xFF;
             int8_t desiredBaseRank = -1;
+            uint8_t desiredDesignGeoTier = 0xFF;
             uint8_t flags = kWorkingSetCacheDirtyBit;
             TrackLowWorkU16Vector faceFamilyIds{};
             TrackLowWorkU8Vector faceRankOffsets{};
@@ -648,10 +651,12 @@ private:
     void PrewarmUpcomingBoundaryLods();
     void ResetSlidePrefetchState();
     bool BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarmup = true);
+    // designGeoTier: 0=high (lod_0), 1=low (lod_1/2 mesh). 0xFF = high default.
     bool BuildSegmentIntoRenderer(int32_t segmentId,
                                   TrackRenderer& renderer,
                                   SRL::Math::Types::Vector3D& outCenter,
-                                  FamilyIdVector& outFamilyIds);
+                                  FamilyIdVector& outFamilyIds,
+                                  uint8_t designGeoTier = 0xFF);
     bool BuildSegmentIntoSlideScratch(int32_t segmentId,
                                       SRL::Math::Types::Vector3D& outCenter,
                                       FamilyIdVector& outFamilyIds);

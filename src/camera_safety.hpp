@@ -14,7 +14,9 @@ struct Config
     Fxp fallbackLookDistance = Fxp::BuildRaw(128 << 16);
     // Zero disables world coordinate clamping.
     Fxp worldClamp = Fxp::BuildRaw(0);
-    Fxp minCameraHeightAboveTarget = Fxp::BuildRaw(2 << 16);
+    // Y-down: camera.Y must stay below car.Y - this amount (higher altitude).
+    // Default raised for slope chase; CameraSystem may override per pitch.
+    Fxp minCameraHeightAboveTarget = Fxp::BuildRaw(12 << 16);
 };
 
 inline Fxp ClampFxp(Fxp v, Fxp lo, Fxp hi)

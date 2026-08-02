@@ -98,6 +98,8 @@ void CameraSystem::ResetToDefaultView()
     state_.yaw = Angle::FromDegrees(Fxp::BuildRaw(180 << 16));
     state_.pitch = Angle::FromDegrees(Fxp::BuildRaw(-21 << 16));
     state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(0));
+    camPitchInitialized_ = false;
+    smoothedCamPitchDeg_ = 0;
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(0));
     // Restore camera 2 baseline before recalculating manual offset.
     chaseNearOffsetX_ = 0;
@@ -240,9 +242,31 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
     }
 
     UpdateHeadingFromCarMotion(carWorldPosition);
+    UpdateSmoothedCamPitch();
+    const auto cfg = PresetConfig(chasePreset_);
     const Vector3D defaultOffset = ResolvePresetOffsetWorld();
-    const Vector3D activeOffset = defaultOffset;
-    const Vector3D targetCameraLocation = carWorldPosition + activeOffset;
+    Vector3D targetCameraLocation = carWorldPosition + defaultOffset;
+    // Keep boom above car + pitch-scaled clearance (Y-down).
+    targetCameraLocation = CameraSafety::ResolveBoomGuard(
+        targetCameraLocation, carWorldPosition, BoomSafetyConfig(smoothedCamPitchDeg_));
+    // Decline: rear asphalt is uphill — push cam above estimated ground behind.
+    const int32_t behindAbs = (chasePreset_ == ChasePreset::FirstPerson)
+        ? 0
+        : std::abs(static_cast<int32_t>(cfg.offsetZ));
+    targetCameraLocation = ApplyGradeBehindClearance(
+        targetCameraLocation, carWorldPosition, behindAbs);
+    // Hard floor: cam.Y ≤ car.Y − baseClearance − k·|nose-down pitch| (Y-down).
+    if (chasePreset_ != ChasePreset::FirstPerson && smoothedCamPitchDeg_ > 0)
+    {
+        const int32_t baseClr = 10 + (static_cast<int32_t>(smoothedCamPitchDeg_) * 3) / 2;
+        const int32_t maxCamYUnits =
+            (carWorldPosition.Y.RawValue() >> 16) - baseClr;
+        if ((targetCameraLocation.Y.RawValue() >> 16) > maxCamYUnits)
+        {
+            targetCameraLocation.Y = Fxp::BuildRaw(maxCamYUnits << 16);
+        }
+    }
+
     const bool allowSmoothing =
         (mode_ != Mode::Orbit) &&
         (chasePreset_ != ChasePreset::FirstPerson);
@@ -263,14 +287,20 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
             lastResolvedCameraLocation_ = LerpVectorRaw(lastResolvedCameraLocation_,
                                                         targetCameraLocation,
                                                         CameraFollowBlendRaw());
+            lastResolvedCameraLocation_ = CameraSafety::ResolveBoomGuard(
+                lastResolvedCameraLocation_, carWorldPosition,
+                BoomSafetyConfig(smoothedCamPitchDeg_));
+            lastResolvedCameraLocation_ = ApplyGradeBehindClearance(
+                lastResolvedCameraLocation_, carWorldPosition, behindAbs);
         }
     }
     if (debugLogsEnabled_ && chasePreset_ == ChasePreset::ChaseNear)
     {
-        SRL::Debug::Print(1, 26, "CAM2 pos x:%d y:%d z:%d    ",
-                          static_cast<int>(lastResolvedCameraLocation_.X.As<int32_t>()),
+        SRL::Debug::Print(1, 26, "CAM2 y:%d pit:%d car:%d g:%d",
                           static_cast<int>(lastResolvedCameraLocation_.Y.As<int32_t>()),
-                          static_cast<int>(lastResolvedCameraLocation_.Z.As<int32_t>()));
+                          static_cast<int>(smoothedCamPitchDeg_),
+                          static_cast<int>(roadBodyPitchDeg_),
+                          static_cast<int>(roadGradeTanX100_));
     }
     return lastResolvedCameraLocation_;
 }
@@ -289,15 +319,14 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         return lastResolvedLookTarget_;
     }
 
+    // Pitch must match CameraLocation (same frame).
+    UpdateSmoothedCamPitch();
     const auto cfg = PresetConfig(chasePreset_);
-    const Fxp lookAheadBase = Fxp::BuildRaw(static_cast<int32_t>(cfg.lookAhead) << 16);
-    const Fxp zero = Fxp::BuildRaw(0);
     const Vector3D headingForward = smoothedHeadingForwardWorld_;
     Vector3D chaseForward = headingForward;
     if (chasePreset_ != ChasePreset::FirstPerson)
     {
         // Use movement forward only when aligned with heading.
-        // This avoids look target oscillation during tight circles.
         constexpr int32_t kMoveDirEnableRaw = (1 << 12); // ~0.0625
         if (movementSpeedNormRaw_ > kMoveDirEnableRaw)
         {
@@ -311,50 +340,54 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         }
     }
 
-    // First-person camera keeps a rigid look vector aligned with car yaw.
+    // Look distance along car longitudinal (preset + mild speed gain for near).
+    int32_t lookAheadUnits = static_cast<int32_t>(cfg.lookAhead);
+    int32_t lookHeightUnits = static_cast<int32_t>(cfg.lookHeight);
+    if (chasePreset_ == ChasePreset::ChaseNear)
+    {
+        const Fxp speedNorm = Fxp::BuildRaw(movementSpeedNormRaw_);
+        constexpr int32_t kLookAheadBaseUnits = 20;
+        constexpr int32_t kLookAheadSpeedGainUnits = 10;
+        lookAheadUnits = kLookAheadBaseUnits;
+        lookAheadUnits += static_cast<int32_t>(
+            (static_cast<int64_t>(kLookAheadSpeedGainUnits) * speedNorm.RawValue()) >> 16);
+        lookAheadUnits = std::clamp<int32_t>(lookAheadUnits, 12, 56);
+        // Prefer preset lookAhead when larger (calibrated chase distance).
+        if (cfg.lookAhead > lookAheadUnits) lookAheadUnits = cfg.lookAhead;
+        lookHeightUnits = static_cast<int32_t>(cfg.lookHeight) + 3;
+    }
+    else if (chasePreset_ == ChasePreset::ChaseFar)
+    {
+        lookAheadUnits = std::clamp<int32_t>(lookAheadUnits, 60, 160);
+    }
+
+    // First-person: look along pitched car forward from camera (hood view).
     if (chasePreset_ == ChasePreset::FirstPerson)
     {
-        const Vector3D forward(headingForward.X * lookAheadBase,
-                               zero,
-                               headingForward.Z * lookAheadBase);
-        lastResolvedLookTarget_ = lastResolvedCameraLocation_ + forward;
+        Fxp lookY = Fxp::BuildRaw(lookHeightUnits << 16);
+        Fxp lookZ = Fxp::BuildRaw(lookAheadUnits << 16);
+        ApplyLocalPitchYZ(smoothedCamPitchDeg_ * kCamPitchSign, lookY, lookZ);
+        // 1P: look along pitched heading from current camera.
+        const Vector3D lookOff(
+            (headingForward.X * lookZ),
+            lookY,
+            (headingForward.Z * lookZ));
+        lastResolvedLookTarget_ = lastResolvedCameraLocation_ + lookOff;
         return lastResolvedLookTarget_;
     }
 
-    // Arcade chase (rigid): keep target tightly anchored to the car so the
-    // vehicle stays framed even on long straights and 180 turns.
-    const Fxp speedNorm = Fxp::BuildRaw(movementSpeedNormRaw_);
-    constexpr int32_t kLookAheadBaseUnits = 20;
-    constexpr int32_t kLookAheadSpeedGainUnits = 10;
-    constexpr int32_t kLookAheadMinUnits = 12;
-    constexpr int32_t kLookAheadMaxUnits = 56;
-    int32_t dynamicLookAheadUnits = kLookAheadBaseUnits;
-    dynamicLookAheadUnits += static_cast<int32_t>(
-        (static_cast<int64_t>(kLookAheadSpeedGainUnits) * speedNorm.RawValue()) >> 16);
-    dynamicLookAheadUnits = std::clamp<int32_t>(
-        dynamicLookAheadUnits,
-        kLookAheadMinUnits,
-        kLookAheadMaxUnits);
-    // Daytona far: look a bit further down-track so car stays in lower frame.
-    if (chasePreset_ == ChasePreset::ChaseFar)
-    {
-        dynamicLookAheadUnits = static_cast<int32_t>(cfg.lookAhead);
-        if (dynamicLookAheadUnits < 60) dynamicLookAheadUnits = 60;
-        if (dynamicLookAheadUnits > 160) dynamicLookAheadUnits = 160;
-    }
-    const Fxp dynamicLookAhead = Fxp::BuildRaw(dynamicLookAheadUnits << 16);
+    // Arcade chase: look point in body frame (ahead + height), rotated by cam pitch
+    // so the view tilts with the car on declines/climbs.
+    Fxp lookY = Fxp::BuildRaw(lookHeightUnits << 16);
+    Fxp lookZ = Fxp::BuildRaw(lookAheadUnits << 16);
+    ApplyLocalPitchYZ(smoothedCamPitchDeg_ * kCamPitchSign, lookY, lookZ);
 
-    const Vector3D forward(chaseForward.X * dynamicLookAhead,
-                           zero,
-                           chaseForward.Z * dynamicLookAhead);
-    lastResolvedLookTarget_ = carWorldPosition + forward;
-    // lookHeight: more negative = higher look point (same Y convention as offsetY).
-    const int32_t lookYUnits =
-        (chasePreset_ == ChasePreset::ChaseFar)
-            ? static_cast<int32_t>(cfg.lookHeight)
-            : static_cast<int32_t>(cfg.lookHeight) + 3;
-    lastResolvedLookTarget_.Y = carWorldPosition.Y +
-                                Fxp::BuildRaw(lookYUnits << 16);
+    // Optional planar blend of chase forward for look XZ (yaw only).
+    const Vector3D forward = chaseForward;
+    lastResolvedLookTarget_ = Vector3D(
+        carWorldPosition.X + (forward.X * lookZ),
+        carWorldPosition.Y + lookY,
+        carWorldPosition.Z + (forward.Z * lookZ));
     return lastResolvedLookTarget_;
 }
 
@@ -389,6 +422,8 @@ void CameraSystem::ApplyChasePreset(ChasePreset preset, bool logPreset)
     state_.viewPitchDeg = cfg.viewPitchDeg;
     state_.viewYaw = Angle::FromDegrees(Fxp::BuildRaw(state_.viewYawDeg << 16));
     state_.viewPitch = Angle::FromDegrees(Fxp::BuildRaw(state_.viewPitchDeg << 16));
+    camPitchInitialized_ = false;
+    smoothedCamPitchDeg_ = 0;
     InitializeManualOffset();
     cameraLocationInitialized_ = false;
 
@@ -415,40 +450,43 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
     {
     case ChasePreset::FirstPerson:
         return ChasePresetConfig{
-            0,    // offsetX
-            // Vertical clearance from asphalt (more negative Y = higher).
-            // Was -12 — still too close to coplanar track faces (poly pop).
-            // Raise toward classic cockpit height so lower screen stops exploding.
-            -28,  // offsetY
-            40,   // offsetZ (hood / along car forward)
-            220,  // lookAhead
-            0,    // lookHeight
-            0     // viewPitchDeg
+            0,      // offsetX
+            -28,    // offsetY
+            40,     // offsetZ (hood / along car forward)
+            220,    // lookAhead
+            0,      // lookHeight
+            0,      // viewPitchDeg
+            90,     // pitchFollowX100
+            19661,  // pitchBlendRaw ~0.30 (stable)
+            8,      // baseBoomLift
+            12      // minBoomClearance
         };
     case ChasePreset::ChaseFar:
-        // Daytona USA-style far cam: high-ish, well BEHIND the car, look at the
-        // car + track so the vehicle stays visible at distance.
         return ChasePresetConfig{
-            0,    // offsetX
-            // Effective with chase lift (-20): ~-96.
-            -76,  // offsetY
-            // Negative Z = behind car (local forward space). Farther than CAM2.
-            -480, // offsetZ
-            120,  // lookAhead (used by far look path)
-            // Aim near car body (not pure horizon) so car is framed like Daytona.
-            -28,  // lookHeight
-            0     // viewPitchDeg
+            0,      // offsetX
+            -76,    // offsetY
+            -480,   // offsetZ
+            120,    // lookAhead
+            -28,    // lookHeight
+            0,      // viewPitchDeg
+            70,     // pitchFollowX100 — softer far cam
+            13107,  // pitchBlendRaw ~0.20
+            24,     // baseBoomLift
+            14      // minBoomClearance
         };
     case ChasePreset::ChaseNear:
     default:
-        // Camera 2 distance is calibrated at runtime from car bounds.
         return ChasePresetConfig{
             chaseNearOffsetX_,
-            -16,  // offsetY
+            -24,    // offsetY
             chaseNearOffsetZ_,
-            120,  // lookAhead
-            -30,  // lookHeight (extra lift so CAM2 pitch change is visible)
-            0     // viewPitchDeg
+            120,    // lookAhead
+            -30,    // lookHeight
+            0,      // viewPitchDeg
+            80,     // pitchFollowX100 — partial follow (less seam bob)
+            16384,  // pitchBlendRaw ~0.25
+            16,     // baseBoomLift
+            12      // minBoomClearance
         };
     }
 }
@@ -546,6 +584,162 @@ int32_t CameraSystem::CameraFollowBlendRaw() const
     return ClampUnitRaw(baseBlendRaw + boostRaw);
 }
 
+void CameraSystem::UpdateSmoothedCamPitch() const
+{
+    const auto cfg = PresetConfig(chasePreset_);
+    // Prefer body pitch only when meaningful. Grade fallback is *heavily*
+    // attenuated — raw gradeTan at launch / segment seams was tilting+dropping
+    // the boom on flat start throttle.
+    int32_t targetPitch = static_cast<int32_t>(roadBodyPitchDeg_);
+    if (std::abs(targetPitch) < kPitchDeadzoneDeg)
+    {
+        // Only use grade when clearly on a slope (|tan|*100 >= 12 ≈ steep-ish).
+        if (std::abs(static_cast<int32_t>(roadGradeTanX100_)) >= 12)
+        {
+            targetPitch = static_cast<int32_t>(roadGradeTanX100_) / 4; // gentler than /2
+        }
+        else
+        {
+            targetPitch = 0;
+        }
+    }
+    // Near-zero speed: hold camera level (launch / parking). Prevents the
+    // "accelerate and cam dives" artifact from probe noise on first frames.
+    constexpr int32_t kStableSpeedNormRaw = (1 << 12); // ~0.0625
+    if (movementSpeedNormRaw_ < kStableSpeedNormRaw &&
+        std::abs(targetPitch) < (kPitchDeadzoneDeg + 2))
+    {
+        targetPitch = 0;
+    }
+
+    targetPitch = (targetPitch * static_cast<int32_t>(cfg.pitchFollowX100)) / 100;
+    if (std::abs(targetPitch) < kPitchDeadzoneDeg)
+    {
+        targetPitch = 0;
+    }
+    targetPitch = std::clamp<int32_t>(targetPitch, -kMaxCamPitchDeg, kMaxCamPitchDeg);
+
+    if (!camPitchInitialized_)
+    {
+        // Start level — never snap to a noisy first sample.
+        smoothedCamPitchDeg_ = 0;
+        camPitchInitialized_ = true;
+        return;
+    }
+
+    // Soft lerp + hard rate limit (seam anti-bobbing on 27..45 climb).
+    const int32_t alpha = ClampUnitRaw(cfg.pitchBlendRaw);
+    const int32_t cur = static_cast<int32_t>(smoothedCamPitchDeg_);
+    const int32_t delta = targetPitch - cur;
+    int32_t step = static_cast<int32_t>(
+        (static_cast<int64_t>(delta) * alpha) >> 16);
+    // No forced 1° crawl — that made the cam pump on every segment joint.
+    if (step > kMaxCamPitchStepDeg) step = kMaxCamPitchStepDeg;
+    if (step < -kMaxCamPitchStepDeg) step = -kMaxCamPitchStepDeg;
+    // If still far and step rounded to 0, allow 1° only every time |delta|>=3.
+    if (step == 0 && std::abs(delta) >= 3)
+    {
+        step = (delta > 0) ? 1 : -1;
+    }
+    int32_t next = cur + step;
+    next = std::clamp<int32_t>(next, -kMaxCamPitchDeg, kMaxCamPitchDeg);
+    smoothedCamPitchDeg_ = static_cast<int16_t>(next);
+}
+
+void CameraSystem::ApplyLocalPitchYZ(int32_t pitchDeg, Fxp& ioOffY, Fxp& ioOffZ)
+{
+    if (pitchDeg == 0) return;
+    const Angle pitch = Angle::FromDegrees(Fxp::BuildRaw(pitchDeg << 16));
+    const Fxp s = SRL::Math::Trigonometry::Sin(pitch);
+    const Fxp c = SRL::Math::Trigonometry::Cos(pitch);
+    // Y-down, +pitch = nose down:
+    //   Y' = Y cos + Z sin
+    //   Z' = -Y sin + Z cos
+    // Rear (Z<0, Y high/neg) rises in altitude when nose-down — boom clears asphalt.
+    const Fxp y = ioOffY;
+    const Fxp z = ioOffZ;
+    ioOffY = (y * c) + (z * s);
+    ioOffZ = (z * c) - (y * s);
+}
+
+Vector3D CameraSystem::ResolveLocalOffsetWorld(int32_t offsetXUnits,
+                                               int32_t offsetYUnits,
+                                               int32_t offsetZUnits,
+                                               int32_t pitchDeg) const
+{
+    Fxp offX = Fxp::BuildRaw(offsetXUnits * (1 << 16));
+    Fxp offY = Fxp::BuildRaw(offsetYUnits * (1 << 16));
+    Fxp offZ = Fxp::BuildRaw(offsetZUnits * (1 << 16));
+    ApplyLocalPitchYZ(pitchDeg, offY, offZ);
+
+    const Vector3D forward = smoothedHeadingForwardWorld_;
+    const Vector3D right(Fxp::BuildRaw(-forward.Z.RawValue()),
+                         Fxp::BuildRaw(0),
+                         forward.X);
+    return Vector3D((right.X * offX) + (forward.X * offZ),
+                    offY,
+                    (right.Z * offX) + (forward.Z * offZ));
+}
+
+CameraSafety::Config CameraSystem::BoomSafetyConfig(int32_t pitchDeg) const
+{
+    const auto cfg = PresetConfig(chasePreset_);
+    CameraSafety::Config boom = safetyConfig_;
+    int32_t clearance = static_cast<int32_t>(cfg.minBoomClearance);
+    // More pitch → more vertical clearance (decline/climb).
+    const int32_t absPitch = (pitchDeg < 0) ? -pitchDeg : pitchDeg;
+    clearance += (absPitch * 2) / 3; // ~0.66 units per degree
+    // Nose-down (Y-down +pitch): rear asphalt rises toward boom — extra clearance.
+    if (pitchDeg > kPitchDeadzoneDeg)
+    {
+        clearance += (pitchDeg - kPitchDeadzoneDeg); // +1 unit per degree past deadzone
+    }
+    if (clearance < 8) clearance = 8;
+    if (clearance > 48) clearance = 48;
+    boom.minCameraHeightAboveTarget = Fxp::BuildRaw(clearance << 16);
+    return boom;
+}
+
+Vector3D CameraSystem::ApplyGradeBehindClearance(const Vector3D& cameraPos,
+                                                 const Vector3D& carWorldPosition,
+                                                 int32_t behindUnitsAbs) const
+{
+    if (behindUnitsAbs <= 0) return cameraPos;
+    // Strict gate: only real downhill with established camera pitch.
+    // Old thresholds (pitch>=2 / grade>=4) fired on flat launch and every seam.
+    if (smoothedCamPitchDeg_ < kGradeBehindMinPitchDeg)
+    {
+        return cameraPos;
+    }
+    if (roadGradeTanX100_ < 10 && roadBodyPitchDeg_ < kGradeBehindMinPitchDeg)
+    {
+        return cameraPos;
+    }
+    // tan ≈ gradeTanX100/100; use smoothed pitch primarily (less seam noise).
+    const int32_t grade = std::max<int32_t>(
+        static_cast<int32_t>(smoothedCamPitchDeg_) * 2,
+        static_cast<int32_t>(roadGradeTanX100_));
+    // Attenuate: full behind distance over-lifted and bobbed on long Z chase.
+    // Nose-down uses more of the boom length so clearance tracks steeper grades.
+    const int32_t behindScale =
+        (smoothedCamPitchDeg_ >= 12) ? 4 : 2; // /4 vs /3 of behind
+    const int32_t effectiveBehind = (behindUnitsAbs * behindScale) / 5;
+    const int32_t dyUnits = (grade * effectiveBehind) / 100;
+    if (dyUnits < 4) return cameraPos;
+    // Estimated ground Y behind car (higher altitude = smaller Y).
+    const int32_t groundBehindY =
+        (carWorldPosition.Y.RawValue() >> 16) - dyUnits;
+    const auto boom = BoomSafetyConfig(smoothedCamPitchDeg_);
+    const int32_t clearance = boom.minCameraHeightAboveTarget.RawValue() >> 16;
+    const int32_t maxCamY = groundBehindY - clearance;
+    Vector3D out = cameraPos;
+    if ((out.Y.RawValue() >> 16) > maxCamY)
+    {
+        out.Y = Fxp::BuildRaw(maxCamY << 16);
+    }
+    return out;
+}
+
 Vector3D CameraSystem::ResolvePresetOffsetWorld() const
 {
     const auto cfg = PresetConfig(chasePreset_);
@@ -553,16 +747,8 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     int32_t offsetYUnits = cfg.offsetY;
     int32_t offsetZUnits = cfg.offsetZ;
 
-    const Vector3D headingForward = smoothedHeadingForwardWorld_;
-    // Keep chase position rigidly tied to heading to prevent side-dependent
-    // jitter when movement direction becomes noisy while steering hard.
-    const Vector3D forward = headingForward;
     offsetXUnits = std::clamp<int32_t>(offsetXUnits, -140, 140);
-    // Requested tuning:
-    // - global Y lift (-20) for chase cams (more negative = higher)
-    // - camera 2 (ChaseNear): extra -20
-    // - camera 1 (FirstPerson): small extra vertical clearance off asphalt
-    //   (poly pop / sort explosion when coplanar with track faces)
+    // Global chase lift + per-preset base boom (Y-down: more negative = higher).
     if (chasePreset_ == ChasePreset::FirstPerson)
     {
         offsetYUnits -= 8;
@@ -573,16 +759,44 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     }
     if (chasePreset_ == ChasePreset::ChaseNear)
     {
-        offsetYUnits -= 20;
+        offsetYUnits -= 12;
     }
-    // CAM3 needs a lower (more elevated) clamp floor than the old -56 ceiling.
+    offsetYUnits -= static_cast<int32_t>(cfg.baseBoomLift);
+
+    // Residual grade lift only when camera pitch is already committed
+    // (avoids pumping Y on every segment joint while pitch≈0).
+    if (chasePreset_ != ChasePreset::FirstPerson &&
+        std::abs(static_cast<int32_t>(smoothedCamPitchDeg_)) >= kGradeBehindMinPitchDeg)
+    {
+        int32_t gradeLift = 0;
+        if (roadGradeTanX100_ > 12)
+        {
+            gradeLift += std::min<int32_t>(12, roadGradeTanX100_ / 5);
+        }
+        if (roadGradeTanX100_ < -12)
+        {
+            gradeLift += std::min<int32_t>(8, (-static_cast<int32_t>(roadGradeTanX100_)) / 5);
+        }
+        offsetYUnits -= gradeLift;
+    }
+
+    // F4: extra boom lift proportional to nose-down pitch (no MapHeight probes).
+    // Y-down: subtract units → higher altitude. Keeps cam above asphalt on 28–42.
+    if (chasePreset_ != ChasePreset::FirstPerson &&
+        smoothedCamPitchDeg_ > kPitchDeadzoneDeg)
+    {
+        const int32_t noseDown = static_cast<int32_t>(smoothedCamPitchDeg_) - kPitchDeadzoneDeg;
+        // ~1.5 units per degree past deadzone, capped.
+        const int32_t pitchLift = std::min<int32_t>(28, (noseDown * 3) / 2);
+        offsetYUnits -= pitchLift;
+    }
+
     const int32_t yMin =
-        (chasePreset_ == ChasePreset::ChaseFar) ? -160 : -56;
-    // Allow CAM1 enough vertical room (was capped oddly vs chase).
+        (chasePreset_ == ChasePreset::ChaseFar) ? -200 :
+        (chasePreset_ == ChasePreset::FirstPerson) ? -64 : -120;
     const int32_t yMax = 20;
     offsetYUnits = std::clamp<int32_t>(offsetYUnits, yMin, yMax);
-    // Chase cameras must stay behind the car (negative local Z).
-    // CAM3 (Daytona far) needs a deeper rear clamp than CAM2.
+
     if (chasePreset_ == ChasePreset::FirstPerson)
     {
         offsetZUnits = std::clamp<int32_t>(offsetZUnits, -40, 80);
@@ -595,20 +809,13 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     {
         offsetZUnits = std::clamp<int32_t>(offsetZUnits, -320, -80);
     }
-    // Hard rule for arcade chase: always behind the car (never in front).
     if (chasePreset_ != ChasePreset::FirstPerson)
     {
         offsetZUnits = -std::abs(offsetZUnits);
     }
 
-    const Fxp offX = Fxp::BuildRaw(offsetXUnits * (1 << 16));
-    const Fxp offY = Fxp::BuildRaw(offsetYUnits * (1 << 16));
-    const Fxp offZ = Fxp::BuildRaw(offsetZUnits * (1 << 16));
-    const Vector3D right(Fxp::BuildRaw(-forward.Z.RawValue()),
-                         Fxp::BuildRaw(0),
-                         forward.X);
-
-    return Vector3D((right.X * offX) + (forward.X * offZ),
-                    offY,
-                    (right.Z * offX) + (forward.Z * offZ));
+    // Body-frame pitch: rotates (Y,Z) so boom follows car inclination.
+    UpdateSmoothedCamPitch();
+    const int32_t pitchDeg = static_cast<int32_t>(smoothedCamPitchDeg_) * kCamPitchSign;
+    return ResolveLocalOffsetWorld(offsetXUnits, offsetYUnits, offsetZUnits, pitchDeg);
 }

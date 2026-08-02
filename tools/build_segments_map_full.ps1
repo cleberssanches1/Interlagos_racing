@@ -96,17 +96,47 @@ foreach ($seg in @($json.segments)) {
     $segmentById[[int]$seg.id] = $seg
 }
 
+function Find-PreferredMatPath {
+    param(
+        [string]$BaseDir,
+        [int]$SegmentId
+    )
+    # Prefer dense design mesh (lod_0) MATs: 64 then 32.
+    # Legacy M16/M8 often still sit on disk from old builds (16 faces + stale family ids).
+    foreach ($lod in @(64, 32, 16, 8)) {
+        $p = Join-Path $BaseDir ("S{0:D3}M{1}.MAT" -f $SegmentId, $lod)
+        if (Test-Path -LiteralPath $p) { return $p }
+    }
+    return $null
+}
+
 $matById = @{}
-$matFiles = @(Get-ChildItem -LiteralPath $outDir -File -Filter "S???M8.MAT" | Sort-Object Name)
-foreach ($matFile in $matFiles) {
-    $mat = Read-MatBindings -Path $matFile.FullName
+$matSourceById = @{}
+$matFilesUsed = New-Object System.Collections.Generic.List[string]
+
+# Prefer MAT from dense GEO pipeline; do NOT only scan M8 (stale after 3-LOD redesign).
+$candidateIds = New-Object 'System.Collections.Generic.HashSet[int]'
+foreach ($id in $segmentById.Keys) { [void]$candidateIds.Add([int]$id) }
+foreach ($matFile in @(Get-ChildItem -LiteralPath $outDir -File -Filter "S???M*.MAT" -ErrorAction SilentlyContinue)) {
+    if ($matFile.BaseName -match '^S(\d{3})M(8|16|32|64)$') {
+        [void]$candidateIds.Add([int]$Matches[1])
+    }
+}
+
+foreach ($id in (@($candidateIds) | Sort-Object)) {
+    $matPath = Find-PreferredMatPath -BaseDir $outDir -SegmentId $id
+    if ([string]::IsNullOrWhiteSpace($matPath)) { continue }
+    $mat = Read-MatBindings -Path $matPath
     $matById[[int]$mat.segmentId] = $mat
+    $matSourceById[[int]$mat.segmentId] = [System.IO.Path]::GetFileName($matPath)
+    $matFilesUsed.Add($matPath) | Out-Null
 }
 
 $allIds = New-Object 'System.Collections.Generic.HashSet[int]'
 foreach ($id in $segmentById.Keys) { [void]$allIds.Add([int]$id) }
 foreach ($id in $matById.Keys) { [void]$allIds.Add([int]$id) }
 
+$usedFamilyIds = New-Object 'System.Collections.Generic.HashSet[int]'
 $rebuiltSegments = New-Object System.Collections.Generic.List[object]
 foreach ($id in (@($allIds) | Sort-Object)) {
     $existing = $null
@@ -116,9 +146,11 @@ foreach ($id in (@($allIds) | Sort-Object)) {
         $mat = $matById[$id]
         $faces = New-Object System.Collections.Generic.List[object]
         for ($i = 0; $i -lt $mat.families.Count; $i++) {
+            $fid = [int]$mat.families[$i]
+            if ($fid -gt 0) { [void]$usedFamilyIds.Add($fid) }
             $faces.Add([pscustomobject]@{
                 index = $i
-                familyId = [int]$mat.families[$i]
+                familyId = $fid
             }) | Out-Null
         }
 
@@ -144,14 +176,51 @@ foreach ($id in (@($allIds) | Sort-Object)) {
 
         Copy-IfPresent -Target $segNode -Source $existing -Name "geo"
         Copy-IfPresent -Target $segNode -Source $existing -Name "mat"
+        if ($matSourceById.ContainsKey($id)) {
+            $segNode["matSource"] = [string]$matSourceById[$id]
+        }
         $rebuiltSegments.Add([pscustomobject]$segNode) | Out-Null
         continue
     }
 
     if ($null -ne $existing) {
+        # Keep existing face families in the used set for textureFamilies repair.
+        if ($existing.PSObject.Properties.Name -contains "faceTextureFamily") {
+            foreach ($fid in @($existing.faceTextureFamily)) {
+                $f = [int]$fid
+                if ($f -gt 0) { [void]$usedFamilyIds.Add($f) }
+            }
+        }
         $rebuiltSegments.Add($existing) | Out-Null
     }
 }
+
+# textureFamilies: keep source catalog, then ensure every MAT-referenced id exists.
+$familyById = @{}
+foreach ($fam in @($json.textureFamilies)) {
+    if ($null -eq $fam) { continue }
+    if (-not ($fam.PSObject.Properties.Name -contains "id")) { continue }
+    $familyById[[int]$fam.id] = $fam
+}
+
+$missingFamilyIds = @($usedFamilyIds | Where-Object { -not $familyById.ContainsKey([int]$_) } | Sort-Object)
+if ($missingFamilyIds.Count -gt 0) {
+    Write-Host ("Aviso: {0} familyId(s) usados no MAT sem entrada em textureFamilies; criando stubs." -f $missingFamilyIds.Count)
+    foreach ($fid in $missingFamilyIds) {
+        $stub = [pscustomobject]@{
+            id = [int]$fid
+            name = ("family_{0}" -f $fid)
+            sourceStem = ("family_{0}" -f $fid)
+            variants = [pscustomobject]@{}
+            imageFiles = [pscustomobject]@{}
+            surfaceTypeId = 0
+            surfaceType = "unknown"
+        }
+        $familyById[[int]$fid] = $stub
+    }
+}
+
+$textureFamiliesOut = @($familyById.Values | Sort-Object { [int]$_.id })
 
 $outJson = [ordered]@{}
 Copy-IfPresent -Target $outJson -Source $json -Name "version"
@@ -172,11 +241,11 @@ if (-not $outJson.Contains("exporter")) {
         texColorMode = "Paletted16"
     }
 }
-Copy-IfPresent -Target $outJson -Source $json -Name "textureFamilies"
-if (-not $outJson.Contains("textureFamilies")) {
-    $outJson["textureFamilies"] = @()
-}
+$outJson["textureFamilies"] = @($textureFamiliesOut)
 $outJson["segments"] = @($rebuiltSegments.ToArray() | Sort-Object id)
 
 [pscustomobject]$outJson | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $OutJsonPath -Encoding UTF8
-Write-Host ("segments_map.json reconstruido a partir de {0} com {1} segmentos e {2} MATs" -f $sourceJson, $rebuiltSegments.Count, $matFiles.Count)
+Write-Host ("segments_map.json reconstruido a partir de {0} com {1} segmentos e {2} MATs (prefer M64>M32>M16>M8)" -f $sourceJson, $rebuiltSegments.Count, $matFilesUsed.Count)
+if ($missingFamilyIds.Count -gt 0) {
+    Write-Host ("family stubs adicionados: {0}" -f ($missingFamilyIds -join ","))
+}

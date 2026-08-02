@@ -4,7 +4,12 @@ param(
     [string]$JsonPath = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing\segments_map.json",
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [int]$Lod = 8,
-    [string]$SeamOwnershipPath = ""
+    [string]$SeamOwnershipPath = "",
+    # When true, only rewrite MAT (keep existing GEO). Used for multi-design LODs
+    # that share the high-detail mesh from lod_0.
+    [switch]$SkipGeo = $false,
+    # Asset tag: "" => S001.GEO / S001M64.MAT ; "L" => S001L.GEO / S001LM64.MAT (mid/far mesh)
+    [string]$AssetTag = ""
 )
 
 Set-StrictMode -Version Latest
@@ -368,64 +373,76 @@ if ($dropFaceIndexSet.Count -gt 0) {
     $faceFamilies = @($filteredFamilies.ToArray())
 }
 
-$geoShortPath = Join-Path $OutDir ("S{0:D3}.GEO" -f $SegmentId)
-$matShortPath = Join-Path $OutDir ("S{0:D3}M{1}.MAT" -f $SegmentId, $Lod)
+$tag = if ([string]::IsNullOrWhiteSpace($AssetTag)) { "" } else { $AssetTag.Trim().ToUpperInvariant() }
+if ($tag -ne "" -and $tag -ne "L") {
+    throw "AssetTag invalido '$AssetTag' (use '' ou 'L')."
+}
+$geoShortPath = Join-Path $OutDir ("S{0:D3}{1}.GEO" -f $SegmentId, $tag)
+$matShortPath = Join-Path $OutDir ("S{0:D3}{1}M{2}.MAT" -f $SegmentId, $tag, $Lod)
 $geoTempPath = "$geoShortPath.tmp"
 $matTempPath = "$matShortPath.tmp"
 
-# GEO
-$geoFs = [System.IO.File]::Open($geoTempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-try {
-    $bw = New-Object System.IO.BinaryWriter($geoFs)
-    # FileHeader
-    $geoPayloadBytes = [uint32](8 + ($verts.Count * 12) + ($faces.Count * 28))
-    Write-U32 $bw 0x314F4547 # GEO1
-    Write-U16 $bw 1
-    Write-U16 $bw 0
-    Write-U32 $bw ([uint32]$SegmentId)
-    Write-U32 $bw $geoPayloadBytes
-    # GeoHeader
-    Write-U32 $bw ([uint32]$verts.Count)
-    Write-U32 $bw ([uint32]$faces.Count)
-    # Vertices
-    foreach ($v in $verts) {
-        Write-I32 $bw (To-Fxp32 $v.x)
-        Write-I32 $bw (To-Fxp32 $v.y)
-        Write-I32 $bw (To-Fxp32 $v.z)
-    }
-    # Faces
-    foreach ($f in $faces) {
-        $kind = [byte]$f.Count
-        if ($kind -ne 3 -and $kind -ne 4) { $kind = 3 }
-
-        $vi = @(0,0,0,0)
-        $uu = @(0,0,0,0)
-        $vv = @(0,0,0,0)
-        for ($i = 0; $i -lt $f.Count; $i++) {
-            $c = $f[$i]
-            if ($c.vi -lt 0 -or $c.vi -ge $verts.Count) { throw "Indice de vertice fora do range na face" }
-            $vi[$i] = [uint16]$c.vi
-            if ($c.ti -ge 0 -and $c.ti -lt $uvs.Count) {
-                $u = [double]$uvs[$c.ti].u
-                $v = [double]$uvs[$c.ti].v
-                $uu[$i] = To-I16Uv $u
-                $vv[$i] = To-I16Uv $v
-            }
-        }
-        for ($i = 0; $i -lt 4; $i++) { Write-U16 $bw ([uint16]$vi[$i]) }
-        for ($i = 0; $i -lt 4; $i++) { Write-I16 $bw ([int16]$uu[$i]) }
-        for ($i = 0; $i -lt 4; $i++) { Write-I16 $bw ([int16]$vv[$i]) }
-        $bw.Write([byte]$kind)
-        $bw.Write([byte]0)
+# GEO (optional skip: keep high-detail mesh from lod_0)
+if (-not $SkipGeo) {
+    $geoFs = [System.IO.File]::Open($geoTempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try {
+        $bw = New-Object System.IO.BinaryWriter($geoFs)
+        # FileHeader
+        $geoPayloadBytes = [uint32](8 + ($verts.Count * 12) + ($faces.Count * 28))
+        Write-U32 $bw 0x314F4547 # GEO1
+        Write-U16 $bw 1
         Write-U16 $bw 0
+        Write-U32 $bw ([uint32]$SegmentId)
+        Write-U32 $bw $geoPayloadBytes
+        # GeoHeader
+        Write-U32 $bw ([uint32]$verts.Count)
+        Write-U32 $bw ([uint32]$faces.Count)
+        # Vertices
+        foreach ($v in $verts) {
+            Write-I32 $bw (To-Fxp32 $v.x)
+            Write-I32 $bw (To-Fxp32 $v.y)
+            Write-I32 $bw (To-Fxp32 $v.z)
+        }
+        # Faces
+        foreach ($f in $faces) {
+            $kind = [byte]$f.Count
+            if ($kind -ne 3 -and $kind -ne 4) { $kind = 3 }
+
+            $vi = @(0,0,0,0)
+            $uu = @(0,0,0,0)
+            $vv = @(0,0,0,0)
+            for ($i = 0; $i -lt $f.Count; $i++) {
+                $c = $f[$i]
+                if ($c.vi -lt 0 -or $c.vi -ge $verts.Count) { throw "Indice de vertice fora do range na face" }
+                $vi[$i] = [uint16]$c.vi
+                if ($c.ti -ge 0 -and $c.ti -lt $uvs.Count) {
+                    $u = [double]$uvs[$c.ti].u
+                    $v = [double]$uvs[$c.ti].v
+                    $uu[$i] = To-I16Uv $u
+                    $vv[$i] = To-I16Uv $v
+                }
+            }
+            for ($i = 0; $i -lt 4; $i++) { Write-U16 $bw ([uint16]$vi[$i]) }
+            for ($i = 0; $i -lt 4; $i++) { Write-I16 $bw ([int16]$uu[$i]) }
+            for ($i = 0; $i -lt 4; $i++) { Write-I16 $bw ([int16]$vv[$i]) }
+            $bw.Write([byte]$kind)
+            $bw.Write([byte]0)
+            Write-U16 $bw 0
+        }
+        $bw.Flush()
+        $bw.Dispose()
+    } finally {
+        $geoFs.Close()
     }
-    $bw.Flush()
-    $bw.Dispose()
-} finally {
-    $geoFs.Close()
+    Assert-GeoFileValid -Path $geoTempPath
+    Move-Item -LiteralPath $geoTempPath -Destination $geoShortPath -Force
 }
-Assert-GeoFileValid -Path $geoTempPath
-Move-Item -LiteralPath $geoTempPath -Destination $geoShortPath -Force
+else {
+    if (-not (Test-Path -LiteralPath $geoShortPath)) {
+        throw ("SkipGeo mas GEO ausente: {0}" -f $geoShortPath)
+    }
+    Write-Host ("SkipGeo: reutilizando {0}" -f $geoShortPath)
+}
 
 # MAT
 $matFs = [System.IO.File]::Open($matTempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
@@ -453,6 +470,8 @@ try {
 Assert-MatFileValid -Path $matTempPath
 Move-Item -LiteralPath $matTempPath -Destination $matShortPath -Force
 
-Write-Host ("OK GEO: {0}" -f $geoShortPath)
+if (-not $SkipGeo) {
+    Write-Host ("OK GEO: {0}" -f $geoShortPath)
+}
 Write-Host ("OK MAT: {0}" -f $matShortPath)
-Write-Host ("Verts:{0} Faces:{1} Families:{2}" -f $verts.Count, $faces.Count, $faceFamilies.Count)
+Write-Host ("Verts:{0} Faces:{1} Families:{2} SkipGeo:{3}" -f $verts.Count, $faces.Count, $faceFamilies.Count, [int][bool]$SkipGeo)

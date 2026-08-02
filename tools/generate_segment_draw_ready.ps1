@@ -3,6 +3,8 @@ param(
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [int]$Lod = 8,
     [int]$SegmentId = 0,
+    # "" high mesh S###.GEO ; "L" mid/far S###L.GEO / S###LM64.MAT / S###L.SDR
+    [string]$AssetTag = "",
     [switch]$AllSegments = $false,
     [switch]$CanonicalizeQuadUvOrder = $false,
     [int]$QuadUvEdgeTolerance = 192,
@@ -298,13 +300,22 @@ function Align-4([uint32]$Value) {
     return [uint32](($Value + 3) -band (-bnot 3))
 }
 
-function Resolve-SegmentList([string]$BaseDir, [int]$SingleId, [bool]$UseAll) {
+function Resolve-SegmentList([string]$BaseDir, [int]$SingleId, [bool]$UseAll, [string]$Tag = "") {
     if ($UseAll) {
         $ids = New-Object System.Collections.Generic.List[int]
-        $geoFiles = @(Get-ChildItem -LiteralPath $BaseDir -File -Filter "S???.GEO" -ErrorAction SilentlyContinue | Sort-Object Name)
+        $filter = if ($Tag -eq "L") { "S???L.GEO" } else { "S???.GEO" }
+        $geoFiles = @(Get-ChildItem -LiteralPath $BaseDir -File -Filter $filter -ErrorAction SilentlyContinue | Sort-Object Name)
         foreach ($file in $geoFiles) {
-            if ($file.BaseName -match '^S(\d{3})$') {
-                $ids.Add([int]$Matches[1]) | Out-Null
+            if ($Tag -eq "L") {
+                if ($file.BaseName -match '^S(\d{3})L$') {
+                    $ids.Add([int]$Matches[1]) | Out-Null
+                }
+            }
+            else {
+                # Exclude S001L when packing high
+                if ($file.BaseName -match '^S(\d{3})$') {
+                    $ids.Add([int]$Matches[1]) | Out-Null
+                }
             }
         }
         return @($ids.ToArray())
@@ -851,7 +862,10 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
     }
 }
 
-$segmentIds = Resolve-SegmentList -BaseDir $DataDir -SingleId $SegmentId -UseAll:$AllSegments
+$tag = if ([string]::IsNullOrWhiteSpace($AssetTag)) { "" } else { $AssetTag.Trim().ToUpperInvariant() }
+if ($tag -ne "" -and $tag -ne "L") { throw "AssetTag invalido '$AssetTag' (use '' ou 'L')." }
+
+$segmentIds = Resolve-SegmentList -BaseDir $DataDir -SingleId $SegmentId -UseAll:$AllSegments -Tag $tag
 $written = 0
 
 if ([string]::IsNullOrWhiteSpace($SegmentsMapPath)) {
@@ -869,9 +883,9 @@ $script:manualOrientationFixBySegmentFamily = Build-ManualOrientationFixMap -Map
 $script:surfaceTypeByFamilyId = Build-SurfaceTypeByFamilyIdMap -MapPath $SegmentsMapPath
 
 foreach ($id in $segmentIds) {
-    $geoPath = Join-Path $DataDir ("S{0:D3}.GEO" -f $id)
-    $matPath = Join-Path $DataDir ("S{0:D3}M{1}.MAT" -f $id, $Lod)
-    $outPath = Join-Path $OutDir ("S{0:D3}.SDR" -f $id)
+    $geoPath = Join-Path $DataDir ("S{0:D3}{1}.GEO" -f $id, $tag)
+    $matPath = Join-Path $DataDir ("S{0:D3}{1}M{2}.MAT" -f $id, $tag, $Lod)
+    $outPath = Join-Path $OutDir ("S{0:D3}{1}.SDR" -f $id, $tag)
 
     $geo = Load-Geo $geoPath
     $mat = Load-Mat $matPath

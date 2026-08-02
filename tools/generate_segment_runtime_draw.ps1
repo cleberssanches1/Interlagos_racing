@@ -2,6 +2,8 @@ param(
     [string]$DataDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [int]$SegmentId = 0,
+    # "" => S###.SDR/RDR ; "L" => S###L.SDR/RDR (mid/far design mesh)
+    [string]$AssetTag = "",
     [switch]$AllSegments = $false
 )
 
@@ -28,13 +30,21 @@ $ECdis = 128
 $SPdis = 64
 $sprPolygon = [uint16]$FUNC_Polygon
 
-function Resolve-SegmentList([string]$BaseDir, [int]$SingleId, [bool]$UseAll) {
+function Resolve-SegmentList([string]$BaseDir, [int]$SingleId, [bool]$UseAll, [string]$Tag) {
     if ($UseAll) {
         $ids = New-Object System.Collections.Generic.List[int]
-        $files = @(Get-ChildItem -LiteralPath $BaseDir -File -Filter "S???.SDR" -ErrorAction SilentlyContinue | Sort-Object Name)
+        $filter = if ($Tag -eq "L") { "S???L.SDR" } else { "S???.SDR" }
+        $files = @(Get-ChildItem -LiteralPath $BaseDir -File -Filter $filter -ErrorAction SilentlyContinue | Sort-Object Name)
         foreach ($file in $files) {
-            if ($file.BaseName -match '^S(\d{3})$') {
-                $ids.Add([int]$Matches[1]) | Out-Null
+            if ($Tag -eq "L") {
+                if ($file.BaseName -match '^S(\d{3})L$') {
+                    $ids.Add([int]$Matches[1]) | Out-Null
+                }
+            }
+            else {
+                if ($file.BaseName -match '^S(\d{3})$') {
+                    $ids.Add([int]$Matches[1]) | Out-Null
+                }
             }
         }
         return @($ids.ToArray())
@@ -189,12 +199,15 @@ function Write-Rdr([object]$Sdr, [string]$TargetPath) {
 if (-not (Test-Path -LiteralPath $DataDir)) { throw "DataDir nao encontrado: $DataDir" }
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
 
-$segmentIds = Resolve-SegmentList -BaseDir $DataDir -SingleId $SegmentId -UseAll:$AllSegments
+$tag = if ([string]::IsNullOrWhiteSpace($AssetTag)) { "" } else { $AssetTag.Trim().ToUpperInvariant() }
+if ($tag -ne "" -and $tag -ne "L") { throw "AssetTag invalido '$AssetTag' (use '' ou 'L')." }
+
+$segmentIds = Resolve-SegmentList -BaseDir $DataDir -SingleId $SegmentId -UseAll:$AllSegments -Tag $tag
 $written = 0
 
 foreach ($id in $segmentIds) {
-    $sdrPath = Join-Path $DataDir ("S{0:D3}.SDR" -f $id)
-    $outPath = Join-Path $OutDir ("S{0:D3}.RDR" -f $id)
+    $sdrPath = Join-Path $DataDir ("S{0:D3}{1}.SDR" -f $id, $tag)
+    $outPath = Join-Path $OutDir ("S{0:D3}{1}.RDR" -f $id, $tag)
     $sdr = Load-Sdr -Path $sdrPath
     Write-Rdr -Sdr $sdr -TargetPath $outPath
     $written++

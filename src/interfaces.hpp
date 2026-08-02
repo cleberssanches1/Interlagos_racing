@@ -36,10 +36,28 @@ struct GameplayFrameState
     int32_t activeSegmentId = -1;
     int16_t debugGroundYRear = 0;
     int16_t debugGroundYFront = 0;
+    int16_t debugGroundYLeft = 0;
+    int16_t debugGroundYRight = 0;
     int16_t debugGroundYTarget = 0;
+    int16_t debugGroundYBody = 0;     // filtered body Y
+    int16_t debugGroundDY = 0;        // target − body (Y-down: >0 = need descend)
+    int16_t debugGradeTanX100 = 0;    // grade * 100 (approx)
     int32_t debugGroundYRearRaw = 0;
     int32_t debugGroundYFrontRaw = 0;
+    int32_t debugGroundYLeftRaw = 0;
+    int32_t debugGroundYRightRaw = 0;
     uint8_t debugGroundMask = 0;
+    uint8_t debugTopoDrop = 0u;       // 1 while topology-drop window active
+    // Per-wheel ground face under FL/FR/RL/RR probes (world Y, int units).
+    // Larger Y = lower altitude. Dist = surfaceY - bodyY (positive => face below body).
+    int16_t debugWheelSurfYFl = 0;
+    int16_t debugWheelSurfYFr = 0;
+    int16_t debugWheelSurfYRl = 0;
+    int16_t debugWheelSurfYRr = 0;
+    int16_t debugWheelDistFl = 0;
+    int16_t debugWheelDistFr = 0;
+    int16_t debugWheelDistRl = 0;
+    int16_t debugWheelDistRr = 0;
     int16_t debugSteerDeg = 0;
     int16_t debugYawRateDeg = 0;
     int16_t debugYawStepDeg = 0;

@@ -114,13 +114,27 @@ public:
         int16_t groundRearY = 0;
         int16_t groundFrontY = 0;
         int16_t groundTargetY = 0;
+        int16_t groundBodyY = 0;
+        int16_t groundDY = 0;
+        int16_t gradeTanX100 = 0;
+        int16_t bodyPitchDeg = 0;
         int16_t groundFaceIndex = 0;
+        uint8_t topoDrop = 0;
         int16_t wallPushX = 0;
         int16_t wallPushZ = 0;
         int16_t yawRateDeg = 0;
         int16_t yawStepDeg = 0;
         int16_t planarDx = 0;
         int16_t netDz = 0;
+        // Per-wheel face Y / body-to-face distance (see GameplayFrameState).
+        int16_t wheelSurfYFl = 0;
+        int16_t wheelSurfYFr = 0;
+        int16_t wheelSurfYRl = 0;
+        int16_t wheelSurfYRr = 0;
+        int16_t wheelDistFl = 0;
+        int16_t wheelDistFr = 0;
+        int16_t wheelDistRl = 0;
+        int16_t wheelDistRr = 0;
         int8_t gear = 0;
         uint8_t groundMask = 0;
         uint8_t groundSurfaceType = 0;

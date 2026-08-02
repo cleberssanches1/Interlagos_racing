@@ -255,6 +255,10 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     runtimeDebug_.groundRearY = frameState.debugGroundYRear;
     runtimeDebug_.groundFrontY = frameState.debugGroundYFront;
     runtimeDebug_.groundTargetY = frameState.debugGroundYTarget;
+    runtimeDebug_.groundBodyY = frameState.debugGroundYBody;
+    runtimeDebug_.groundDY = frameState.debugGroundDY;
+    runtimeDebug_.gradeTanX100 = frameState.debugGradeTanX100;
+    runtimeDebug_.topoDrop = frameState.debugTopoDrop;
     runtimeDebug_.groundFaceIndex = frameState.groundFaceIndex;
     runtimeDebug_.wallPushX = frameState.debugWallPushX;
     runtimeDebug_.wallPushZ = frameState.debugWallPushZ;
@@ -262,6 +266,14 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     runtimeDebug_.yawStepDeg = frameState.debugYawStepDeg;
     runtimeDebug_.planarDx = frameState.debugPlanarDx;
     runtimeDebug_.netDz = frameState.debugNetDz;
+    runtimeDebug_.wheelSurfYFl = frameState.debugWheelSurfYFl;
+    runtimeDebug_.wheelSurfYFr = frameState.debugWheelSurfYFr;
+    runtimeDebug_.wheelSurfYRl = frameState.debugWheelSurfYRl;
+    runtimeDebug_.wheelSurfYRr = frameState.debugWheelSurfYRr;
+    runtimeDebug_.wheelDistFl = frameState.debugWheelDistFl;
+    runtimeDebug_.wheelDistFr = frameState.debugWheelDistFr;
+    runtimeDebug_.wheelDistRl = frameState.debugWheelDistRl;
+    runtimeDebug_.wheelDistRr = frameState.debugWheelDistRr;
     runtimeDebug_.gear = static_cast<int8_t>(frameState.carGear);
     runtimeDebug_.groundMask = frameState.debugGroundMask;
     runtimeDebug_.groundSurfaceType = frameState.groundSurfaceType;
@@ -278,8 +290,12 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     wheelInput_.yawStepDeg = frameState.debugYawStepDeg;
     wheelInput_.groundRearY = frameState.debugGroundYRear;
     wheelInput_.groundFrontY = frameState.debugGroundYFront;
+    wheelInput_.groundLeftY = frameState.debugGroundYLeft;
+    wheelInput_.groundRightY = frameState.debugGroundYRight;
     wheelInput_.groundRearYRaw = frameState.debugGroundYRearRaw;
     wheelInput_.groundFrontYRaw = frameState.debugGroundYFrontRaw;
+    wheelInput_.groundLeftYRaw = frameState.debugGroundYLeftRaw;
+    wheelInput_.groundRightYRaw = frameState.debugGroundYRightRaw;
     wheelInput_.groundMask = frameState.debugGroundMask;
     wheelInput_.braking = frameState.braking ? 1u : 0u;
 }
@@ -463,6 +479,9 @@ void CarSystem::SubmitRender(RenderPipeline& pipeline, bool logStats)
     if (!renderer_) return;
     wheelRig_.Update(wheelInput_);
     wheelRig_.Apply(*renderer_);
+    // Pitch for overlay (after attitude update).
+    runtimeDebug_.bodyPitchDeg = static_cast<int16_t>(
+        std::clamp<int32_t>(wheelRig_.BodyPitchDegX16() >> 16, -32768, 32767));
 
     const int32_t renderYawDeg = CurrentRenderYawDeg();
     SRL::Math::Types::Angle yaw =

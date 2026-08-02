@@ -39,6 +39,14 @@ struct OverlayGroundProbePacket
     bool wallHit = false;
     int32_t wallPushX = 0;
     int32_t wallPushZ = 0;
+    int16_t wheelDistFl = 0;
+    int16_t wheelDistFr = 0;
+    int16_t wheelDistRl = 0;
+    int16_t wheelDistRr = 0;
+    int16_t wheelSurfYFl = 0;
+    int16_t wheelSurfYFr = 0;
+    int16_t wheelSurfYRl = 0;
+    int16_t wheelSurfYRr = 0;
 };
 
 struct OverlayPhysicsQueryPacket

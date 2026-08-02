@@ -197,121 +197,162 @@ void CarWheelRig::Update(const Input& input)
         }
     }
 
-    int32_t targetPitch = 0;
+    // --- World 3D attitude from wheel contact altitudes ---------------------------
+    // For each axle/side, MapHeight gives asphalt Y under the wheel (Y-down:
+    // larger Y = lower altitude). Rigid body: the LOW asphalt corner must go
+    // DOWN in the world. Mesh is drawn with RotateX(180)+RotateZ(180), so
+    // visual pitch/roll signs are inverted via kBodyPitchSign / kBodyRollSign.
+    //
+    //   pitch ≈ sign * atan((Yfront − Yrear) / wheelbase_from_mesh)
+    //   roll  ≈ sign * atan((Yright − Yleft) / track_from_mesh)
+    //
+    // Wheel centers (mesh) define L and T after ClassifyWheels.
+    int32_t targetPitch = heldPitchDegX16_;
+    int32_t targetRoadRoll = heldRollDegX16_;
     int32_t targetFrontSusp = 0;
     int32_t targetRearSusp = 0;
+    int32_t targetLeftSusp = 0;
+    int32_t targetRightSusp = 0;
     const bool rearValid = (input.groundMask & 0x1u) != 0u;
+    const bool leftValid = (input.groundMask & 0x2u) != 0u;
     const bool frontValid = (input.groundMask & 0x4u) != 0u;
-    // Parked / crawl only: do not chase probe noise. Braking still allows pitch
-    // so the nose follows grades while decelerating into a decline.
-    const bool flattenPitch = (clampedSpeed < kPitchHoldSpeedKmh);
+    const bool rightValid = (input.groundMask & 0x8u) != 0u;
 
-    if (rearValid && frontValid && !flattenPitch)
+    auto resolveYRaw = [](int32_t raw, int16_t asInt) -> int32_t
     {
-        const int32_t rearYRaw =
-            (input.groundRearYRaw != 0)
-                ? input.groundRearYRaw
-                : (static_cast<int32_t>(input.groundRearY) << 16);
-        const int32_t frontYRaw =
-            (input.groundFrontYRaw != 0)
-                ? input.groundFrontYRaw
-                : (static_cast<int32_t>(input.groundFrontY) << 16);
-        // Larger Y = lower altitude. Decline: front lower ⇒ frontY > rearY ⇒
-        // positive delta. Mesh is drawn with model X180; positive pitchDeg tilts
-        // the nose DOWN onto the asphalt (user report: negative sign lifted nose).
-        int32_t sampleDelta = frontYRaw - rearYRaw;
-        if (!deltaFilterInit_)
-        {
-            filteredDeltaYRaw_ = sampleDelta;
-            deltaFilterInit_ = true;
-        }
-        else
-        {
-            // Segment seams often produce one-frame grade spikes when probes
-            // jump between adjacent track meshes — clamp the jump then low-pass.
-            const int32_t jump = sampleDelta - filteredDeltaYRaw_;
-            if (jump > kMaxDeltaJumpRaw)
-            {
-                sampleDelta = filteredDeltaYRaw_ + kMaxDeltaJumpRaw;
-            }
-            else if (jump < -kMaxDeltaJumpRaw)
-            {
-                sampleDelta = filteredDeltaYRaw_ - kMaxDeltaJumpRaw;
-            }
-            const int32_t d = sampleDelta - filteredDeltaYRaw_;
-            filteredDeltaYRaw_ += (d >> kDeltaFilterShift);
-        }
+        if (raw != 0 || asInt == 0) return raw;
+        return static_cast<int32_t>(asInt) << 16;
+    };
 
-        int32_t deltaYRaw = filteredDeltaYRaw_;
-        const int32_t absDeltaYRaw = std::abs(deltaYRaw);
-        // Deadzone: flat asphalt still has ±few units of triangulation noise.
-        if (absDeltaYRaw < kPitchDeadzoneRaw)
+    auto filterDelta = [](int32_t sample,
+                          int32_t& filtered,
+                          bool& init,
+                          int32_t maxJump,
+                          int32_t filterShift) -> int32_t
+    {
+        if (!init)
         {
-            deltaYRaw = 0;
-            filteredDeltaYRaw_ = (filteredDeltaYRaw_ >> 1); // bleed residual
+            filtered = sample;
+            init = true;
+            return filtered;
         }
+        int32_t s = sample;
+        const int32_t jump = s - filtered;
+        if (jump > maxJump) s = filtered + maxJump;
+        else if (jump < -maxJump) s = filtered - maxJump;
+        filtered += (s - filtered) >> filterShift;
+        return filtered;
+    };
 
-        const bool smallSlope = absDeltaYRaw < kPitchDeadzoneRaw;
-        int64_t pitchDegX16 = 0;
-        if (deltaYRaw != 0 && kWheelbaseRaw != 0)
+    const int32_t wb = (wheelbaseRaw_ > 0) ? wheelbaseRaw_ : kDefaultWheelbaseRaw;
+    const int32_t tr = (trackRaw_ > 0) ? trackRaw_ : kDefaultTrackRaw;
+
+    bool havePitchSample = false;
+    bool haveRollSample = false;
+
+    if (frontValid && rearValid)
+    {
+        const int32_t frontYRaw = resolveYRaw(input.groundFrontYRaw, input.groundFrontY);
+        const int32_t rearYRaw = resolveYRaw(input.groundRearYRaw, input.groundRearY);
+        // ΔY > 0 ⇒ front asphalt lower altitude ⇒ nose must go down in world.
+        int32_t pitchDelta = filterDelta(frontYRaw - rearYRaw,
+                                         filteredDeltaYRaw_,
+                                         deltaFilterInit_,
+                                         kMaxDeltaJumpRaw,
+                                         kDeltaFilterShift);
+        if (std::abs(pitchDelta) < kPitchDeadzoneRaw)
         {
-            // Positive delta (front lower) → positive pitch → nose down.
-            pitchDegX16 = (static_cast<int64_t>(deltaYRaw) * 65536 / kWheelbaseRaw);
-            pitchDegX16 *= kRadToDegApprox;
+            pitchDelta = 0;
         }
+        havePitchSample = true;
+        int64_t pitchDegX16 =
+            (static_cast<int64_t>(pitchDelta) * 65536 / wb) * kRadToDegApprox;
+        pitchDegX16 *= kBodyPitchSign;
         if (pitchDegX16 > kMaxPitchDegX16) pitchDegX16 = kMaxPitchDegX16;
         if (pitchDegX16 < -kMaxPitchDegX16) pitchDegX16 = -kMaxPitchDegX16;
         targetPitch = static_cast<int32_t>(pitchDegX16);
-        targetFrontSusp = smallSlope ? 0 : ClampInt((deltaYRaw >> 8),
-                                   -kMaxSuspensionOffsetX16,
-                                   kMaxSuspensionOffsetX16);
-        targetRearSusp = -targetFrontSusp;
-    }
-    else
-    {
-        // Stopped or braking: flatten chassis; reset grade filter.
-        targetPitch = 0;
-        filteredDeltaYRaw_ = 0;
-        deltaFilterInit_ = false;
+        heldPitchDegX16_ = targetPitch;
+        // Suspension: lower asphalt corner gets more +Y offset after X180 mesh.
+        // Match visual to body pitch sign so wheels follow the plane.
+        const int32_t susp = ClampInt((pitchDelta * kBodyPitchSign) >> 5,
+                                      -kMaxSuspensionOffsetX16,
+                                      kMaxSuspensionOffsetX16);
+        targetFrontSusp = susp;
+        targetRearSusp = -susp;
     }
 
-    const int32_t pitchShift =
-        flattenPitch ? kPitchFilterShiftBrake : kPitchFilterShift;
-    const int32_t previousPitch = bodyPitchDegX16_;
-    bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, pitchShift);
-    // Rate-limit residual snaps that survive the grade filter (segment edges).
+    if (leftValid && rightValid)
     {
-        const int32_t pitchStep = bodyPitchDegX16_ - previousPitch;
-        if (pitchStep > kMaxPitchStepDegX16)
+        const int32_t leftYRaw = resolveYRaw(input.groundLeftYRaw, input.groundLeftY);
+        const int32_t rightYRaw = resolveYRaw(input.groundRightYRaw, input.groundRightY);
+        // ΔY > 0 ⇒ right asphalt lower ⇒ right corner must go down in world.
+        int32_t rollDelta = filterDelta(rightYRaw - leftYRaw,
+                                        filteredRollDeltaYRaw_,
+                                        rollDeltaFilterInit_,
+                                        kMaxDeltaJumpRaw,
+                                        kDeltaFilterShift);
+        if (std::abs(rollDelta) < kRollDeadzoneRaw)
         {
-            bodyPitchDegX16_ = previousPitch + kMaxPitchStepDegX16;
+            rollDelta = 0;
         }
-        else if (pitchStep < -kMaxPitchStepDegX16)
-        {
-            bodyPitchDegX16_ = previousPitch - kMaxPitchStepDegX16;
-        }
+        haveRollSample = true;
+        int64_t rollDegX16 =
+            (static_cast<int64_t>(rollDelta) * 65536 / tr) * kRadToDegApprox;
+        rollDegX16 *= kBodyRollSign;
+        if (rollDegX16 > kMaxRollDegX16) rollDegX16 = kMaxRollDegX16;
+        if (rollDegX16 < -kMaxRollDegX16) rollDegX16 = -kMaxRollDegX16;
+        targetRoadRoll = static_cast<int32_t>(rollDegX16);
+        heldRollDegX16_ = targetRoadRoll;
+        const int32_t susp = ClampInt((rollDelta * kBodyRollSign) >> 5,
+                                      -kMaxSuspensionOffsetX16,
+                                      kMaxSuspensionOffsetX16);
+        targetRightSusp = susp;
+        targetLeftSusp = -susp;
     }
 
-    const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
-    int32_t rollDriverX16 = steerDegX16_;
-    if (input.yawStepDeg != 0)
+    // Hold last good plane when parked; rate-limit pitch ASYMMETRICALLY:
+    // nose-down (decline) reacts faster; nose-up (climb) is slower (anti-empino).
     {
-        constexpr int32_t kRollYawStepGain = 6;
-        rollDriverX16 = (static_cast<int32_t>(input.yawStepDeg) << 16) * kRollYawStepGain;
+        const int32_t previousPitch = bodyPitchDegX16_;
+        bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, kPitchFilterShift);
+        int32_t pitchStep = bodyPitchDegX16_ - previousPitch;
+        // With kBodyPitchSign=+1: positive pitch = nose down (after model orientation).
+        // Cap steps by direction in pitch-angle space.
+        if (pitchStep > kMaxPitchStepDownDegX16)
+            bodyPitchDegX16_ = previousPitch + kMaxPitchStepDownDegX16;
+        else if (pitchStep < -kMaxPitchStepUpDegX16)
+            bodyPitchDegX16_ = previousPitch - kMaxPitchStepUpDegX16;
     }
-    constexpr int32_t kVisualRollSign = 1;
-    const int32_t targetRoll =
-        ClampInt(((rollDriverX16 * kVisualRollSign) * speedNorm256) / 1536,
-                 -kMaxRollDegX16,
-                 kMaxRollDegX16);
-    bodyRollDegX16_ = StepToward(bodyRollDegX16_, targetRoll, kRollFilterShift);
 
+    {
+        const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
+        const int32_t steerLean =
+            ClampInt((steerDegX16_ * speedNorm256) / 3072, -(2 << 16), (2 << 16));
+        // Steer lean is visual only; road plane roll dominates.
+        const int32_t targetRoll = ClampInt(targetRoadRoll + (haveRollSample ? (steerLean >> 3) : 0),
+                                            -kMaxRollDegX16,
+                                            kMaxRollDegX16);
+        const int32_t previousRoll = bodyRollDegX16_;
+        bodyRollDegX16_ = StepToward(bodyRollDegX16_, targetRoll, kRollFilterShift);
+        const int32_t rollStep = bodyRollDegX16_ - previousRoll;
+        if (rollStep > kMaxRollStepDegX16)
+            bodyRollDegX16_ = previousRoll + kMaxRollStepDegX16;
+        else if (rollStep < -kMaxRollStepDegX16)
+            bodyRollDegX16_ = previousRoll - kMaxRollStepDegX16;
+    }
+
+    // Each wheel corner: lower asphalt → that corner of the body rotates down;
+    // residual travel keeps the tire mesh near the face.
     for (size_t i = 0; i < 4u; ++i)
     {
-        const int32_t targetSusp = wheelSlots_[i].front ? targetFrontSusp : targetRearSusp;
+        int32_t targetSusp = wheelSlots_[i].front ? targetFrontSusp : targetRearSusp;
+        targetSusp += wheelSlots_[i].left ? targetLeftSusp : targetRightSusp;
+        targetSusp = ClampInt(targetSusp, -kMaxSuspensionOffsetX16, kMaxSuspensionOffsetX16);
         wheelSuspensionOffsetX16_[i] =
             StepToward(wheelSuspensionOffsetX16_[i], targetSusp, kSuspFilterShift);
     }
+    (void)havePitchSample;
+    (void)haveRollSample;
 }
 
 void CarWheelRig::Apply(MeshRenderer& renderer) const
@@ -595,7 +636,9 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
             wheelSlots_[i].meshId = meshId;
             wheelSlots_[i].center = meshCenters[meshId];
             wheelSlots_[i].front = (i < 2u);
+            wheelSlots_[i].left = (i == 0u || i == 2u);
         }
+        RefreshWheelGeometryFromCenters();
         return;
     }
 
@@ -656,7 +699,9 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
             wheelSlots_[i].meshId = meshId;
             wheelSlots_[i].center = meshCenters[meshId];
             wheelSlots_[i].front = (i < 2u);
+            wheelSlots_[i].left = (i == 0u || i == 2u);
         }
+        RefreshWheelGeometryFromCenters();
         return;
     }
 
@@ -722,7 +767,55 @@ void CarWheelRig::ClassifyWheels(const std::array<size_t, 4>& meshIds,
         wheelSlots_[i].meshId = meshId;
         wheelSlots_[i].center = meshCenters[meshId];
         wheelSlots_[i].front = (i < 2u);
+        wheelSlots_[i].left = (i == 0u || i == 2u);
     }
+    RefreshWheelGeometryFromCenters();
+}
+
+void CarWheelRig::RefreshWheelGeometryFromCenters()
+{
+    // Measure real wheelbase / track from mesh centers (model space).
+    // Order is always [FL, FR, RL, RR] after ClassifyWheels.
+    int64_t frontZ = 0;
+    int64_t rearZ = 0;
+    int64_t leftX = 0;
+    int64_t rightX = 0;
+    int nF = 0, nR = 0, nL = 0, nRt = 0;
+    for (size_t i = 0; i < 4u; ++i)
+    {
+        if (wheelSlots_[i].meshId == SIZE_MAX) continue;
+        const int64_t x = wheelSlots_[i].center.X.RawValue();
+        const int64_t z = wheelSlots_[i].center.Z.RawValue();
+        if (wheelSlots_[i].front) { frontZ += z; ++nF; }
+        else { rearZ += z; ++nR; }
+        if (wheelSlots_[i].left) { leftX += x; ++nL; }
+        else { rightX += x; ++nRt; }
+    }
+    if (nF > 0 && nR > 0)
+    {
+        frontZ /= nF;
+        rearZ /= nR;
+        int64_t wb = frontZ - rearZ;
+        if (wb < 0) wb = -wb;
+        if (wb > (1 << 14)) // > 0.25
+        {
+            wheelbaseRaw_ = static_cast<int32_t>(std::min<int64_t>(wb, 8ll << 16));
+        }
+    }
+    if (nL > 0 && nRt > 0)
+    {
+        leftX /= nL;
+        rightX /= nRt;
+        int64_t tr = rightX - leftX;
+        if (tr < 0) tr = -tr;
+        if (tr > (1 << 14))
+        {
+            trackRaw_ = static_cast<int32_t>(std::min<int64_t>(tr, 6ll << 16));
+        }
+    }
+    SRL::Debug::Print(1, 25, "WHL geo L:%d T:%d",
+                      static_cast<int>(wheelbaseRaw_ >> 16),
+                      static_cast<int>(trackRaw_ >> 16));
 }
 
 void CarWheelRig::ResetState()
@@ -733,8 +826,14 @@ void CarWheelRig::ResetState()
     steerDegX16_ = 0;
     bodyPitchDegX16_ = 0;
     bodyRollDegX16_ = 0;
+    heldPitchDegX16_ = 0;
+    heldRollDegX16_ = 0;
     filteredDeltaYRaw_ = 0;
+    filteredRollDeltaYRaw_ = 0;
     deltaFilterInit_ = false;
+    rollDeltaFilterInit_ = false;
+    wheelbaseRaw_ = kDefaultWheelbaseRaw;
+    trackRaw_ = kDefaultTrackRaw;
     wheelSpinDegX16_ = {0, 0, 0, 0};
     wheelSuspensionOffsetX16_ = {0, 0, 0, 0};
 }

@@ -17,10 +17,15 @@ public:
         int16_t speedKmh = 0;
         int16_t steering = 0;
         int16_t yawStepDeg = 0;
+        // Wheel-plane surface heights (world Y). Larger Y = lower altitude.
         int16_t groundRearY = 0;
         int16_t groundFrontY = 0;
+        int16_t groundLeftY = 0;
+        int16_t groundRightY = 0;
         int32_t groundRearYRaw = 0;
         int32_t groundFrontYRaw = 0;
+        int32_t groundLeftYRaw = 0;
+        int32_t groundRightYRaw = 0;
         uint8_t groundMask = 0;
         uint8_t braking = 0;
     };
@@ -45,34 +50,33 @@ private:
         size_t meshId = SIZE_MAX;
         SRL::Math::Types::Vector3D center{0.0, 0.0, 0.0};
         bool front = false;
+        bool left = false;
     };
 
     static constexpr int32_t kMaxSteerDegX16 = 12 << 16;
-    // Allow clearer nose-up/down on real grades (Senna S, climbs).
-    static constexpr int32_t kMaxPitchDegX16 = 18 << 16;
-    static constexpr int32_t kMaxRollDegX16 = 8 << 16;
-    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00004000); // ~0.25 short travel
-    static constexpr int32_t kSteerFilterShift = 2;  // 1/4
-    // Responsive pitch: 1/4 per frame (was 1/16 — car never leaned on grades).
-    static constexpr int32_t kPitchFilterShift = 2;
-    static constexpr int32_t kPitchFilterShiftBrake = 3; // 1/8 while braking / stopped
-    static constexpr int32_t kRollFilterShift = 4;   // 1/16
-    static constexpr int32_t kSuspFilterShift = 3;   // 1/8
-    static constexpr int32_t kSpinDegPerKmhX16 = 2200; // tune visual spin
-    // Full wheelbase ≈ 1.70 (2 * kProbeHalfWheelBase) in 16.16.
-    static constexpr int32_t kWheelbaseRaw = 0x0001B332;
-    // Closer to atan*57 so grade ΔY maps to visible chassis pitch.
-    static constexpr int32_t kRadToDegApprox = 45;
-    // Only ignore tiny probe noise on flat (was 10 — hid real mild slopes).
-    static constexpr int32_t kPitchDeadzoneRaw = 2 << 16;
-    // Flatten pitch only when nearly stopped (was 12 — killed pitch while rolling).
-    static constexpr int32_t kPitchHoldSpeedKmh = 4;
-    // Low-pass on ΔY (1/4) — still smooth seams, reacts to grades.
-    static constexpr int32_t kDeltaFilterShift = 2; // 1/4 toward sample
-    // Allow larger one-frame grade change (declines/climbs across faces).
-    static constexpr int32_t kMaxDeltaJumpRaw = 40 << 16;
-    // Hard cap on visual pitch change per frame (~2.5 deg).
-    static constexpr int32_t kMaxPitchStepDegX16 = (5 << 16) / 2;
+    static constexpr int32_t kMaxPitchDegX16 = 32 << 16;
+    static constexpr int32_t kMaxRollDegX16 = 18 << 16;
+    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x0000C000); // 0.75
+    static constexpr int32_t kSteerFilterShift = 2;
+    static constexpr int32_t kPitchFilterShift = 1;
+    static constexpr int32_t kRollFilterShift = 1;
+    static constexpr int32_t kSuspFilterShift = 1;
+    static constexpr int32_t kSpinDegPerKmhX16 = 2200;
+    static constexpr int32_t kDefaultWheelbaseRaw = 0x0001B332; // ~1.70
+    static constexpr int32_t kDefaultTrackRaw = 0x00011998;     // ~1.10
+    static constexpr int32_t kBodyPitchSign = 1;
+    static constexpr int32_t kBodyRollSign = 1;
+    static constexpr int32_t kRadToDegApprox = 57;
+    static constexpr int32_t kPitchDeadzoneRaw = (1 << 15); // 0.5
+    static constexpr int32_t kRollDeadzoneRaw = (1 << 15);
+    static constexpr int32_t kDeltaFilterShift = 1;
+    static constexpr int32_t kMaxDeltaJumpRaw = 40 << 16; // damp F/R flicker on seams
+    // Asymmetric pitch rate: nose-down (decline) tracks topology ASAP; climb anti-empino.
+    static constexpr int32_t kMaxPitchStepDownDegX16 = 16 << 16; // toward lower nose
+    static constexpr int32_t kMaxPitchStepUpDegX16 = 4 << 16;   // toward higher nose
+    static constexpr int32_t kMaxRollStepDegX16 = 8 << 16;
+
+    void RefreshWheelGeometryFromCenters();
 
     bool DetectWheelIdsFromMeshtex(size_t meshCount, std::array<size_t, 4>& outIds, size_t& outCount) const;
     bool DetectWheelIdsFromMeshStats(ModelObject& model,
@@ -97,8 +101,14 @@ private:
     int32_t steerDegX16_ = 0;
     int32_t bodyPitchDegX16_ = 0;
     int32_t bodyRollDegX16_ = 0;
-    int32_t filteredDeltaYRaw_ = 0;
+    int32_t heldPitchDegX16_ = 0; // last good sample (hold when a corner misses)
+    int32_t heldRollDegX16_ = 0;
+    int32_t filteredDeltaYRaw_ = 0;      // pitch: front−rear surface ΔY
+    int32_t filteredRollDeltaYRaw_ = 0;  // roll: right−left surface ΔY
     bool deltaFilterInit_ = false;
+    bool rollDeltaFilterInit_ = false;
+    int32_t wheelbaseRaw_ = kDefaultWheelbaseRaw;
+    int32_t trackRaw_ = kDefaultTrackRaw;
     std::array<int32_t, 4> wheelSpinDegX16_{0, 0, 0, 0};
     std::array<int32_t, 4> wheelSuspensionOffsetX16_{0, 0, 0, 0};
 };

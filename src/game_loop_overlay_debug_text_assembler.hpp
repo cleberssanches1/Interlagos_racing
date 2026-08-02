@@ -89,6 +89,14 @@ inline void SeedOverlayGroundProbeTextPacket(const GameLoopTelemetryDomain::Over
     outPacket.wallHit = packet.wallHit;
     outPacket.wallPushX = packet.wallPushX;
     outPacket.wallPushZ = packet.wallPushZ;
+    outPacket.wheelDistFl = packet.wheelDistFl;
+    outPacket.wheelDistFr = packet.wheelDistFr;
+    outPacket.wheelDistRl = packet.wheelDistRl;
+    outPacket.wheelDistRr = packet.wheelDistRr;
+    outPacket.wheelSurfYFl = packet.wheelSurfYFl;
+    outPacket.wheelSurfYFr = packet.wheelSurfYFr;
+    outPacket.wheelSurfYRl = packet.wheelSurfYRl;
+    outPacket.wheelSurfYRr = packet.wheelSurfYRr;
 }
 
 inline OverlayGroundProbeTextPacket BuildOverlayGroundProbeTextPacket(

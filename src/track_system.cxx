@@ -315,25 +315,38 @@ static constexpr bool kEnableTrackRuntimeStabilization = true;
 static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
 static constexpr size_t kTrackLeakIsolationWindowSegments = 20u;
 static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
+// 3 Levels of Design (texture presentation by logical rank):
+//   ranks 0-1  : design lod_0  → 64×64 (closest; dense GEO from build)
+//   ranks 2-9  : design lod_1  → 64×64
+//   ranks 10-19: design lod_2  → 32×32
+// Geometry: S###.GEO / RDR from lod_0 (max faces) for MapHeight + walls (fase 1).
 static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
 static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
-static constexpr size_t kLeakIsolationNearLodCount = 10u;
+static constexpr size_t kDesignLod0RankCount = 2u;   // ranks 0-1
+static constexpr size_t kDesignLod1RankEnd = 10u;    // ranks 2-9 (end exclusive = 10)
+static constexpr size_t kLeakIsolationNearLodCount = kDesignLod1RankEnd; // 0-9 → 64 tex
 static_assert(kLeakIsolationNearLodCount <= kTrackLeakIsolationWindowSegments,
               "Near LOD count must fit leak-isolation window.");
-// Near/far split is rank 10 (0..9 = 64, 10..19 = 32). Boundary work must hit
-// the band edge — not legacy ranks {3,8,13} from older 25/25-style windows.
+static_assert(kDesignLod0RankCount <= kLeakIsolationNearLodCount,
+              "Design lod_0 band must fit inside 64-tex band.");
+// Texture band edge: rank 9 stays 64, rank 10 is first 32.
 static constexpr size_t kNearBandPromoRank =
     (kLeakIsolationNearLodCount > 0u) ? (kLeakIsolationNearLodCount - 1u) : 0u; // 9
 static constexpr size_t kNearBandFarEdgeRank = kLeakIsolationNearLodCount;       // 10
-// Slide prepare + pending priority: promo first, then near retry, then far edge.
-static constexpr std::array<size_t, 3> kLeakIsolationForwardBoundaryRanks{{
-    kNearBandPromoRank,     // 9: 32→64 the frame a segment enters near
+// Design lod_0 edge (rank 1): reserved for fase-2 dual-GEO swap; still prioritized.
+static constexpr size_t kDesignLod0EdgeRank =
+    (kDesignLod0RankCount > 0u) ? (kDesignLod0RankCount - 1u) : 0u; // 1
+// Slide prepare + pending priority: tex band edge first, then design edge, head.
+static constexpr std::array<size_t, 4> kLeakIsolationForwardBoundaryRanks{{
+    kNearBandPromoRank,     // 9: 32→64 when entering mid/near tex band
     kNearBandPromoRank > 0u ? kNearBandPromoRank - 1u : 0u, // 8: retry
-    kNearBandFarEdgeRank    // 10: demote / keep far clean
+    kNearBandFarEdgeRank,   // 10: demote / keep far 32 clean
+    kDesignLod0EdgeRank     // 1: design lod_0 / lod_1 boundary
 }};
-static constexpr std::array<size_t, 3> kLeakIsolationBackwardBoundaryRanks{{
+static constexpr std::array<size_t, 4> kLeakIsolationBackwardBoundaryRanks{{
     kNearBandFarEdgeRank,   // 10
     kNearBandPromoRank,     // 9
+    kDesignLod0EdgeRank,    // 1
     0u                      // head
 }};
 // Keep active window storage persistent and reuse slot renderers on rebuild.
@@ -3821,14 +3834,30 @@ static bool LoadRdrForSegment(int segmentId,
     return false;
 }
 
+// designGeoTier: 0 = high mesh (lod_0 / TRKRDR), 1 = low mesh (lod_1+ / TRKRDRL).
+static constexpr uint8_t kDesignGeoHigh = 0u;
+static constexpr uint8_t kDesignGeoLow = 1u;
+
+static uint8_t ResolveDesignGeoTierByRank(size_t rank)
+{
+    // ranks 0-1 → high (lod_0); ranks 2+ → low (lod_1/2 mesh).
+    return (rank < kDesignLod0RankCount) ? kDesignGeoHigh : kDesignGeoLow;
+}
+
 static bool LoadRdrMappedForSegment(int segmentId,
                                     SegmentRuntimeDraw::MappedBlob& outBlob,
                                     SegmentRuntimeDraw::Loader::View& outView,
                                     SegmentRuntimeDraw::Blob* fallbackBlob = nullptr,
-                                    bool quietMissLog = false)
+                                    bool quietMissLog = false,
+                                    uint8_t designGeoTier = kDesignGeoHigh)
 {
-    static TrackRuntimePackCache sTrackRdrPackCache{};
-    const char* packCandidates[] = {
+    static TrackRuntimePackCache sTrackRdrPackCacheHigh{};
+    static TrackRuntimePackCache sTrackRdrPackCacheLow{};
+    TrackRuntimePackCache& sTrackRdrPackCache =
+        (designGeoTier != kDesignGeoHigh) ? sTrackRdrPackCacheLow : sTrackRdrPackCacheHigh;
+
+    // High: TRKRDR.BIN (S###.RDR). Low: TRKRDRL.BIN (S###L.RDR). Fallback to high pack.
+    const char* packCandidatesHigh[] = {
         "/CD/DATA/TRKRDR.BIN",
         "/CD/DATA/TRKRDR.BIN;1",
         "/DATA/TRKRDR.BIN",
@@ -3850,12 +3879,40 @@ static bool LoadRdrMappedForSegment(int segmentId,
         "trkrdr.bin",
         "trkrdr.bin;1"
     };
+    const char* packCandidatesLow[] = {
+        "/CD/DATA/TRKRDRL.BIN",
+        "/CD/DATA/TRKRDRL.BIN;1",
+        "/DATA/TRKRDRL.BIN",
+        "/DATA/TRKRDRL.BIN;1",
+        "CD/DATA/TRKRDRL.BIN",
+        "CD/DATA/TRKRDRL.BIN;1",
+        "DATA/TRKRDRL.BIN",
+        "DATA/TRKRDRL.BIN;1",
+        "cd/data/TRKRDRL.BIN",
+        "cd/data/TRKRDRL.BIN;1",
+        "cd/data/trkrdrl.bin",
+        "cd/data/trkrdrl.bin;1",
+        "data/TRKRDRL.BIN",
+        "data/TRKRDRL.BIN;1",
+        "TRKRDRL.BIN",
+        "TRKRDRL.BIN;1",
+        "trkrdrl.bin",
+        "trkrdrl.bin;1"
+    };
+
+    const char* const* packCandidates = packCandidatesHigh;
+    size_t packCandidateCount = sizeof(packCandidatesHigh) / sizeof(packCandidatesHigh[0]);
+    if (designGeoTier != kDesignGeoHigh)
+    {
+        packCandidates = packCandidatesLow;
+        packCandidateCount = sizeof(packCandidatesLow) / sizeof(packCandidatesLow[0]);
+    }
 
     outBlob = {};
     outView = {};
     bool directPackLoaded = false;
 
-    if (LoadTrackRuntimePackToCart(packCandidates, sizeof(packCandidates) / sizeof(packCandidates[0]), sTrackRdrPackCache))
+    if (LoadTrackRuntimePackToCart(packCandidates, packCandidateCount, sTrackRdrPackCache))
     {
         directPackLoaded = true;
         const uint8_t* blobData = nullptr;
@@ -3894,6 +3951,12 @@ static bool LoadRdrMappedForSegment(int segmentId,
                               static_cast<unsigned>(v),
                               static_cast<unsigned>(blobSize));
         }
+    }
+
+    // Low pack miss → fall back to high mesh (still better than blank).
+    if (designGeoTier != kDesignGeoHigh)
+    {
+        return LoadRdrMappedForSegment(segmentId, outBlob, outView, fallbackBlob, quietMissLog, kDesignGeoHigh);
     }
 
     if (!directPackLoaded && fallbackBlob)
@@ -4211,7 +4274,8 @@ static bool LoadGeoForSegment(int segmentId, SegmentComponent::Blob& outBlob, Se
 static bool BuildRendererFromRdr(int segmentId,
                                  TrackRenderer& renderer,
                                  Vector3D* outCenter,
-                                 TrackLowWorkU16Vector* outFamilyIds = nullptr)
+                                 TrackLowWorkU16Vector* outFamilyIds = nullptr,
+                                 uint8_t designGeoTier = kDesignGeoHigh)
 {
     const auto previousHwrTag = SRL::Memory::HighWorkRam::GetDebugTag();
     const auto previousLwrTag = SRL::Memory::LowWorkRam::GetDebugTag();
@@ -4228,7 +4292,8 @@ static bool BuildRendererFromRdr(int segmentId,
 
     SegmentRuntimeDraw::MappedBlob rdrBlob{};
     SegmentRuntimeDraw::Loader::View rdrView{};
-    if (!LoadRdrMappedForSegment(segmentId, rdrBlob, rdrView, &g_rdrBuildScratch.blob))
+    if (!LoadRdrMappedForSegment(segmentId, rdrBlob, rdrView, &g_rdrBuildScratch.blob,
+                                 /*quietMissLog*/ false, designGeoTier))
     {
         SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
         SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
@@ -4534,10 +4599,11 @@ static bool BuildRendererFromRuntimeBlob(int segmentId,
                                          TrackRenderer& renderer,
                                          Vector3D* outCenter,
                                          TrackLowWorkU16Vector* outFamilyIds,
-                                         bool* outUsedRdr)
+                                         bool* outUsedRdr,
+                                         uint8_t designGeoTier = kDesignGeoHigh)
 {
     if (outUsedRdr) *outUsedRdr = false;
-    if (BuildRendererFromRdr(segmentId, renderer, outCenter, outFamilyIds))
+    if (BuildRendererFromRdr(segmentId, renderer, outCenter, outFamilyIds, designGeoTier))
     {
         if (outUsedRdr) *outUsedRdr = true;
         return true;
@@ -4545,6 +4611,7 @@ static bool BuildRendererFromRuntimeBlob(int segmentId,
     // Prefer RDR; fall back to SDR when runtime blob is missing (higher segment
     // ids mid-lap). Blocking SDR under stabilization froze the window at the
     // first missing RDR (e.g. PKG pf fail id:60).
+    // SDR path is high-mesh only (legacy); still better than blank.
     return BuildRendererFromSdr(segmentId, renderer, outCenter, outFamilyIds);
 }
 
@@ -7975,15 +8042,19 @@ void TrackSystem::UpdateDesiredStabilizedWindowLodTargets()
         entry.lodState.desiredBaseRank = entry.lodState.HasPerFaceRankOffsets()
             ? static_cast<int16_t>(logicalRank)
             : -1;
+        entry.lodState.desiredDesignGeoTier = ResolveDesignGeoTierByRank(logicalRank);
         if (kEnableDeterministicStabilizedSlide) continue;
-        const bool needsUpdate = entry.lodState.HasPerFaceRankOffsets()
+        const bool geoTierDirty =
+            (entry.lodState.desiredDesignGeoTier != entry.lodState.currentDesignGeoTier);
+        const bool needsUpdate = geoTierDirty ||
+            (entry.lodState.HasPerFaceRankOffsets()
             ? (entry.lodState.currentLodIndex != entry.lodState.desiredLodIndex ||
                entry.lodState.currentBaseRank != entry.lodState.desiredBaseRank ||
                HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
                                                   &entry.lodState.faceFamilyIds))
             : (entry.lodState.currentLodIndex != entry.lodState.desiredLodIndex ||
                HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
-                                                  &entry.lodState.faceFamilyIds));
+                                                  &entry.lodState.faceFamilyIds)));
         if (needsUpdate) QueuePendingStabilizedLodRank(logicalRank);
     }
 }
@@ -8056,14 +8127,18 @@ void TrackSystem::SeedPendingStabilizedLodRanksForWindow()
         const int16_t desiredBaseRank = entry.lodState.HasPerFaceRankOffsets()
             ? static_cast<int16_t>(logicalRank)
             : -1;
-        const bool needsUpdate = entry.lodState.HasPerFaceRankOffsets()
+        const uint8_t desiredGeo = ResolveDesignGeoTierByRank(logicalRank);
+        entry.lodState.desiredDesignGeoTier = desiredGeo;
+        const bool needsUpdate =
+            (entry.lodState.currentDesignGeoTier != desiredGeo) ||
+            (entry.lodState.HasPerFaceRankOffsets()
             ? (entry.lodState.currentLodIndex != desiredLodIndex ||
                entry.lodState.currentBaseRank != desiredBaseRank ||
                HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
                                                   &entry.lodState.faceFamilyIds))
             : (entry.lodState.currentLodIndex != desiredLodIndex ||
                HasMissingRequiredFaceTextureSlots(entry.lodState.currentFaceSlots,
-                                                  &entry.lodState.faceFamilyIds));
+                                                  &entry.lodState.faceFamilyIds)));
         if (needsUpdate) QueuePendingStabilizedLodRank(logicalRank);
     }
 }
@@ -8084,10 +8159,39 @@ bool TrackSystem::ApplyStabilizedLodForLogicalRank(size_t logicalRank)
 
     const uint8_t desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
     const int16_t desiredBaseRank = static_cast<int16_t>(logicalRank);
+    const uint8_t desiredGeoTier = ResolveDesignGeoTierByRank(logicalRank);
     entry->lodState.desiredLodIndex = desiredLodIndex;
     entry->lodState.desiredBaseRank = entry->lodState.HasPerFaceRankOffsets()
         ? static_cast<int8_t>(desiredBaseRank)
         : static_cast<int8_t>(-1);
+    entry->lodState.desiredDesignGeoTier = desiredGeoTier;
+
+    // Design mesh swap (lod_0 high ↔ lod_1/2 low) only at band edge — one segment.
+    if (entry->lodState.currentDesignGeoTier != desiredGeoTier)
+    {
+        Vector3D rebuiltCenter(0.0, 0.0, 0.0);
+        FamilyIdVector rebuiltFamilies{};
+        if (!BuildSegmentIntoRenderer(entry->id,
+                                      *entry->renderer,
+                                      rebuiltCenter,
+                                      rebuiltFamilies,
+                                      desiredGeoTier) ||
+            rebuiltFamilies.empty())
+        {
+            return false;
+        }
+        entry->center = rebuiltCenter;
+        entry->lodState.faceFamilyIds.assign(rebuiltFamilies.begin(), rebuiltFamilies.end());
+        entry->lodState.faceRankOffsets.assign(rebuiltFamilies.size(), 0u);
+        entry->lodState.currentFaceSlots.assign(rebuiltFamilies.size(), -1);
+        entry->lodState.SetHasPerFaceRankOffsets(false);
+        entry->lodState.currentDesignGeoTier = desiredGeoTier;
+        entry->wallSegments2D.clear();
+        entry->wallSegmentsCacheLodIndex = 0xFF;
+        InvalidateEntryWorkingSetCache(*entry);
+        SetFamilyWorkingSetDirty(true);
+        // Fall through to texture slot resolve for desiredLodIndex.
+    }
 
     auto mergePartialSlots = [&](uint8_t previousLodIndex, int16_t previousBaseRank) -> bool
     {
@@ -8766,10 +8870,13 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
             ApplyActiveRendererCapacityFloor(*builtEntry.renderer);
             builtEntry.lodState.faceFamilyIds.clear();
             Vector3D builtCenter(0.0, 0.0, 0.0);
+            // logicalSid is the rank in the rebuilt window (0 = nearest).
+            const uint8_t geoTier = ResolveDesignGeoTierByRank(logicalSid);
             if (!BuildSegmentIntoRenderer(segmentId,
                                           *builtEntry.renderer,
                                           builtCenter,
-                                          builtEntry.lodState.faceFamilyIds) ||
+                                          builtEntry.lodState.faceFamilyIds,
+                                          geoTier) ||
                 builtEntry.lodState.faceFamilyIds.empty())
             {
                 SRL::Debug::Print(1, 11, "PKG build fail id:%d", segmentId);
@@ -8781,10 +8888,12 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
             builtEntry.center = builtCenter;
             builtEntry.lodState.SetReady(true);
             builtEntry.lodState.SetHasPerFaceRankOffsets(false);
-            builtEntry.lodState.currentLodIndex = 0xFF;
+            builtEntry.lodState.currentLodIndex = ResolveSegmentLodIndexByRank(logicalSid);
             builtEntry.lodState.currentBaseRank = -1;
-            builtEntry.lodState.desiredLodIndex = 0xFF;
+            builtEntry.lodState.desiredLodIndex = builtEntry.lodState.currentLodIndex;
             builtEntry.lodState.desiredBaseRank = -1;
+            builtEntry.lodState.currentDesignGeoTier = geoTier;
+            builtEntry.lodState.desiredDesignGeoTier = geoTier;
             builtEntry.lodState.faceRankOffsets.assign(builtEntry.lodState.faceFamilyIds.size(), 0u);
             builtEntry.lodState.currentFaceSlots.assign(builtEntry.lodState.faceFamilyIds.size(), -1);
             EnsureVectorCapacityFloor(builtEntry.lodState.faceFamilyIds, slotFaceCapacityFloor_);
@@ -9171,6 +9280,11 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     incomingPrepared.lodState.currentBaseRank = -1;
     incomingPrepared.lodState.desiredLodIndex = incomingPrepared.lodState.currentLodIndex;
     incomingPrepared.lodState.desiredBaseRank = -1;
+    {
+        const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
+        incomingPrepared.lodState.currentDesignGeoTier = geoTier;
+        incomingPrepared.lodState.desiredDesignGeoTier = geoTier;
+    }
     // faceFamilyIds jÃ¡ preenchido â€” sem swap; apenas preparar rank offsets e face slots
     incomingPrepared.lodState.faceRankOffsets.clear();
     incomingPrepared.lodState.faceRankOffsets.assign(incomingPrepared.lodState.faceFamilyIds.size(), 0u);
@@ -9645,6 +9759,11 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     incomingPrepared.lodState.currentBaseRank = -1;
     incomingPrepared.lodState.desiredLodIndex = incomingPrepared.lodState.currentLodIndex;
     incomingPrepared.lodState.desiredBaseRank = -1;
+    {
+        const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
+        incomingPrepared.lodState.currentDesignGeoTier = geoTier;
+        incomingPrepared.lodState.desiredDesignGeoTier = geoTier;
+    }
     // faceFamilyIds jÃ¡ preenchido â€” sem swap; apenas preparar rank offsets e face slots
     incomingPrepared.lodState.faceRankOffsets.clear();
     incomingPrepared.lodState.faceRankOffsets.assign(incomingPrepared.lodState.faceFamilyIds.size(), 0u);
@@ -9991,8 +10110,10 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
                 ApplyActiveRendererCapacityFloor(*slideScratchRenderer_);
                 slideScratchEntry_.lodState.faceFamilyIds.clear();
                 Vector3D buildCenter{};
+                // Prefetch is always the far incoming slot → low design mesh.
                 if (BuildSegmentIntoRenderer(segmentId, *slideScratchRenderer_, buildCenter,
-                                             slideScratchEntry_.lodState.faceFamilyIds))
+                                             slideScratchEntry_.lodState.faceFamilyIds,
+                                             kDesignGeoLow))
                 {
                     slidePrefetchCenter_ = buildCenter;
                     if (!slideScratchEntry_.lodState.faceFamilyIds.empty())
@@ -10047,11 +10168,13 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
         Vector3D center(0.0, 0.0, 0.0);
         bool usedRdr = false;
         slidePrefetchFamilyIds_.clear();
+        // Incoming/far segment → low design mesh (TRKRDRL).
         if (!BuildRendererFromRuntimeBlob(segmentId,
                                           *slidePrefetchRenderer_,
                                           &center,
                                           &slidePrefetchFamilyIds_,
-                                          &usedRdr) ||
+                                          &usedRdr,
+                                          kDesignGeoLow) ||
             slidePrefetchFamilyIds_.empty())
         {
             ResetSlidePrefetchState();
@@ -10131,13 +10254,19 @@ bool TrackSystem::BuildSegmentIntoPrefetch(int32_t segmentId, bool allowSlotWarm
 bool TrackSystem::BuildSegmentIntoRenderer(int32_t segmentId,
                                            TrackRenderer& renderer,
                                            Vector3D& outCenter,
-                                           FamilyIdVector& outFamilyIds)
+                                           FamilyIdVector& outFamilyIds,
+                                           uint8_t designGeoTier)
 {
     if (segmentId <= 0) return false;
+    if (designGeoTier == 0xFFu) designGeoTier = kDesignGeoHigh;
 
     outFamilyIds.clear();
     bool usedRdr = false;
-    if (!BuildRendererFromRuntimeBlob(segmentId, renderer, &outCenter, &outFamilyIds, &usedRdr)) return false;
+    if (!BuildRendererFromRuntimeBlob(segmentId, renderer, &outCenter, &outFamilyIds, &usedRdr,
+                                      designGeoTier))
+    {
+        return false;
+    }
     if (outFamilyIds.empty()) return false;
     if (usedRdr) ++runtimeRdrBuildsThisFrame_;
     else ++runtimeSdrBuildsThisFrame_;

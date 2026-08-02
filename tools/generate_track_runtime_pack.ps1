@@ -1,6 +1,8 @@
 param(
     [string]$DataDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
-    [string]$OutPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\TRKRDR.BIN"
+    [string]$OutPath = "C:\saturn\SaturnRingLib-main\Projects\Interlagos_racing\cd\data\TRKRDR.BIN",
+    # "" pack S###.RDR (high) ; "L" pack S###L.RDR (mid/far design mesh)
+    [string]$AssetTag = ""
 )
 
 Set-StrictMode -Version Latest
@@ -16,9 +18,18 @@ if (-not (Test-Path -LiteralPath $DataDir)) {
     throw "DataDir nao encontrado: $DataDir"
 }
 
-$files = @(Get-ChildItem -LiteralPath $DataDir -File -Filter "S???.RDR" | Sort-Object Name)
+$tag = if ([string]::IsNullOrWhiteSpace($AssetTag)) { "" } else { $AssetTag.Trim().ToUpperInvariant() }
+if ($tag -ne "" -and $tag -ne "L") { throw "AssetTag invalido '$AssetTag' (use '' ou 'L')." }
+
+$filter = if ($tag -eq "L") { "S???L.RDR" } else { "S???.RDR" }
+$files = @(Get-ChildItem -LiteralPath $DataDir -File -Filter $filter | Sort-Object Name)
+# Exclude accidental S###L when packing high (filter S???.RDR can match S001L on some systems? - be strict)
+$files = @($files | Where-Object {
+    if ($tag -eq "L") { $_.BaseName -match '^S\d{3}L$' }
+    else { $_.BaseName -match '^S\d{3}$' }
+})
 if ($files.Count -eq 0) {
-    throw "Nenhum S???.RDR encontrado em $DataDir"
+    throw ("Nenhum RDR encontrado em {0} (filter={1})" -f $DataDir, $filter)
 }
 
 $entries = New-Object System.Collections.Generic.List[object]
@@ -29,7 +40,12 @@ $maxFaceCount = [uint32]0
 $maxFamilyCount = [uint32]0
 
 foreach ($file in $files) {
-    if ($file.BaseName -notmatch '^S(\d{3})$') { continue }
+    if ($tag -eq "L") {
+        if ($file.BaseName -notmatch '^S(\d{3})L$') { continue }
+    }
+    else {
+        if ($file.BaseName -notmatch '^S(\d{3})$') { continue }
+    }
 
     $segmentId = [int]$Matches[1]
     [byte[]]$bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -151,11 +167,12 @@ finally {
     $fs.Dispose()
 }
 
-Write-Host ("TRKRDR ok: {0} segs:{1} maxId:{2} maxBlob:{3} maxV:{4} maxF:{5} maxFam:{6}" -f `
+Write-Host ("TRKRDR ok tag='{7}': {0} segs:{1} maxId:{2} maxBlob:{3} maxV:{4} maxF:{5} maxFam:{6}" -f `
     $OutPath,
     $entries.Count,
     $maxSegmentId,
     $maxBlobSize,
     $maxVertexCount,
     $maxFaceCount,
-    $maxFamilyCount)
+    $maxFamilyCount,
+    $tag)

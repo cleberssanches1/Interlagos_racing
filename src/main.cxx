@@ -1283,9 +1283,9 @@ static int RunPhysicsPocMode()
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
 
-    // Apply inverse direction on Y: -16 units relative to sampled asphalt surface.
-    // This affects spawn and runtime ground adhesion target consistently.
-    constexpr int32_t kCarLiftUnits = 16;
+    // Clearance above MapHeight (Y-down: negative = higher altitude).
+    // 2 units reduces residual asphalt×body overlap after 4-wheel plane adhesion.
+    constexpr int32_t kCarLiftUnits = 2;
     Game::CarPhysics::SetRideHeightOffset(
         Game::CarPhysics::GetRideHeightOffset() - SRL::Math::Types::Fxp::BuildRaw(kCarLiftUnits << 16));
 
@@ -1682,9 +1682,9 @@ int GameApp::Run()
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
 
-    // Apply inverse direction on Y: -16 units relative to sampled asphalt surface.
-    // This affects spawn and runtime ground adhesion target consistently.
-    constexpr int32_t kCarLiftUnits = 16;
+    // Clearance above MapHeight (Y-down: negative = higher altitude).
+    // 2 units reduces residual asphalt×body overlap after 4-wheel plane adhesion.
+    constexpr int32_t kCarLiftUnits = 2;
     Game::CarPhysics::SetRideHeightOffset(
         Game::CarPhysics::GetRideHeightOffset() - SRL::Math::Types::Fxp::BuildRaw(kCarLiftUnits << 16));
 

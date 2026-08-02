@@ -109,10 +109,28 @@ inline void PresentFaceAndShadowOverlay(const OverlayDiagnosticsSnapshot& overla
 
 inline void PresentGroundProbeOverlay(const OverlayDiagnosticsSnapshot& overlay)
 {
-    SRL::Debug::Print(1, 29, "OVR gp m:%u dx:%d dz:%d wh:%u wx:%d wz:%d",
-                      static_cast<unsigned>(overlay.carDebug.groundMask),
-                      static_cast<int>(overlay.segment.deltaX),
-                      static_cast<int>(overlay.segment.deltaZ),
+    // IMPORTANT: do not use rows 14-17 — PresentVdp1FpsTelemetry owns them every frame
+    // ("V1 t/h/p/a"). Rows 28-29 sit in the stable OVR block the player already watches.
+    // Call this presenter last so PrintInputOverlay does not overwrite row 28.
+    //
+    // Natural descent telemetry: dY>0 (Y-down) = body must descend; td=topology drop.
+    SRL::Debug::Print(1, 28, "OVR nd yF:%d yR:%d yB:%d yT:%d",
+                      static_cast<int>(overlay.carDebug.groundFrontY),
+                      static_cast<int>(overlay.carDebug.groundRearY),
+                      static_cast<int>(overlay.carDebug.groundBodyY),
+                      static_cast<int>(overlay.carDebug.groundTargetY));
+    SRL::Debug::Print(1, 29, "OVR nd dY:%d g:%d td:%u p:%d m:%u",
+                      static_cast<int>(overlay.carDebug.groundDY),
+                      static_cast<int>(overlay.carDebug.gradeTanX100),
+                      static_cast<unsigned>(overlay.carDebug.topoDrop),
+                      static_cast<int>(overlay.carDebug.bodyPitchDeg),
+                      static_cast<unsigned>(overlay.carDebug.groundMask));
+    SRL::Debug::Print(0, 15, "WH %d %d %d %d              ",
+                      static_cast<int>(overlay.carDebug.wheelSurfYFl),
+                      static_cast<int>(overlay.carDebug.wheelSurfYFr),
+                      static_cast<int>(overlay.carDebug.wheelSurfYRl),
+                      static_cast<int>(overlay.carDebug.wheelSurfYRr));
+    SRL::Debug::Print(0, 12, "GP wh:%u wx:%d wz:%d        ",
                       static_cast<unsigned>(overlay.carDebug.WallHit() ? 1u : 0u),
                       static_cast<int>(overlay.carDebug.wallPushX),
                       static_cast<int>(overlay.carDebug.wallPushZ));

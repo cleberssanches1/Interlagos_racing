@@ -33,6 +33,14 @@ inline void SeedOverlayGroundProbePacket(const GameLoopRuntime::OverlayDiagnosti
     outPacket.wallHit = overlay.carDebug.WallHit();
     outPacket.wallPushX = overlay.carDebug.wallPushX;
     outPacket.wallPushZ = overlay.carDebug.wallPushZ;
+    outPacket.wheelDistFl = overlay.carDebug.wheelDistFl;
+    outPacket.wheelDistFr = overlay.carDebug.wheelDistFr;
+    outPacket.wheelDistRl = overlay.carDebug.wheelDistRl;
+    outPacket.wheelDistRr = overlay.carDebug.wheelDistRr;
+    outPacket.wheelSurfYFl = overlay.carDebug.wheelSurfYFl;
+    outPacket.wheelSurfYFr = overlay.carDebug.wheelSurfYFr;
+    outPacket.wheelSurfYRl = overlay.carDebug.wheelSurfYRl;
+    outPacket.wheelSurfYRr = overlay.carDebug.wheelSurfYRr;
 }
 
 inline void SeedOverlayPhysicsQueryPacket(const GameLoopRuntime::OverlayDiagnosticsSnapshot& overlay,

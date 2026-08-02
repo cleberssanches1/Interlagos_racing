@@ -18,6 +18,17 @@ public:
     // Keep false while the path-guided chase branch is disabled in runtime.
     static constexpr bool kPathGuidedChaseEnabled = false;
 
+    // Body pitch → camera pitch sign (Y-down: +bodyPitch = nose down).
+    // Flip to -1 only if boom sinks into asphalt when car pitches down.
+    static constexpr int32_t kCamPitchSign = 1;
+    static constexpr int32_t kMaxCamPitchDeg = 22;
+    // Ignore tiny seam/noise pitch so start throttle + segment joints don't bob.
+    static constexpr int32_t kPitchDeadzoneDeg = 3;
+    // Max camera pitch change per frame (degrees) — anti-bobbing on seams.
+    static constexpr int32_t kMaxCamPitchStepDeg = 1;
+    // Below this |pitch|, grade-behind lift is off (prevents start dip).
+    static constexpr int32_t kGradeBehindMinPitchDeg = 6;
+
     struct PathFrameContext
     {
         bool valid = false;
@@ -87,6 +98,15 @@ public:
     bool DebugLogsEnabled() const { return debugLogsEnabled_; }
     // External PATH guidance for chase camera (optional, fallback-safe).
     void SetPathFrameContext(const PathFrameContext& context) { pathFrameContext_ = context; }
+    // Road attitude from car physics (no track probes — boot-safe).
+    // gradeTanX100: tanθ * 100, Y-down convention (positive = decline / nose down).
+    // bodyPitchDeg: integer degrees of body pitch (positive = nose down after model sign).
+    void SetRoadAttitude(int16_t gradeTanX100, int16_t bodyPitchDeg)
+    {
+        roadGradeTanX100_ = gradeTanX100;
+        roadBodyPitchDeg_ = bodyPitchDeg;
+    }
+    int16_t SmoothedCamPitchDeg() const { return smoothedCamPitchDeg_; }
     ChasePreset GetChasePreset() const { return chasePreset_; }
     void SetChaseResponsePreset(ChaseResponsePreset preset) { chaseResponsePreset_ = preset; }
     ChaseResponsePreset GetChaseResponsePreset() const { return chaseResponsePreset_; }
@@ -113,6 +133,14 @@ private:
         int16_t lookAhead = 0;
         int16_t lookHeight = 0;
         int16_t viewPitchDeg = 0;
+        // Pitch follow: 100 = 1.0 of body pitch.
+        int16_t pitchFollowX100 = 100;
+        // 16.16 blend toward target pitch per frame.
+        int32_t pitchBlendRaw = 29491; // ~0.45
+        // Extra base boom lift (Y-down units, more negative after apply).
+        int16_t baseBoomLift = 0;
+        // Min clearance above car (Y-down units).
+        int16_t minBoomClearance = 10;
     };
 
     // Initialize manual camera offset so initial framing matches expected setup.
@@ -125,7 +153,20 @@ private:
     static int32_t NormalizeYawDeg(int32_t yawDeg);
     int32_t CameraFollowBlendRaw() const;
     void UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) const;
+    void UpdateSmoothedCamPitch() const;
+    // Rotate local (Y,Z) by camera pitch (Y-down, +pitch = nose down).
+    static void ApplyLocalPitchYZ(int32_t pitchDeg,
+                                  Fxp& ioOffY,
+                                  Fxp& ioOffZ);
     Vector3D ResolvePresetOffsetWorld() const;
+    Vector3D ResolveLocalOffsetWorld(int32_t offsetXUnits,
+                                     int32_t offsetYUnits,
+                                     int32_t offsetZUnits,
+                                     int32_t pitchDeg) const;
+    CameraSafety::Config BoomSafetyConfig(int32_t pitchDeg) const;
+    Vector3D ApplyGradeBehindClearance(const Vector3D& cameraPos,
+                                       const Vector3D& carWorldPosition,
+                                       int32_t behindUnitsAbs) const;
 
     Camera::State state_;
     Camera::Tuning tuning_;
@@ -148,6 +189,12 @@ private:
     mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
     mutable bool hasObservedCarWorldPosition_ = false;
     PathFrameContext pathFrameContext_{};
+    // Road grade / body pitch (from car, not PATH probes).
+    int16_t roadGradeTanX100_ = 0;
+    int16_t roadBodyPitchDeg_ = 0;
+    // Smoothed chase pitch (degrees, same sign as body: + = nose down).
+    mutable int16_t smoothedCamPitchDeg_ = 0;
+    mutable bool camPitchInitialized_ = false;
     // 16.16 fixed-point scalar in [0,1] based on per-frame movement magnitude.
     mutable int32_t movementSpeedNormRaw_ = 0;
     bool zHeld_ = false;

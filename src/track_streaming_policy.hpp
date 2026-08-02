@@ -14,8 +14,13 @@ static constexpr uint8_t kLod64 = 3u;
 
 struct LodBandConfig
 {
-    uint32_t lod64Count = 10u;
-    uint32_t lod32Count = 10u;
+    // 3 design LODs mapped to texture bands on a 20-slot window:
+    // ranks [0, designLod0Count)           → 64 (design lod_0 presentation)
+    // ranks [designLod0Count, lod64Count)  → 64 (design lod_1)
+    // ranks [lod64Count, lod64+lod32)      → 32 (design lod_2)
+    uint32_t designLod0Count = 2u; // ranks 0-1
+    uint32_t lod64Count = 10u;     // ranks 0-9 inclusive end = 10
+    uint32_t lod32Count = 10u;     // ranks 10-19
 };
 
 struct FamilySlotsSnapshot
@@ -39,11 +44,22 @@ constexpr int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentC
     return normalized + 1;
 }
 
+// Design band: 0 = lod_0, 1 = lod_1, 2 = lod_2 (for telemetry / future dual-GEO).
+constexpr uint8_t ResolveDesignLodByRank(size_t rank, const LodBandConfig& config = {}) noexcept
+{
+    const size_t d0 = static_cast<size_t>(config.designLod0Count);
+    const size_t d1End = static_cast<size_t>(config.lod64Count);
+    if (rank < d0) return 0u;
+    if (rank < d1End) return 1u;
+    return 2u;
+}
+
 constexpr uint8_t ResolveLodIndexByRank(size_t rank, const LodBandConfig& config = {}) noexcept
 {
     const size_t lod64End = static_cast<size_t>(config.lod64Count);
     const size_t lod32End = lod64End + static_cast<size_t>(config.lod32Count);
 
+    // Texture size only: lod_0 and lod_1 share 64×64; lod_2 uses 32×32.
     if (rank < lod64End) return kLod64;
     if (rank < lod32End) return kLod32;
     return kLod32;

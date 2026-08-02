@@ -1028,15 +1028,16 @@ private:
     CameraFrameState ResolveCameraFrameState()
     {
         UpdateCameraPathFrameContext();
+        // Feed road attitude from car (grade/pitch already computed). No track probes.
+        if (context_.cameraSystem)
+        {
+            const Game::CarSystem::RuntimeDebugSnapshot carDbg = CarRuntimeDebugSnapshot();
+            context_.cameraSystem->SetRoadAttitude(carDbg.gradeTanX100, carDbg.bodyPitchDeg);
+        }
         SRL::Math::Types::Vector3D rawCameraLocation =
             context_.cameraSystem->CameraLocation(context_.carWorldPosition);
         SRL::Math::Types::Vector3D rawLookTarget =
             context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
-
-        // Camera terrain pitch intentionally off (boot stability).
-        // Probe-based look.Y hacks (and brake filters on top) closed the emulator.
-        // Car mesh still pitches via CarWheelRig; reintroduce camera grade later
-        // via PATH/bodyPitch with a single small, tested path — not here inline.
 
         const SRL::Math::Types::Vector3D resolvedCameraLocation = rawCameraLocation;
         const bool cameraReady =
@@ -1647,7 +1648,6 @@ private:
             context_.RenderCarShadowModel() && context_.carShadowRenderer,
             context_.sbaMeshCount,
             context_.sbaFaceCount);
-        GameLoopRuntime::PresentGroundProbeOverlay(overlaySnapshot);
         if constexpr (kEnablePhysicsSafeTelemetry)
         {
             GameLoopRuntime::PresentPhysicsQueryOverlay(overlaySnapshot);
@@ -1665,6 +1665,8 @@ private:
             segment,
             kEnablePhysicsSafeTelemetry);
         overlayEventState_.Update(segment);
+        // Wheel ground distances last: must not be painted over by input/event rows.
+        GameLoopRuntime::PresentGroundProbeOverlay(overlaySnapshot);
     }
 
     void UpdateRealtimeFpsOverlay()

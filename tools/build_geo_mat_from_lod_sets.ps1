@@ -279,17 +279,27 @@ if (-not (Test-Path -LiteralPath $ObjSourceDir)) { throw "ObjSourceDir nao encon
 if (-not (Test-Path -LiteralPath $LodRootDir)) { throw "LodRootDir nao encontrado: $LodRootDir" }
 New-Item -Path $OutDir -ItemType Directory -Force | Out-Null
 
-$lodDirs = [ordered]@{
-    "8"  = (Join-Path $LodRootDir "obj_8")
-    "16" = (Join-Path $LodRootDir "obj_16")
-    "32" = (Join-Path $LodRootDir "obj_32")
-    "64" = (Join-Path $LodRootDir "obj_64")
-}
-foreach ($kv in $lodDirs.GetEnumerator()) {
-    if (-not (Test-Path -LiteralPath $kv.Value)) { throw "Pasta LOD ausente: $($kv.Value)" }
+function Resolve-LodDir([string]$Root, [string[]]$Candidates) {
+    foreach ($c in $Candidates) {
+        $p = Join-Path $Root $c
+        if (Test-Path -LiteralPath $p) { return $p }
+    }
+    return $null
 }
 
-# Segment ids discovered from obj_64 files (NYA/OBJ/MAP).
+$lodDirs = [ordered]@{}
+$dir64 = Resolve-LodDir $LodRootDir @("lod_0", "lod_1", "obj_64")
+$dir32 = Resolve-LodDir $LodRootDir @("lod_2", "obj_32")
+$dir16 = Resolve-LodDir $LodRootDir @("obj_16")
+$dir8  = Resolve-LodDir $LodRootDir @("obj_8")
+if ($null -eq $dir64) { throw "Pasta LOD 64/lod_0 ausente em $LodRootDir" }
+if ($null -eq $dir32) { throw "Pasta LOD 32/lod_2 ausente em $LodRootDir" }
+$lodDirs["64"] = $dir64
+$lodDirs["32"] = $dir32
+if ($null -ne $dir16) { $lodDirs["16"] = $dir16 } else { Write-Host "Aviso: obj_16 ausente (ok no layout 3-LOD)." }
+if ($null -ne $dir8)  { $lodDirs["8"]  = $dir8  } else { Write-Host "Aviso: obj_8 ausente (ok no layout 3-LOD)." }
+
+# Segment ids discovered from dense design folder (lod_0 / 64).
 $ids = New-Object System.Collections.Generic.List[int]
 Get-ChildItem -LiteralPath $lodDirs["64"] -File | Sort-Object Name | ForEach-Object {
     $id = Get-SegmentIdFromName $_.Name
