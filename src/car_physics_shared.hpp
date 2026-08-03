@@ -115,6 +115,8 @@ struct Tunables
         Game::PhysicsFeatureFlags::kEnableSurfaceTypeQuery;
     static constexpr bool kEnableFaceCache =
         Game::PhysicsFeatureFlags::kEnableFaceCache;
+    static constexpr bool kEnableWheelStrictSurface =
+        Game::PhysicsFeatureFlags::kEnableWheelStrictSurface;
     static constexpr uint8_t kSurfaceTypeAsphalt = 1u;
     static constexpr uint8_t kSurfaceTypeEscapeArea = 2u;
     static constexpr uint8_t kSurfaceTypeGrass = 3u;
@@ -415,7 +417,10 @@ struct Tunables
         kEnableSaturnLowCostPhysics ? 6u : 1u;
     // 4-corner wheel plane (pitch + roll). Not reduced centerline.
     static constexpr bool kPreferReducedGroundProbe = false;
-    static constexpr bool kForceAxleCenterlineProbes = false;
+    // Saturn-safe path: two longitudinal axle samples preserve slope pitch while
+    // halving wheel surface-query cost. Four corners remain available when the
+    // low-cost profile is disabled.
+    static constexpr bool kForceAxleCenterlineProbes = kEnableSaturnLowCostPhysics;
     static constexpr bool kEnableFourWheelPlaneProbes = true;
     static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x0001599A);     // ~1.35
     static constexpr bool kEnableWallPlanarPush =

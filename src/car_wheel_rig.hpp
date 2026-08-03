@@ -67,8 +67,9 @@ private:
     static constexpr int32_t kBodyPitchSign = 1;
     static constexpr int32_t kBodyRollSign = 1;
     static constexpr int32_t kRadToDegApprox = 57;
-    static constexpr int32_t kPitchDeadzoneRaw = (1 << 15); // 0.5
-    static constexpr int32_t kRollDeadzoneRaw = (1 << 15);
+    // 0.5 units over the ~1.70 wheelbase hid ordinary road grades.
+    static constexpr int32_t kPitchDeadzoneRaw = (1 << 12); // 0.0625
+    static constexpr int32_t kRollDeadzoneRaw = (1 << 12);
     static constexpr int32_t kDeltaFilterShift = 1;
     static constexpr int32_t kMaxDeltaJumpRaw = 40 << 16; // damp F/R flicker on seams
     // Asymmetric pitch rate: nose-down (decline) tracks topology ASAP; climb anti-empino.

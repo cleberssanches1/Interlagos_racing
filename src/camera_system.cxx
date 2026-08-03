@@ -284,9 +284,25 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
         }
         else
         {
-            lastResolvedCameraLocation_ = LerpVectorRaw(lastResolvedCameraLocation_,
-                                                        targetCameraLocation,
-                                                        CameraFollowBlendRaw());
+            const int32_t planarBlendRaw = CameraFollowBlendRaw();
+            // Arcade camera isolation: XZ stays responsive at speed, while Y
+            // rejects wheel/face chatter. On an established slope Y converges
+            // faster, but never inherits the near-rigid planar blend.
+            const int32_t verticalBlendRaw =
+                (std::abs(static_cast<int32_t>(smoothedCamPitchDeg_)) >=
+                    kGradeBehindMinPitchDeg)
+                    ? 22938  // ~0.35 on a real incline/decline
+                    : 13107; // ~0.20 over small face irregularities
+            lastResolvedCameraLocation_ = Vector3D(
+                LerpFxpRaw(lastResolvedCameraLocation_.X,
+                           targetCameraLocation.X,
+                           planarBlendRaw),
+                LerpFxpRaw(lastResolvedCameraLocation_.Y,
+                           targetCameraLocation.Y,
+                           verticalBlendRaw),
+                LerpFxpRaw(lastResolvedCameraLocation_.Z,
+                           targetCameraLocation.Z,
+                           planarBlendRaw));
             lastResolvedCameraLocation_ = CameraSafety::ResolveBoomGuard(
                 lastResolvedCameraLocation_, carWorldPosition,
                 BoomSafetyConfig(smoothedCamPitchDeg_));
@@ -319,8 +335,8 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         return lastResolvedLookTarget_;
     }
 
-    // Pitch must match CameraLocation (same frame).
-    UpdateSmoothedCamPitch();
+    // CameraLocation advances pitch once; reuse that exact value so location
+    // and look target remain coherent within the frame.
     const auto cfg = PresetConfig(chasePreset_);
     const Vector3D headingForward = smoothedHeadingForwardWorld_;
     Vector3D chaseForward = headingForward;
@@ -469,7 +485,7 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
             120,    // lookAhead
             -28,    // lookHeight
             0,      // viewPitchDeg
-            70,     // pitchFollowX100 — softer far cam
+            90,     // pitchFollowX100 — follows grade, slightly damped
             13107,  // pitchBlendRaw ~0.20
             24,     // baseBoomLift
             14      // minBoomClearance
@@ -483,7 +499,7 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
             120,    // lookAhead
             -30,    // lookHeight
             0,      // viewPitchDeg
-            80,     // pitchFollowX100 — partial follow (less seam bob)
+            100,    // pitchFollowX100 — arcade chase follows road attitude
             16384,  // pitchBlendRaw ~0.25
             16,     // baseBoomLift
             12      // minBoomClearance
@@ -587,21 +603,25 @@ int32_t CameraSystem::CameraFollowBlendRaw() const
 void CameraSystem::UpdateSmoothedCamPitch() const
 {
     const auto cfg = PresetConfig(chasePreset_);
-    // Prefer body pitch only when meaningful. Grade fallback is *heavily*
-    // attenuated — raw gradeTan at launch / segment seams was tilting+dropping
-    // the boom on flat start throttle.
-    int32_t targetPitch = static_cast<int32_t>(roadBodyPitchDeg_);
-    if (std::abs(targetPitch) < kPitchDeadzoneDeg)
+    // Use the strongest coherent road-attitude source. For small angles:
+    // degrees ~= tan(theta) * 57, while gradeTanX100 = tan(theta) * 100.
+    // The old grade / 4 fallback represented only ~44 percent of the actual
+    // slope and left the chase boom almost level on steep descents.
+    int32_t targetPitch = 0;
+    const int32_t gradePitch = static_cast<int32_t>(
+        (static_cast<int32_t>(roadGradeTanX100_) * 57) / 100);
+    // GroundFollower already low-pass filters grade. Treat it as the terrain
+    // signal; body pitch contains higher-frequency wheel/face motion.
+    constexpr int32_t kGradeAttitudeMinX100 = 10; // tan ~= 0.10, about 5.7 degrees
+    if (std::abs(static_cast<int32_t>(roadGradeTanX100_)) >= kGradeAttitudeMinX100)
     {
-        // Only use grade when clearly on a slope (|tan|*100 >= 12 ≈ steep-ish).
-        if (std::abs(static_cast<int32_t>(roadGradeTanX100_)) >= 12)
-        {
-            targetPitch = static_cast<int32_t>(roadGradeTanX100_) / 4; // gentler than /2
-        }
-        else
-        {
-            targetPitch = 0;
-        }
+        targetPitch = gradePitch;
+    }
+    else if (std::abs(static_cast<int32_t>(roadBodyPitchDeg_)) >= 5)
+    {
+        // Body fallback only for a clearly sustained attitude, never for the
+        // 1-3 degree chatter produced by adjacent face planes.
+        targetPitch = static_cast<int32_t>(roadBodyPitchDeg_);
     }
     // Near-zero speed: hold camera level (launch / parking). Prevents the
     // "accelerate and cam dives" artifact from probe noise on first frames.
@@ -705,13 +725,9 @@ Vector3D CameraSystem::ApplyGradeBehindClearance(const Vector3D& cameraPos,
                                                  int32_t behindUnitsAbs) const
 {
     if (behindUnitsAbs <= 0) return cameraPos;
-    // Strict gate: only real downhill with established camera pitch.
-    // Old thresholds (pitch>=2 / grade>=4) fired on flat launch and every seam.
-    if (smoothedCamPitchDeg_ < kGradeBehindMinPitchDeg)
-    {
-        return cameraPos;
-    }
-    if (roadGradeTanX100_ < 10 && roadBodyPitchDeg_ < kGradeBehindMinPitchDeg)
+    // Strict gate: only a clearly established downhill. Use filtered grade
+    // directly so clearance engages while camera pitch is still catching up.
+    if (roadGradeTanX100_ < 10)
     {
         return cameraPos;
     }
@@ -773,10 +789,8 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
         {
             gradeLift += std::min<int32_t>(12, roadGradeTanX100_ / 5);
         }
-        if (roadGradeTanX100_ < -12)
-        {
-            gradeLift += std::min<int32_t>(8, (-static_cast<int32_t>(roadGradeTanX100_)) / 5);
-        }
+        // On climbs, the pitched rear boom must move downward with the road.
+        // Lifting it here cancelled that arcade oscillation and kept Y fixed.
         offsetYUnits -= gradeLift;
     }
 
@@ -815,7 +829,6 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
     }
 
     // Body-frame pitch: rotates (Y,Z) so boom follows car inclination.
-    UpdateSmoothedCamPitch();
     const int32_t pitchDeg = static_cast<int32_t>(smoothedCamPitchDeg_) * kCamPitchSign;
     return ResolveLocalOffsetWorld(offsetXUnits, offsetYUnits, offsetZUnits, pitchDeg);
 }

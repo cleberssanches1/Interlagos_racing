@@ -113,7 +113,8 @@ inline void PresentGroundProbeOverlay(const OverlayDiagnosticsSnapshot& overlay)
     // ("V1 t/h/p/a"). Rows 28-29 sit in the stable OVR block the player already watches.
     // Call this presenter last so PrintInputOverlay does not overwrite row 28.
     //
-    // Natural descent telemetry: dY>0 (Y-down) = body must descend; td=topology drop.
+    // Natural descent telemetry: dY>0 (Y-down) = body must descend.
+    // td is non-zero while a topology drop is being tracked.
     SRL::Debug::Print(1, 28, "OVR nd yF:%d yR:%d yB:%d yT:%d",
                       static_cast<int>(overlay.carDebug.groundFrontY),
                       static_cast<int>(overlay.carDebug.groundRearY),

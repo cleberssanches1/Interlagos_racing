@@ -23,6 +23,12 @@
 #define PHYS_SAFE_TELEMETRY 1
 #endif
 
+// A/B gate: wheel probes accept only faces that contain the queried XZ.
+// Other collision/grip queries keep their existing soft fallback behavior.
+#ifndef PHYS_WHEEL_STRICT_SURFACE
+#define PHYS_WHEEL_STRICT_SURFACE 1
+#endif
+
 #ifndef PHYS_WALL_COLLISION_RUNTIME
 #define PHYS_WALL_COLLISION_RUNTIME 0
 #endif
@@ -42,6 +48,7 @@ static constexpr bool kEnableFaceCache = (PHYS_FACE_CACHE != 0);
 static constexpr bool kEnableScmapRuntime = (PHYS_SCMAP_RUNTIME != 0);
 static constexpr bool kEnableLocalFaceNeighbor = (PHYS_LOCAL_FACE_NEIGHBOR != 0);
 static constexpr bool kEnableSafeTelemetry = (PHYS_SAFE_TELEMETRY != 0);
+static constexpr bool kEnableWheelStrictSurface = (PHYS_WHEEL_STRICT_SURFACE != 0);
 static constexpr bool kEnableWallCollisionRuntime = (PHYS_WALL_COLLISION_RUNTIME != 0);
 static constexpr bool kEnablePhysicsV2 = (PHYSICS_V2_ENABLED != 0);
 static constexpr bool kEnableSaturnLowCostPhysics = (PHYS_SATURN_LOW_COST != 0);

@@ -21,13 +21,13 @@ public:
     // Body pitch → camera pitch sign (Y-down: +bodyPitch = nose down).
     // Flip to -1 only if boom sinks into asphalt when car pitches down.
     static constexpr int32_t kCamPitchSign = 1;
-    static constexpr int32_t kMaxCamPitchDeg = 22;
+    static constexpr int32_t kMaxCamPitchDeg = 28;
     // Ignore tiny seam/noise pitch so start throttle + segment joints don't bob.
     static constexpr int32_t kPitchDeadzoneDeg = 3;
     // Max camera pitch change per frame (degrees) — anti-bobbing on seams.
     static constexpr int32_t kMaxCamPitchStepDeg = 1;
     // Below this |pitch|, grade-behind lift is off (prevents start dip).
-    static constexpr int32_t kGradeBehindMinPitchDeg = 6;
+    static constexpr int32_t kGradeBehindMinPitchDeg = 8;
 
     struct PathFrameContext
     {

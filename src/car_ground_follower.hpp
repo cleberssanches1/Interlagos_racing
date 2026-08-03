@@ -429,7 +429,8 @@ private:
     static bool TryProbeSurfaceY(const ITrackCollisionQuery* trackQuery,
                                  const Vector3D& worldPosition,
                                  int32_t seedSegmentId,
-                                 SurfaceProbeSample& outSample)
+                                 SurfaceProbeSample& outSample,
+                                 bool allowSoftFallback = true)
     {
         if (!trackQuery) return false;
 
@@ -458,6 +459,7 @@ private:
                 seedSegmentId);
         }
         if (outSample.valid) return true;
+        if (!allowSoftFallback) return false;
 
         // Soft fallback: accept non-strict result only when still near seed.
         SRL::Math::Types::Fxp fallbackY{};
@@ -723,20 +725,18 @@ private:
         SurfaceProbeSample rr{};
         if (useReducedProbe)
         {
-            SurfaceProbeSample fc{};
-            SurfaceProbeSample rc{};
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latCenter),
                                    seedSegmentId,
-                                   fc);
+                                   fl,
+                                   !Tunables::kEnableWheelStrictSurface);
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latCenter),
                                    seedSegmentId,
-                                   rc);
-            fl = fc;
-            fr = fc;
-            rl = rc;
-            rr = rc;
+                                   rl,
+                                   !Tunables::kEnableWheelStrictSurface);
+            fr = fl;
+            rr = rl;
         }
         else
         {
@@ -744,19 +744,23 @@ private:
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latLeft),
                                    seedSegmentId,
-                                   fl);
+                                   fl,
+                                   !Tunables::kEnableWheelStrictSurface);
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latRight),
                                    seedSegmentId,
-                                   fr);
+                                   fr,
+                                   !Tunables::kEnableWheelStrictSurface);
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latLeft),
                                    seedSegmentId,
-                                   rl);
+                                   rl,
+                                   !Tunables::kEnableWheelStrictSurface);
             (void)TryProbeSurfaceY(trackQuery,
                                    BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latRight),
                                    seedSegmentId,
-                                   rr);
+                                   rr,
+                                   !Tunables::kEnableWheelStrictSurface);
         }
 
         const bool frontValid = HasProbeSupport(fl, fr);
@@ -791,6 +795,20 @@ private:
         publishWheel(fr, ioFrameState.debugWheelSurfYFr, ioFrameState.debugWheelDistFr);
         publishWheel(rl, ioFrameState.debugWheelSurfYRl, ioFrameState.debugWheelDistRl);
         publishWheel(rr, ioFrameState.debugWheelSurfYRr, ioFrameState.debugWheelDistRr);
+
+        // Saturn-safe gate: with reduced probes, each L/R pair is one duplicated
+        // axle-center hit. Both strict axle samples must exist before a new body
+        // target is accepted. On a seam miss the existing contact hold preserves
+        // the last filtered Y without an extrapolated face or extra query.
+        if (!frontValid || !rearValid)
+        {
+            ioState.hasGroundSupport = false;
+            ioState.surfaceYInitialized = false;
+            ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYFiltered);
+            ioFrameState.debugGroundYBody = FxpToDebugInt(ioState.surfaceYFiltered);
+            return;
+        }
+        ioState.hasGroundSupport = true;
 
         // Do NOT fall back to body Y for a missing corner — that equalizes
         // front/rear and snaps attitude upright. Use only valid corners;

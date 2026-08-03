@@ -47,7 +47,8 @@ struct GameplayFrameState
     int32_t debugGroundYLeftRaw = 0;
     int32_t debugGroundYRightRaw = 0;
     uint8_t debugGroundMask = 0;
-    uint8_t debugTopoDrop = 0u;       // 1 while topology-drop window active
+    // Non-zero while a topology drop is being tracked.
+    uint8_t debugTopoDrop = 0u;
     // Per-wheel ground face under FL/FR/RL/RR probes (world Y, int units).
     // Larger Y = lower altitude. Dist = surfaceY - bodyY (positive => face below body).
     int16_t debugWheelSurfYFl = 0;
