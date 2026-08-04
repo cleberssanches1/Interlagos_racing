@@ -6,6 +6,7 @@
 
 #include <srl.hpp>
 
+#include "car_contact_geometry.hpp"
 #include "mesh_renderer.hpp"
 #include "modelObject.hpp"
 
@@ -26,6 +27,7 @@ public:
         int32_t groundFrontYRaw = 0;
         int32_t groundLeftYRaw = 0;
         int32_t groundRightYRaw = 0;
+        std::array<int16_t, 4> wheelResidualX256{{0, 0, 0, 0}};
         uint8_t groundMask = 0;
         uint8_t braking = 0;
     };
@@ -58,24 +60,31 @@ private:
     static constexpr int32_t kMaxRollDegX16 = 18 << 16;
     static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x0000C000); // 0.75
     static constexpr int32_t kSteerFilterShift = 2;
-    static constexpr int32_t kPitchFilterShift = 1;
+    // Segment joins are position-continuous but not always slope-continuous.
+    // Let the body settle instead of copying each face angle as a nose impulse.
+    static constexpr int32_t kPitchFilterShift = 2;
     static constexpr int32_t kRollFilterShift = 1;
     static constexpr int32_t kSuspFilterShift = 1;
     static constexpr int32_t kSpinDegPerKmhX16 = 2200;
-    static constexpr int32_t kDefaultWheelbaseRaw = 0x0001B332; // ~1.70
-    static constexpr int32_t kDefaultTrackRaw = 0x00011998;     // ~1.10
+    static constexpr int32_t kDefaultWheelbaseRaw =
+        Game::CarPhysics::ContactGeometry::kWheelbaseRaw;
+    static constexpr int32_t kDefaultTrackRaw =
+        Game::CarPhysics::ContactGeometry::kTrackRaw;
+    static constexpr int32_t kMaxMeasuredWheelbaseRaw = 128 << 16;
+    static constexpr int32_t kMaxMeasuredTrackRaw = 96 << 16;
     static constexpr int32_t kBodyPitchSign = 1;
     static constexpr int32_t kBodyRollSign = 1;
     static constexpr int32_t kRadToDegApprox = 57;
-    // 0.5 units over the ~1.70 wheelbase hid ordinary road grades.
+    // Reject only sub-unit fixed-point noise; real grades span the full CAR1
+    // wheelbase and remain well above this threshold.
     static constexpr int32_t kPitchDeadzoneRaw = (1 << 12); // 0.0625
     static constexpr int32_t kRollDeadzoneRaw = (1 << 12);
     static constexpr int32_t kDeltaFilterShift = 1;
     static constexpr int32_t kMaxDeltaJumpRaw = 40 << 16; // damp F/R flicker on seams
-    // Asymmetric pitch rate: nose-down (decline) tracks topology ASAP; climb anti-empino.
-    static constexpr int32_t kMaxPitchStepDownDegX16 = 16 << 16; // toward lower nose
-    static constexpr int32_t kMaxPitchStepUpDegX16 = 4 << 16;   // toward higher nose
-    static constexpr int32_t kMaxRollStepDegX16 = 8 << 16;
+    // Tires react first; the body follows with a PS1-era bounded angular rate.
+    static constexpr int32_t kMaxPitchStepDownDegX16 = 1 << 15; // 0.5 deg/frame
+    static constexpr int32_t kMaxPitchStepUpDegX16 = 1 << 15;
+    static constexpr int32_t kMaxRollStepDegX16 = 1 << 15;
 
     void RefreshWheelGeometryFromCenters();
 
@@ -102,6 +111,8 @@ private:
     int32_t steerDegX16_ = 0;
     int32_t bodyPitchDegX16_ = 0;
     int32_t bodyRollDegX16_ = 0;
+    int32_t bodyPitchVelocityDegX16_ = 0;
+    int32_t bodyRollVelocityDegX16_ = 0;
     int32_t heldPitchDegX16_ = 0; // last good sample (hold when a corner misses)
     int32_t heldRollDegX16_ = 0;
     int32_t filteredDeltaYRaw_ = 0;      // pitch: front−rear surface ΔY

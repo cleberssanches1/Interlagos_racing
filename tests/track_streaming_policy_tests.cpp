@@ -85,30 +85,38 @@ std::string ToString(const std::array<T, N>& values)
         } \
     } while (0)
 
-void TestResolveLodBandsForTwentySegmentWindow(TestContext& ctx)
+void TestResolveLodBandsForConfiguredWindow(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    for (size_t rank = 0; rank < 4u; ++rank)
+    for (size_t rank = 0; rank < TrackLodConfig::kTexture64Segments; ++rank)
     {
         EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod64);
     }
-    for (size_t rank = 4u; rank < 9u; ++rank)
+    for (size_t rank = TrackLodConfig::kTexture64Segments;
+         rank < TrackLodConfig::kVisibleSegments;
+         ++rank)
     {
         EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod32);
     }
-    for (size_t rank = 9u; rank < 14u; ++rank)
-    {
-        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod16);
-    }
-    for (size_t rank = 14u; rank < 20u; ++rank)
-    {
-        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod8);
-    }
-    EXPECT_EQ(ctx, ResolveLodIndexByRank(20u), kLod8);
+    EXPECT_EQ(ctx, ResolveLodIndexByRank(TrackLodConfig::kVisibleSegments), kLod32);
 
-    const std::array<size_t, 4> counts = CountWindowSegmentsByLod(20u);
-    const std::array<size_t, 4> expectedCounts{{6u, 5u, 5u, 4u}};
+    EXPECT_EQ(ctx, ResolveDesignLodByRank(0u), static_cast<uint8_t>(0u));
+    EXPECT_EQ(ctx,
+              ResolveDesignLodByRank(TrackLodConfig::kLod0Segments),
+              static_cast<uint8_t>(1u));
+    EXPECT_EQ(ctx,
+              ResolveDesignLodByRank(TrackLodConfig::kTexture64Segments),
+              static_cast<uint8_t>(2u));
+
+    const std::array<size_t, 4> counts =
+        CountWindowSegmentsByLod(TrackLodConfig::kVisibleSegments);
+    const std::array<size_t, 4> expectedCounts{{
+        0u,
+        0u,
+        TrackLodConfig::kTexture32Segments,
+        TrackLodConfig::kTexture64Segments
+    }};
     EXPECT_EQ(ctx, counts, expectedCounts);
 }
 
@@ -116,15 +124,16 @@ void TestWindowSlidesForwardKeepingSameBandShape(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    const std::vector<int32_t> start1 = BuildWindowSegmentIds(1, 305, 20u, +1);
-    const std::vector<int32_t> start2 = BuildWindowSegmentIds(2, 305, 20u, +1);
+    const size_t windowCount = TrackLodConfig::kVisibleSegments;
+    const std::vector<int32_t> start1 = BuildWindowSegmentIds(1, 305, windowCount, +1);
+    const std::vector<int32_t> start2 = BuildWindowSegmentIds(2, 305, windowCount, +1);
 
     EXPECT_EQ(ctx, start1.front(), 1);
-    EXPECT_EQ(ctx, start1.back(), 20);
+    EXPECT_EQ(ctx, start1.back(), static_cast<int32_t>(windowCount));
     EXPECT_EQ(ctx, start2.front(), 2);
-    EXPECT_EQ(ctx, start2.back(), 21);
+    EXPECT_EQ(ctx, start2.back(), static_cast<int32_t>(windowCount + 1u));
 
-    for (size_t rank = 0; rank < 20u; ++rank)
+    for (size_t rank = 0; rank < windowCount; ++rank)
     {
         const uint8_t lod1 = ResolveLodIndexByRank(rank);
         const uint8_t lod2 = ResolveLodIndexByRank(rank);
@@ -136,15 +145,16 @@ void TestWindowSlidesBackwardKeepingSameBandShape(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    const std::vector<int32_t> start305 = BuildWindowSegmentIds(305, 305, 20u, -1);
-    const std::vector<int32_t> start304 = BuildWindowSegmentIds(304, 305, 20u, -1);
+    const size_t windowCount = TrackLodConfig::kVisibleSegments;
+    const std::vector<int32_t> start305 = BuildWindowSegmentIds(305, 305, windowCount, -1);
+    const std::vector<int32_t> start304 = BuildWindowSegmentIds(304, 305, windowCount, -1);
 
     EXPECT_EQ(ctx, start305.front(), 305);
-    EXPECT_EQ(ctx, start305.back(), 286);
+    EXPECT_EQ(ctx, start305.back(), 290);
     EXPECT_EQ(ctx, start304.front(), 304);
-    EXPECT_EQ(ctx, start304.back(), 285);
+    EXPECT_EQ(ctx, start304.back(), 289);
 
-    for (size_t rank = 0; rank < 20u; ++rank)
+    for (size_t rank = 0; rank < windowCount; ++rank)
     {
         const uint8_t lodA = ResolveLodIndexByRank(rank);
         const uint8_t lodB = ResolveLodIndexByRank(rank);
@@ -156,9 +166,10 @@ void TestWindowWrapsAcrossLapBoundary(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    const std::vector<int32_t> window = BuildWindowSegmentIds(299, 305, 20u, +1);
+    const std::vector<int32_t> window = BuildWindowSegmentIds(
+        299, 305, TrackLodConfig::kVisibleSegments, +1);
     const std::vector<int32_t> expected{
-        299, 300, 301, 302, 303, 304, 305, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+        299, 300, 301, 302, 303, 304, 305, 1, 2, 3, 4, 5, 6, 7, 8, 9
     };
     EXPECT_EQ(ctx, window, expected);
 }
@@ -239,7 +250,8 @@ void TestTopNearCameraRanksStayBoundedToFourSegments(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    const std::vector<size_t> ranks20 = BuildTopNearCameraRanks(20u);
+    const std::vector<size_t> ranks20 =
+        BuildTopNearCameraRanks(TrackLodConfig::kVisibleSegments);
     const std::vector<size_t> ranks2 = BuildTopNearCameraRanks(2u);
     const std::vector<size_t> expected20{0u, 1u, 2u, 3u};
     const std::vector<size_t> expected2{0u, 1u};
@@ -252,25 +264,28 @@ void TestForwardSlideBoundaryPrewarmPlanMatchesContract(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    const std::vector<BoundaryPrewarmTarget> plan = BuildForwardSlideBoundaryPrewarmPlan(20u);
-    EXPECT_EQ(ctx, plan.size(), static_cast<size_t>(3u));
-    EXPECT_EQ(ctx, plan[0].logicalRank, static_cast<size_t>(4u));
+    const std::vector<BoundaryPrewarmTarget> plan = BuildForwardSlideBoundaryPrewarmPlan(
+        TrackLodConfig::kVisibleSegments);
+    EXPECT_EQ(ctx, plan.size(), static_cast<size_t>(1u));
+    EXPECT_EQ(ctx, plan[0].logicalRank, TrackLodConfig::kTexture64Segments);
     EXPECT_EQ(ctx, plan[0].targetLodIndex, kLod64);
-    EXPECT_EQ(ctx, plan[1].logicalRank, static_cast<size_t>(9u));
-    EXPECT_EQ(ctx, plan[1].targetLodIndex, kLod32);
-    EXPECT_EQ(ctx, plan[2].logicalRank, static_cast<size_t>(14u));
-    EXPECT_EQ(ctx, plan[2].targetLodIndex, kLod16);
 }
 
 void TestWindowLodCountsInvariantAcrossLap(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    const std::array<size_t, 4> expectedCounts{{6u, 5u, 5u, 4u}};
+    const std::array<size_t, 4> expectedCounts{{
+        0u,
+        0u,
+        TrackLodConfig::kTexture32Segments,
+        TrackLodConfig::kTexture64Segments
+    }};
     for (int32_t startId = 1; startId <= 305; ++startId)
     {
-        const std::vector<int32_t> window = BuildWindowSegmentIds(startId, 305, 20u, +1);
-        EXPECT_EQ(ctx, window.size(), static_cast<size_t>(20u));
+        const std::vector<int32_t> window = BuildWindowSegmentIds(
+            startId, 305, TrackLodConfig::kVisibleSegments, +1);
+        EXPECT_EQ(ctx, window.size(), TrackLodConfig::kVisibleSegments);
 
         std::array<size_t, 4> counts{{0u, 0u, 0u, 0u}};
         for (size_t rank = 0; rank < window.size(); ++rank)
@@ -292,7 +307,7 @@ struct TestCase
 int main()
 {
     const std::vector<TestCase> tests{
-        {"ResolveLodBandsForTwentySegmentWindow", &TestResolveLodBandsForTwentySegmentWindow},
+        {"ResolveLodBandsForConfiguredWindow", &TestResolveLodBandsForConfiguredWindow},
         {"WindowSlidesForwardKeepingSameBandShape", &TestWindowSlidesForwardKeepingSameBandShape},
         {"WindowSlidesBackwardKeepingSameBandShape", &TestWindowSlidesBackwardKeepingSameBandShape},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},

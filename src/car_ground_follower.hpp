@@ -287,6 +287,8 @@ public:
             {
                 --ioState.surfaceContactFrames;
                 ioCarWorldPosition.Y = ioState.surfaceYFiltered;
+                ioState.verticalVelocity = Fxp::BuildRaw(
+                    ioState.verticalVelocity.RawValue() >> 1);
             }
             else
             {
@@ -296,79 +298,39 @@ public:
             return;
         }
 
-        // Natural descent: follow MapHeight target with ASYMMETRIC rates.
-        // Y-down: d>0 means asphalt is lower → descend fast; climb is conservative.
+        // Wheel targets already reject face/seam chatter. Feed their coherent
+        // motion forward so the chassis follows a long ramp without floating;
+        // only residual error is damped and rate-limited here.
         const Fxp targetY = ioState.surfaceYTarget;
         if (!ioState.surfaceYFilterInitialized)
         {
             ioState.surfaceYFiltered = targetY;
+            ioState.verticalVelocity = Fxp::BuildRaw(0);
             ioState.surfaceYFilterInitialized = true;
         }
         else
         {
             const int32_t cur = ioState.surfaceYFiltered.RawValue();
             const int32_t tgt = targetY.RawValue();
-            int32_t d = tgt - cur;
-            const int32_t ad = (d < 0) ? -d : d;
-            const bool topoDrop = (ioState.topologyDropFrames > 0u);
-
-            if (d > 0)
-            {
-                // DESCEND toward MapHeight under the car.
-                // Smooth step on continuous grade (avoids "stairs" on subdivided faces).
-                // Full snap only when flying / large topology gap (|dY| hard).
-                const bool gradeDecline = ioState.gradeValid &&
-                    (ioState.gradeTanRaw > Tunables::kTopoGradeDeclineMin.RawValue());
-                if (ad >= Tunables::kTopoDropHardY.RawValue() ||
-                    (topoDrop && ad >= Tunables::kSnapDownThreshold.RawValue()))
-                {
-                    // Flying or big face gap: stick this frame.
-                    ioState.surfaceYFiltered = targetY;
-                }
-                else if (ad <= (Tunables::kSnapDownThreshold.RawValue() >> 2))
-                {
-                    // Tiny residual: glue.
-                    ioState.surfaceYFiltered = targetY;
-                }
-                else
-                {
-                    int32_t step = d;
-                    int32_t maxDown = Tunables::kMaxYStepDownPerFrame.RawValue();
-                    // Decline / topology: allow full step budget (still rate-limited).
-                    if (!(topoDrop || gradeDecline))
-                    {
-                        // Flat-ish: slightly softer to reduce seam pops.
-                        maxDown = maxDown >> 1;
-                        if (maxDown < (1 << 16)) maxDown = (1 << 16);
-                    }
-                    if (step > maxDown) step = maxDown;
-                    ioState.surfaceYFiltered = Fxp::BuildRaw(cur + step);
-                }
-            }
-            else if (d < 0)
-            {
-                // CLIMB: mild approach to avoid empino, but eject hard if under asphalt.
-                // Y-down: tgt < cur ⇒ body is too deep (penetrating the face).
-                const int32_t snapUp = Tunables::kSnapUpThreshold.RawValue();
-                const int32_t maxUp = Tunables::kMaxYStepUpPerFrame.RawValue();
-                if (ad >= Tunables::kClimbPenetrateHardY.RawValue() || ad <= snapUp)
-                {
-                    ioState.surfaceYFiltered = targetY;
-                }
-                else
-                {
-                    int32_t step = d; // negative
-                    if (step < -maxUp) step = -maxUp;
-                    ioState.surfaceYFiltered = Fxp::BuildRaw(cur + step);
-                }
-            }
+            int32_t velocity = ioState.verticalVelocity.RawValue();
+            const int32_t previousTarget = ioState.lastAcceptedSurfaceYValid
+                ? ioState.lastAcceptedSurfaceYRaw
+                : tgt;
+            const int32_t next = ArcadeSuspensionFilter::StepChassisTracking(
+                tgt,
+                cur,
+                previousTarget,
+                velocity,
+                Tunables::kMaxYStepUpPerFrame.RawValue(),
+                Tunables::kMaxYStepDownPerFrame.RawValue());
+            ioState.verticalVelocity = Fxp::BuildRaw(velocity);
+            ioState.surfaceYFiltered = Fxp::BuildRaw(next);
         }
         if (ioState.topologyDropFrames > 0u)
         {
             --ioState.topologyDropFrames;
         }
         ioCarWorldPosition.Y = ioState.surfaceYFiltered;
-        ioState.verticalVelocity = Fxp::BuildRaw(0);
         ioState.surfaceContactFrames = 8u;
 
         if (ioState.hasGroundSupport)
@@ -383,6 +345,7 @@ public:
 
     static void Reset(GroundState& ioState)
     {
+        ArcadeSuspensionFilter::Reset(ioState.suspension);
         ioState.surfaceYTarget = Fxp::BuildRaw(0);
         ioState.surfaceYFiltered = Fxp::BuildRaw(0);
         ioState.verticalVelocity = Fxp::BuildRaw(0);
@@ -415,6 +378,9 @@ public:
         ioState.gradeValid = false;
         ioState.lastAcceptedSurfaceYRaw = 0;
         ioState.lastAcceptedSurfaceYValid = false;
+        ioState.committedSurfaceYRaw = 0;
+        ioState.surfaceTargetVelocityRaw = 0;
+        ioState.committedSurfaceYValid = false;
         ioState.topologyDropFrames = 0u;
     }
 
@@ -423,6 +389,7 @@ private:
     {
         Fxp y = Fxp::BuildRaw(0);
         int32_t segmentId = -1;
+        int16_t faceIndex = -1;
         bool valid = false;
     };
 
@@ -430,7 +397,8 @@ private:
                                  const Vector3D& worldPosition,
                                  int32_t seedSegmentId,
                                  SurfaceProbeSample& outSample,
-                                 bool allowSoftFallback = true)
+                                 bool allowSoftFallback = true,
+                                 int16_t hintFaceIndex = -1)
     {
         if (!trackQuery) return false;
 
@@ -438,15 +406,36 @@ private:
         samplePosition.Y -= Tunables::kSurfaceSampleDownBias;
 
         outSample.segmentId = -1;
+        outSample.faceIndex = -1;
         if constexpr (Tunables::kEnableSurfaceTypeQuery)
         {
-            outSample.valid = trackQuery->SampleSurfaceYBySurfaceTypeSetStrict(
-                samplePosition,
-                Tunables::kDriveableSurfaceTypes.data(),
-                Tunables::kDriveableSurfaceTypes.size(),
-                outSample.y,
-                &outSample.segmentId,
-                seedSegmentId);
+            if constexpr (Game::PhysicsFeatureFlags::kEnableWheelContactV2)
+            {
+                Game::SurfaceContact contact{};
+                outSample.valid = trackQuery->SampleWheelSurfaceBySurfaceTypeSetStrict(
+                    samplePosition,
+                    Tunables::kDriveableSurfaceTypes.data(),
+                    Tunables::kDriveableSurfaceTypes.size(),
+                    contact,
+                    seedSegmentId,
+                    hintFaceIndex);
+                if (outSample.valid)
+                {
+                    outSample.y = contact.surfaceY;
+                    outSample.segmentId = contact.segmentId;
+                    outSample.faceIndex = contact.faceIndex;
+                }
+            }
+            else
+            {
+                outSample.valid = trackQuery->SampleSurfaceYBySurfaceTypeSetStrict(
+                    samplePosition,
+                    Tunables::kDriveableSurfaceTypes.data(),
+                    Tunables::kDriveableSurfaceTypes.size(),
+                    outSample.y,
+                    &outSample.segmentId,
+                    seedSegmentId);
+            }
         }
         else
         {
@@ -717,50 +706,115 @@ private:
         const Fxp longRear = Fxp::BuildRaw(-Tunables::kProbeHalfWheelBase.RawValue());
         const Fxp latLeft = Fxp::BuildRaw(-Tunables::kProbeHalfTrack.RawValue());
         const Fxp latRight = Tunables::kProbeHalfTrack;
-        const Fxp latCenter = Fxp::BuildRaw(0);
 
         SurfaceProbeSample fl{};
         SurfaceProbeSample fr{};
         SurfaceProbeSample rl{};
         SurfaceProbeSample rr{};
+
+        ArcadeSuspensionFilter::BeginFrame(ioState.suspension);
+        const bool stagingFirstDiagonal =
+            useReducedProbe && ((ioState.suspension.diagonalPhase & 1u) == 0u);
+        auto sampleWheel = [&](uint8_t wheelIndex,
+                               const Fxp& longitudinal,
+                               const Fxp& lateral)
+        {
+            SurfaceProbeSample sample{};
+            int32_t wheelSeedSegmentId = seedSegmentId;
+            int16_t wheelHintFaceIndex = -1;
+            const uint8_t wheelBit = static_cast<uint8_t>(1u << wheelIndex);
+            if ((ioState.suspension.validMask & wheelBit) != 0u)
+            {
+                if (ioState.suspension.segmentIds[wheelIndex] > 0)
+                {
+                    wheelSeedSegmentId = ioState.suspension.segmentIds[wheelIndex];
+                }
+                wheelHintFaceIndex = ioState.suspension.faceIndices[wheelIndex];
+            }
+            (void)TryProbeSurfaceY(trackQuery,
+                                   BuildProbePoint(worldPosition,
+                                                   sinYaw,
+                                                   cosYaw,
+                                                   longitudinal,
+                                                   lateral),
+                                   wheelSeedSegmentId,
+                                   sample,
+                                   !Tunables::kEnableWheelStrictSurface,
+                                   wheelHintFaceIndex);
+            if (sample.valid)
+            {
+                const bool hadTarget =
+                    (ioState.suspension.validMask & wheelBit) != 0u;
+                const int32_t previousTargetYRaw =
+                    ioState.suspension.targetYRaw[wheelIndex];
+                const bool accepted = ArcadeSuspensionFilter::Observe(
+                    ioState.suspension,
+                    wheelIndex,
+                    sample.y.RawValue(),
+                    sample.segmentId,
+                    sample.faceIndex);
+                if (accepted && hadTarget && stagingFirstDiagonal)
+                {
+                    ArcadeSuspensionFilter::DeferObservedTarget(
+                        ioState.suspension,
+                        wheelIndex,
+                        previousTargetYRaw);
+                }
+            }
+        };
         if (useReducedProbe)
         {
-            (void)TryProbeSurfaceY(trackQuery,
-                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latCenter),
-                                   seedSegmentId,
-                                   fl,
-                                   !Tunables::kEnableWheelStrictSurface);
-            (void)TryProbeSurfaceY(trackQuery,
-                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latCenter),
-                                   seedSegmentId,
-                                   rl,
-                                   !Tunables::kEnableWheelStrictSurface);
-            fr = fl;
-            rr = rl;
+            // Preserve two queries per frame, alternating wheel diagonals.
+            // Every corner owns a persistent spring, so all four filtered
+            // contacts advance even when only two targets are refreshed.
+            if ((ioState.suspension.diagonalPhase & 1u) == 0u)
+            {
+                sampleWheel(0u, longFront, latLeft);
+                sampleWheel(3u, longRear, latRight);
+            }
+            else
+            {
+                sampleWheel(1u, longFront, latRight);
+                sampleWheel(2u, longRear, latLeft);
+                ArcadeSuspensionFilter::CommitDeferredTargets(ioState.suspension);
+            }
+            ioState.suspension.diagonalPhase ^= 1u;
         }
         else
         {
-            // 4 wheel corners — plane attitude from real L/R and F/R heights.
-            (void)TryProbeSurfaceY(trackQuery,
-                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latLeft),
-                                   seedSegmentId,
-                                   fl,
-                                   !Tunables::kEnableWheelStrictSurface);
-            (void)TryProbeSurfaceY(trackQuery,
-                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longFront, latRight),
-                                   seedSegmentId,
-                                   fr,
-                                   !Tunables::kEnableWheelStrictSurface);
-            (void)TryProbeSurfaceY(trackQuery,
-                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latLeft),
-                                   seedSegmentId,
-                                   rl,
-                                   !Tunables::kEnableWheelStrictSurface);
-            (void)TryProbeSurfaceY(trackQuery,
-                                   BuildProbePoint(worldPosition, sinYaw, cosYaw, longRear, latRight),
-                                   seedSegmentId,
-                                   rr,
-                                   !Tunables::kEnableWheelStrictSurface);
+            sampleWheel(0u, longFront, latLeft);
+            sampleWheel(1u, longFront, latRight);
+            sampleWheel(2u, longRear, latLeft);
+            sampleWheel(3u, longRear, latRight);
+        }
+        const bool completedContactCycle =
+            !useReducedProbe ||
+            ((ioState.suspension.diagonalPhase & 1u) == 0u);
+
+        ArcadeSuspensionFilter::StepWheels(ioState.suspension);
+        auto restoreWheel = [&](uint8_t wheelIndex, SurfaceProbeSample& sample)
+        {
+            int32_t yRaw = 0;
+            int32_t segmentId = -1;
+            int32_t faceIndex = -1;
+            sample.valid = ArcadeSuspensionFilter::Read(ioState.suspension,
+                                                        wheelIndex,
+                                                        yRaw,
+                                                        segmentId,
+                                                        &faceIndex);
+            if (!sample.valid) return;
+            sample.y = Fxp::BuildRaw(yRaw);
+            sample.segmentId = segmentId;
+            sample.faceIndex = static_cast<int16_t>(faceIndex);
+        };
+        const bool completeWheelSnapshot =
+            !useReducedProbe || ((ioState.suspension.validMask & 0x0Fu) == 0x0Fu);
+        if (completeWheelSnapshot)
+        {
+            restoreWheel(0u, fl);
+            restoreWheel(1u, fr);
+            restoreWheel(2u, rl);
+            restoreWheel(3u, rr);
         }
 
         const bool frontValid = HasProbeSupport(fl, fr);
@@ -796,14 +850,14 @@ private:
         publishWheel(rl, ioFrameState.debugWheelSurfYRl, ioFrameState.debugWheelDistRl);
         publishWheel(rr, ioFrameState.debugWheelSurfYRr, ioFrameState.debugWheelDistRr);
 
-        // Saturn-safe gate: with reduced probes, each L/R pair is one duplicated
-        // axle-center hit. Both strict axle samples must exist before a new body
-        // target is accepted. On a seam miss the existing contact hold preserves
-        // the last filtered Y without an extrapolated face or extra query.
+        // Both axles must retain support before accepting a new body target.
+        // Cached corners bridge one-frame diagonal alternation and brief seam misses.
         if (!frontValid || !rearValid)
         {
             ioState.hasGroundSupport = false;
             ioState.surfaceYInitialized = false;
+            ioState.committedSurfaceYValid = false;
+            ioState.surfaceTargetVelocityRaw = 0;
             ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYFiltered);
             ioFrameState.debugGroundYBody = FxpToDebugInt(ioState.surfaceYFiltered);
             return;
@@ -820,7 +874,8 @@ private:
         const Fxp leftY = AveragePairY(fl, rl, zeroY);
         const Fxp rightY = AveragePairY(fr, rr, zeroY);
 
-        // Axle averages → pitch (wheel_rig). Side averages → road roll.
+        // Chassis attitude consumes only filtered wheel contacts. Raw face
+        // samples never bypass the per-corner suspension state.
         ioFrameState.debugGroundYFront = frontValid ? FxpToDebugInt(frontY) : 0;
         ioFrameState.debugGroundYRear = rearValid ? FxpToDebugInt(rearY) : 0;
         ioFrameState.debugGroundYLeft = leftValid ? FxpToDebugInt(leftY) : 0;
@@ -830,11 +885,38 @@ private:
         ioFrameState.debugGroundYLeftRaw = leftValid ? leftY.RawValue() : 0;
         ioFrameState.debugGroundYRightRaw = rightValid ? rightY.RawValue() : 0;
 
+        // Fit one rigid plane to the four filtered contacts. Pitch and roll
+        // move the chassis; wheel meshes consume only the non-planar residual.
+        // This avoids applying the same grade once to the body and again as
+        // suspension travel. Q8.8 retains sub-unit precision in eight bytes.
+        if (fl.valid && fr.valid && rl.valid && rr.valid)
+        {
+            const std::array<int32_t, 4> contactRaw{{
+                fl.y.RawValue(), fr.y.RawValue(),
+                rl.y.RawValue(), rr.y.RawValue()
+            }};
+            std::array<int32_t, 4> residualRaw{{0, 0, 0, 0}};
+            ArcadeSuspensionFilter::FitContactPlaneResiduals(
+                contactRaw, residualRaw);
+            int16_t* residualOut[4] = {
+                &ioFrameState.debugWheelResidualFlX256,
+                &ioFrameState.debugWheelResidualFrX256,
+                &ioFrameState.debugWheelResidualRlX256,
+                &ioFrameState.debugWheelResidualRrX256
+            };
+            for (uint8_t i = 0u; i < 4u; ++i)
+            {
+                const int32_t residualX256 = residualRaw[i] >> 8;
+                *residualOut[i] = static_cast<int16_t>(
+                    std::clamp<int32_t>(residualX256, -32768, 32767));
+            }
+        }
+
         ioState.lastSlopeAbsY = 0;
         if (frontValid && rearValid)
         {
-            int32_t d = static_cast<int32_t>(ioFrameState.debugGroundYFront) -
-                        static_cast<int32_t>(ioFrameState.debugGroundYRear);
+            int32_t d = static_cast<int32_t>(
+                (frontY.RawValue() - rearY.RawValue()) >> 16);
             if (d < 0) d = -d;
             if (d > 32767) d = 32767;
             ioState.lastSlopeAbsY = static_cast<int16_t>(d);
@@ -880,47 +962,55 @@ private:
             return;
         }
 
-        // Body Y = point of the 4-wheel plane at chassis center (+ ride).
-        // With a rigid axle rectangle, center Y = average of the four corners
-        // (same as mid of F/R axle averages). Pitch/roll use the same samples
-        // in CarWheelRig so visual attitude matches adhesion height.
-        int32_t validCount = 0;
-        int64_t sumYRaw = 0;
-        if (fl.valid) { sumYRaw += static_cast<int64_t>(fl.y.RawValue()); ++validCount; }
-        if (fr.valid) { sumYRaw += static_cast<int64_t>(fr.y.RawValue()); ++validCount; }
-        if (rl.valid) { sumYRaw += static_cast<int64_t>(rl.y.RawValue()); ++validCount; }
-        if (rr.valid) { sumYRaw += static_cast<int64_t>(rr.y.RawValue()); ++validCount; }
-        if (validCount <= 0)
+        // Separate heave from attitude. Filtered wheels still drive pitch/roll;
+        // the validated target plane drives common chassis height without the
+        // permanent spring lag that made the whole car float over a long ramp.
+        int32_t targetPlaneCenterYRaw = 0;
+        if (!ArcadeSuspensionFilter::AverageTargetYRaw(
+                ioState.suspension, targetPlaneCenterYRaw))
         {
             ioState.surfaceYInitialized = false;
+            ioState.committedSurfaceYValid = false;
+            ioState.surfaceTargetVelocityRaw = 0;
             ioFrameState.debugGroundYTarget = FxpToDebugInt(ioState.surfaceYFiltered);
             return;
         }
 
-        Fxp blendedY = Fxp::BuildRaw(static_cast<int32_t>(sumYRaw / validCount));
-        // Preferred: F/R axle midpoints → plane center along longitudinal axis
-        // (matches pitch chord used by wheel_rig / grade tan).
-        if (frontValid && rearValid)
+        const Fxp blendedY = Fxp::BuildRaw(targetPlaneCenterYRaw);
+        Fxp rideTarget = blendedY + GetRideHeightOffset();
+        // A complete low-cost contact plane arrives every two frames. Convert
+        // those 30 Hz measurements into a continuous 60 Hz target: commit the
+        // measured center on phase B, then extrapolate one frame with the
+        // measured plane velocity on phase A. This removes the hold/jump pulse
+        // without adding a third surface query.
+        if (completedContactCycle)
         {
-            blendedY = Fxp::BuildRaw(static_cast<int32_t>(
-                (static_cast<int64_t>(frontY.RawValue()) +
-                 static_cast<int64_t>(rearY.RawValue())) / 2));
-            // If L/R also valid, fold lateral mid into the same plane center
-            // so roll does not bias body height away from the 4-corner plane.
-            if (leftValid && rightValid)
+            const int32_t measuredRaw = rideTarget.RawValue();
+            if (!ioState.committedSurfaceYValid)
             {
-                const int64_t lateralMid =
-                    (static_cast<int64_t>(leftY.RawValue()) +
-                     static_cast<int64_t>(rightY.RawValue())) / 2;
-                const int64_t longMid =
-                    (static_cast<int64_t>(frontY.RawValue()) +
-                     static_cast<int64_t>(rearY.RawValue())) / 2;
-                // Average of longitudinal and lateral mids = 4-corner center.
-                blendedY = Fxp::BuildRaw(static_cast<int32_t>((longMid + lateralMid) / 2));
+                ioState.committedSurfaceYRaw = measuredRaw;
+                ioState.surfaceTargetVelocityRaw = 0;
+                ioState.committedSurfaceYValid = true;
+            }
+            else
+            {
+                const int32_t elapsedFrames = useReducedProbe ? 2 : 1;
+                const int32_t measuredVelocityRaw =
+                    (measuredRaw - ioState.committedSurfaceYRaw) / elapsedFrames;
+                ioState.surfaceTargetVelocityRaw = std::clamp<int32_t>(
+                    measuredVelocityRaw,
+                    -Tunables::kMaxYStepUpPerFrame.RawValue(),
+                    Tunables::kMaxYStepDownPerFrame.RawValue());
+                ioState.committedSurfaceYRaw = measuredRaw;
             }
         }
-
-        Fxp rideTarget = blendedY + GetRideHeightOffset();
+        else if (ioState.committedSurfaceYValid &&
+                 ioState.surfaceYInitialized)
+        {
+            rideTarget = Fxp::BuildRaw(
+                ioState.surfaceYTarget.RawValue() +
+                ioState.surfaceTargetVelocityRaw);
+        }
         // Do NOT clamp climb targets: soft-capping UP made steep ramps tunnel
         // (body never saw the full MapHeight rise and stuck inside asphalt).
         // Descent keeps full target; climb adhesion rate-limits in ApplyVerticalAdhesion
@@ -1133,6 +1223,7 @@ private:
                                     Tunables::kMaxPlanarCorrectionPerFrame);
         ioFrameState.debugCorrX = FxpToDebugInt(ioState.correctionX);
         ioFrameState.debugCorrZ = FxpToDebugInt(ioState.correctionZ);
+
     }
 };
 } // namespace Game::CarPhysics

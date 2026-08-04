@@ -6,6 +6,8 @@
 #include <set>
 #include <vector>
 
+#include "track_lod_config.hpp"
+
 namespace TrackStreamingPolicy
 {
 static constexpr uint16_t kNoTexture = 0u;
@@ -14,13 +16,13 @@ static constexpr uint8_t kLod64 = 3u;
 
 struct LodBandConfig
 {
-    // 3 design LODs mapped to texture bands on a 20-slot window:
+    // 3 design LODs mapped to the configured visible window:
     // ranks [0, designLod0Count)           → 64 (design lod_0 presentation)
     // ranks [designLod0Count, lod64Count)  → 64 (design lod_1)
     // ranks [lod64Count, lod64+lod32)      → 32 (design lod_2)
-    uint32_t designLod0Count = 2u; // ranks 0-1
-    uint32_t lod64Count = 10u;     // ranks 0-9 inclusive end = 10
-    uint32_t lod32Count = 10u;     // ranks 10-19
+    uint32_t designLod0Count = static_cast<uint32_t>(TrackLodConfig::kLod0Segments);
+    uint32_t lod64Count = static_cast<uint32_t>(TrackLodConfig::kTexture64Segments);
+    uint32_t lod32Count = static_cast<uint32_t>(TrackLodConfig::kTexture32Segments);
 };
 
 struct FamilySlotsSnapshot

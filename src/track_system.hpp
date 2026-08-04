@@ -18,6 +18,7 @@
 #include "segment_component_loader.hpp"
 #include "soak_monitor.hpp"
 #include "track_draw_producer.hpp"
+#include "track_lod_config.hpp"
 #include "track_render_coordinator.hpp"
 #include "track_renderer.hpp"
 #include "track_segment_pool.hpp"
@@ -81,8 +82,8 @@ public:
     struct Config
     {
         // Initial visible segment count before adaptive budget tuning.
-        uint16_t initialSegments = 30;
-        uint16_t minSegments = 19;
+        uint16_t initialSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
+        uint16_t minSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
         uint32_t initialMeshes = 128;
         uint32_t initialFaces = 32000;
         bool useSlave = true;
@@ -139,7 +140,9 @@ public:
                                  bool allowFallback = true,
                                  uint16_t* outFamilyId = nullptr,
                                  uint8_t* outSurfaceType = nullptr,
-                                 int16_t* outFaceIndex = nullptr) const;
+                                 int16_t* outFaceIndex = nullptr,
+                                 int16_t hintFaceIndex = -1,
+                                 bool useSharedFaceCache = true) const;
     bool FindSurfaceContact(const SRL::Math::Types::Vector3D& worldPosition,
                             const SRL::Math::Types::Vector3D& trackOffset,
                             Game::SurfaceContact& outContact,
@@ -909,6 +912,10 @@ private:
     mutable uint8_t surfaceQueryLastInsideType_ = 0u;
     TrackLowWorkU8Vector surfaceTypeByFamilyId_{};
     TrackLowWorkU8Vector segmentSurfaceFlagsById_{};
+    // FSMAP remains in expansion Cart RAM; only these two scalars consume
+    // Work RAM.  Queries parse records in place and never clone face data.
+    void* faceSurfaceMapCartPtr_ = nullptr;
+    uint32_t faceSurfaceMapCartBytes_ = 0u;
     mutable uint32_t stateFlags_ =
         (kTrackSlaveModeRequestedBit |
          kTrackSlaveProducerRequestedBit |

@@ -224,6 +224,52 @@ public:
                                                seedSegmentId);
     }
 
+    bool SampleWheelSurfaceBySurfaceTypeSetStrict(
+        const SRL::Math::Types::Vector3D& worldPosition,
+        const uint8_t* surfaceTypes,
+        size_t surfaceTypeCount,
+        Game::SurfaceContact& outContact,
+        int32_t seedSegmentId = -1,
+        int16_t hintFaceIndex = -1) const override
+    {
+        outContact = Game::SurfaceContact{};
+        std::array<uint16_t, 24> familyIds{};
+        size_t familyCount = 0u;
+        if (!BuildFamilySetForSurfaceTypes(surfaceTypes,
+                                           surfaceTypeCount,
+                                           familyIds,
+                                           familyCount) ||
+            !trackSystem_ || !trackSystem_->Ready())
+        {
+            return false;
+        }
+
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        const bool found = trackSystem_->FindSurfaceYByFamilySet(
+            worldPosition,
+            offset,
+            familyIds.data(),
+            familyCount,
+            outContact.surfaceY,
+            &outContact.segmentId,
+            resolvedSeedSegmentId,
+            false,
+            &outContact.familyId,
+            &outContact.surfaceType,
+            &outContact.faceIndex,
+            hintFaceIndex);
+        if (!found) return false;
+        outContact.valid = true;
+        if (outContact.segmentId > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(outContact.segmentId);
+        }
+        return true;
+    }
+
     bool ResolvePlanarWallPush(const SRL::Math::Types::Vector3D& worldPosition,
                                const SRL::Math::Types::Vector3D& forwardDirection,
                                SRL::Math::Types::Fxp collisionRadius,

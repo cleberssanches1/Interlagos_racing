@@ -4,7 +4,7 @@ SRL_MODE = NTSC                 # Valid options are PAL or NTSC
 SRL_HIGH_RES = 0                # 480i mode
 SRL_FRAMERATE = 0               # Framerate control (0=dynamic VDP1 double-buffer, 1=fixed, 2=30fps, etc.)
 SRL_MAX_CD_BACKGROUND_JOBS = 1  # Maximum number of files GFS can open at once
-SRL_MAX_CD_FILES = 4096         # Maximum number of files on a CD
+SRL_MAX_CD_FILES = 256          # 91 files currently; leaves safe directory headroom
 SRL_MAX_CD_RETRIES = 5          # Number of times to retry on unsuccessful read
 SRL_MALLOC_METHOD = TLSF        # Allocation method: TLSF or SIMPLE are supported.
 
@@ -14,10 +14,9 @@ SRL_ENABLE_FREQ_ANALYSIS = 1    # Set to 1 if you want to enable frequency analy
 
 # SGL configuration
 # WorkArea is fixed at 0x060C0000; TransList at 0x060FB800 (~238 KB max).
-# 2500/1700 overflowed into TransList and caused Master invalid opcode at boot
-# (PC in Core::Initialize / sound path). Keep total WorkArea under ~230 KB.
-SGL_MAX_VERTICES = 2400
-SGL_MAX_POLYGONS = 2000
+# Keep WorkArea below TransList at 0x060FB800 with explicit safety margin.
+SGL_MAX_VERTICES = 2000
+SGL_MAX_POLYGONS = 1500
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 
@@ -27,6 +26,14 @@ SGL_MAX_WORKS = 64              # Number of works that can be used
 PHYSICS_POC_MODE ?= 1
 AUDIO_PROFILE ?= 1
 
+# Visible track residency. Override at build time, for example:
+# make TRACK_LOD0_SEGMENTS=2 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
+# lod_0: detailed GEO + 64x64; lod_1: lighter GEO + 64x64;
+# lod_2: lighter GEO + 32x32. Their sum is the visible window size.
+TRACK_LOD0_SEGMENTS ?= 2
+TRACK_LOD1_SEGMENTS ?= 8
+TRACK_LOD2_SEGMENTS ?= 6
+
 # Extra compile flags — two profiles:
 #   make                      → debug (default): LWR stage tracing enabled
 #   make BUILD_PROFILE=perf   → perf: tracing disabled, cleanest LWR baseline
@@ -35,6 +42,7 @@ SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AU
 else
 SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
 endif
+SRL_CUSTOM_CCFLAGS += -DTRACK_LOD0_SEGMENTS=$(TRACK_LOD0_SEGMENTS) -DTRACK_LOD1_SEGMENTS=$(TRACK_LOD1_SEGMENTS) -DTRACK_LOD2_SEGMENTS=$(TRACK_LOD2_SEGMENTS)
 
 # Disk name
 CD_NAME = Interlagos_racing

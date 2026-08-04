@@ -296,6 +296,12 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     wheelInput_.groundFrontYRaw = frameState.debugGroundYFrontRaw;
     wheelInput_.groundLeftYRaw = frameState.debugGroundYLeftRaw;
     wheelInput_.groundRightYRaw = frameState.debugGroundYRightRaw;
+    wheelInput_.wheelResidualX256 = {{
+        frameState.debugWheelResidualFlX256,
+        frameState.debugWheelResidualFrX256,
+        frameState.debugWheelResidualRlX256,
+        frameState.debugWheelResidualRrX256
+    }};
     wheelInput_.groundMask = frameState.debugGroundMask;
     wheelInput_.braking = frameState.braking ? 1u : 0u;
 }

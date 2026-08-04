@@ -1,4 +1,5 @@
 #include "track_system.hpp"
+#include "face_surface_map.hpp"
 #include "physics_feature_flags.hpp"
 #include "interfaces.hpp"
 #include "surface_classify.hpp"
@@ -250,10 +251,12 @@ static RdrBuildScratch g_rdrBuildScratch{};
 static SdrBuildScratch g_sdrBuildScratch{};
 static SegmentRuntimeDraw::Blob g_rdrFamilyIdsScratch{};
 static SegmentDrawReady::Blob g_sdrFamilyIdsScratch{};
-// Visible window LOD distribution (50 segments total):
-// 25x 64x64 + 25x 32x32 only.
-static constexpr uint32_t kLodBand64Count = 10u;
-static constexpr uint32_t kLodBand32Count = 10u;
+// Visible-window texture bands are derived from the shared design LOD profile.
+// lod_0 + lod_1 use 64x64; lod_2 uses 32x32.
+static constexpr uint32_t kLodBand64Count =
+    static_cast<uint32_t>(TrackLodConfig::kTexture64Segments);
+static constexpr uint32_t kLodBand32Count =
+    static_cast<uint32_t>(TrackLodConfig::kTexture32Segments);
 static constexpr size_t kWorkRamPlanningHeadroomBytes = 48u * 1024u;
 static constexpr size_t kWorkRamHardFloorBytes = 24u * 1024u;
 // Release the emergency reserve slightly earlier so runtime maintenance does
@@ -305,37 +308,37 @@ static constexpr size_t kLodRecoveryFreeBytes = kWorkRamHardFloorBytes + (48u * 
 // - disable destructive texture/palette release while racing
 // This isolates runtime lifetime bugs from the offline asset pipeline.
 static constexpr bool kEnableTrackRuntimeStabilization = true;
-// Leak isolation mode:
-// - fixed 50-segment window
-// - keep runtime sliding active (new segments keep entering/leaving the 20-slot window)
+// Stabilized fixed-window mode:
+// - window size is the sum of TRACK_LOD0/1/2_SEGMENTS
+// - keep runtime sliding active as segments enter and leave the window
 // - disable prefetch/recovery/texture-compaction dynamics
-// - mixed profile fixed in leak-isolation:
-//   first 25 ranks in 64x64, next 25 ranks in 32x32
+// - lod_0/lod_1 use 64x64 and lod_2 uses 32x32
 // Use this mode to isolate allocator/retention behavior with controlled texture churn.
 static constexpr bool kEnableTrackLeakIsolationFixed64Pipeline = true;
-static constexpr size_t kTrackLeakIsolationWindowSegments = 20u;
+static constexpr size_t kTrackLeakIsolationWindowSegments =
+    TrackLodConfig::kVisibleSegments;
 static constexpr bool kEnableLeakIsolationMixedLodProfile = true;
 // 3 Levels of Design (texture presentation by logical rank):
-//   ranks 0-1  : design lod_0  → 64×64 (closest; dense GEO from build)
-//   ranks 2-9  : design lod_1  → 64×64
-//   ranks 10-19: design lod_2  → 32×32
+//   [0, lod_0)            -> 64x64 (closest; detailed GEO)
+//   [lod_0, lod_0+lod_1) -> 64x64 (lighter GEO)
+//   remaining lod_2      -> 32x32 (lighter GEO)
 // Geometry: S###.GEO / RDR from lod_0 (max faces) for MapHeight + walls (fase 1).
 static constexpr uint8_t kLeakIsolationNearLodIndex = 3u; // 64x64
 static constexpr uint8_t kLeakIsolationFarLodIndex = 2u;  // 32x32
-static constexpr size_t kDesignLod0RankCount = 2u;   // ranks 0-1
-static constexpr size_t kDesignLod1RankEnd = 10u;    // ranks 2-9 (end exclusive = 10)
-static constexpr size_t kLeakIsolationNearLodCount = kDesignLod1RankEnd; // 0-9 → 64 tex
+static constexpr size_t kDesignLod0RankCount = TrackLodConfig::kLod0Segments;
+static constexpr size_t kDesignLod1RankEnd = TrackLodConfig::kTexture64Segments;
+static constexpr size_t kLeakIsolationNearLodCount = kDesignLod1RankEnd;
 static_assert(kLeakIsolationNearLodCount <= kTrackLeakIsolationWindowSegments,
               "Near LOD count must fit leak-isolation window.");
 static_assert(kDesignLod0RankCount <= kLeakIsolationNearLodCount,
               "Design lod_0 band must fit inside 64-tex band.");
-// Texture band edge: rank 9 stays 64, rank 10 is first 32.
+// Texture band edge is derived from the configured lod_0 + lod_1 count.
 static constexpr size_t kNearBandPromoRank =
-    (kLeakIsolationNearLodCount > 0u) ? (kLeakIsolationNearLodCount - 1u) : 0u; // 9
-static constexpr size_t kNearBandFarEdgeRank = kLeakIsolationNearLodCount;       // 10
-// Design lod_0 edge (rank 1): reserved for fase-2 dual-GEO swap; still prioritized.
+    (kLeakIsolationNearLodCount > 0u) ? (kLeakIsolationNearLodCount - 1u) : 0u;
+static constexpr size_t kNearBandFarEdgeRank = kLeakIsolationNearLodCount;
+// Design lod_0 edge is reserved for dual-GEO selection and prioritized.
 static constexpr size_t kDesignLod0EdgeRank =
-    (kDesignLod0RankCount > 0u) ? (kDesignLod0RankCount - 1u) : 0u; // 1
+    (kDesignLod0RankCount > 0u) ? (kDesignLod0RankCount - 1u) : 0u;
 // Slide prepare + pending priority: tex band edge first, then design edge, head.
 static constexpr std::array<size_t, 4> kLeakIsolationForwardBoundaryRanks{{
     kNearBandPromoRank,     // 9: 32→64 when entering mid/near tex band
@@ -2247,7 +2250,7 @@ static uint16_t g_trackRetiredFlushedThisFrame = 0u;
 // A short delay can show as one-frame wrong colors when a slot/palette pair is
 // recycled while the previous frame is still effectively in flight.
 // Reuse retired slots on the next frame. A long delay inflates the live slot
-// count during continuous slides and drains LWR even when the 20-slot window is
+// count during continuous slides and drains LWR even when the visible window is
 // stable.
 // Delay minimo > 1 frame reduz risco de "palette tear" visivel como roxo.
 // Reuse on the next frame to keep the texture slot pool stable during
@@ -10304,7 +10307,6 @@ bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
 
 void TrackSystem::PrimeRuntimeScratchCapacities()
 {
-    static TrackRuntimePackCache sTrackScratchPackCache{};
     const char* packCandidates[] = {
         "/CD/DATA/TRKRDR.BIN",
         "/CD/DATA/TRKRDR.BIN;1",
@@ -10327,16 +10329,36 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
         "trkrdr.bin",
         "trkrdr.bin;1"
     };
-    if (!LoadTrackRuntimePackToCart(packCandidates,
-                                    sizeof(packCandidates) / sizeof(packCandidates[0]),
-                                    sTrackScratchPackCache))
+
+    // Only the aggregate maxima are needed here. Loading the complete pack into
+    // a second static Cart RAM cache retained ~1 MiB that was never read again.
+    TrackRuntimePack::HeaderV1 packHeader{};
+    bool headerLoaded = false;
+    std::array<uint8_t, sizeof(TrackRuntimePack::HeaderV1)> headerBytes{};
+    for (size_t i = 0; i < sizeof(packCandidates) / sizeof(packCandidates[0]); ++i)
+    {
+        SRL::Cd::File file(packCandidates[i]);
+        if (!file.Exists() || file.Size.Bytes < static_cast<int32_t>(headerBytes.size())) continue;
+        if (!file.Open()) continue;
+        const int32_t read = file.Read(static_cast<int32_t>(headerBytes.size()), headerBytes.data());
+        if (read != static_cast<int32_t>(headerBytes.size())) continue;
+        if (!TrackRuntimePack::Loader::ReadHeaderLeAt(headerBytes.data(),
+                                                       headerBytes.size(),
+                                                       0u,
+                                                       packHeader)) continue;
+        if (!TrackRuntimePack::IsHeaderSane(packHeader,
+                                             static_cast<size_t>(file.Size.Bytes))) continue;
+        headerLoaded = true;
+        break;
+    }
+    if (!headerLoaded)
     {
         return;
     }
 
-    const size_t maxFaces = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFaceCount));
-    const size_t maxVerts = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxVertexCount));
-    const size_t maxFamilies = std::max<size_t>(1u, static_cast<size_t>(sTrackScratchPackCache.view.header.maxFamilyCount));
+    const size_t maxFaces = std::max<size_t>(1u, static_cast<size_t>(packHeader.maxFaceCount));
+    const size_t maxVerts = std::max<size_t>(1u, static_cast<size_t>(packHeader.maxVertexCount));
+    const size_t maxFamilies = std::max<size_t>(1u, static_cast<size_t>(packHeader.maxFamilyCount));
     SRL::Debug::Print(1, 31, "TRK prm mxF:%u mxV:%u mxFam:%u",
                       static_cast<unsigned>(maxFaces),
                       static_cast<unsigned>(maxVerts),
@@ -13613,6 +13635,12 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
 void TrackSystem::ResetInitializationState()
 {
     ReleaseWorkRamEmergencyReserve();
+    if (faceSurfaceMapCartPtr_)
+    {
+        SRL::Memory::CartRam::Free(faceSurfaceMapCartPtr_);
+        faceSurfaceMapCartPtr_ = nullptr;
+        faceSurfaceMapCartBytes_ = 0u;
+    }
     SetReadyFlag(false);
     SetSegmentsReady(false);
     SetCoordinatorReady(false);
@@ -13902,6 +13930,12 @@ void TrackSystem::LoadSurfaceCollisionMaps()
     SetSurfaceFamilyMapReady(false);
     SetSegmentCollisionMapReady(false);
     segmentSurfaceFlagsById_.clear();
+    if (faceSurfaceMapCartPtr_)
+    {
+        SRL::Memory::CartRam::Free(faceSurfaceMapCartPtr_);
+        faceSurfaceMapCartPtr_ = nullptr;
+        faceSurfaceMapCartBytes_ = 0u;
+    }
 
     if (totalSegmentCount_ == 0) return;
     if (!Game::PhysicsFeatureFlags::kEnableScmapRuntime) return;
@@ -13921,6 +13955,14 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         "DATA/SCMAP.BIN", "DATA/SCMAP.BIN;1",
         "cd/data/SCMAP.BIN", "cd/data/SCMAP.BIN;1",
         "SCMAP.BIN", "SCMAP.BIN;1"
+    };
+    const char* faceMapCandidates[] = {
+        "/CD/DATA/FSMAP.BIN", "/CD/DATA/FSMAP.BIN;1",
+        "/DATA/FSMAP.BIN", "/DATA/FSMAP.BIN;1",
+        "CD/DATA/FSMAP.BIN", "CD/DATA/FSMAP.BIN;1",
+        "DATA/FSMAP.BIN", "DATA/FSMAP.BIN;1",
+        "cd/data/FSMAP.BIN", "cd/data/FSMAP.BIN;1",
+        "FSMAP.BIN", "FSMAP.BIN;1"
     };
 
     std::vector<uint8_t> sfBlob{};
@@ -14001,10 +14043,28 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         }
     }
 
-    SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u seg:%u",
+    if (Game::PhysicsFeatureFlags::kEnableFaceSurfaceMapRuntime)
+    {
+        for (size_t i = 0u; i < sizeof(faceMapCandidates) / sizeof(faceMapCandidates[0]); ++i)
+        {
+            void* cartPtr = nullptr;
+            uint32_t cartBytes = 0u;
+            if (!LoadCdFileToCart(faceMapCandidates[i], cartPtr, cartBytes)) continue;
+            const FaceSurfaceMap::View view(cartPtr, cartBytes);
+            if (view.Valid())
+            {
+                faceSurfaceMapCartPtr_ = cartPtr;
+                faceSurfaceMapCartBytes_ = cartBytes;
+                break;
+            }
+            SRL::Memory::CartRam::Free(cartPtr);
+        }
+    }
+
+    SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u fm:%u",
                       SurfaceFamilyMapReady() ? 1u : 0u,
                       SegmentCollisionMapReady() ? 1u : 0u,
-                      static_cast<unsigned>(totalSegmentCount_));
+                      faceSurfaceMapCartPtr_ ? 1u : 0u);
 }
 
 void TrackSystem::LogInitialSegmentDiagnostics() const
@@ -18316,7 +18376,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                           bool allowFallback,
                                           uint16_t* outFamilyId,
                                           uint8_t* outSurfaceType,
-                                          int16_t* outFaceIndex) const
+                                          int16_t* outFaceIndex,
+                                          int16_t hintFaceIndex,
+                                          bool useSharedFaceCache) const
 {
     SaturatingIncrementU16(surfaceQueryCallsThisFrame_);
     const bool useLocalNeighbor =
@@ -18423,6 +18485,13 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
     const int64_t pzRaw = static_cast<int64_t>(worldPosition.Z.RawValue());
+    const int64_t modelXRaw = pxRaw - static_cast<int64_t>(trackOffset.X.RawValue());
+    const int64_t modelZRaw = pzRaw - static_cast<int64_t>(trackOffset.Z.RawValue());
+    const FaceSurfaceMap::View faceSurfaceMap(faceSurfaceMapCartPtr_, faceSurfaceMapCartBytes_);
+    const bool canUseFaceSurfaceMap =
+        Game::PhysicsFeatureFlags::kEnableFaceSurfaceMapRuntime &&
+        faceSurfaceMap.Valid() &&
+        (acceptAnyFamily || requestedSegmentSurfaceFlags != 0u);
 
     auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
 
@@ -18581,6 +18650,10 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
 
     auto updateInsideCache = [&](int32_t segmentId, int16_t faceIndex, uint16_t familyId)
     {
+        if (!useSharedFaceCache)
+        {
+            return;
+        }
         if (segmentId <= 0 || faceIndex < 0 || familyId == 0u)
         {
             return;
@@ -18721,10 +18794,10 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
 
         const size_t scanFaceCount = std::min(faceCount, segment.lodState.faceFamilyIds.size());
         SaturatingIncrementU16(surfaceQuerySegmentsScannedThisFrame_);
-        SaturatingAddU16(surfaceQueryFacesScannedThisFrame_, scanFaceCount);
-        for (size_t fi = 0; fi < scanFaceCount; ++fi)
+
+        auto evaluateIndexedFace = [&](size_t fi)
         {
-            if (earlyAcceptInside) break;
+            if (earlyAcceptInside || fi >= scanFaceCount) return;
             int64_t yRaw = 0;
             int64_t planarScore = 0;
             uint16_t faceFamilyId = 0u;
@@ -18740,23 +18813,104 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                        faceFamilyId,
                                        inside))
             {
-                continue;
+                return;
             }
 
             if (inside)
             {
                 updateInsideCandidate(yRaw, segment.id, faceFamilyId, static_cast<int16_t>(fi));
-                continue;
+                return;
             }
             updateFallbackCandidate(yRaw,
                                     segment.id,
                                     planarScore,
                                     faceFamilyId,
                                     static_cast<int16_t>(fi));
+        };
+
+        FaceSurfaceMap::SegmentView mappedSegment{};
+        const bool mapped =
+            canUseFaceSurfaceMap &&
+            segment.id > 0 && segment.id <= 0xFFFF &&
+            faceSurfaceMap.FindSegment(static_cast<uint16_t>(segment.id), mappedSegment) &&
+            mappedSegment.faceCount == scanFaceCount;
+        if (mapped)
+        {
+            SaturatingAddU16(surfaceQueryFacesScannedThisFrame_, mappedSegment.recordCount);
+            for (uint16_t ri = 0u; ri < mappedSegment.recordCount; ++ri)
+            {
+                if (earlyAcceptInside) break;
+                FaceSurfaceMap::FaceRecord record{};
+                if (!faceSurfaceMap.ReadRecord(mappedSegment, ri, record)) break;
+                if (requestedSegmentSurfaceFlags != 0u &&
+                    (record.flags & requestedSegmentSurfaceFlags) == 0u)
+                {
+                    continue;
+                }
+                if (!FaceSurfaceMap::View::ContainsXZ(mappedSegment,
+                                                       record,
+                                                       modelXRaw,
+                                                       modelZRaw))
+                {
+                    continue;
+                }
+                evaluateIndexedFace(record.faceIndex);
+            }
+            return;
+        }
+
+        SaturatingAddU16(surfaceQueryFacesScannedThisFrame_, scanFaceCount);
+        for (size_t fi = 0; fi < scanFaceCount; ++fi)
+        {
+            if (earlyAcceptInside) break;
+            evaluateIndexedFace(fi);
         }
     };
 
-    if (SurfaceQueryLastInsideValid() &&
+    // Wheel-local fast path. Unlike the historical global cache, this hint
+    // belongs to one corner of the car and cannot be overwritten by the next
+    // diagonal probe. It is accepted only if the queried XZ remains inside.
+    if (seedSegmentId > 0 && hintFaceIndex >= 0)
+    {
+        const SegmentRenderEntry* hintEntry = FindWindowEntryByIdFast(seedSegmentId);
+        if (hintEntry)
+        {
+            SaturatingIncrementU16(surfaceQuerySegmentsScannedThisFrame_);
+            SaturatingIncrementU16(surfaceQueryFacesScannedThisFrame_);
+            int64_t yRaw = 0;
+            int64_t planarScore = 0;
+            uint16_t familyId = 0u;
+            bool inside = false;
+            if (evaluateFaceCandidate(*hintEntry,
+                                      static_cast<size_t>(hintFaceIndex),
+                                      nullptr,
+                                      0u,
+                                      nullptr,
+                                      0u,
+                                      yRaw,
+                                      planarScore,
+                                      familyId,
+                                      inside) &&
+                inside)
+            {
+                SaturatingIncrementU16(surfaceQueryCacheHitsThisFrame_);
+                outSurfaceY = SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(yRaw));
+                if (outSegmentId) *outSegmentId = hintEntry->id;
+                if (outFamilyId) *outFamilyId = familyId;
+                if (outFaceIndex) *outFaceIndex = hintFaceIndex;
+                if (outSurfaceType && familyId < surfaceTypeByFamilyId_.size())
+                {
+                    *outSurfaceType = surfaceTypeByFamilyId_[familyId];
+                }
+                updateInsideCache(hintEntry->id, hintFaceIndex, familyId);
+                return true;
+            }
+            SaturatingIncrementU16(surfaceQueryCacheMissesThisFrame_);
+        }
+    }
+
+    if (useSharedFaceCache &&
+        SurfaceQueryLastInsideValid() &&
         surfaceQueryLastInsideSegmentId_ > 0 &&
         surfaceQueryLastInsideFaceIndex_ >= 0)
     {

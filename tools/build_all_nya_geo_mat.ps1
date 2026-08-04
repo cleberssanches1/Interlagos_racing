@@ -12,8 +12,10 @@
     [int]$TexHeight = 8,
     [int]$TexPadWidth = 8,
     [switch]$UseLodSubfolders = $false,
+    [switch]$SkipNyaExport = $false,
     [switch]$RebuildSegmentsMap = $false,
     [bool]$ExportSurfaceFamilyMap = $true,
+    [bool]$ExportFaceSurfaceMap = $true,
     [bool]$EnableSeamFaceDedup = $true,
     [switch]$AuditWalls = $false,
     [switch]$AuditWallsStrict = $false,
@@ -336,6 +338,7 @@ $script:updateSegmentsMapScript = Join-Path $scriptDir "update_segments_map_with
 $script:canonicalizeSegmentsMapScript = Join-Path $scriptDir "canonicalize_segments_map_texture_families.ps1"
 $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 $script:seamOwnershipScript = Join-Path $scriptDir "build_seam_face_ownership.ps1"
+$script:faceSurfaceMapScript = Join-Path $scriptDir "build_face_surface_map.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -355,6 +358,7 @@ if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnership
 }
 
 Write-Host "=== Etapa 1/3: Exportar NYA + segments_map.json ==="
+$jsonPath = Join-Path $PackageDir "segments_map.json"
 $exportArgs = @{
     ConverterDir = $ConverterDir
     SourceObjDir = $SourceObjDir
@@ -369,9 +373,13 @@ $exportArgs = @{
 if ($RebuildSegmentsMap) {
     $exportArgs.PreserveSidecars = $true
 }
-& $script:exportScript @exportArgs
+if ($SkipNyaExport) {
+    Write-Host ("SkipNyaExport ativo: reutilizando {0}" -f $jsonPath)
+}
+else {
+    & $script:exportScript @exportArgs
+}
 
-$jsonPath = Join-Path $PackageDir "segments_map.json"
 if (-not (Test-Path -LiteralPath $jsonPath)) {
     throw "segments_map.json nao foi gerado em: $jsonPath"
 }
@@ -401,6 +409,37 @@ function Get-SegmentsMapSource {
     return $null
 }
 
+function Test-SegmentsMapCoverage {
+    param(
+        [string]$ObjRootDir,
+        [string]$ObjPattern,
+        [string]$SegmentsMapPath
+    )
+
+    $expectedIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($obj in @(Get-ChildItem -LiteralPath $ObjRootDir -Recurse -File -Filter $ObjPattern -ErrorAction Stop)) {
+        $id = Get-SegmentIdFromFile $obj.BaseName
+        if ($null -ne $id) { [void]$expectedIds.Add([int]$id) }
+    }
+
+    $json = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    $mappedIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($segment in @($json.segments)) {
+        if ($null -eq $segment -or -not ($segment.PSObject.Properties.Name -contains "id")) { continue }
+        [void]$mappedIds.Add([int]$segment.id)
+    }
+
+    $missing = New-Object System.Collections.Generic.List[int]
+    foreach ($id in $expectedIds) {
+        if (-not $mappedIds.Contains($id)) { $missing.Add($id) | Out-Null }
+    }
+    if ($missing.Count -gt 0) {
+        $ordered = @($missing.ToArray() | Sort-Object)
+        throw ("segments_map incompleto: OBJ sem entrada de segmento: {0}" -f ($ordered -join ","))
+    }
+    Write-Host ("segments_map coverage OK: objs={0} mapped={1}" -f $expectedIds.Count, $mappedIds.Count)
+}
+
 if ($RebuildSegmentsMap) {
     Write-Host "RebuildSegmentsMap ativo: mantendo o segments_map.json novo da exportacao nesta etapa."
 }
@@ -414,6 +453,11 @@ else {
         Write-Host ("segments_map.json atualizado a partir de {0}" -f $sourceMap)
     }
 }
+
+Test-SegmentsMapCoverage `
+    -ObjRootDir $SourceObjDir `
+    -ObjPattern $Pattern `
+    -SegmentsMapPath $jsonPath
 
 Write-Host "=== Etapa 2.5/7: Canonizar aliases de textura no segments_map ==="
 & $script:canonicalizeSegmentsMapScript `
@@ -891,7 +935,7 @@ if ($AuditWalls) {
 
 Write-Host "=== Etapa 3/7: Gerar GEO/MAT (3 Levels of Design: lod_0/1/2) ==="
 # Fase 2 dual mesh:
-# - lod_0: S###.GEO + S###M64/M32 (alta, ranks 0-1 + MapHeight authority)
+# - lod_0: S###.GEO + S###M64 (alta, ranks 0-1 + MapHeight authority)
 # - lod_1: S###L.GEO + S###LM64 (media, ranks 2-9)
 # - lod_2: S###LM32 (far tex, ranks 10-19; reusa malha L)
 $lod0Dir = Join-Path $ResultDir "lod_0"
@@ -902,17 +946,13 @@ $legacy32 = Join-Path $ResultDir "obj_32"
 
 $designPasses = @()
 if (Test-Path -LiteralPath $lod0Dir) {
-    $designPasses += @(
-        @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 64; SkipGeo = $false; AssetTag = "" },
-        @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 32; SkipGeo = $true;  AssetTag = "" }
-    )
+    $designPasses +=
+        @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 64; SkipGeo = $false; AssetTag = "" }
 }
 elseif (Test-Path -LiteralPath $legacy64) {
     Write-Host "Aviso: lod_0 ausente; usando legacy obj_64 como malha densa."
-    $designPasses += @(
-        @{ Name = "obj_64"; Dir = $legacy64; Lod = 64; SkipGeo = $false; AssetTag = "" },
-        @{ Name = "obj_64"; Dir = $legacy64; Lod = 32; SkipGeo = $true;  AssetTag = "" }
-    )
+    $designPasses +=
+        @{ Name = "obj_64"; Dir = $legacy64; Lod = 64; SkipGeo = $false; AssetTag = "" }
 }
 else {
     throw "Nenhuma pasta lod_0 (nem obj_64) em $ResultDir"
@@ -922,15 +962,38 @@ $lowDir = $null
 if (Test-Path -LiteralPath $lod1Dir) { $lowDir = $lod1Dir }
 elseif (Test-Path -LiteralPath $legacy32) { $lowDir = $legacy32 }
 
+$hasSeparateLod2 =
+    ($null -ne $lowDir) -and
+    (Test-Path -LiteralPath $lod2Dir) -and
+    ($lod2Dir -ne $lowDir)
+
 if ($null -ne $lowDir) {
-    $designPasses += @(
-        @{ Name = "lod_1"; Dir = $lowDir; Lod = 64; SkipGeo = $false; AssetTag = "L" },
-        @{ Name = "lod_1"; Dir = $lowDir; Lod = 32; SkipGeo = $true;  AssetTag = "L" }
-    )
+    # lod_1 sempre fornece a malha baixa e o material intermediario M64.
+    $designPasses +=
+        @{ Name = "lod_1"; Dir = $lowDir; Lod = 64; SkipGeo = $false; AssetTag = "L" }
+
+    # Sem uma origem lod_2 separada, M32 usa os materiais de lod_1 como fallback.
+    # Quando lod_2 existe, evita gerar aqui o mesmo S###LM32.MAT que seria
+    # imediatamente sobrescrito pelo passe seguinte.
+    if (-not $hasSeparateLod2) {
+        $designPasses +=
+            @{ Name = "lod_1"; Dir = $lowDir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
+    }
 }
-# lod_2 textures: if separate folder with same mesh as lod_1, rewrite LM32 from lod_2 ARQ materials
-if ((Test-Path -LiteralPath $lod2Dir) -and ($lod2Dir -ne $lowDir)) {
+# lod_2 fornece somente os materiais distantes M32 e reutiliza S###L.GEO.
+if ($hasSeparateLod2) {
     $designPasses += @{ Name = "lod_2"; Dir = $lod2Dir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
+}
+
+# A configuracao suportada nao possui lod_0/M32. Remova residuos de builds
+# anteriores antes do empacotamento para que MAT32.BIN contenha somente LM32.
+$obsoleteHighM32 = @(Get-ChildItem -LiteralPath $PackageDir -File -Filter "S???M32.MAT" -ErrorAction SilentlyContinue |
+    Where-Object { $_.BaseName -match '^S\d{3}M32$' })
+foreach ($obsolete in $obsoleteHighM32) {
+    Remove-Item -LiteralPath $obsolete.FullName -Force
+}
+if ($obsoleteHighM32.Count -gt 0) {
+    Write-Host ("Removidos MAT lod_0/M32 obsoletos: {0}" -f $obsoleteHighM32.Count)
 }
 
 $componentScriptPath = $script:componentScript
@@ -1056,6 +1119,28 @@ if ($payloadErrors.Count -gt 0) {
     Write-Host "Falha de integridade apos gerar GEO/MAT. Arquivos corrompidos detectados:"
     $payloadErrors | ForEach-Object { Write-Host (" - " + $_) }
     throw "GEO/MAT invalidos. Interrompido antes da etapa SDR para evitar propagar corrupcao."
+}
+
+if ($ExportFaceSurfaceMap) {
+    Write-Host "=== Etapa 3.1/7: Gerar indice espacial compacto de faces/solo ==="
+    if (-not (Test-Path -LiteralPath $script:faceSurfaceMapScript)) {
+        throw "Gerador FSMAP nao encontrado: $($script:faceSurfaceMapScript)"
+    }
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($null -eq $pythonCmd) {
+        throw "Python nao encontrado no PATH; FSMAP.BIN nao pode ser gerado."
+    }
+    $faceSurfaceMapPath = Join-Path $PackageDir "FSMAP.BIN"
+    $faceSurfaceReportPath = Join-Path $PackageDir "face_surface_map_report.json"
+    & python $script:faceSurfaceMapScript `
+        --geometry-dir $PackageDir `
+        --segments-map $jsonPath `
+        --output $faceSurfaceMapPath `
+        --report $faceSurfaceReportPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha ao gerar FSMAP.BIN (exit=$LASTEXITCODE)."
+    }
+    Copy-Item -LiteralPath $faceSurfaceMapPath -Destination (Join-Path $CdDataDir "FSMAP.BIN") -Force
 }
 
 Write-Host "=== Etapa 3.5/7: Gerar segmentos draw-ready SDR1 (high + low) ==="
@@ -1250,6 +1335,7 @@ $hasTrkRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDR.BIN")
 $hasTrkRdrLowBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDRL.BIN")
 $hasSurfaceFamilyMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SFMAP.BIN")
 $hasSegmentCollisionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SCMAP.BIN")
+$hasFaceSurfaceMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "FSMAP.BIN")
 $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
@@ -1270,6 +1356,7 @@ Write-Host ("HAS TRKRDR.BIN    : {0}" -f $hasTrkRdrBin)
 Write-Host ("HAS TRKRDRL.BIN   : {0}" -f $hasTrkRdrLowBin)
 Write-Host ("HAS SFMAP.BIN     : {0}" -f $hasSurfaceFamilyMapBin)
 Write-Host ("HAS SCMAP.BIN     : {0}" -f $hasSegmentCollisionMapBin)
+Write-Host ("HAS FSMAP.BIN     : {0}" -f $hasFaceSurfaceMapBin)
 Write-Host ("HAS MAT8.BIN      : {0}" -f $hasMat8Bin)
 Write-Host ("HAS MAT16.BIN     : {0}" -f $hasMat16Bin)
 Write-Host ("HAS MAT32.BIN     : {0}" -f $hasMat32Bin)
@@ -1290,6 +1377,7 @@ if (-not $hasRdrBin) { $validationErrors.Add("RDR.BIN ausente em cd\\data") | Ou
 if (-not $hasTrkRdrBin) { $validationErrors.Add("TRKRDR.BIN ausente em cd\\data") | Out-Null }
 if ($ExportSurfaceFamilyMap -and -not $hasSurfaceFamilyMapBin) { $validationErrors.Add("SFMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportSurfaceFamilyMap -and -not $hasSegmentCollisionMapBin) { $validationErrors.Add("SCMAP.BIN ausente em cd\\data") | Out-Null }
+if ($ExportFaceSurfaceMap -and -not $hasFaceSurfaceMapBin) { $validationErrors.Add("FSMAP.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat8Bin) { $validationErrors.Add("MAT8.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat16Bin) { $validationErrors.Add("MAT16.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
@@ -1326,6 +1414,20 @@ if ($RebuildSegmentsMap) {
         $segmentCollisionMapPath = Join-Path $PackageDir "SCMAP.BIN"
         Write-SegmentCollisionMapBinary -SegmentsMapPath $jsonPath -OutBinPath $segmentCollisionMapPath
         Copy-Item -LiteralPath $segmentCollisionMapPath -Destination (Join-Path $CdDataDir "SCMAP.BIN") -Force
+    }
+    if ($ExportFaceSurfaceMap) {
+        Write-Host "=== Regerar indice espacial de faces/solo apos rebuild ==="
+        $faceSurfaceMapPath = Join-Path $PackageDir "FSMAP.BIN"
+        $faceSurfaceReportPath = Join-Path $PackageDir "face_surface_map_report.json"
+        & python $script:faceSurfaceMapScript `
+            --geometry-dir $PackageDir `
+            --segments-map $jsonPath `
+            --output $faceSurfaceMapPath `
+            --report $faceSurfaceReportPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao regerar FSMAP.BIN apos rebuild (exit=$LASTEXITCODE)."
+        }
+        Copy-Item -LiteralPath $faceSurfaceMapPath -Destination (Join-Path $CdDataDir "FSMAP.BIN") -Force
     }
     Write-Host "=== Validando segments_map final apos rebuild ==="
     Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath

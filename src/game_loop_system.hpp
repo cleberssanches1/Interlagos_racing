@@ -18,6 +18,7 @@
 #include "auto_lap_route_runtime_state.hpp"
 #include "auto_lap_route_lifecycle_ops.hpp"
 #include "camera_path_runtime_state.hpp"
+#include "camera_surface_guard.hpp"
 #include "camera_system.hpp"
 #include "car_render_state_assembler.hpp"
 #include "car_prepare_runtime_state.hpp"
@@ -1024,6 +1025,66 @@ private:
         return carPos + Vector3D(ray.X * safeT, ray.Y * safeT, ray.Z * safeT);
     }
 
+    SRL::Math::Types::Vector3D ResolveCameraSurfaceGuard(
+        const SRL::Math::Types::Vector3D& desiredCameraLocation)
+    {
+        using SRL::Math::Types::Fxp;
+        using SRL::Math::Types::Vector3D;
+
+        if constexpr (!Game::PhysicsFeatureFlags::kEnableCameraSurfaceGuard)
+        {
+            return desiredCameraLocation;
+        }
+        if (!context_.trackSystem || !context_.TrackSystemReady() ||
+            (context_.cameraSystem &&
+             context_.cameraSystem->GetChasePreset() == CameraSystem::ChasePreset::FirstPerson))
+        {
+            CameraSurfaceGuard::Reset(cameraSurfaceGuardState_);
+            return desiredCameraLocation;
+        }
+
+        if (CameraSurfaceGuard::ShouldQuery(cameraSurfaceGuardState_))
+        {
+            Fxp surfaceY = desiredCameraLocation.Y;
+            int32_t segmentId = -1;
+            int16_t faceIndex = -1;
+            const int32_t seedSegmentId =
+                (cameraSurfaceGuardState_.segmentId > 0)
+                    ? static_cast<int32_t>(cameraSurfaceGuardState_.segmentId)
+                    : static_cast<int32_t>(latestActiveSegmentId_);
+            const bool found = context_.trackSystem->FindSurfaceYByFamilySet(
+                desiredCameraLocation,
+                context_.trackSegOffset,
+                Game::CarPhysics::Tunables::kDriveableFamilies.data(),
+                Game::CarPhysics::Tunables::kDriveableFamilies.size(),
+                surfaceY,
+                &segmentId,
+                seedSegmentId,
+                false,
+                nullptr,
+                nullptr,
+                &faceIndex,
+                cameraSurfaceGuardState_.faceIndex,
+                false);
+            if (found)
+            {
+                CameraSurfaceGuard::Observe(cameraSurfaceGuardState_,
+                                            surfaceY.RawValue(),
+                                            segmentId,
+                                            faceIndex);
+            }
+            else
+            {
+                CameraSurfaceGuard::Miss(cameraSurfaceGuardState_);
+            }
+        }
+
+        Vector3D resolved = desiredCameraLocation;
+        resolved.Y = Fxp::BuildRaw(CameraSurfaceGuard::ResolveYRaw(
+            cameraSurfaceGuardState_, desiredCameraLocation.Y.RawValue()));
+        return resolved;
+    }
+
     // Resolve camera snapshot for the current authoritative car state.
     CameraFrameState ResolveCameraFrameState()
     {
@@ -1039,7 +1100,9 @@ private:
         SRL::Math::Types::Vector3D rawLookTarget =
             context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
 
-        const SRL::Math::Types::Vector3D resolvedCameraLocation = rawCameraLocation;
+        const SRL::Math::Types::Vector3D resolvedCameraLocation =
+            ResolveCameraSurfaceGuard(rawCameraLocation);
+        context_.cameraSystem->CommitSafetyResolvedLocation(resolvedCameraLocation);
         const bool cameraReady =
             IsFiniteCameraPoint(resolvedCameraLocation) &&
             IsFiniteCameraPoint(rawLookTarget);
@@ -2533,6 +2596,7 @@ private:
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0),
         SRL::Math::Types::Fxp::BuildRaw(0)};
+    CameraSurfaceGuardState cameraSurfaceGuardState_{};
     uint8_t stateFlags_ = kAutoLapInputToggleEnabledBit;
     int16_t autoLapTargetSegmentId_ = 1;
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).

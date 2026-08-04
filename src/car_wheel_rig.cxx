@@ -209,10 +209,6 @@ void CarWheelRig::Update(const Input& input)
     // Wheel centers (mesh) define L and T after ClassifyWheels.
     int32_t targetPitch = heldPitchDegX16_;
     int32_t targetRoadRoll = heldRollDegX16_;
-    int32_t targetFrontSusp = 0;
-    int32_t targetRearSusp = 0;
-    int32_t targetLeftSusp = 0;
-    int32_t targetRightSusp = 0;
     const bool rearValid = (input.groundMask & 0x1u) != 0u;
     const bool leftValid = (input.groundMask & 0x2u) != 0u;
     const bool frontValid = (input.groundMask & 0x4u) != 0u;
@@ -272,13 +268,6 @@ void CarWheelRig::Update(const Input& input)
         if (pitchDegX16 < -kMaxPitchDegX16) pitchDegX16 = -kMaxPitchDegX16;
         targetPitch = static_cast<int32_t>(pitchDegX16);
         heldPitchDegX16_ = targetPitch;
-        // Suspension: lower asphalt corner gets more +Y offset after X180 mesh.
-        // Match visual to body pitch sign so wheels follow the plane.
-        const int32_t susp = ClampInt((pitchDelta * kBodyPitchSign) >> 5,
-                                      -kMaxSuspensionOffsetX16,
-                                      kMaxSuspensionOffsetX16);
-        targetFrontSusp = susp;
-        targetRearSusp = -susp;
     }
 
     if (leftValid && rightValid)
@@ -303,26 +292,39 @@ void CarWheelRig::Update(const Input& input)
         if (rollDegX16 < -kMaxRollDegX16) rollDegX16 = -kMaxRollDegX16;
         targetRoadRoll = static_cast<int32_t>(rollDegX16);
         heldRollDegX16_ = targetRoadRoll;
-        const int32_t susp = ClampInt((rollDelta * kBodyRollSign) >> 5,
-                                      -kMaxSuspensionOffsetX16,
-                                      kMaxSuspensionOffsetX16);
-        targetRightSusp = susp;
-        targetLeftSusp = -susp;
     }
 
-    // Hold last good plane when parked; rate-limit pitch ASYMMETRICALLY:
-    // nose-down (decline) reacts faster; nose-up (climb) is slower (anti-empino).
+    auto stepDampedAngle = [](int32_t current,
+                              int32_t target,
+                              int32_t& velocity,
+                              int32_t maxPositiveStep,
+                              int32_t maxNegativeStep) -> int32_t
     {
-        const int32_t previousPitch = bodyPitchDegX16_;
-        bodyPitchDegX16_ = StepToward(bodyPitchDegX16_, targetPitch, kPitchFilterShift);
-        int32_t pitchStep = bodyPitchDegX16_ - previousPitch;
-        // With kBodyPitchSign=+1: positive pitch = nose down (after model orientation).
-        // Cap steps by direction in pitch-angle space.
-        if (pitchStep > kMaxPitchStepDownDegX16)
-            bodyPitchDegX16_ = previousPitch + kMaxPitchStepDownDegX16;
-        else if (pitchStep < -kMaxPitchStepUpDegX16)
-            bodyPitchDegX16_ = previousPitch - kMaxPitchStepUpDegX16;
-    }
+        const int32_t error = target - current;
+        const int32_t desiredVelocity = error >> 3;
+        velocity += (desiredVelocity - velocity) >> 2;
+        velocity = ClampInt(velocity, -maxNegativeStep, maxPositiveStep);
+        int32_t next = current + velocity;
+        if ((target >= current && next > target) ||
+            (target <= current && next < target))
+        {
+            next = target;
+            velocity = 0;
+        }
+        if (std::abs(target - next) < (1 << 10) &&
+            std::abs(velocity) < (1 << 10))
+        {
+            next = target;
+            velocity = 0;
+        }
+        return next;
+    };
+
+    // Contacts define the equilibrium plane; angular inertia prevents a new
+    // triangle normal from becoming an immediate chassis rotation.
+    bodyPitchDegX16_ = stepDampedAngle(
+        bodyPitchDegX16_, targetPitch, bodyPitchVelocityDegX16_,
+        kMaxPitchStepDownDegX16, kMaxPitchStepUpDegX16);
 
     {
         const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
@@ -332,22 +334,19 @@ void CarWheelRig::Update(const Input& input)
         const int32_t targetRoll = ClampInt(targetRoadRoll + (haveRollSample ? (steerLean >> 3) : 0),
                                             -kMaxRollDegX16,
                                             kMaxRollDegX16);
-        const int32_t previousRoll = bodyRollDegX16_;
-        bodyRollDegX16_ = StepToward(bodyRollDegX16_, targetRoll, kRollFilterShift);
-        const int32_t rollStep = bodyRollDegX16_ - previousRoll;
-        if (rollStep > kMaxRollStepDegX16)
-            bodyRollDegX16_ = previousRoll + kMaxRollStepDegX16;
-        else if (rollStep < -kMaxRollStepDegX16)
-            bodyRollDegX16_ = previousRoll - kMaxRollStepDegX16;
+        bodyRollDegX16_ = stepDampedAngle(
+            bodyRollDegX16_, targetRoll, bodyRollVelocityDegX16_,
+            kMaxRollStepDegX16, kMaxRollStepDegX16);
     }
 
     // Each wheel corner: lower asphalt → that corner of the body rotates down;
     // residual travel keeps the tire mesh near the face.
     for (size_t i = 0; i < 4u; ++i)
     {
-        int32_t targetSusp = wheelSlots_[i].front ? targetFrontSusp : targetRearSusp;
-        targetSusp += wheelSlots_[i].left ? targetLeftSusp : targetRightSusp;
-        targetSusp = ClampInt(targetSusp, -kMaxSuspensionOffsetX16, kMaxSuspensionOffsetX16);
+        const int32_t targetSusp = ClampInt(
+            static_cast<int32_t>(input.wheelResidualX256[i]) << 8,
+            -kMaxSuspensionOffsetX16,
+            kMaxSuspensionOffsetX16);
         wheelSuspensionOffsetX16_[i] =
             StepToward(wheelSuspensionOffsetX16_[i], targetSusp, kSuspFilterShift);
     }
@@ -799,7 +798,8 @@ void CarWheelRig::RefreshWheelGeometryFromCenters()
         if (wb < 0) wb = -wb;
         if (wb > (1 << 14)) // > 0.25
         {
-            wheelbaseRaw_ = static_cast<int32_t>(std::min<int64_t>(wb, 8ll << 16));
+            wheelbaseRaw_ = static_cast<int32_t>(
+                std::min<int64_t>(wb, kMaxMeasuredWheelbaseRaw));
         }
     }
     if (nL > 0 && nRt > 0)
@@ -810,7 +810,8 @@ void CarWheelRig::RefreshWheelGeometryFromCenters()
         if (tr < 0) tr = -tr;
         if (tr > (1 << 14))
         {
-            trackRaw_ = static_cast<int32_t>(std::min<int64_t>(tr, 6ll << 16));
+            trackRaw_ = static_cast<int32_t>(
+                std::min<int64_t>(tr, kMaxMeasuredTrackRaw));
         }
     }
     SRL::Debug::Print(1, 25, "WHL geo L:%d T:%d",
@@ -826,6 +827,8 @@ void CarWheelRig::ResetState()
     steerDegX16_ = 0;
     bodyPitchDegX16_ = 0;
     bodyRollDegX16_ = 0;
+    bodyPitchVelocityDegX16_ = 0;
+    bodyRollVelocityDegX16_ = 0;
     heldPitchDegX16_ = 0;
     heldRollDegX16_ = 0;
     filteredDeltaYRaw_ = 0;

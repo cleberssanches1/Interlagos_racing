@@ -64,6 +64,70 @@ function Test-ObjSupportedFaces {
     }
 }
 
+function New-ConverterReadyObj {
+    param(
+        [string]$ObjPath
+    )
+
+    $sourceLines = [System.IO.File]::ReadAllLines($ObjPath)
+    $outputLines = New-Object System.Collections.Generic.List[string]
+    $triangulatedFaces = 0
+    $generatedFaces = 0
+
+    foreach ($rawLine in $sourceLines) {
+        $line = $rawLine.Trim()
+        if (-not $line.StartsWith("f ")) {
+            $outputLines.Add($rawLine) | Out-Null
+            continue
+        }
+
+        $parts = @($line.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+        $vertexCount = $parts.Count - 1
+        if ($vertexCount -le 4) {
+            $outputLines.Add($rawLine) | Out-Null
+            continue
+        }
+
+        # Mesma ordem em leque usada por generate_segment_component.ps1:
+        # (0, 1, 2), (0, 2, 3), ... Preserva usemtl e a ordem global das faces.
+        for ($i = 2; $i -lt $parts.Count - 1; $i++) {
+            $outputLines.Add(("f {0} {1} {2}" -f $parts[1], $parts[$i], $parts[$i + 1])) | Out-Null
+            $generatedFaces++
+        }
+        $triangulatedFaces++
+    }
+
+    if ($triangulatedFaces -eq 0) {
+        return [pscustomobject]@{
+            Path = $ObjPath
+            Temporary = $false
+            TemporaryMtlPath = ""
+            TriangulatedFaces = 0
+            GeneratedFaces = 0
+        }
+    }
+
+    # O temporario fica ao lado do OBJ para manter referencias mtllib relativas.
+    # O prefixo nao casa com seg_*.obj, portanto nunca entra na enumeracao.
+    $tempName = ".__nya_tri_{0}_{1}.obj" -f [System.IO.Path]::GetFileNameWithoutExtension($ObjPath), [Guid]::NewGuid().ToString("N")
+    $tempPath = Join-Path ([System.IO.Path]::GetDirectoryName($ObjPath)) $tempName
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tempPath, $outputLines, $utf8NoBom)
+    $sourceMtlPath = [System.IO.Path]::ChangeExtension($ObjPath, ".mtl")
+    $tempMtlPath = ""
+    if (Test-Path -LiteralPath $sourceMtlPath) {
+        $tempMtlPath = [System.IO.Path]::ChangeExtension($tempPath, ".mtl")
+        Copy-Item -LiteralPath $sourceMtlPath -Destination $tempMtlPath -Force
+    }
+    return [pscustomobject]@{
+        Path = $tempPath
+        Temporary = $true
+        TemporaryMtlPath = $tempMtlPath
+        TriangulatedFaces = $triangulatedFaces
+        GeneratedFaces = $generatedFaces
+    }
+}
+
 function Normalize-Token([string]$Token) {
     if ([string]::IsNullOrWhiteSpace($Token)) { return "" }
     $t = $Token.Trim()
@@ -146,27 +210,51 @@ try {
 
         $outName = ("SEG_{0:D3}.NYA" -f $id)
         $out = Join-Path $ResultDir $outName
-        $faceCheck = Test-ObjSupportedFaces -ObjPath $obj.FullName
+        $preparedObj = New-ConverterReadyObj -ObjPath $obj.FullName
+        $faceCheck = Test-ObjSupportedFaces -ObjPath $preparedObj.Path
         if (-not $faceCheck.Supported) {
+            if ($preparedObj.Temporary -and (Test-Path -LiteralPath $preparedObj.Path)) {
+                Remove-Item -LiteralPath $preparedObj.Path -Force
+            }
+            if (-not [string]::IsNullOrWhiteSpace($preparedObj.TemporaryMtlPath) -and
+                (Test-Path -LiteralPath $preparedObj.TemporaryMtlPath)) {
+                Remove-Item -LiteralPath $preparedObj.TemporaryMtlPath -Force
+            }
             $fail.Add(("{0} ({1} na linha {2}, vertices={3})" -f $obj.Name, $faceCheck.Reason, $faceCheck.Line, $faceCheck.VertexCount)) | Out-Null
             Write-Host ("Falha de precheck em {0}: {1} na linha {2} (vertices={3})" -f $obj.Name, $faceCheck.Reason, $faceCheck.Line, $faceCheck.VertexCount)
             continue
         }
+        if ($preparedObj.Temporary) {
+            Write-Host ("Triangulacao NYA {0}: faces_ngon={1} triangulos={2}" -f $obj.Name, $preparedObj.TriangulatedFaces, $preparedObj.GeneratedFaces)
+        }
         Write-Host "Convertendo $($obj.Name) -> $outName"
 
-        dotnet .\ModelConverter.dll `
-            -i $obj.FullName `
-            -o $out `
-            -exp NyaExport `
-            -t $Shading `
-            -order Keep `
-            -tex-width $TexWidth `
-            -tex-height $TexHeight `
-            -tex-pad-width $TexPadWidth `
-            -tex-header-v2 `
-            -tex-color-mode Paletted16
+        $converterExitCode = -1
+        try {
+            dotnet .\ModelConverter.dll `
+                -i $preparedObj.Path `
+                -o $out `
+                -exp NyaExport `
+                -t $Shading `
+                -order Keep `
+                -tex-width $TexWidth `
+                -tex-height $TexHeight `
+                -tex-pad-width $TexPadWidth `
+                -tex-header-v2 `
+                -tex-color-mode Paletted16
+            $converterExitCode = $LASTEXITCODE
+        }
+        finally {
+            if ($preparedObj.Temporary -and (Test-Path -LiteralPath $preparedObj.Path)) {
+                Remove-Item -LiteralPath $preparedObj.Path -Force
+            }
+            if (-not [string]::IsNullOrWhiteSpace($preparedObj.TemporaryMtlPath) -and
+                (Test-Path -LiteralPath $preparedObj.TemporaryMtlPath)) {
+                Remove-Item -LiteralPath $preparedObj.TemporaryMtlPath -Force
+            }
+        }
 
-        if ($LASTEXITCODE -eq 0) {
+        if ($converterExitCode -eq 0) {
             $ok++
             $generatedSegIds.Add($id) | Out-Null
             $convertedSegments.Add($id) | Out-Null

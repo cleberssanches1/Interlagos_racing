@@ -98,8 +98,16 @@ $groups = [ordered]@{
     BDR   = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "B*.BDR" | Sort-Object Name | ForEach-Object FullName))
     MAT8  = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M8.MAT" | Sort-Object Name | ForEach-Object FullName))
     MAT16 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M16.MAT" | Sort-Object Name | ForEach-Object FullName))
-    MAT32 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M32.MAT" | Sort-Object Name | ForEach-Object FullName))
-    MAT64 = @((Get-ChildItem -LiteralPath $SourceDir -File -Filter "S???M64.MAT" | Sort-Object Name | ForEach-Object FullName))
+    # Politica de design ativa:
+    # - M64: lod_0 (S###M64) + lod_1 (S###LM64)
+    # - M32: somente lod_2 (S###LM32)
+    # Nao empacotar a variante obsoleta lod_0/M32 (S###M32).
+    MAT32 = @((Get-ChildItem -LiteralPath $SourceDir -File |
+        Where-Object { $_.Name -match '^S\d{3}LM32\.MAT$' } |
+        Sort-Object Name | ForEach-Object FullName))
+    MAT64 = @((Get-ChildItem -LiteralPath $SourceDir -File |
+        Where-Object { $_.Name -match '^S\d{3}(L)?M64\.MAT$' } |
+        Sort-Object Name | ForEach-Object FullName))
 }
 
 if ($IncludeNya) {

@@ -15,3 +15,7 @@ src/exception_stubs.o
 src/main.o
 src/mesh_renderer.o
 src/track_system.o
+
+# Python tooling cache
+__pycache__/
+*.pyc

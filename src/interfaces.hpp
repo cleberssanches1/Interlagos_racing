@@ -59,6 +59,12 @@ struct GameplayFrameState
     int16_t debugWheelDistFr = 0;
     int16_t debugWheelDistRl = 0;
     int16_t debugWheelDistRr = 0;
+    // Per-wheel deviation from the fitted contact plane, signed Q8.8 world Y.
+    // Plane attitude moves the chassis; only this residual moves wheel meshes.
+    int16_t debugWheelResidualFlX256 = 0;
+    int16_t debugWheelResidualFrX256 = 0;
+    int16_t debugWheelResidualRlX256 = 0;
+    int16_t debugWheelResidualRrX256 = 0;
     int16_t debugSteerDeg = 0;
     int16_t debugYawRateDeg = 0;
     int16_t debugYawStepDeg = 0;
@@ -235,6 +241,33 @@ struct ITrackCollisionQuery
                                               outSurfaceY,
                                               outSegmentId,
                                               seedSegmentId);
+    }
+    // Strict wheel query with a wheel-local face hint. Implementations may use
+    // the hint only as a fast candidate; the XZ point must still be inside it.
+    virtual bool SampleWheelSurfaceBySurfaceTypeSetStrict(
+        const Vector3D& worldPosition,
+        const uint8_t* surfaceTypes,
+        size_t surfaceTypeCount,
+        SurfaceContact& outContact,
+        int32_t seedSegmentId = -1,
+        int16_t hintFaceIndex = -1) const
+    {
+        outContact = SurfaceContact{};
+        SRL::Math::Types::Fxp surfaceY{};
+        int32_t segmentId = -1;
+        const bool found = SampleSurfaceYBySurfaceTypeSetStrict(
+            worldPosition,
+            surfaceTypes,
+            surfaceTypeCount,
+            surfaceY,
+            &segmentId,
+            seedSegmentId);
+        if (!found) return false;
+        outContact.valid = true;
+        outContact.surfaceY = surfaceY;
+        outContact.segmentId = segmentId;
+        (void)hintFaceIndex;
+        return true;
     }
     // Returns a planar push vector to keep the car out of side walls.
     virtual bool ResolvePlanarWallPush(const Vector3D& worldPosition,

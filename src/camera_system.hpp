@@ -26,9 +26,6 @@ public:
     static constexpr int32_t kPitchDeadzoneDeg = 3;
     // Max camera pitch change per frame (degrees) — anti-bobbing on seams.
     static constexpr int32_t kMaxCamPitchStepDeg = 1;
-    // Below this |pitch|, grade-behind lift is off (prevents start dip).
-    static constexpr int32_t kGradeBehindMinPitchDeg = 8;
-
     struct PathFrameContext
     {
         bool valid = false;
@@ -107,6 +104,14 @@ public:
         roadBodyPitchDeg_ = bodyPitchDeg;
     }
     int16_t SmoothedCamPitchDeg() const { return smoothedCamPitchDeg_; }
+    // Feed an external terrain/occlusion correction back into the chase
+    // integrator. This prevents the next frame from smoothing from a position
+    // that was already inside the track mesh.
+    void CommitSafetyResolvedLocation(const Vector3D& location) const
+    {
+        lastResolvedCameraLocation_ = location;
+        cameraLocationInitialized_ = true;
+    }
     ChasePreset GetChasePreset() const { return chasePreset_; }
     void SetChaseResponsePreset(ChaseResponsePreset preset) { chaseResponsePreset_ = preset; }
     ChaseResponsePreset GetChaseResponsePreset() const { return chaseResponsePreset_; }
@@ -164,10 +169,11 @@ private:
                                      int32_t offsetZUnits,
                                      int32_t pitchDeg) const;
     CameraSafety::Config BoomSafetyConfig(int32_t pitchDeg) const;
+    // Retained as a passive helper for A/B rollback; chase runtime now uses
+    // the mesh surface guard as its single road-clearance authority.
     Vector3D ApplyGradeBehindClearance(const Vector3D& cameraPos,
                                        const Vector3D& carWorldPosition,
                                        int32_t behindUnitsAbs) const;
-
     Camera::State state_;
     Camera::Tuning tuning_;
     Vector3D manualOffset_{};
@@ -188,12 +194,18 @@ private:
     mutable Vector3D movementForwardWorld_{0.0, 0.0, 1.0f};
     mutable Vector3D lastObservedCarWorldPosition_{0.0, 0.0, 0.0};
     mutable bool hasObservedCarWorldPosition_ = false;
+    // Per-frame chassis displacement, carried into the chase Y integrator so
+    // a continuous grade does not create a permanent camera-height error.
+    mutable int32_t carVerticalDeltaRaw_ = 0;
     PathFrameContext pathFrameContext_{};
     // Road grade / body pitch (from car, not PATH probes).
     int16_t roadGradeTanX100_ = 0;
     int16_t roadBodyPitchDeg_ = 0;
     // Smoothed chase pitch (degrees, same sign as body: + = nose down).
     mutable int16_t smoothedCamPitchDeg_ = 0;
+    // Positional boom follows the road frame almost fully. Keeping it separate
+    // lets the view retain an arcade horizon without changing camera distance.
+    mutable int16_t smoothedBoomPitchDeg_ = 0;
     mutable bool camPitchInitialized_ = false;
     // 16.16 fixed-point scalar in [0,1] based on per-frame movement magnitude.
     mutable int32_t movementSpeedNormRaw_ = 0;

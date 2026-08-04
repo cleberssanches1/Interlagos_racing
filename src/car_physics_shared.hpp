@@ -5,6 +5,8 @@
 #include <cstdint>
 
 #include "interfaces.hpp"
+#include "car_arcade_suspension.hpp"
+#include "car_contact_geometry.hpp"
 #include "physics_feature_flags.hpp"
 
 namespace Game::CarPhysics
@@ -36,6 +38,7 @@ struct DynamicsState
 
 struct GroundState
 {
+    ArcadeSuspensionState suspension{};
     Fxp surfaceYTarget = Fxp::BuildRaw(0);
     Fxp surfaceYFiltered = Fxp::BuildRaw(0);
     Fxp verticalVelocity = Fxp::BuildRaw(0);
@@ -73,6 +76,11 @@ struct GroundState
     // Natural descent: last accepted surface target + drop window.
     int32_t lastAcceptedSurfaceYRaw = 0;
     bool lastAcceptedSurfaceYValid = false;
+    // Coherent two-frame diagonal cycle: committed plane plus its per-frame
+    // velocity, used to reconstruct a 60 Hz equilibrium target.
+    int32_t committedSurfaceYRaw = 0;
+    int32_t surfaceTargetVelocityRaw = 0;
+    bool committedSurfaceYValid = false;
     uint8_t topologyDropFrames = 0u;
 };
 
@@ -380,17 +388,11 @@ struct Tunables
     static constexpr Fxp kLaunchStraightEntrySpeed = Fxp::BuildRaw(0x0009195C); // ~9.0991
     static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 14));    // -0.25
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00246572); // ~36.3963
-    // Natural descent: topology under the car every frame; stick ASAP on declines.
-    // Y-down: target > body ⇒ descend. Climb is conservative unless penetrating.
-    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00020000);      // 2.0 moderate climb
-    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00080000);    // 8.0
-    static constexpr Fxp kSnapDownThreshold = Fxp::BuildRaw(0x00040000);       // 4.0 full stick
-    static constexpr Fxp kSnapUpThreshold = Fxp::BuildRaw(0x0000C000);         // 0.75
-    // Deep under asphalt (Y body too large vs target): eject this frame (anti-tunnel).
-    static constexpr Fxp kClimbPenetrateHardY = Fxp::BuildRaw(0x00018000);     // 1.5 → full snap up
-    // Per-frame topology: any meaningful drop engages immediate descent.
+    // Chassis spring speed caps. No normal terrain transition may snap Y.
+    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00100000);      // 16.0
+    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00100000);    // 16.0
+    // Per-frame topology telemetry for camera/grade behavior.
     static constexpr Fxp kTopoDropYThreshold = Fxp::BuildRaw(0x00004000);      // 0.25
-    static constexpr Fxp kTopoDropHardY = Fxp::BuildRaw(0x00008000);           // 0.5 → full snap
     static constexpr uint8_t kTopoDropHoldFrames = 12u;
     static constexpr Fxp kTopoGradeDeclineMin = Fxp::BuildRaw(0x00000C00);     // ~0.05 tan
     static constexpr bool kEnableSlopePathAssist = false;
@@ -402,9 +404,11 @@ struct Tunables
     static constexpr Fxp kGradePredictYMax = Fxp::BuildRaw(0x00008000);       // 0.5
     static constexpr Fxp kStationaryYawLockSpeed = Fxp::BuildRaw(0x00005A00);
     static constexpr Fxp kSurfaceSampleDownBias = Fxp::BuildRaw(0x00008000);   // 0.5
-    // Wheel rectangle: MUST match car_wheel_rig kWheelbaseRaw / kTrackRaw.
-    static constexpr Fxp kProbeHalfWheelBase = Fxp::BuildRaw(0x0000D999);      // ~0.85 → L≈1.70
-    static constexpr Fxp kProbeHalfTrack = Fxp::BuildRaw(0x00008CCC);          // ~0.55 → T≈1.10
+    // CAR1 wheel rectangle in model/world units.
+    static constexpr Fxp kProbeHalfWheelBase =
+        Fxp::BuildRaw(ContactGeometry::kHalfWheelBaseRaw);
+    static constexpr Fxp kProbeHalfTrack =
+        Fxp::BuildRaw(ContactGeometry::kHalfTrackRaw);
     static constexpr Fxp kProbeFrontBase = kProbeHalfWheelBase;
     static constexpr Fxp kProbeFrontSpeedScale = Fxp::BuildRaw(0);
     static constexpr Fxp kProbeFrontMin = kProbeHalfWheelBase;
@@ -417,9 +421,8 @@ struct Tunables
         kEnableSaturnLowCostPhysics ? 6u : 1u;
     // 4-corner wheel plane (pitch + roll). Not reduced centerline.
     static constexpr bool kPreferReducedGroundProbe = false;
-    // Saturn-safe path: two longitudinal axle samples preserve slope pitch while
-    // halving wheel surface-query cost. Four corners remain available when the
-    // low-cost profile is disabled.
+    // Saturn-safe path: one wheel diagonal per frame keeps two surface queries
+    // while persistent per-corner springs reconstruct the four-contact plane.
     static constexpr bool kForceAxleCenterlineProbes = kEnableSaturnLowCostPhysics;
     static constexpr bool kEnableFourWheelPlaneProbes = true;
     static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x0001599A);     // ~1.35
@@ -456,17 +459,6 @@ struct Tunables
     static constexpr Fxp kNoSupportSpeedDamping = Fxp::BuildRaw(0x0007477D);   // ~7.2793
     static constexpr Fxp kEdgeForwardDamping = Fxp::BuildRaw(0x0000A000);      // 0.625
     static constexpr Fxp kEdgeLateralDamping = Fxp::BuildRaw(0x0000E000);      // 0.875
-    // Vertical smoothing for chassis over sharp face joins.
-    // 0.30 means 30 percent of target delta per frame (about 70 percent smoothing).
-    static constexpr Fxp kChassisVerticalFollowAlpha = Fxp::BuildRaw(0x00002666); // ~0.15 (50 percent smoother)
-    // Allow hard snap only when error is very large to avoid micro hops.
-    static constexpr Fxp kChassisVerticalHardSnapThreshold = Fxp::BuildRaw(0x00030000); // 3.0
-    static constexpr bool kEnableVerticalBounceSmoothing = true;
-    // Conservative spring-damper approximation for SH2 stability.
-    // Keep steady-state gain <= 1.0 to avoid bounce amplification.
-    static constexpr Fxp kVerticalBounceFollow = Fxp::BuildRaw(0x00003000); // 0.1875
-    static constexpr Fxp kVerticalBounceDamping = Fxp::BuildRaw(0x0000A000); // 0.625
-
     static constexpr int8_t ClampForwardGear(int8_t gear)
     {
         if (gear < 1) return 1;
@@ -637,6 +629,10 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugWheelDistFr = 0;
     ioFrameState.debugWheelDistRl = 0;
     ioFrameState.debugWheelDistRr = 0;
+    ioFrameState.debugWheelResidualFlX256 = 0;
+    ioFrameState.debugWheelResidualFrX256 = 0;
+    ioFrameState.debugWheelResidualRlX256 = 0;
+    ioFrameState.debugWheelResidualRrX256 = 0;
     ioFrameState.debugSteerDeg = 0;
     ioFrameState.debugYawRateDeg = 0;
     ioFrameState.debugYawStepDeg = 0;

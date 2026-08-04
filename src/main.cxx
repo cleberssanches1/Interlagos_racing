@@ -1172,8 +1172,8 @@ static int RunPhysicsPocMode()
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    trackConfig.initialSegments = 20u;
-    trackConfig.minSegments = 20u;
+    trackConfig.initialSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
+    trackConfig.minSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
     trackConfig.initialMeshes = 512u;
     trackConfig.initialFaces =
         static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
@@ -1552,10 +1552,9 @@ int GameApp::Run()
     static TrackSystem trackSystem;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
-    // Fixed visible budget: 50 segments.
-    // Runtime LOD split is handled inside TrackSystem: 25x 64x64 (near) + 25x 32x32 (far).
-    trackConfig.initialSegments = 50u;
-    trackConfig.minSegments     = 50u;
+    // Fixed visible budget and LOD split come from track_lod_config.hpp.
+    trackConfig.initialSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
+    trackConfig.minSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
     trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
