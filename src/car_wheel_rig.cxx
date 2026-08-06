@@ -294,48 +294,42 @@ void CarWheelRig::Update(const Input& input)
         heldRollDegX16_ = targetRoadRoll;
     }
 
-    auto stepDampedAngle = [](int32_t current,
+    // Rate-limited step — no soft spring (overshoot embicada). Recover to
+    // level faster than diving into the ramp (kBodyPitchSign=+1 nose-down).
+    auto stepTowardAngle = [](int32_t current,
                               int32_t target,
                               int32_t& velocity,
                               int32_t maxPositiveStep,
                               int32_t maxNegativeStep) -> int32_t
     {
         const int32_t error = target - current;
-        const int32_t desiredVelocity = error >> 3;
-        velocity += (desiredVelocity - velocity) >> 2;
-        velocity = ClampInt(velocity, -maxNegativeStep, maxPositiveStep);
-        int32_t next = current + velocity;
-        if ((target >= current && next > target) ||
-            (target <= current && next < target))
+        int32_t step = error;
+        if (step > maxPositiveStep) step = maxPositiveStep;
+        if (step < -maxNegativeStep) step = -maxNegativeStep;
+        if ((velocity > 0 && error < 0) || (velocity < 0 && error > 0))
         {
-            next = target;
             velocity = 0;
         }
-        if (std::abs(target - next) < (1 << 10) &&
-            std::abs(velocity) < (1 << 10))
+        velocity = step;
+        const int32_t next = current + step;
+        if (std::abs(target - next) < (1 << 12))
         {
-            next = target;
             velocity = 0;
+            return target;
         }
         return next;
     };
 
-    // Contacts define the equilibrium plane; angular inertia prevents a new
-    // triangle normal from becoming an immediate chassis rotation.
-    bodyPitchDegX16_ = stepDampedAngle(
+    // ClampInt(v, -maxNeg, maxPos): +step = nose-down uses Down rate;
+    // -step (recover toward level from +pitch) uses Up/recover rate.
+    bodyPitchDegX16_ = stepTowardAngle(
         bodyPitchDegX16_, targetPitch, bodyPitchVelocityDegX16_,
         kMaxPitchStepDownDegX16, kMaxPitchStepUpDegX16);
 
     {
-        const int32_t speedNorm256 = std::min<int32_t>(256, (clampedSpeed * 256) / 200);
-        const int32_t steerLean =
-            ClampInt((steerDegX16_ * speedNorm256) / 3072, -(2 << 16), (2 << 16));
-        // Steer lean is visual only; road plane roll dominates.
-        const int32_t targetRoll = ClampInt(targetRoadRoll + (haveRollSample ? (steerLean >> 3) : 0),
-                                            -kMaxRollDegX16,
-                                            kMaxRollDegX16);
-        bodyRollDegX16_ = stepDampedAngle(
-            bodyRollDegX16_, targetRoll, bodyRollVelocityDegX16_,
+        (void)clampedSpeed;
+        bodyRollDegX16_ = stepTowardAngle(
+            bodyRollDegX16_, targetRoadRoll, bodyRollVelocityDegX16_,
             kMaxRollStepDegX16, kMaxRollStepDegX16);
     }
 

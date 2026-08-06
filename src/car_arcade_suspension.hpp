@@ -35,14 +35,13 @@ public:
     // The audited S do Senna mesh reaches tan~=0.39. Even near 150-200 km/h a
     // wheel can legitimately move more than 16 Y units between its alternating
     // diagonal samples. Keep the cap below the known ~40-unit wrong-deck jump.
-    static constexpr int32_t kMaxObservedStepRaw = 0x00200000; // 32 units/sample
-    static constexpr int32_t kMaxWheelSpeedRaw = 0x00100000;   // 16 units/frame
+    static constexpr int32_t kMaxObservedStepRaw = 0x00200000;     // 32 climb
+    static constexpr int32_t kMaxObservedStepDownRaw = 0x00400000; // 64 descent / junction
+    static constexpr int32_t kMaxWheelSpeedRaw = 0x00140000;       // 20 units/frame
     static constexpr int32_t kSettleThresholdRaw = 0x00000800; // 0.03125
-    // Keep the face-change gate aligned with the largest legitimate wheel
-    // advance. A lower gate would reject two samples whenever a fast wheel
-    // crossed triangles on the steep grade, recreating the staircase.
+    // Climb face flips still need confirmation. Descent/junction never stalls.
     static constexpr int32_t kMaxFaceSwitchDeltaRaw = 0x00200000; // 32 units
-    static constexpr uint8_t kSampleHoldFrames = 6u;
+    static constexpr uint8_t kSampleHoldFrames = 8u;
     static constexpr uint8_t kFaceSwitchConfirmSamples = 3u;
 
     static void Reset(ArcadeSuspensionState& state)
@@ -84,7 +83,11 @@ public:
         const bool faceChanged = previousFaceKnown && newFaceKnown &&
             (state.segmentIds[wheelIndex] != segmentId ||
              state.faceIndices[wheelIndex] != faceIndex);
-        if (faceChanged &&
+        // Y-down: larger Y = lower altitude = descending into next segment face.
+        const bool descending = (state.validMask & bit) != 0u &&
+            surfaceYRaw > state.targetYRaw[wheelIndex];
+        // Reject only large climb/noise flips. Descent must accept junctions.
+        if (faceChanged && !descending &&
             Abs(surfaceYRaw - state.targetYRaw[wheelIndex]) > kMaxFaceSwitchDeltaRaw &&
             state.faceSwitchRejectCount[wheelIndex] + 1u < kFaceSwitchConfirmSamples)
         {
@@ -104,7 +107,7 @@ public:
             const int32_t previous = state.targetYRaw[wheelIndex];
             const int32_t delta = Clamp(surfaceYRaw - previous,
                                         -kMaxObservedStepRaw,
-                                        kMaxObservedStepRaw);
+                                        kMaxObservedStepDownRaw);
             state.targetYRaw[wheelIndex] = previous + delta;
         }
         state.segmentIds[wheelIndex] = static_cast<int16_t>(

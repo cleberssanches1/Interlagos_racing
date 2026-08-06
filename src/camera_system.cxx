@@ -593,25 +593,34 @@ int32_t CameraSystem::CameraFollowBlendRaw() const
 void CameraSystem::UpdateSmoothedCamPitch() const
 {
     const auto cfg = PresetConfig(chasePreset_);
-    // Use the strongest coherent road-attitude source. For small angles:
-    // degrees ~= tan(theta) * 57, while gradeTanX100 = tan(theta) * 100.
-    // The old grade / 4 fallback represented only ~44 percent of the actual
-    // slope and left the chase boom almost level on steep descents.
-    int32_t targetPitch = 0;
+    // degrees ~= tan(theta) * 57; gradeTanX100 = tan * 100 (attitude channel).
     const int32_t gradePitch = static_cast<int32_t>(
         (static_cast<int32_t>(roadGradeTanX100_) * 57) / 100);
-    // Grade is already low-pass filtered by GroundFollower. Camera 2/3 use it
-    // continuously: a hard 10% threshold toggled the target between level and
-    // inclined at every face transition. Body pitch is reserved for 1P because
-    // it contains the short suspension motion that the chase view must reject.
-    targetPitch = gradePitch;
-    if (chasePreset_ == ChasePreset::FirstPerson &&
-        std::abs(static_cast<int32_t>(roadBodyPitchDeg_)) > std::abs(targetPitch))
+    const int32_t bodyPitch = static_cast<int32_t>(roadBodyPitchDeg_);
+
+    // Chase: use the milder of grade attitude vs body so hold/lag cannot
+    // freeze the boom nose-down after the ramp softens (F1 96 plant).
+    int32_t targetPitch = 0;
+    if (chasePreset_ == ChasePreset::FirstPerson)
     {
-        targetPitch = static_cast<int32_t>(roadBodyPitchDeg_);
+        targetPitch = (std::abs(bodyPitch) > std::abs(gradePitch))
+            ? bodyPitch
+            : gradePitch;
     }
-    // Near-zero speed: hold camera level (launch / parking). Prevents the
-    // "accelerate and cam dives" artifact from probe noise on first frames.
+    else
+    {
+        // Average then pull toward the smaller magnitude (anti-tower).
+        const int32_t avg = (gradePitch + bodyPitch) / 2;
+        if (std::abs(gradePitch) < std::abs(bodyPitch))
+        {
+            targetPitch = (avg + gradePitch) / 2;
+        }
+        else
+        {
+            targetPitch = (avg + bodyPitch) / 2;
+        }
+    }
+
     constexpr int32_t kStableSpeedNormRaw = (1 << 12); // ~0.0625
     if (movementSpeedNormRaw_ < kStableSpeedNormRaw &&
         std::abs(targetPitch) < (kPitchDeadzoneDeg + 2))
@@ -619,7 +628,9 @@ void CameraSystem::UpdateSmoothedCamPitch() const
         targetPitch = 0;
     }
 
-    int32_t boomTargetPitch = targetPitch;
+    // Boom follows a reduced pitch so ApplyLocalPitchYZ does not lift the tower.
+    int32_t boomTargetPitch =
+        (targetPitch * kBoomPitchFractionX100) / 100;
     if (std::abs(boomTargetPitch) < kPitchDeadzoneDeg)
     {
         boomTargetPitch = 0;
@@ -636,44 +647,49 @@ void CameraSystem::UpdateSmoothedCamPitch() const
 
     if (!camPitchInitialized_)
     {
-        // Start level — never snap to a noisy first sample.
         smoothedCamPitchDeg_ = 0;
         smoothedBoomPitchDeg_ = 0;
         camPitchInitialized_ = true;
         return;
     }
 
-    // Soft lerp + hard rate limit (seam anti-bobbing on 27..45 climb).
-    const int32_t alpha = ClampUnitRaw(cfg.pitchBlendRaw);
-    const int32_t cur = static_cast<int32_t>(smoothedCamPitchDeg_);
-    const int32_t delta = targetPitch - cur;
-    int32_t step = static_cast<int32_t>(
-        (static_cast<int64_t>(delta) * alpha) >> 16);
-    // No forced 1° crawl — that made the cam pump on every segment joint.
-    if (step > kMaxCamPitchStepDeg) step = kMaxCamPitchStepDeg;
-    if (step < -kMaxCamPitchStepDeg) step = -kMaxCamPitchStepDeg;
-    // If still far and step rounded to 0, allow 1° only every time |delta|>=3.
-    if (step == 0 && std::abs(delta) >= 3)
+    auto stepPitch = [](int32_t cur, int32_t target, int32_t alpha) -> int32_t
     {
-        step = (delta > 0) ? 1 : -1;
-    }
-    int32_t next = cur + step;
-    next = std::clamp<int32_t>(next, -kMaxCamPitchDeg, kMaxCamPitchDeg);
-    smoothedCamPitchDeg_ = static_cast<int16_t>(next);
+        const int32_t delta = target - cur;
+        int32_t step = static_cast<int32_t>(
+            (static_cast<int64_t>(delta) * alpha) >> 16);
+        // +pitch = nose-down: enter slow, leave fast.
+        const bool enteringNoseDown = (delta > 0);
+        const int32_t maxIn = kMaxCamPitchStepInDeg;
+        const int32_t maxOut = kMaxCamPitchStepOutDeg;
+        if (enteringNoseDown)
+        {
+            if (step > maxIn) step = maxIn;
+            if (step < -maxOut) step = -maxOut;
+        }
+        else
+        {
+            // Toward level or nose-up: allow faster recovery from +pitch.
+            if (step > maxOut) step = maxOut;
+            if (step < -maxIn) step = -maxIn;
+            // Explicit: leaving positive pitch toward 0.
+            if (cur > 0 && target < cur && step > -maxOut)
+            {
+                if (step > -1 && delta <= -3) step = -1;
+            }
+        }
+        if (step == 0 && std::abs(delta) >= 3)
+        {
+            step = (delta > 0) ? 1 : -((maxOut > 1) ? 2 : 1);
+        }
+        return std::clamp<int32_t>(cur + step, -kMaxCamPitchDeg, kMaxCamPitchDeg);
+    };
 
-    const int32_t boomCur = static_cast<int32_t>(smoothedBoomPitchDeg_);
-    const int32_t boomDelta = boomTargetPitch - boomCur;
-    int32_t boomStep = static_cast<int32_t>(
-        (static_cast<int64_t>(boomDelta) * alpha) >> 16);
-    if (boomStep > kMaxCamPitchStepDeg) boomStep = kMaxCamPitchStepDeg;
-    if (boomStep < -kMaxCamPitchStepDeg) boomStep = -kMaxCamPitchStepDeg;
-    if (boomStep == 0 && std::abs(boomDelta) >= 3)
-    {
-        boomStep = (boomDelta > 0) ? 1 : -1;
-    }
-    const int32_t boomNext = std::clamp<int32_t>(
-        boomCur + boomStep, -kMaxCamPitchDeg, kMaxCamPitchDeg);
-    smoothedBoomPitchDeg_ = static_cast<int16_t>(boomNext);
+    const int32_t alpha = ClampUnitRaw(cfg.pitchBlendRaw);
+    smoothedCamPitchDeg_ = static_cast<int16_t>(
+        stepPitch(smoothedCamPitchDeg_, targetPitch, alpha));
+    smoothedBoomPitchDeg_ = static_cast<int16_t>(
+        stepPitch(smoothedBoomPitchDeg_, boomTargetPitch, alpha));
 }
 
 void CameraSystem::ApplyLocalPitchYZ(int32_t pitchDeg, Fxp& ioOffY, Fxp& ioOffZ)
@@ -716,16 +732,17 @@ CameraSafety::Config CameraSystem::BoomSafetyConfig(int32_t pitchDeg) const
     const auto cfg = PresetConfig(chasePreset_);
     CameraSafety::Config boom = safetyConfig_;
     int32_t clearance = static_cast<int32_t>(cfg.minBoomClearance);
-    // More pitch → more vertical clearance (decline/climb).
+    // Small pitch term only — old +1 unit/degree made the chase "tower" on
+    // steep descents (video 23-05). Mesh guard still owns hard anti-asphalt.
     const int32_t absPitch = (pitchDeg < 0) ? -pitchDeg : pitchDeg;
-    clearance += (absPitch * 2) / 3; // ~0.66 units per degree
-    // Nose-down (Y-down +pitch): rear asphalt rises toward boom — extra clearance.
-    if (pitchDeg > kPitchDeadzoneDeg)
+    if (absPitch > kPitchDeadzoneDeg)
     {
-        clearance += (pitchDeg - kPitchDeadzoneDeg); // +1 unit per degree past deadzone
+        int32_t extra = (absPitch - kPitchDeadzoneDeg) / 4; // 0.25 u/deg
+        if (extra > 4) extra = 4;
+        clearance += extra;
     }
     if (clearance < 8) clearance = 8;
-    if (clearance > 48) clearance = 48;
+    if (clearance > 20) clearance = 20;
     boom.minCameraHeightAboveTarget = Fxp::BuildRaw(clearance << 16);
     return boom;
 }
@@ -815,7 +832,8 @@ Vector3D CameraSystem::ResolvePresetOffsetWorld() const
         offsetZUnits = -std::abs(offsetZUnits);
     }
 
-    // Body-frame pitch: rotates (Y,Z) so boom follows car inclination.
+    // Boom pitch already reduced in UpdateSmoothedCamPitch (fraction of road).
+    // Full body pitch here lifted the rear boom into a tower on declines.
     const int32_t pitchDeg = static_cast<int32_t>(smoothedBoomPitchDeg_) * kCamPitchSign;
     return ResolveLocalOffsetWorld(offsetXUnits, offsetYUnits, offsetZUnits, pitchDeg);
 }

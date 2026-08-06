@@ -19,13 +19,15 @@ public:
     static constexpr bool kPathGuidedChaseEnabled = false;
 
     // Body pitch → camera pitch sign (Y-down: +bodyPitch = nose down).
-    // Flip to -1 only if boom sinks into asphalt when car pitches down.
     static constexpr int32_t kCamPitchSign = 1;
-    static constexpr int32_t kMaxCamPitchDeg = 28;
+    static constexpr int32_t kMaxCamPitchDeg = 18;
     // Ignore tiny seam/noise pitch so start throttle + segment joints don't bob.
     static constexpr int32_t kPitchDeadzoneDeg = 3;
-    // Max camera pitch change per frame (degrees) — anti-bobbing on seams.
-    static constexpr int32_t kMaxCamPitchStepDeg = 1;
+    // Asymmetric cam pitch rate (F1 96 plant — leave nose-down faster).
+    static constexpr int32_t kMaxCamPitchStepInDeg = 1;   // into ramp
+    static constexpr int32_t kMaxCamPitchStepOutDeg = 3;  // recover level
+    // Boom offset uses only a fraction of pitch (full pitch lifted the tower).
+    static constexpr int32_t kBoomPitchFractionX100 = 45;
     struct PathFrameContext
     {
         bool valid = false;

@@ -71,8 +71,19 @@ struct GroundState
     int16_t lastSlopeAbsY = 0;
     // Signed road grade tanθ ≈ (frontY − rearY) / wheelbase (16.16).
     // Y-down: tan > 0 ⇒ nose lower ⇒ downhill when moving forward.
+    // Heave channel: long hold across flat slabs (continuous deslize).
     int32_t gradeTanRaw = 0;
     bool gradeValid = false;
+    uint8_t gradeHoldFrames = 0u;
+    // Attitude/camera channel: short hold — must not freeze nose-down pitch.
+    int32_t gradeTanAttitudeRaw = 0;
+    bool gradeAttitudeValid = false;
+    uint8_t gradeAttitudeHoldFrames = 0u;
+    // Forward speed from last dynamics step (for gradeDy = tan * speed).
+    int32_t lastForwardSpeedRaw = 0;
+    // Last measured ride plane (detect "same face" holds).
+    int32_t lastMeasuredRideYRaw = 0;
+    bool lastMeasuredRideYValid = false;
     // Natural descent: last accepted surface target + drop window.
     int32_t lastAcceptedSurfaceYRaw = 0;
     bool lastAcceptedSurfaceYValid = false;
@@ -388,20 +399,33 @@ struct Tunables
     static constexpr Fxp kLaunchStraightEntrySpeed = Fxp::BuildRaw(0x0009195C); // ~9.0991
     static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 14));    // -0.25
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00246572); // ~36.3963
-    // Chassis spring speed caps. No normal terrain transition may snap Y.
-    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00100000);      // 16.0
-    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00100000);    // 16.0
+    // Chassis heave caps. Continuous grade slide uses gradeDy; MapHeight corrects.
+    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00180000);      // 24.0 anti-pen
+    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x000C0000);    // 12.0
     // Per-frame topology telemetry for camera/grade behavior.
     static constexpr Fxp kTopoDropYThreshold = Fxp::BuildRaw(0x00004000);      // 0.25
-    static constexpr uint8_t kTopoDropHoldFrames = 12u;
+    static constexpr uint8_t kTopoDropHoldFrames = 16u;
     static constexpr Fxp kTopoGradeDeclineMin = Fxp::BuildRaw(0x00000C00);     // ~0.05 tan
     static constexpr bool kEnableSlopePathAssist = false;
     static constexpr Fxp kSlopeGravityPerFrame = Fxp::BuildRaw(0x00000400);
     static constexpr Fxp kSlopeTanMax = Fxp::BuildRaw(0x0000B333);            // ~0.70
     static constexpr Fxp kSlopeTanDeadzone = Fxp::BuildRaw(0x00000A00);       // ~0.04
-    static constexpr uint8_t kGradeFilterShift = 2u;                          // 1/4 toward sample
-    static constexpr bool kEnableGradePredictY = false;
-    static constexpr Fxp kGradePredictYMax = Fxp::BuildRaw(0x00008000);       // 0.5
+    static constexpr uint8_t kGradeFilterShift = 1u;                          // faster lock to ramp
+    // Continuous slide: keep heave grade when F−R collapses on a flat slab.
+    static constexpr bool kEnableContinuousGradeSlide = true;
+    static constexpr uint8_t kGradeHoldMaxFrames = 48u;                       // heave only
+    // Attitude/cam grade hold — short so pitch/cam recover when leaving ramp.
+    static constexpr uint8_t kGradeAttitudeHoldMaxFrames = 10u;
+    // Max |Yfront−Yrear| used for visual pitch (units 16.16). Stair junctions
+    // between segments can be 20–40 units over one wheelbase; PS1/arcade games
+    // never applied that raw chord as body pitch — they low-pass a capped plane.
+    // ~10 units / wb75 ≈ 7.6° continuous grade (Senna-scale without dive).
+    static constexpr Fxp kMaxAttitudeChordY = Fxp::BuildRaw(0x000A0000);      // 10.0
+    // Measured plane unchanged within this eps ⇒ still on same face/slab.
+    static constexpr Fxp kSameFaceEpsY = Fxp::BuildRaw(0x00008000);           // 0.5
+    // Pre-probe body nudge along grade (also stores lastForwardSpeed).
+    static constexpr bool kEnableGradePredictY = true;
+    static constexpr Fxp kGradePredictYMax = Fxp::BuildRaw(0x00010000);       // 1.0
     static constexpr Fxp kStationaryYawLockSpeed = Fxp::BuildRaw(0x00005A00);
     static constexpr Fxp kSurfaceSampleDownBias = Fxp::BuildRaw(0x00008000);   // 0.5
     // CAR1 wheel rectangle in model/world units.

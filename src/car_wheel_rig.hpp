@@ -56,13 +56,12 @@ private:
     };
 
     static constexpr int32_t kMaxSteerDegX16 = 12 << 16;
-    static constexpr int32_t kMaxPitchDegX16 = 32 << 16;
-    static constexpr int32_t kMaxRollDegX16 = 18 << 16;
+    // Continuous ramp only — stair junctions are chord-capped upstream (~8–10°).
+    static constexpr int32_t kMaxPitchDegX16 = 16 << 16;
+    static constexpr int32_t kMaxRollDegX16 = 14 << 16;
     static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x0000C000); // 0.75
     static constexpr int32_t kSteerFilterShift = 2;
-    // Segment joins are position-continuous but not always slope-continuous.
-    // Let the body settle instead of copying each face angle as a nose impulse.
-    static constexpr int32_t kPitchFilterShift = 2;
+    static constexpr int32_t kPitchFilterShift = 1;
     static constexpr int32_t kRollFilterShift = 1;
     static constexpr int32_t kSuspFilterShift = 1;
     static constexpr int32_t kSpinDegPerKmhX16 = 2200;
@@ -75,16 +74,15 @@ private:
     static constexpr int32_t kBodyPitchSign = 1;
     static constexpr int32_t kBodyRollSign = 1;
     static constexpr int32_t kRadToDegApprox = 57;
-    // Reject only sub-unit fixed-point noise; real grades span the full CAR1
-    // wheelbase and remain well above this threshold.
     static constexpr int32_t kPitchDeadzoneRaw = (1 << 12); // 0.0625
     static constexpr int32_t kRollDeadzoneRaw = (1 << 12);
-    static constexpr int32_t kDeltaFilterShift = 1;
-    static constexpr int32_t kMaxDeltaJumpRaw = 40 << 16; // damp F/R flicker on seams
-    // Tires react first; the body follows with a PS1-era bounded angular rate.
-    static constexpr int32_t kMaxPitchStepDownDegX16 = 1 << 15; // 0.5 deg/frame
-    static constexpr int32_t kMaxPitchStepUpDegX16 = 1 << 15;
-    static constexpr int32_t kMaxRollStepDegX16 = 1 << 15;
+    // Arcade/PS1: heavy low-pass on plane normal; never chase seam steps.
+    static constexpr int32_t kDeltaFilterShift = 3;
+    static constexpr int32_t kMaxDeltaJumpRaw = 4 << 16; // 4 units/frame on ΔY
+    // +pitch = nose-down: slow dive, fast recover (junction anti-embicada).
+    static constexpr int32_t kMaxPitchStepDownDegX16 = 1 << 16;  // 1 deg/f
+    static constexpr int32_t kMaxPitchStepUpDegX16 = 4 << 16;    // 4 deg/f recover
+    static constexpr int32_t kMaxRollStepDegX16 = 2 << 16;
 
     void RefreshWheelGeometryFromCenters();
 
