@@ -7,6 +7,7 @@
 #include "interfaces.hpp"
 #include "car_arcade_suspension.hpp"
 #include "car_contact_geometry.hpp"
+#include "car_corner_contact_solver.hpp"
 #include "physics_feature_flags.hpp"
 
 namespace Game::CarPhysics
@@ -39,6 +40,8 @@ struct DynamicsState
 struct GroundState
 {
     ArcadeSuspensionState suspension{};
+    // REDRIVER2-style 4-corner spring body (pitch/roll deltas + soft plant).
+    CornerContactSolverState cornerSolver{};
     Fxp surfaceYTarget = Fxp::BuildRaw(0);
     Fxp surfaceYFiltered = Fxp::BuildRaw(0);
     Fxp verticalVelocity = Fxp::BuildRaw(0);
@@ -79,11 +82,22 @@ struct GroundState
     int32_t gradeTanAttitudeRaw = 0;
     bool gradeAttitudeValid = false;
     uint8_t gradeAttitudeHoldFrames = 0u;
+    // Temporally smoothed F−R chord for pitch (PS1 continuous plane).
+    int32_t lastAttitudeChordRaw = 0;
+    bool attitudeChordInitialized = false;
+    // Temporally smoothed R−L chord for roll (side bumps).
+    int32_t lastAttitudeRollChordRaw = 0;
+    bool attitudeRollChordInitialized = false;
+    // Frames after frontSeg≠rearSeg: keep prior chord, ease in (anti nose-dive).
+    uint8_t junctionAttitudeHoldFrames = 0u;
     // Forward speed from last dynamics step (for gradeDy = tan * speed).
     int32_t lastForwardSpeedRaw = 0;
     // Last measured ride plane (detect "same face" holds).
     int32_t lastMeasuredRideYRaw = 0;
     bool lastMeasuredRideYValid = false;
+    // Low-pass of MapHeight ride (turns segment steps into ramps at any speed).
+    int32_t smoothedRideYRaw = 0;
+    bool smoothedRideYValid = false;
     // Natural descent: last accepted surface target + drop window.
     int32_t lastAcceptedSurfaceYRaw = 0;
     bool lastAcceptedSurfaceYValid = false;
@@ -93,6 +107,9 @@ struct GroundState
     int32_t surfaceTargetVelocityRaw = 0;
     bool committedSurfaceYValid = false;
     uint8_t topologyDropFrames = 0u;
+    // Last CornerContactSolver body Y (includes ride offset).
+    int32_t solverBodyYRaw = 0;
+    bool solverBodyYValid = false;
 };
 
 struct SurfaceQueryResult
@@ -397,11 +414,13 @@ struct Tunables
     // immediate turn entry (no forced straight frame).
     static constexpr uint8_t kLaunchStraightFrameCount = 0u;
     static constexpr Fxp kLaunchStraightEntrySpeed = Fxp::BuildRaw(0x0009195C); // ~9.0991
-    static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-(1 << 14));    // -0.25
+    // Body origin above MapHeight (Y-down negative = up).
+    // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant −0.09.
+    static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-0x00001700);   // ~-0.09
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00246572); // ~36.3963
-    // Chassis heave caps. Continuous grade slide uses gradeDy; MapHeight corrects.
-    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00180000);      // 24.0 anti-pen
-    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x000C0000);    // 12.0
+    // Plant down freer than climb (anti-float on decline).
+    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00010000);      // 1.0 anti-jolt
+    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00030000);    // 3.0 plant
     // Per-frame topology telemetry for camera/grade behavior.
     static constexpr Fxp kTopoDropYThreshold = Fxp::BuildRaw(0x00004000);      // 0.25
     static constexpr uint8_t kTopoDropHoldFrames = 16u;
@@ -409,23 +428,55 @@ struct Tunables
     static constexpr bool kEnableSlopePathAssist = false;
     static constexpr Fxp kSlopeGravityPerFrame = Fxp::BuildRaw(0x00000400);
     static constexpr Fxp kSlopeTanMax = Fxp::BuildRaw(0x0000B333);            // ~0.70
-    static constexpr Fxp kSlopeTanDeadzone = Fxp::BuildRaw(0x00000A00);       // ~0.04
-    static constexpr uint8_t kGradeFilterShift = 1u;                          // faster lock to ramp
+    static constexpr Fxp kSlopeTanDeadzone = Fxp::BuildRaw(0x00000800);       // ~0.03
+    // Grade tracks face tan quickly (align every frame).
+    static constexpr uint8_t kGradeFilterShift = 1u;
     // Continuous slide: keep heave grade when F−R collapses on a flat slab.
     static constexpr bool kEnableContinuousGradeSlide = true;
-    static constexpr uint8_t kGradeHoldMaxFrames = 48u;                       // heave only
-    // Attitude/cam grade hold — short so pitch/cam recover when leaving ramp.
-    static constexpr uint8_t kGradeAttitudeHoldMaxFrames = 10u;
-    // Max |Yfront−Yrear| used for visual pitch (units 16.16). Stair junctions
-    // between segments can be 20–40 units over one wheelbase; PS1/arcade games
-    // never applied that raw chord as body pitch — they low-pass a capped plane.
-    // ~10 units / wb75 ≈ 7.6° continuous grade (Senna-scale without dive).
-    static constexpr Fxp kMaxAttitudeChordY = Fxp::BuildRaw(0x000A0000);      // 10.0
+    static constexpr uint8_t kGradeHoldMaxFrames = 64u;                       // heave only
+    // Attitude/cam grade hold — keep nose on face when F−R collapses mid-slab.
+    static constexpr uint8_t kGradeAttitudeHoldMaxFrames = 32u;
+    // Continuous pitch chord — room for real Senna faces (tan~0.39 → ~29 u).
+    static constexpr Fxp kMaxAttitudeChordY = Fxp::BuildRaw(0x001E0000);      // 30.0
+    // Only true stair spikes rate-limited (not normal face tracking).
+    static constexpr Fxp kStairChordRejectY = Fxp::BuildRaw(0x00100000);      // 16.0
+    // Attitude: hold ONLY while axles split; soft-exit short.
+    // 16-17: pitch lag left body flat vs face — track face faster mid-slab.
+    static constexpr Fxp kMaxAttitudeChordStepY = Fxp::BuildRaw(0x00014000);   // 1.25 both
+    static constexpr Fxp kMaxAttitudeChordStepDiveY = Fxp::BuildRaw(0x00018000); // 1.5 face
+    // Soft-exit frames AFTER axles reunite (not while split).
+    static constexpr uint8_t kJunctionAttitudeHoldFrames = 6u;
+    // While split: freeze. Soft-exit: crawl toward grade.
+    static constexpr Fxp kJunctionMaxChordStepY = Fxp::BuildRaw(0x00004000);   // 0.25 soft
+    // Cap raw residual vs grade for pitch publish (not a long hold arm).
+    static constexpr Fxp kEmbicadaOverGradeY = Fxp::BuildRaw(0x00018000);      // 1.5
+    static constexpr Fxp kChordJumpArmY = Fxp::BuildRaw(0x00030000);          // 3.0 (spike only)
+    static constexpr uint8_t kAttitudeChordBlendShift = 1u;                   // >>1 = 1/2
+    static constexpr uint8_t kPitchGradeBlendShift = 1u;                      // residual 1/2
+    // Heave (16-17): plant ON face — continuous must not lag above asphalt.
+    static constexpr Fxp kMaxRideTargetStepY = Fxp::BuildRaw(0x00028000);      // 2.5
+    static constexpr Fxp kMaxRideTargetStepLowSpeedY = Fxp::BuildRaw(0x00010000); // 1.0
+    static constexpr Fxp kLowSpeedForHeaveSmooth = Fxp::BuildRaw(0x00180000);  // 24 speed units
+    static constexpr Fxp kRideSeamJumpY = Fxp::BuildRaw(0x00018000);           // 1.5
+    static constexpr Fxp kMaxBodySlideDownY = Fxp::BuildRaw(0x00028000);       // 2.5 plant
+    static constexpr Fxp kJunctionMaxHeaveDownY = Fxp::BuildRaw(0x00014000);   // 1.25
+    static constexpr Fxp kMaxBodySlideUpY = Fxp::BuildRaw(0x0000C000);        // 0.75 anti-jolt
+    static constexpr Fxp kFloatCatchupY = Fxp::BuildRaw(0x00004000);           // 0.25
+    // Hard band: almost no air; slight dig better than float (16-17 too high).
+    static constexpr Fxp kMaxAirAboveMeasuredY = Fxp::BuildRaw(0x00000400);    // ~0.015
+    static constexpr Fxp kMaxPenetrateMeasuredY = Fxp::BuildRaw(0x00001800);   // ~0.09
+    static constexpr Fxp kMaxClimbOnDeclineY = Fxp::BuildRaw(0x0000C000);      // 0.75
+    // Plant glue earlier.
+    static constexpr Fxp kHighSpeedPlantGlue = Fxp::BuildRaw(0x000C0000);     // ~12 speed units
+    static constexpr uint8_t kRidePlaneFilterShift = 2u;                      // 1/4 toward sample
+    static constexpr Fxp kHeaveSnapEpsY = Fxp::BuildRaw(0x00001000);          // ~0.06
     // Measured plane unchanged within this eps ⇒ still on same face/slab.
     static constexpr Fxp kSameFaceEpsY = Fxp::BuildRaw(0x00008000);           // 0.5
     // Pre-probe body nudge along grade (also stores lastForwardSpeed).
     static constexpr bool kEnableGradePredictY = true;
     static constexpr Fxp kGradePredictYMax = Fxp::BuildRaw(0x00010000);       // 1.0
+    // Do not decay heave grade while nearly stopped (resume without re-stair).
+    static constexpr Fxp kGradeHoldMinSpeed = Fxp::BuildRaw(0x00020000);      // 2.0
     static constexpr Fxp kStationaryYawLockSpeed = Fxp::BuildRaw(0x00005A00);
     static constexpr Fxp kSurfaceSampleDownBias = Fxp::BuildRaw(0x00008000);   // 0.5
     // CAR1 wheel rectangle in model/world units.
@@ -445,10 +496,12 @@ struct Tunables
         kEnableSaturnLowCostPhysics ? 6u : 1u;
     // 4-corner wheel plane (pitch + roll). Not reduced centerline.
     static constexpr bool kPreferReducedGroundProbe = false;
-    // Saturn-safe path: one wheel diagonal per frame keeps two surface queries
-    // while persistent per-corner springs reconstruct the four-contact plane.
-    static constexpr bool kForceAxleCenterlineProbes = kEnableSaturnLowCostPhysics;
+    // Probe all four contacts every frame so wheels force the chassis plane.
+    static constexpr bool kForceAxleCenterlineProbes = false;
     static constexpr bool kEnableFourWheelPlaneProbes = true;
+    // Single-plant path (plan 2026-08-08): chord + continuous heave only.
+    // Solver stacked with adhesion caused fly/jump/penetrate (12-53 / 12-57).
+    static constexpr bool kEnableCornerContactSolver = false;
     static constexpr Fxp kWallCollisionRadius = Fxp::BuildRaw(0x0001599A);     // ~1.35
     static constexpr bool kEnableWallPlanarPush =
         Game::PhysicsFeatureFlags::kEnableWallCollisionRuntime;

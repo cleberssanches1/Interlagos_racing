@@ -200,11 +200,10 @@ void CarWheelRig::Update(const Input& input)
     // --- World 3D attitude from wheel contact altitudes ---------------------------
     // For each axle/side, MapHeight gives asphalt Y under the wheel (Y-down:
     // larger Y = lower altitude). Rigid body: the LOW asphalt corner must go
-    // DOWN in the world. Mesh is drawn with RotateX(180)+RotateZ(180), so
-    // visual pitch/roll signs are inverted via kBodyPitchSign / kBodyRollSign.
-    //
-    //   pitch ≈ sign * atan((Yfront − Yrear) / wheelbase_from_mesh)
-    //   roll  ≈ sign * atan((Yright − Yleft) / track_from_mesh)
+    // DOWN in the world. Mesh is drawn with RotateX(180)+RotateZ(180):
+    //   pitch ≈ kBodyPitchSign * atan((Yfront − Yrear) / wheelbase)
+    //   roll  ≈ kBodyRollSign  * atan((Yright − Yleft) / track)
+    // kBodyRollSign is -1 so the side with LOWER asphalt (larger Y) drops.
     //
     // Wheel centers (mesh) define L and T after ClassifyWheels.
     int32_t targetPitch = heldPitchDegX16_;
@@ -294,8 +293,7 @@ void CarWheelRig::Update(const Input& input)
         heldRollDegX16_ = targetRoadRoll;
     }
 
-    // Rate-limited step — no soft spring (overshoot embicada). Recover to
-    // level faster than diving into the ramp (kBodyPitchSign=+1 nose-down).
+    // Per-frame align: take full remaining error up to rate cap (no 1/2 lag).
     auto stepTowardAngle = [](int32_t current,
                               int32_t target,
                               int32_t& velocity,

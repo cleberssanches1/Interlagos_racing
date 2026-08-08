@@ -56,10 +56,11 @@ private:
     };
 
     static constexpr int32_t kMaxSteerDegX16 = 12 << 16;
-    // Continuous ramp only — stair junctions are chord-capped upstream (~8–10°).
-    static constexpr int32_t kMaxPitchDegX16 = 16 << 16;
+    // Slide attitude: follow ramp, never plunge pitch on segment edges.
+    static constexpr int32_t kMaxPitchDegX16 = 20 << 16;
     static constexpr int32_t kMaxRollDegX16 = 14 << 16;
-    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x0000C000); // 0.75
+    // Small residual only — large offsets floated wheels off the face plane.
+    static constexpr int32_t kMaxSuspensionOffsetX16 = static_cast<int32_t>(0x00004000); // 0.25
     static constexpr int32_t kSteerFilterShift = 2;
     static constexpr int32_t kPitchFilterShift = 1;
     static constexpr int32_t kRollFilterShift = 1;
@@ -72,17 +73,16 @@ private:
     static constexpr int32_t kMaxMeasuredWheelbaseRaw = 128 << 16;
     static constexpr int32_t kMaxMeasuredTrackRaw = 96 << 16;
     static constexpr int32_t kBodyPitchSign = 1;
-    static constexpr int32_t kBodyRollSign = 1;
+    static constexpr int32_t kBodyRollSign = -1;
     static constexpr int32_t kRadToDegApprox = 57;
     static constexpr int32_t kPitchDeadzoneRaw = (1 << 12); // 0.0625
     static constexpr int32_t kRollDeadzoneRaw = (1 << 12);
-    // Arcade/PS1: heavy low-pass on plane normal; never chase seam steps.
-    static constexpr int32_t kDeltaFilterShift = 3;
-    static constexpr int32_t kMaxDeltaJumpRaw = 4 << 16; // 4 units/frame on ΔY
-    // +pitch = nose-down: slow dive, fast recover (junction anti-embicada).
-    static constexpr int32_t kMaxPitchStepDownDegX16 = 1 << 16;  // 1 deg/f
-    static constexpr int32_t kMaxPitchStepUpDegX16 = 4 << 16;    // 4 deg/f recover
-    static constexpr int32_t kMaxRollStepDegX16 = 2 << 16;
+    // Smooth crawl (15-42/15-44): follow continuous grade without snap.
+    static constexpr int32_t kDeltaFilterShift = 2; // quarter toward sample
+    static constexpr int32_t kMaxDeltaJumpRaw = 2 << 16;
+    static constexpr int32_t kMaxPitchStepDownDegX16 = static_cast<int32_t>(0x0000C000); // 0.75
+    static constexpr int32_t kMaxPitchStepUpDegX16 = static_cast<int32_t>(0x0000C000);   // 0.75
+    static constexpr int32_t kMaxRollStepDegX16 = static_cast<int32_t>(0x0000C000);      // 0.75
 
     void RefreshWheelGeometryFromCenters();
 

@@ -4,12 +4,17 @@
 
 namespace Game::CarPhysics
 {
-// Low-cost four-corner contact state. Attitude is stored as the vertical
-// wheel-to-wheel delta, avoiding trigonometry in the physics path:
-//   pitchDelta = frontY - rearY; rollDelta = rightY - leftY.
+// Four-corner geometric plant (REDRIVER2-inspired, stable).
+// Previous torque-integrator windup drove pitchDelta → max (embicada permanente
+// + traseira alta, video 17-41-24) and gravity+lift fought heave (voo 17-44-44).
+//
+// Now: ease bodyY / pitchDelta / rollDelta toward contact targets each frame.
+//   pitchDelta target = frontY − rearY   (Y-down: + ⇒ nose lower)
+//   rollDelta  target = rightY − leftY
+//   bodyY      target = avg(4) + rideOffset
 struct CornerContactSolverState
 {
-    int32_t verticalVelocityRaw = 0;
+    int32_t verticalVelocityRaw = 0; // retained for telemetry / optional blend
     int32_t pitchDeltaRaw = 0;
     int32_t rollDeltaRaw = 0;
     int32_t pitchVelocityRaw = 0;
@@ -21,23 +26,30 @@ struct CornerContactSolverOutput
 {
     uint8_t touchingMask = 0u;
     int32_t maxPenetrationRaw = 0;
+    int32_t targetPitchDeltaRaw = 0;
+    int32_t targetRollDeltaRaw = 0;
+    int32_t targetBodyYRaw = 0;
 };
 
 class CornerContactSolver
 {
 public:
-    // Y grows downward in this project.
-    static constexpr int32_t kGravityRaw = 0x00000800;          // 0.03125/frame^2
-    static constexpr int32_t kMaxFallSpeedRaw = 0x0000C000;     // 0.75/frame
-    static constexpr int32_t kMaxPositionCorrectionRaw = 0x00006000; // 0.375/frame
-    static constexpr int32_t kMaxAttitudeDeltaRaw = 0x00020000; // 2.0 across axle/track
-    static constexpr int32_t kMaxAngularVelocityRaw = 0x00002000;
+    // Y grows downward.
+    // Per-frame approach to geometric targets (no unbounded torque).
+    static constexpr int32_t kMaxBodyStepRaw = 0x000A0000;      // 10.0
+    static constexpr int32_t kMaxAttitudeStepRaw = 0x00050000;  // 5.0 chord / frame
+    // Senna faces: tan~0.39 → chord ~29 u.
+    static constexpr int32_t kMaxAttitudeDeltaRaw = 0x001E0000; // 30.0
+    // Faster approach to live plane (ref: continuous alignment).
+    static constexpr int32_t kBodyBlendShift = 1;               // >>1
+    static constexpr int32_t kAttitudeBlendShift = 1;
 
     static void Reset(CornerContactSolverState& state)
     {
         state = CornerContactSolverState{};
     }
 
+    // surfaceYRaw: FL, FR, RL, RR. validMask bit i = corner i.
     static bool Step(const int32_t surfaceYRaw[4],
                      uint8_t validMask,
                      int32_t rideHeightOffsetRaw,
@@ -47,27 +59,79 @@ public:
     {
         CornerContactSolverOutput localOutput{};
 
-        // Bootstrap only after all four corners have been observed. This occurs
-        // after two diagonal phases and prevents a spawn-time attitude impulse.
+        int32_t sum = 0;
+        int32_t count = 0;
+        int32_t frontSum = 0, frontN = 0;
+        int32_t rearSum = 0, rearN = 0;
+        int32_t leftSum = 0, leftN = 0;
+        int32_t rightSum = 0, rightN = 0;
+
+        for (uint8_t i = 0u; i < 4u; ++i)
+        {
+            const uint8_t bit = static_cast<uint8_t>(1u << i);
+            if ((validMask & bit) == 0u) continue;
+            const int32_t y = surfaceYRaw[i];
+            sum += y;
+            ++count;
+            localOutput.touchingMask |= bit;
+            if (i < 2u)
+            {
+                frontSum += y;
+                ++frontN;
+            }
+            else
+            {
+                rearSum += y;
+                ++rearN;
+            }
+            if ((i == 0u) || (i == 2u))
+            {
+                leftSum += y;
+                ++leftN;
+            }
+            else
+            {
+                rightSum += y;
+                ++rightN;
+            }
+        }
+
+        if (count == 0)
+        {
+            if (output) *output = localOutput;
+            return false;
+        }
+
+        const int32_t avg = sum / count;
+        const int32_t targetBody = avg + rideHeightOffsetRaw;
+        localOutput.targetBodyYRaw = targetBody;
+
+        int32_t targetPitch = 0;
+        if (frontN > 0 && rearN > 0)
+        {
+            targetPitch = (frontSum / frontN) - (rearSum / rearN);
+        }
+        int32_t targetRoll = 0;
+        if (leftN > 0 && rightN > 0)
+        {
+            targetRoll = (rightSum / rightN) - (leftSum / leftN);
+        }
+        targetPitch = Clamp(targetPitch, -kMaxAttitudeDeltaRaw, kMaxAttitudeDeltaRaw);
+        targetRoll = Clamp(targetRoll, -kMaxAttitudeDeltaRaw, kMaxAttitudeDeltaRaw);
+        localOutput.targetPitchDeltaRaw = targetPitch;
+        localOutput.targetRollDeltaRaw = targetRoll;
+
         if (!state.initialized)
         {
-            if ((validMask & 0x0Fu) != 0x0Fu)
+            // Need both axles for a meaningful pitch sample.
+            if (frontN == 0 || rearN == 0)
             {
                 if (output) *output = localOutput;
                 return false;
             }
-
-            const int32_t front = Average2(surfaceYRaw[0], surfaceYRaw[1]);
-            const int32_t rear = Average2(surfaceYRaw[2], surfaceYRaw[3]);
-            const int32_t left = Average2(surfaceYRaw[0], surfaceYRaw[2]);
-            const int32_t right = Average2(surfaceYRaw[1], surfaceYRaw[3]);
-            bodyYRaw = Average4(surfaceYRaw) + rideHeightOffsetRaw;
-            state.pitchDeltaRaw = Clamp(front - rear,
-                                        -kMaxAttitudeDeltaRaw,
-                                        kMaxAttitudeDeltaRaw);
-            state.rollDeltaRaw = Clamp(right - left,
-                                       -kMaxAttitudeDeltaRaw,
-                                       kMaxAttitudeDeltaRaw);
+            bodyYRaw = targetBody;
+            state.pitchDeltaRaw = targetPitch;
+            state.rollDeltaRaw = targetRoll;
             state.verticalVelocityRaw = 0;
             state.pitchVelocityRaw = 0;
             state.rollVelocityRaw = 0;
@@ -76,79 +140,48 @@ public:
             return true;
         }
 
-        state.verticalVelocityRaw = Clamp(
-            state.verticalVelocityRaw + kGravityRaw,
-            -kMaxFallSpeedRaw,
-            kMaxFallSpeedRaw);
-        bodyYRaw += state.verticalVelocityRaw;
-
-        state.pitchDeltaRaw += state.pitchVelocityRaw;
-        state.rollDeltaRaw += state.rollVelocityRaw;
-        state.pitchVelocityRaw -= state.pitchVelocityRaw >> 2;
-        state.rollVelocityRaw -= state.rollVelocityRaw >> 2;
-
-        int32_t frontPenetration = 0;
-        int32_t rearPenetration = 0;
-        int32_t leftPenetration = 0;
-        int32_t rightPenetration = 0;
-
-        for (uint8_t i = 0u; i < 4u; ++i)
+        // --- Body heave: ease toward contact average (no gravity integrator) ---
         {
-            const uint8_t bit = static_cast<uint8_t>(1u << i);
-            if ((validMask & bit) == 0u) continue;
-
-            const bool front = i < 2u;
-            const bool right = (i == 1u) || (i == 3u);
-            const int32_t pitchOffset = front
-                ? (state.pitchDeltaRaw >> 1)
-                : -(state.pitchDeltaRaw >> 1);
-            const int32_t rollOffset = right
-                ? (state.rollDeltaRaw >> 1)
-                : -(state.rollDeltaRaw >> 1);
-            const int32_t supportY = bodyYRaw - rideHeightOffsetRaw +
-                                     pitchOffset + rollOffset;
-            const int32_t penetration = supportY - surfaceYRaw[i];
-            if (penetration <= 0) continue;
-
-            localOutput.touchingMask |= bit;
-            if (penetration > localOutput.maxPenetrationRaw)
+            int32_t err = targetBody - bodyYRaw;
+            // Penetration diagnostic (body deeper than plane, Y-down).
+            if (err < 0)
             {
-                localOutput.maxPenetrationRaw = penetration;
+                localOutput.maxPenetrationRaw = -err;
             }
-            if (front) frontPenetration += penetration;
-            else rearPenetration += penetration;
-            if (right) rightPenetration += penetration;
-            else leftPenetration += penetration;
+            int32_t step = err >> kBodyBlendShift;
+            if (step == 0 && err != 0)
+            {
+                step = (err > 0) ? 1 : -1;
+            }
+            if (step > kMaxBodyStepRaw) step = kMaxBodyStepRaw;
+            if (step < -kMaxBodyStepRaw) step = -kMaxBodyStepRaw;
+            bodyYRaw += step;
+            state.verticalVelocityRaw = step;
         }
 
-        if (localOutput.touchingMask != 0u)
+        // --- Pitch / roll: ease toward geometric F−R / R−L targets ------------
         {
-            // Position-based normal constraint. Limiting the correction avoids
-            // reproducing a mesh height discontinuity as a one-frame snap.
-            bodyYRaw -= Clamp(localOutput.maxPenetrationRaw,
-                              0,
-                              kMaxPositionCorrectionRaw);
-
-            // Arcade suspension: contact cancels downward speed without bounce.
-            // Gravity is integrated again next frame, keeping tires pressed down.
-            if (state.verticalVelocityRaw > 0)
+            int32_t errP = targetPitch - state.pitchDeltaRaw;
+            int32_t stepP = errP >> kAttitudeBlendShift;
+            if (stepP == 0 && errP != 0)
             {
-                state.verticalVelocityRaw = 0;
+                stepP = (errP > 0) ? 1 : -1;
             }
+            if (stepP > kMaxAttitudeStepRaw) stepP = kMaxAttitudeStepRaw;
+            if (stepP < -kMaxAttitudeStepRaw) stepP = -kMaxAttitudeStepRaw;
+            state.pitchDeltaRaw += stepP;
+            state.pitchVelocityRaw = stepP;
 
-            // Unequal corner reactions rotate the body around the first supports.
-            const int32_t pitchMoment = rearPenetration - frontPenetration;
-            const int32_t rollMoment = leftPenetration - rightPenetration;
-            state.pitchVelocityRaw = Clamp(
-                state.pitchVelocityRaw + (pitchMoment >> 4),
-                -kMaxAngularVelocityRaw,
-                kMaxAngularVelocityRaw);
-            state.rollVelocityRaw = Clamp(
-                state.rollVelocityRaw + (rollMoment >> 4),
-                -kMaxAngularVelocityRaw,
-                kMaxAngularVelocityRaw);
-            state.pitchDeltaRaw += pitchMoment >> 2;
-            state.rollDeltaRaw += rollMoment >> 2;
+            int32_t errR = targetRoll - state.rollDeltaRaw;
+            int32_t stepR = errR >> kAttitudeBlendShift;
+            if (stepR == 0 && errR != 0)
+            {
+                stepR = (errR > 0) ? 1 : -1;
+            }
+            if (stepR > kMaxAttitudeStepRaw) stepR = kMaxAttitudeStepRaw;
+            if (stepR < -kMaxAttitudeStepRaw) stepR = -kMaxAttitudeStepRaw;
+            state.rollDeltaRaw += stepR;
+            state.rollVelocityRaw = stepR;
         }
 
         state.pitchDeltaRaw = Clamp(state.pitchDeltaRaw,
@@ -157,6 +190,7 @@ public:
         state.rollDeltaRaw = Clamp(state.rollDeltaRaw,
                                    -kMaxAttitudeDeltaRaw,
                                    kMaxAttitudeDeltaRaw);
+
         if (output) *output = localOutput;
         return true;
     }
@@ -167,18 +201,6 @@ private:
         if (value < minimum) return minimum;
         if (value > maximum) return maximum;
         return value;
-    }
-
-    static int32_t Average2(int32_t a, int32_t b)
-    {
-        return static_cast<int32_t>((static_cast<int64_t>(a) + b) >> 1);
-    }
-
-    static int32_t Average4(const int32_t values[4])
-    {
-        const int64_t sum = static_cast<int64_t>(values[0]) + values[1] +
-                            values[2] + values[3];
-        return static_cast<int32_t>(sum >> 2);
     }
 };
 } // namespace Game::CarPhysics

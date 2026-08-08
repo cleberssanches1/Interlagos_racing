@@ -35,12 +35,14 @@ public:
     // The audited S do Senna mesh reaches tan~=0.39. Even near 150-200 km/h a
     // wheel can legitimately move more than 16 Y units between its alternating
     // diagonal samples. Keep the cap below the known ~40-unit wrong-deck jump.
-    static constexpr int32_t kMaxObservedStepRaw = 0x00200000;     // 32 climb
-    static constexpr int32_t kMaxObservedStepDownRaw = 0x00400000; // 64 descent / junction
-    static constexpr int32_t kMaxWheelSpeedRaw = 0x00140000;       // 20 units/frame
-    static constexpr int32_t kSettleThresholdRaw = 0x00000800; // 0.03125
+    static constexpr int32_t kMaxObservedStepRaw = 0x00100000;     // 16 climb
+    // Plan 2026-08-08: 64u multi-band jumps caused heave/pitch spikes.
+    static constexpr int32_t kMaxObservedStepDownRaw = 0x00100000; // 16 descent
+    // Fast corner settle so attitude samples match live asphalt each frame.
+    static constexpr int32_t kMaxWheelSpeedRaw = 0x00100000;       // 16 units/frame
+    static constexpr int32_t kSettleThresholdRaw = 0x00000400; // 0.015625
     // Climb face flips still need confirmation. Descent/junction never stalls.
-    static constexpr int32_t kMaxFaceSwitchDeltaRaw = 0x00200000; // 32 units
+    static constexpr int32_t kMaxFaceSwitchDeltaRaw = 0x00180000; // 24 units
     static constexpr uint8_t kSampleHoldFrames = 8u;
     static constexpr uint8_t kFaceSwitchConfirmSamples = 3u;
 
@@ -126,8 +128,8 @@ public:
             if ((state.validMask & bit) == 0u) continue;
 
             const int32_t error = state.targetYRaw[i] - state.filteredYRaw[i];
-            // spring=1/4 error; damping retains 1/2 velocity.
-            int32_t velocity = (state.velocityYRaw[i] >> 1) + (error >> 2);
+            // Fast settle: 1/2 error — corners track MapHeight same frame.
+            int32_t velocity = (state.velocityYRaw[i] >> 2) + (error >> 1);
             velocity = Clamp(velocity, -kMaxWheelSpeedRaw, kMaxWheelSpeedRaw);
             int32_t next = state.filteredYRaw[i] + velocity;
             if ((error > 0 && next > state.targetYRaw[i]) ||

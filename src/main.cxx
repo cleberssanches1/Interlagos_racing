@@ -1283,11 +1283,8 @@ static int RunPhysicsPocMode()
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
 
-    // Clearance above MapHeight (Y-down: negative = higher altitude).
-    // 2 units reduces residual asphalt×body overlap after 4-wheel plane adhesion.
-    constexpr int32_t kCarLiftUnits = 2;
-    Game::CarPhysics::SetRideHeightOffset(
-        Game::CarPhysics::GetRideHeightOffset() - SRL::Math::Types::Fxp::BuildRaw(kCarLiftUnits << 16));
+    // Ride height: Tunables::kRideHeightOffset only (~−0.09).
+    // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant.
 
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
@@ -1681,11 +1678,8 @@ int GameApp::Run()
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
 
-    // Clearance above MapHeight (Y-down: negative = higher altitude).
-    // 2 units reduces residual asphalt×body overlap after 4-wheel plane adhesion.
-    constexpr int32_t kCarLiftUnits = 2;
-    Game::CarPhysics::SetRideHeightOffset(
-        Game::CarPhysics::GetRideHeightOffset() - SRL::Math::Types::Fxp::BuildRaw(kCarLiftUnits << 16));
+    // Ride height: Tunables::kRideHeightOffset only (~−0.09).
+    // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant.
 
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
