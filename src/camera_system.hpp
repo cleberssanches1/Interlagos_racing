@@ -20,14 +20,15 @@ public:
 
     // Body pitch → camera pitch sign (Y-down: +bodyPitch = nose down).
     static constexpr int32_t kCamPitchSign = 1;
-    static constexpr int32_t kMaxCamPitchDeg = 18;
-    // Ignore tiny seam/noise pitch so start throttle + segment joints don't bob.
-    static constexpr int32_t kPitchDeadzoneDeg = 3;
-    // Asymmetric cam pitch rate (F1 96 plant — leave nose-down faster).
-    static constexpr int32_t kMaxCamPitchStepInDeg = 1;   // into ramp
-    static constexpr int32_t kMaxCamPitchStepOutDeg = 3;  // recover level
-    // Boom offset uses only a fraction of pitch (full pitch lifted the tower).
-    static constexpr int32_t kBoomPitchFractionX100 = 45;
+    static constexpr int32_t kMaxCamPitchDeg = 16;
+    // Ignore tiny seam noise; keep classic chase framing.
+    static constexpr int32_t kPitchDeadzoneDeg = 2;
+    static constexpr int32_t kMaxCamPitchStepInDeg = 2;
+    static constexpr int32_t kMaxCamPitchStepOutDeg = 3;
+    // Mild boom pitch (full fraction lifted tower / could flip framing).
+    static constexpr int32_t kBoomPitchFractionX100 = 40;
+    // Look uses slightly less pitch than view (soft anti near-road warp).
+    static constexpr int32_t kLookPitchFractionX100 = 55;
     struct PathFrameContext
     {
         bool valid = false;

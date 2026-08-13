@@ -270,12 +270,13 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
         else
         {
             const int32_t planarBlendRaw = CameraFollowBlendRaw();
-            // Arcade camera isolation: XZ stays responsive at speed, while Y
-            // rejects wheel/face chatter. On an established slope Y converges
-            // faster, but never inherits the near-rigid planar blend.
-            // A single vertical response avoids another threshold at which
-            // the camera used to change speed in the middle of the descent.
-            constexpr int32_t verticalBlendRaw = 16384; // 0.25
+            // Classic Y follow; slightly faster on slope only.
+            int32_t verticalBlendRaw = 16384; // 0.25
+            if (std::abs(static_cast<int>(roadBodyPitchDeg_)) > 2 ||
+                std::abs(static_cast<int>(roadGradeTanX100_)) > 8)
+            {
+                verticalBlendRaw = 26214; // ~0.40 on slope
+            }
             constexpr int32_t maxVerticalCarryRaw = 24 << 16;
             const int32_t verticalCarryRaw = std::clamp<int32_t>(
                 carVerticalDeltaRaw_, -maxVerticalCarryRaw, maxVerticalCarryRaw);
@@ -348,15 +349,15 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
     if (chasePreset_ == ChasePreset::ChaseNear)
     {
         const Fxp speedNorm = Fxp::BuildRaw(movementSpeedNormRaw_);
-        constexpr int32_t kLookAheadBaseUnits = 20;
-        constexpr int32_t kLookAheadSpeedGainUnits = 10;
+        // Classic chase look distance (do not pull focus so far the car leaves frame).
+        constexpr int32_t kLookAheadBaseUnits = 24;
+        constexpr int32_t kLookAheadSpeedGainUnits = 12;
         lookAheadUnits = kLookAheadBaseUnits;
         lookAheadUnits += static_cast<int32_t>(
             (static_cast<int64_t>(kLookAheadSpeedGainUnits) * speedNorm.RawValue()) >> 16);
-        lookAheadUnits = std::clamp<int32_t>(lookAheadUnits, 12, 56);
-        // Prefer preset lookAhead when larger (calibrated chase distance).
+        lookAheadUnits = std::clamp<int32_t>(lookAheadUnits, 16, 64);
         if (cfg.lookAhead > lookAheadUnits) lookAheadUnits = cfg.lookAhead;
-        lookHeightUnits = static_cast<int32_t>(cfg.lookHeight) + 3;
+        lookHeightUnits = static_cast<int32_t>(cfg.lookHeight) + 2;
     }
     else if (chasePreset_ == ChasePreset::ChaseFar)
     {
@@ -369,7 +370,6 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         Fxp lookY = Fxp::BuildRaw(lookHeightUnits << 16);
         Fxp lookZ = Fxp::BuildRaw(lookAheadUnits << 16);
         ApplyLocalPitchYZ(smoothedCamPitchDeg_ * kCamPitchSign, lookY, lookZ);
-        // 1P: look along pitched heading from current camera.
         const Vector3D lookOff(
             (headingForward.X * lookZ),
             lookY,
@@ -378,13 +378,22 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
         return lastResolvedLookTarget_;
     }
 
-    // Arcade chase: look point in body frame (ahead + height), rotated by cam pitch
-    // so the view tilts with the car on declines/climbs.
+    // Classic chase look from car (not camera): keeps car in frame.
+    // Mild look-pitch reduction + small lift only (anti near-road warp).
     Fxp lookY = Fxp::BuildRaw(lookHeightUnits << 16);
     Fxp lookZ = Fxp::BuildRaw(lookAheadUnits << 16);
-    ApplyLocalPitchYZ(smoothedCamPitchDeg_ * kCamPitchSign, lookY, lookZ);
+    const int32_t lookPitchDeg =
+        (static_cast<int32_t>(smoothedCamPitchDeg_) * kLookPitchFractionX100) /
+        100;
+    ApplyLocalPitchYZ(lookPitchDeg * kCamPitchSign, lookY, lookZ);
+    if (smoothedCamPitchDeg_ > 2)
+    {
+        // Small lift only — large lift made look fly and car leave frame.
+        const int32_t liftUnits =
+            (static_cast<int32_t>(smoothedCamPitchDeg_) * lookAheadUnits) / 120;
+        lookY = Fxp::BuildRaw(lookY.RawValue() - (liftUnits << 16));
+    }
 
-    // Optional planar blend of chase forward for look XZ (yaw only).
     const Vector3D forward = chaseForward;
     lastResolvedLookTarget_ = Vector3D(
         carWorldPosition.X + (forward.X * lookZ),
@@ -479,15 +488,17 @@ CameraSystem::ChasePresetConfig CameraSystem::PresetConfig(ChasePreset preset) c
         };
     case ChasePreset::ChaseNear:
     default:
+        // Restore classic chase framing (car must stay in view).
+        // Mild anti-warp only via look pitch fraction + small lift above.
         return ChasePresetConfig{
             chaseNearOffsetX_,
-            -24,    // offsetY
-            chaseNearOffsetZ_,
+            -24,    // offsetY (baseline)
+            chaseNearOffsetZ_, // behind car (~-240)
             120,    // lookAhead
-            -30,    // lookHeight
+            -28,    // lookHeight
             0,      // viewPitchDeg
-            40,     // pitchFollowX100 - stable arcade view; boom is independent
-            16384,  // pitchBlendRaw ~0.25
+            45,     // pitchFollowX100
+            19661,  // pitchBlendRaw ~0.30
             16,     // baseBoomLift
             12      // minBoomClearance
         };
@@ -598,8 +609,7 @@ void CameraSystem::UpdateSmoothedCamPitch() const
         (static_cast<int32_t>(roadGradeTanX100_) * 57) / 100);
     const int32_t bodyPitch = static_cast<int32_t>(roadBodyPitchDeg_);
 
-    // Chase: use the milder of grade attitude vs body so hold/lag cannot
-    // freeze the boom nose-down after the ramp softens (F1 96 plant).
+    // Chase: mild of grade/body so view does not over-dive into near asphalt.
     int32_t targetPitch = 0;
     if (chasePreset_ == ChasePreset::FirstPerson)
     {
@@ -609,16 +619,10 @@ void CameraSystem::UpdateSmoothedCamPitch() const
     }
     else
     {
-        // Average then pull toward the smaller magnitude (anti-tower).
-        const int32_t avg = (gradePitch + bodyPitch) / 2;
-        if (std::abs(gradePitch) < std::abs(bodyPitch))
-        {
-            targetPitch = (avg + gradePitch) / 2;
-        }
-        else
-        {
-            targetPitch = (avg + bodyPitch) / 2;
-        }
+        // Prefer smaller magnitude (anti near-road warp) with a bit of body.
+        const int32_t mild =
+            (std::abs(gradePitch) < std::abs(bodyPitch)) ? gradePitch : bodyPitch;
+        targetPitch = (mild * 2 + bodyPitch) / 3;
     }
 
     constexpr int32_t kStableSpeedNormRaw = (1 << 12); // ~0.0625
@@ -732,17 +736,15 @@ CameraSafety::Config CameraSystem::BoomSafetyConfig(int32_t pitchDeg) const
     const auto cfg = PresetConfig(chasePreset_);
     CameraSafety::Config boom = safetyConfig_;
     int32_t clearance = static_cast<int32_t>(cfg.minBoomClearance);
-    // Small pitch term only — old +1 unit/degree made the chase "tower" on
-    // steep descents (video 23-05). Mesh guard still owns hard anti-asphalt.
     const int32_t absPitch = (pitchDeg < 0) ? -pitchDeg : pitchDeg;
     if (absPitch > kPitchDeadzoneDeg)
     {
-        int32_t extra = (absPitch - kPitchDeadzoneDeg) / 4; // 0.25 u/deg
+        int32_t extra = (absPitch - kPitchDeadzoneDeg) / 4; // mild
         if (extra > 4) extra = 4;
         clearance += extra;
     }
     if (clearance < 8) clearance = 8;
-    if (clearance > 20) clearance = 20;
+    if (clearance > 18) clearance = 18;
     boom.minCameraHeightAboveTarget = Fxp::BuildRaw(clearance << 16);
     return boom;
 }

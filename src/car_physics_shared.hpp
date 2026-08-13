@@ -418,9 +418,11 @@ struct Tunables
     // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant −0.09.
     static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-0x00001700);   // ~-0.09
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00246572); // ~36.3963
-    // Plant down freer than climb (anti-float on decline).
-    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00010000);      // 1.0 anti-jolt
-    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00030000);    // 3.0 plant
+    // gradeDy climb was 1.0 while drop 3.0 → body lagged under asphalt on aclives.
+    // Match climb capacity to drop for continuous grade; decline path unchanged.
+    static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00030000);      // 3.0 climb gradeDy
+    static constexpr Fxp kMaxYStepDownPerFrame = Fxp::BuildRaw(0x00030000);    // 3.0 decline (keep)
+
     // Per-frame topology telemetry for camera/grade behavior.
     static constexpr Fxp kTopoDropYThreshold = Fxp::BuildRaw(0x00004000);      // 0.25
     static constexpr uint8_t kTopoDropHoldFrames = 16u;
@@ -440,46 +442,45 @@ struct Tunables
     static constexpr Fxp kMaxAttitudeChordY = Fxp::BuildRaw(0x001E0000);      // 30.0
     // Only true stair spikes rate-limited (not normal face tracking).
     static constexpr Fxp kStairChordRejectY = Fxp::BuildRaw(0x00100000);      // 16.0
-    // Attitude: hold ONLY while axles split; soft-exit short.
-    // 16-17: pitch lag left body flat vs face — track face faster mid-slab.
-    static constexpr Fxp kMaxAttitudeChordStepY = Fxp::BuildRaw(0x00014000);   // 1.25 both
-    static constexpr Fxp kMaxAttitudeChordStepDiveY = Fxp::BuildRaw(0x00018000); // 1.5 face
-    // Soft-exit frames AFTER axles reunite (not while split).
-    static constexpr uint8_t kJunctionAttitudeHoldFrames = 6u;
-    // While split: freeze. Soft-exit: crawl toward grade.
-    static constexpr Fxp kJunctionMaxChordStepY = Fxp::BuildRaw(0x00004000);   // 0.25 soft
-    // Cap raw residual vs grade for pitch publish (not a long hold arm).
-    static constexpr Fxp kEmbicadaOverGradeY = Fxp::BuildRaw(0x00018000);      // 1.5
-    static constexpr Fxp kChordJumpArmY = Fxp::BuildRaw(0x00030000);          // 3.0 (spike only)
-    static constexpr uint8_t kAttitudeChordBlendShift = 1u;                   // >>1 = 1/2
-    static constexpr uint8_t kPitchGradeBlendShift = 1u;                      // residual 1/2
-    // Heave (16-17): plant ON face — continuous must not lag above asphalt.
-    static constexpr Fxp kMaxRideTargetStepY = Fxp::BuildRaw(0x00028000);      // 2.5
-    static constexpr Fxp kMaxRideTargetStepLowSpeedY = Fxp::BuildRaw(0x00010000); // 1.0
-    static constexpr Fxp kLowSpeedForHeaveSmooth = Fxp::BuildRaw(0x00180000);  // 24 speed units
+    // Attitude low-cost: grade + axle F−R (no multi-point planar look-ahead).
+    // Target ~2–4 MapHeight/frame (was 12–18 with 4 corners + planar N/N+1).
+    static constexpr Fxp kMaxAttitudeChordStepY = Fxp::BuildRaw(0x00028000);   // 2.5 both
+    static constexpr Fxp kMaxAttitudeChordStepDiveY = Fxp::BuildRaw(0x00028000); // 2.5 face
+    static constexpr uint8_t kJunctionAttitudeHoldFrames = 4u;
+    static constexpr Fxp kJunctionMaxChordStepY = Fxp::BuildRaw(0x00014000);   // 1.25
+    static constexpr Fxp kEmbicadaOverGradeY = Fxp::BuildRaw(0x00020000);      // 2.0
+    static constexpr Fxp kChordJumpArmY = Fxp::BuildRaw(0x00030000);          // 3.0
+    static constexpr Fxp kLookAheadLeadMaxY = Fxp::BuildRaw(0x00020000);       // 2.0
+    static constexpr uint8_t kAttitudeChordBlendShift = 1u;
+    static constexpr uint8_t kPitchGradeBlendShift = 1u;
+    // OFF: 2–4 extra MapHeight/frame; grade hold covers continuous decline.
+    static constexpr bool kEnableLookAheadAttitude = false;
+    static constexpr Fxp kLookAheadLong = Fxp::BuildRaw(
+        ContactGeometry::kHalfWheelBaseRaw +
+        (ContactGeometry::kHalfWheelBaseRaw >> 1)); // 56.25
+    // Heave: continuous gradeDy + face glue (few probes).
+    static constexpr Fxp kMaxRideTargetStepY = Fxp::BuildRaw(0x00040000);      // 4.0
+    static constexpr Fxp kMaxRideTargetStepLowSpeedY = Fxp::BuildRaw(0x00018000); // 1.5
+    static constexpr Fxp kLowSpeedForHeaveSmooth = Fxp::BuildRaw(0x00100000);  // 16
     static constexpr Fxp kRideSeamJumpY = Fxp::BuildRaw(0x00018000);           // 1.5
-    static constexpr Fxp kMaxBodySlideDownY = Fxp::BuildRaw(0x00028000);       // 2.5 plant
-    static constexpr Fxp kJunctionMaxHeaveDownY = Fxp::BuildRaw(0x00014000);   // 1.25
-    static constexpr Fxp kMaxBodySlideUpY = Fxp::BuildRaw(0x0000C000);        // 0.75 anti-jolt
-    static constexpr Fxp kFloatCatchupY = Fxp::BuildRaw(0x00004000);           // 0.25
-    // Hard band: almost no air; slight dig better than float (16-17 too high).
+    // Decline plant down stays freer/snappy; climb only raised for anti-bury.
+    static constexpr Fxp kMaxBodySlideDownY = Fxp::BuildRaw(0x00030000);       // 3.0 decline plant
+    static constexpr Fxp kJunctionMaxHeaveDownY = Fxp::BuildRaw(0x00018000);   // 1.5
+    static constexpr Fxp kMaxBodySlideUpY = Fxp::BuildRaw(0x00030000);        // 3.0 climb exit mesh
+    static constexpr Fxp kFloatCatchupY = Fxp::BuildRaw(0x00001000);           // ~0.06
+    // Almost no air; almost no dig (aclive was burying under face).
     static constexpr Fxp kMaxAirAboveMeasuredY = Fxp::BuildRaw(0x00000400);    // ~0.015
-    static constexpr Fxp kMaxPenetrateMeasuredY = Fxp::BuildRaw(0x00001800);   // ~0.09
-    static constexpr Fxp kMaxClimbOnDeclineY = Fxp::BuildRaw(0x0000C000);      // 0.75
-    // Plant glue earlier.
-    static constexpr Fxp kHighSpeedPlantGlue = Fxp::BuildRaw(0x000C0000);     // ~12 speed units
-    static constexpr uint8_t kRidePlaneFilterShift = 2u;                      // 1/4 toward sample
+    static constexpr Fxp kMaxPenetrateMeasuredY = Fxp::BuildRaw(0x00000800);   // ~0.03 tighter dig
+    static constexpr Fxp kMaxClimbOnDeclineY = Fxp::BuildRaw(0x00018000);      // 1.5
+    static constexpr Fxp kHighSpeedPlantGlue = Fxp::BuildRaw(0x00080000);     // ~8
+    static constexpr uint8_t kRidePlaneFilterShift = 2u;
     static constexpr Fxp kHeaveSnapEpsY = Fxp::BuildRaw(0x00001000);          // ~0.06
-    // Measured plane unchanged within this eps ⇒ still on same face/slab.
     static constexpr Fxp kSameFaceEpsY = Fxp::BuildRaw(0x00008000);           // 0.5
-    // Pre-probe body nudge along grade (also stores lastForwardSpeed).
     static constexpr bool kEnableGradePredictY = true;
     static constexpr Fxp kGradePredictYMax = Fxp::BuildRaw(0x00010000);       // 1.0
-    // Do not decay heave grade while nearly stopped (resume without re-stair).
     static constexpr Fxp kGradeHoldMinSpeed = Fxp::BuildRaw(0x00020000);      // 2.0
     static constexpr Fxp kStationaryYawLockSpeed = Fxp::BuildRaw(0x00005A00);
     static constexpr Fxp kSurfaceSampleDownBias = Fxp::BuildRaw(0x00008000);   // 0.5
-    // CAR1 wheel rectangle in model/world units.
     static constexpr Fxp kProbeHalfWheelBase =
         Fxp::BuildRaw(ContactGeometry::kHalfWheelBaseRaw);
     static constexpr Fxp kProbeHalfTrack =
@@ -491,14 +492,15 @@ struct Tunables
     static constexpr Fxp kProbeSlopeAssistSpeed = Fxp::BuildRaw(0x0007477D);
     static constexpr uint8_t kAuxProbeCadenceFrames = 2u;
     static constexpr uint8_t kGripProbeIntervalFrames =
-        kEnableSaturnLowCostPhysics ? 6u : 2u;
+        kEnableSaturnLowCostPhysics ? 8u : 4u;
     static constexpr uint8_t kSurfaceContactCadenceFrames =
-        kEnableSaturnLowCostPhysics ? 6u : 1u;
-    // 4-corner wheel plane (pitch + roll). Not reduced centerline.
-    static constexpr bool kPreferReducedGroundProbe = false;
-    // Probe all four contacts every frame so wheels force the chassis plane.
-    static constexpr bool kForceAxleCenterlineProbes = false;
-    static constexpr bool kEnableFourWheelPlaneProbes = true;
+        kEnableSaturnLowCostPhysics ? 8u : 2u;
+    // LOW COST: 2 axle-centerline probes (or diagonal 2/frame), not 4 corners.
+    static constexpr bool kPreferReducedGroundProbe = true;
+    static constexpr bool kForceAxleCenterlineProbes = true;
+    static constexpr bool kEnableFourWheelPlaneProbes = true; // still used if force off
+    // Skip lat-half retry (saves 1 MapHeight per wheel miss).
+    static constexpr bool kEnableWheelLatHalfRetry = false;
     // Single-plant path (plan 2026-08-08): chord + continuous heave only.
     // Solver stacked with adhesion caused fly/jump/penetrate (12-53 / 12-57).
     static constexpr bool kEnableCornerContactSolver = false;

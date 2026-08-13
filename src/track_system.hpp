@@ -660,9 +660,13 @@ private:
                                   SRL::Math::Types::Vector3D& outCenter,
                                   FamilyIdVector& outFamilyIds,
                                   uint8_t designGeoTier = 0xFF);
+    // designGeoTier: 0=high, 1=low, 0xFF=default high (legacy). Prefer rank-based.
     bool BuildSegmentIntoSlideScratch(int32_t segmentId,
                                       SRL::Math::Types::Vector3D& outCenter,
-                                      FamilyIdVector& outFamilyIds);
+                                      FamilyIdVector& outFamilyIds,
+                                      uint8_t designGeoTier = 0xFF);
+    // Clear demobilized slot metadata after drop (walls, caches, geo tier).
+    void DemobilizeSegmentSlotMetadata(SegmentRenderEntry& slot);
     void TryPrefetchUpcomingSegment();
     void PrimeRuntimeScratchCapacities();
     void ApplyActiveRendererCapacityFloor(TrackRenderer& renderer);

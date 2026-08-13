@@ -1102,8 +1102,7 @@ static int RunPhysicsPocMode()
     audioEvents.SetVoiceRouter(projectVoiceRouter);
     audioEvents.Initialize();
 
-    // Camera/projecao de teste
-    // Narrower FOV reduces affine texture warp near screen edges.
+    // Classic chase FOV (anti-warp without losing car framing).
     constexpr float kCameraFovDeg = 30.0f;
     SRL::Scene3D::SetPerspective(Angle::FromDegrees(kCameraFovDeg));
 

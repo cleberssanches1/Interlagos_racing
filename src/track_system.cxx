@@ -9228,16 +9228,22 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         (direction >= 0) ? (windowCount - 1u) : 0u;
 
     Vector3D incomingCenter = slidePrefetchCenter_;
-    // Usar scratch persistente â€” evita alloc/free de LWR por slide
+    // Persistent scratch — no LWR alloc/free per slide. Tail = low design geo.
     slideScratchEntry_.lodState.faceFamilyIds.clear();
-    if (!BuildSegmentIntoSlideScratch(nextId, incomingCenter, slideScratchEntry_.lodState.faceFamilyIds) ||
-        slideScratchEntry_.lodState.faceFamilyIds.empty())
     {
-        slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
-        SRL::Debug::Print(1, 11, "PKG tail build fail id:%d md:%u",
-                          nextId,
-                          static_cast<unsigned>(prefetchMetadataReady() ? 1u : 0u));
-        return false;
+        const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
+        if (!BuildSegmentIntoSlideScratch(nextId,
+                                          incomingCenter,
+                                          slideScratchEntry_.lodState.faceFamilyIds,
+                                          geoTier) ||
+            slideScratchEntry_.lodState.faceFamilyIds.empty())
+        {
+            slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
+            SRL::Debug::Print(1, 11, "PKG tail build fail id:%d md:%u",
+                              nextId,
+                              static_cast<unsigned>(prefetchMetadataReady() ? 1u : 0u));
+            return false;
+        }
     }
 
     bool addedIncomingFamily = false;
@@ -9466,6 +9472,8 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
 
     SegmentRenderEntry& slot = segmentRenderers_[dropIdx];
     TrackSegmentEntry& meta = segmentEntries_[dropIdx];
+    // Demobilize outgoing metadata before ring reuse (walls/working-set/geo).
+    DemobilizeSegmentSlotMetadata(slot);
     std::swap(slot.renderer, slideScratchRenderer_);
     if (!slot.renderer)
     {
@@ -9475,7 +9483,8 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     }
     if (slideScratchRenderer_)
     {
-        slideScratchRenderer_->RecycleRuntimeState();
+        // compact outliers once on demobilize to stop capacity ratchet over laps.
+        slideScratchRenderer_->RecycleRuntimeState(true);
     }
 
     slot.id = nextId;
@@ -9483,8 +9492,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     slot.center = incomingCenter;
     slot.lodState.SetReady(true);
     slot.lodState.SetHasPerFaceRankOffsets(false);
-    // Swap entre dois membros persistentes: old slot capacity vai para o scratch,
-    // incoming data vai para o slot â€” nenhum free de LWR ocorre.
+    // Swap persistent vectors: capacities stay in the ring; no LWR free.
     slot.lodState.faceFamilyIds.swap(incomingPrepared.lodState.faceFamilyIds);
     slot.lodState.faceRankOffsets.swap(incomingPrepared.lodState.faceRankOffsets);
     slot.lodState.currentFaceSlots.swap(incomingPrepared.lodState.currentFaceSlots);
@@ -9501,6 +9509,16 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         slot.lodState.currentBaseRank = -1;
         slot.lodState.desiredLodIndex = ResolveSegmentLodIndexByRank(incomingLogicalRank);
         slot.lodState.desiredBaseRank = -1;
+        // Copy design-geo tier from prepared incoming (was never applied on drop).
+        const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
+        slot.lodState.currentDesignGeoTier =
+            (incomingPrepared.lodState.currentDesignGeoTier != 0xFF)
+                ? incomingPrepared.lodState.currentDesignGeoTier
+                : geoTier;
+        slot.lodState.desiredDesignGeoTier =
+            (incomingPrepared.lodState.desiredDesignGeoTier != 0xFF)
+                ? incomingPrepared.lodState.desiredDesignGeoTier
+                : geoTier;
     }
     meta.id = nextId;
     ApplyActiveRendererCapacityFloor(*slot.renderer);
@@ -9707,16 +9725,22 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         (slideBackBuffer_.direction >= 0) ? (windowCount - 1u) : 0u;
 
     Vector3D incomingCenter = slidePrefetchCenter_;
-    // Usar scratch persistente â€” evita alloc/free de LWR por slide
+    // Persistent scratch — no LWR alloc/free per slide. Tail = low design geo.
     slideScratchEntry_.lodState.faceFamilyIds.clear();
-    if (!BuildSegmentIntoSlideScratch(nextId, incomingCenter, slideScratchEntry_.lodState.faceFamilyIds) ||
-        slideScratchEntry_.lodState.faceFamilyIds.empty())
     {
-        slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
-        SRL::Debug::Print(1, 11, "PKG tail build fail id:%d md:%u",
-                          nextId,
-                          static_cast<unsigned>(prefetchMetadataReady() ? 1u : 0u));
-        return false;
+        const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
+        if (!BuildSegmentIntoSlideScratch(nextId,
+                                          incomingCenter,
+                                          slideScratchEntry_.lodState.faceFamilyIds,
+                                          geoTier) ||
+            slideScratchEntry_.lodState.faceFamilyIds.empty())
+        {
+            slideHwrTrace_.flags |= kSlideHwrTracePrepareFailBit;
+            SRL::Debug::Print(1, 11, "PKG tail build fail id:%d md:%u",
+                              nextId,
+                              static_cast<unsigned>(prefetchMetadataReady() ? 1u : 0u));
+            return false;
+        }
     }
 
     bool addedIncomingFamily = false;
@@ -10277,13 +10301,55 @@ bool TrackSystem::BuildSegmentIntoRenderer(int32_t segmentId,
     return true;
 }
 
+void TrackSystem::DemobilizeSegmentSlotMetadata(SegmentRenderEntry& slot)
+{
+    // Outgoing segment left the window: drop caches that ratchet capacity and
+    // can retain stale collision/draw state across laps (FPS decay over time).
+    slot.wallSegments2D.clear();
+    if (slot.wallSegments2D.capacity() > 64u)
+    {
+        decltype(slot.wallSegments2D) empty;
+        slot.wallSegments2D.swap(empty);
+    }
+    slot.SetWallSegmentsCacheReady(false);
+    slot.wallSegmentsCacheVertCount = 0u;
+    slot.wallSegmentsCacheFaceCount = 0u;
+    slot.wallSegmentsCacheFamilyCount = 0u;
+    slot.wallSegmentsCacheSegmentId = -1;
+    slot.wallSegmentsCacheLodIndex = 0xFF;
+    slot.wallSegmentsCacheFlags = 0u;
+
+    slot.lodState.workingSetFamilies.clear();
+    slot.lodState.workingSetLodIndices.clear();
+    slot.lodState.workingSetSlots.clear();
+    // Shrink if an outlier segment inflated capacity in this ring slot.
+    if (slot.lodState.workingSetFamilies.capacity() > 64u)
+    {
+        TrackLowWorkU16Vector emptyF;
+        slot.lodState.workingSetFamilies.swap(emptyF);
+    }
+    if (slot.lodState.workingSetLodIndices.capacity() > 64u)
+    {
+        TrackLowWorkU8Vector emptyL;
+        slot.lodState.workingSetLodIndices.swap(emptyL);
+    }
+    if (slot.lodState.workingSetSlots.capacity() > 64u)
+    {
+        TrackLowWorkI16Vector emptyS;
+        slot.lodState.workingSetSlots.swap(emptyS);
+    }
+    slot.lodState.SetWorkingSetCacheDirty(true);
+    slot.lodState.currentDesignGeoTier = 0xFF;
+    slot.lodState.desiredDesignGeoTier = 0xFF;
+}
+
 bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
                                                Vector3D& outCenter,
-                                               FamilyIdVector& outFamilyIds)
+                                               FamilyIdVector& outFamilyIds,
+                                               uint8_t designGeoTier)
 {
     if (segmentId <= 0) return false;
-    // Se o renderer foi prÃ©-construÃ­do pelo prefetch para este segmento, reutilizÃ¡-lo diretamente.
-    // O slideScratchRenderer_ jÃ¡ contÃ©m a geometria; apenas copiar os family IDs do cache.
+    // Prefetch already built low-geo tail into slideScratchRenderer_ for this id.
     if (kEnableTrackRuntimeStabilization &&
         SlidePrefetchRendererReady() &&
         slidePrefetchSegmentId_ == segmentId &&
@@ -10291,17 +10357,31 @@ bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
     {
         outCenter = slidePrefetchCenter_;
         outFamilyIds.assign(slidePrefetchFamilyIds_.begin(), slidePrefetchFamilyIds_.end());
-        // SlidePrefetchRendererReady() serÃ¡ limpo em ResetSlidePrefetchState() apÃ³s o slide
         return true;
     }
-    // Build sÃ­ncrono (fallback: prefetch ainda nÃ£o construiu o renderer)
-    if (!slideScratchRenderer_) slideScratchRenderer_ = MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
+    // Sync fallback: must honor design geo tier (tail = low), not default high.
+    if (!slideScratchRenderer_)
+    {
+        slideScratchRenderer_ =
+            MakeTrackObjectUnique<TrackRenderer, SRL::Memory::Zone::LWRam>();
+    }
     if (slideScratchRenderer_)
     {
         ApplyActiveRendererCapacityFloor(*slideScratchRenderer_);
     }
     if (!slideScratchRenderer_) return false;
-    if (!BuildSegmentIntoRenderer(segmentId, *slideScratchRenderer_, outCenter, outFamilyIds)) return false;
+    if (designGeoTier == 0xFFu)
+    {
+        designGeoTier = kDesignGeoHigh;
+    }
+    if (!BuildSegmentIntoRenderer(segmentId,
+                                  *slideScratchRenderer_,
+                                  outCenter,
+                                  outFamilyIds,
+                                  designGeoTier))
+    {
+        return false;
+    }
     return true;
 }
 
@@ -12429,6 +12509,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
                                                                &slideIncomingFamilyIdsScratch_);
         SegmentRenderEntry& slot = segmentRenderers_[dropIdx];
         TrackSegmentEntry& meta = segmentEntries_[dropIdx];
+        DemobilizeSegmentSlotMetadata(slot);
 
         TrackLowWorkUniquePtr<TrackRenderer> droppedRenderer = std::move(slot.renderer);
         if (kEnableTrackRuntimeStabilization)
@@ -12443,7 +12524,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         }
         if (slideScratchRenderer_)
         {
-            slideScratchRenderer_->RecycleRuntimeState();
+            slideScratchRenderer_->RecycleRuntimeState(true);
         }
         slot.id = nextId;
         slot.logicalSegmentCount = 1;
@@ -12451,6 +12532,12 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         slot.lodState.SetReady(true);
         slot.lodState.SetHasPerFaceRankOffsets(false);
         slot.lodState.currentBaseRank = -1;
+        {
+            // Non-det path: incoming is far-tail → low design geo.
+            const uint8_t geoTier = kDesignGeoLow;
+            slot.lodState.currentDesignGeoTier = geoTier;
+            slot.lodState.desiredDesignGeoTier = geoTier;
+        }
         const size_t incomingFaceCount = slideIncomingFamilyIdsScratch_.size();
         slideIncomingFaceRankOffsetsScratch_.assign(incomingFaceCount, 0);
         if (slideIncomingFaceSlotsScratch_.size() != incomingFaceCount)
@@ -18057,9 +18144,21 @@ void TrackSystem::RunEndFrameResourceMaintenance()
                 static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()),
                 static_cast<uint32_t>(workRamMaintenance_.releasedEndFrameSlotsThisFrame) +
                     static_cast<uint32_t>(FlushPendingRetiredTrackTextureSlots())));
-        if (!kEnableTrackRuntimeStabilization || kEnableStabilizedEndFramePaletteRecycle)
+        // Palette recycle only under HWR pressure (full-time recycle caused flashes).
+        // Prevents CRAM high-water growth over many laps without full-heap thrash.
         {
-            (void)ReleaseReusableTrackSlotPalettesEndFrame(usedTextureSlotsThisFrame_);
+            bool freeValid = false;
+            const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
+            const bool pressureRecycle =
+                freeValid &&
+                (freeBytes < (kWorkRamHardFloorBytes + (96u * 1024u)));
+            if (!kEnableTrackRuntimeStabilization ||
+                kEnableStabilizedEndFramePaletteRecycle ||
+                pressureRecycle)
+            {
+                (void)ReleaseReusableTrackSlotPalettesEndFrame(
+                    usedTextureSlotsThisFrame_);
+            }
         }
         LWR_PROBE_END(g_lwrStageAccum.flushRetiredSlots);
     }

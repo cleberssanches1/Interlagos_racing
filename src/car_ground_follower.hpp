@@ -339,18 +339,19 @@ public:
                 }
                 else if (error > 0)
                 {
-                    // Need deeper (float): plant hard — 3/4 residual always (16-17).
+                    // DECLINE / float: unchanged hard plant (do not weaken).
                     int32_t residual = (error * 3) >> 2;
                     if (highSpeedPlant ||
                         error > Tunables::kFloatCatchupY.RawValue())
                     {
-                        residual = error; // full catch-up when clearly floating
+                        residual = error;
                     }
                     if (residual == 0) residual = 1;
                     step = residual;
                     if (sliding)
                     {
                         int32_t gradeStep = ioState.surfaceTargetVelocityRaw;
+                        // Only accelerate plant DOWN with gradeDy (positive).
                         if (gradeStep > step) step = gradeStep;
                     }
                     if (step > maxSlideDown) step = maxSlideDown;
@@ -363,11 +364,23 @@ public:
                 }
                 else
                 {
-                    // Need higher (anti-bury): half residual, capped.
-                    int32_t residual = error >> 1;
-                    if (residual == 0) residual = -1;
+                    // ACLIVE / bury: full residual when clearly under face;
+                    // mild crawl only for tiny error (anti-jolt). Decline path above unchanged.
+                    int32_t residual = error; // full lift (error < 0)
+                    if (error > -Tunables::kFloatCatchupY.RawValue())
+                    {
+                        residual = (error * 3) >> 2; // mild only near face
+                        if (residual == 0) residual = -1;
+                    }
                     step = residual;
                     if (step < -maxUp) step = -maxUp;
+                    // Climb with gradeDy when negative (aclive continuous).
+                    if (sliding)
+                    {
+                        int32_t gradeStep = ioState.surfaceTargetVelocityRaw;
+                        if (gradeStep < step) step = gradeStep;
+                        if (step < -maxUp) step = -maxUp;
+                    }
                     next = cur + step;
                     if (next < tgt)
                     {
@@ -816,20 +829,20 @@ private:
                     !Tunables::kEnableWheelStrictSurface,
                     wheelHintFaceIndex) && sample.valid;
             };
+            // Low-cost: seed only + one junction retry (no lat-half = −1 MapHeight/miss).
             bool hit = probeAt(longitudinal, lateral, wheelSeedSegmentId);
-            if (!hit)
+            if constexpr (Tunables::kEnableWheelLatHalfRetry)
             {
-                const Fxp latIn = Fxp::BuildRaw(lateral.RawValue() / 2);
-                hit = probeAt(longitudinal, latIn, wheelSeedSegmentId);
+                if (!hit)
+                {
+                    const Fxp latIn = Fxp::BuildRaw(lateral.RawValue() / 2);
+                    hit = probeAt(longitudinal, latIn, wheelSeedSegmentId);
+                }
             }
-            // Cross segment junction: try next/prev belt segment immediately.
+            // Junction: try next segment only (skip prev — halves worst-case retries).
             if (!hit && wheelSeedSegmentId > 0)
             {
                 hit = probeAt(longitudinal, lateral, wheelSeedSegmentId + 1);
-                if (!hit && wheelSeedSegmentId > 1)
-                {
-                    hit = probeAt(longitudinal, lateral, wheelSeedSegmentId - 1);
-                }
             }
             if (hit)
             {
@@ -845,7 +858,33 @@ private:
                 }
             }
         };
-        if (useReducedProbe)
+        if (Tunables::kForceAxleCenterlineProbes)
+        {
+            // 2 MapHeight: front axle center + rear axle center (pitch + heave).
+            const Fxp lat0 = Fxp::BuildRaw(0);
+            sampleWheel(0u, longFront, lat0);
+            sampleWheel(2u, longRear, lat0);
+            // Mirror Y to sibling wheels (no extra probes).
+            if ((sampledWheelMask & 0x1u) != 0u)
+            {
+                ioState.suspension.targetYRaw[1] = ioState.suspension.targetYRaw[0];
+                ioState.suspension.filteredYRaw[1] = ioState.suspension.filteredYRaw[0];
+                ioState.suspension.segmentIds[1] = ioState.suspension.segmentIds[0];
+                ioState.suspension.faceIndices[1] = ioState.suspension.faceIndices[0];
+                ioState.suspension.validMask =
+                    static_cast<uint8_t>(ioState.suspension.validMask | 0x2u);
+            }
+            if ((sampledWheelMask & 0x4u) != 0u)
+            {
+                ioState.suspension.targetYRaw[3] = ioState.suspension.targetYRaw[2];
+                ioState.suspension.filteredYRaw[3] = ioState.suspension.filteredYRaw[2];
+                ioState.suspension.segmentIds[3] = ioState.suspension.segmentIds[2];
+                ioState.suspension.faceIndices[3] = ioState.suspension.faceIndices[2];
+                ioState.suspension.validMask =
+                    static_cast<uint8_t>(ioState.suspension.validMask | 0x8u);
+            }
+        }
+        else if (useReducedProbe)
         {
             if ((ioState.suspension.diagonalPhase & 1u) == 0u)
             {
@@ -858,9 +897,6 @@ private:
                 sampleWheel(2u, longRear, latLeft);
             }
             ioState.suspension.diagonalPhase ^= 1u;
-            // Advance corners not sampled this frame along last grade velocity so
-            // the 4-wheel mean stays on the face (diagonal would otherwise lag
-            // and leave air / wrong pitch — videos 14-36 / 14-38).
             int32_t dyHold = ioState.surfaceTargetVelocityRaw;
             const int32_t maxDy = Tunables::kMaxBodySlideDownY.RawValue();
             const int32_t maxUp = Tunables::kMaxYStepUpPerFrame.RawValue();
@@ -1201,45 +1237,176 @@ private:
             }
         }
 
-        // Attitude: continuous grade plane (15-42/15-44).
-        // - Split: freeze pitch (grade also frozen) — no embicada from F−R stair.
-        // - Else: always track gradeChord with tiny residual (no long freeze).
+        // Attitude (21-26): pre-align to next segment PLANAR inclination.
+        // User: enter segment already aligned — not "straight then drop".
+        // Planar tan = (Y1−Y0)/wb with BOTH points forced on same seed.
+        // NEVER use height stair (Y_N+1 − Y_N) as pitch.
         const int32_t rawAxleFrontY = pubFrontRaw;
         const int32_t rawAxleRearY = pubRearRaw;
+
+        int32_t nextPlanarChord = 0;
+        int32_t nextPlanarTan = 0;
+        bool haveNextPlanar = false;
+        int32_t curPlanarChord = 0;
+        bool haveCurPlanar = false;
+        const int32_t halfWb = Tunables::kProbeHalfWheelBase.RawValue();
+
+        auto samplePlanarChord = [&](int32_t seedSeg, int32_t long0Raw,
+                                     int32_t& outChord, int32_t& outTan) -> bool
+        {
+            if (seedSeg <= 0 || wb <= 0 || !trackQuery) return false;
+            const Fxp d0 = Fxp::BuildRaw(long0Raw);
+            const Fxp d1 = Fxp::BuildRaw(long0Raw + wb);
+            SurfaceProbeSample p0{};
+            SurfaceProbeSample p1{};
+            if (!TryProbeSurfaceY(
+                    trackQuery,
+                    BuildProbePoint(worldPosition, sinYaw, cosYaw, d0,
+                                    Fxp::BuildRaw(0)),
+                    seedSeg, p0,
+                    !Tunables::kEnableWheelStrictSurface, -1) ||
+                !p0.valid)
+            {
+                return false;
+            }
+            if (!TryProbeSurfaceY(
+                    trackQuery,
+                    BuildProbePoint(worldPosition, sinYaw, cosYaw, d1,
+                                    Fxp::BuildRaw(0)),
+                    seedSeg, p1,
+                    !Tunables::kEnableWheelStrictSurface, -1) ||
+                !p1.valid)
+            {
+                return false;
+            }
+            int32_t c = p1.y.RawValue() - p0.y.RawValue();
+            if (c > maxChord) c = maxChord;
+            if (c < -maxChord) c = -maxChord;
+            int32_t t = static_cast<int32_t>(
+                (static_cast<int64_t>(c) << 16) / static_cast<int64_t>(wb));
+            const int32_t tanMax = Tunables::kSlopeTanMax.RawValue();
+            if (t > tanMax) t = tanMax;
+            if (t < -tanMax) t = -tanMax;
+            outChord = c;
+            outTan = t;
+            return true;
+        };
+
+        if constexpr (Tunables::kEnableLookAheadAttitude)
+        {
+            if (trackQuery && wb > 0)
+            {
+                const int32_t baseSeg =
+                    (rearSeg > 0) ? rearSeg
+                                 : ((seedSegmentId > 0) ? seedSegmentId : -1);
+                const int32_t nextSeg = (baseSeg > 0) ? (baseSeg + 1) : -1;
+                const int32_t look0 = Tunables::kLookAheadLong.RawValue();
+                int32_t tanTmp = 0;
+                // Current face planar (stable mid-slab tan — not noisy F−R).
+                if (baseSeg > 0 &&
+                    samplePlanarChord(baseSeg, halfWb, curPlanarChord, tanTmp))
+                {
+                    haveCurPlanar = true;
+                }
+                // Next face planar — car already pitches for N+1 before entry.
+                if (nextSeg > 0 &&
+                    samplePlanarChord(nextSeg, look0, nextPlanarChord,
+                                      nextPlanarTan))
+                {
+                    haveNextPlanar = true;
+                }
+                else if (nextSeg > 0 &&
+                         samplePlanarChord(nextSeg, halfWb, nextPlanarChord,
+                                           nextPlanarTan))
+                {
+                    haveNextPlanar = true;
+                }
+
+                // Feed grade from next planar (preferred) or current planar.
+                if (haveNextPlanar || haveCurPlanar)
+                {
+                    const int32_t tanSrc =
+                        haveNextPlanar ? nextPlanarTan : tanTmp;
+                    // Fast pull toward next face tan (pre-align).
+                    const int sh = haveNextPlanar ? 1 : 2;
+                    if (!ioState.gradeValid)
+                    {
+                        ioState.gradeTanRaw = tanSrc;
+                        ioState.gradeValid = true;
+                    }
+                    else
+                    {
+                        ioState.gradeTanRaw +=
+                            (tanSrc - ioState.gradeTanRaw) >> sh;
+                    }
+                    ioState.gradeHoldFrames = Tunables::kGradeHoldMaxFrames;
+                    ioState.gradeTanAttitudeRaw +=
+                        (tanSrc - ioState.gradeTanAttitudeRaw) >> sh;
+                    ioState.gradeAttitudeValid = true;
+                    ioState.gradeAttitudeHoldFrames =
+                        Tunables::kGradeAttitudeHoldMaxFrames;
+                    gradeChord = static_cast<int32_t>(
+                        (static_cast<int64_t>(ioState.gradeTanRaw) *
+                         static_cast<int64_t>(wb)) >> 16);
+                    if (gradeChord > maxChord) gradeChord = maxChord;
+                    if (gradeChord < -maxChord) gradeChord = -maxChord;
+                    haveGradeChord = true;
+                }
+            }
+        }
+
         if (!usedCornerSolver && frontValid && rearValid)
         {
             int32_t rawChord = pubFrontRaw - pubRearRaw;
             if (rawChord > maxChord) rawChord = maxChord;
             if (rawChord < -maxChord) rawChord = -maxChord;
-
-            int32_t targetChord = rawChord;
+            // Cross-seg F−R is a height stair — never use as pitch.
             if (axleSplitNow)
             {
-                // True split: freeze last (grade held too).
-                if (ioState.attitudeChordInitialized)
+                rawChord = haveGradeChord
+                    ? gradeChord
+                    : (ioState.attitudeChordInitialized
+                           ? ioState.lastAttitudeChordRaw
+                           : 0);
+            }
+            else if (haveCurPlanar)
+            {
+                // Prefer planar current face over corner noise.
+                rawChord = static_cast<int32_t>(
+                    (static_cast<int64_t>(rawChord) + curPlanarChord) >> 1);
+            }
+
+            int32_t targetChord = rawChord;
+            const int32_t leadMax = Tunables::kLookAheadLeadMaxY.RawValue();
+            const int32_t spikeMax = Tunables::kEmbicadaOverGradeY.RawValue();
+
+            if (haveNextPlanar)
+            {
+                // Pre-align: ¾ next-face planar + ¼ live (enter already tilted).
+                int32_t lookCap = nextPlanarChord;
                 {
-                    targetChord = ioState.lastAttitudeChordRaw;
+                    int32_t over = nextPlanarChord - rawChord;
+                    if (over > leadMax) lookCap = rawChord + leadMax;
+                    if (over < -leadMax) lookCap = rawChord - leadMax;
+                    over = lookCap - rawChord;
+                    if (over > spikeMax) lookCap = rawChord + spikeMax;
+                    if (over < -spikeMax) lookCap = rawChord - spikeMax;
                 }
-                else if (haveGradeChord)
-                {
-                    targetChord = gradeChord;
-                }
+                targetChord = static_cast<int32_t>(
+                    (static_cast<int64_t>(lookCap) * 3 +
+                     static_cast<int64_t>(rawChord)) >> 2);
             }
             else if (haveGradeChord)
             {
-                // Align to face: blend grade + live F−R (16-17 pitch lag / high).
-                // Spikes beyond margin still capped (anti embicada).
                 const int32_t over = rawChord - gradeChord;
                 const int32_t overAbs = (over < 0) ? -over : over;
-                const int32_t margin = Tunables::kEmbicadaOverGradeY.RawValue();
-                if (overAbs > margin)
+                if (overAbs > spikeMax)
                 {
                     targetChord = gradeChord +
-                        ((over > 0) ? margin : -margin);
+                        ((over > 0) ? spikeMax : -spikeMax);
                 }
                 else
                 {
-                    // Half grade + half raw face (stronger alignment).
                     targetChord = gradeChord +
                         (over >> Tunables::kPitchGradeBlendShift);
                 }
@@ -1247,27 +1414,32 @@ private:
 
             if (!ioState.attitudeChordInitialized)
             {
-                ioState.lastAttitudeChordRaw =
-                    haveGradeChord ? gradeChord : targetChord;
+                ioState.lastAttitudeChordRaw = targetChord;
                 ioState.attitudeChordInitialized = true;
             }
             else
             {
                 const int32_t prev = ioState.lastAttitudeChordRaw;
                 int32_t jump = targetChord - prev;
-                // Split: freeze. Soft-exit: crawl. Face: rate-limit + blend.
+                // NEVER freeze at split — crawl toward next planar / grade.
                 int32_t maxStep = Tunables::kMaxAttitudeChordStepDiveY.RawValue();
-                if (axleSplitNow)
-                {
-                    maxStep = 0;
-                }
-                else if (inJunctionHold)
+                if (axleSplitNow || inJunctionHold)
                 {
                     maxStep = Tunables::kJunctionMaxChordStepY.RawValue();
+                    if (haveNextPlanar &&
+                        maxStep < Tunables::kMaxAttitudeChordStepDiveY.RawValue())
+                    {
+                        // Allow full face step when we know next planar.
+                        maxStep = Tunables::kMaxAttitudeChordStepDiveY.RawValue();
+                    }
                 }
                 if (jump > maxStep) jump = maxStep;
                 if (jump < -maxStep) jump = -maxStep;
-                if (!axleSplitNow && jump != 0)
+                // Large error: full step (no half lag). Small: half crawl.
+                const int32_t errAbs =
+                    (jump < 0) ? -jump : jump;
+                if (jump != 0 &&
+                    errAbs <= (Tunables::kLookAheadLeadMaxY.RawValue() >> 1))
                 {
                     jump >>= Tunables::kAttitudeChordBlendShift;
                     if (jump == 0 && (targetChord - prev) != 0)
@@ -1278,8 +1450,9 @@ private:
                 ioState.lastAttitudeChordRaw = prev + jump;
             }
 
-            // Mid: continuous surface target at split (no raw axle stair).
+            // Mid = live axle avg (real wheel heights). Pitch = chord only.
             const int32_t chord = ioState.lastAttitudeChordRaw;
+            const int32_t half = chord >> 1;
             int32_t mid = static_cast<int32_t>(
                 (static_cast<int64_t>(rawAxleFrontY) + rawAxleRearY) >> 1);
             if (axleSplitNow && ioState.surfaceYInitialized)
@@ -1287,7 +1460,6 @@ private:
                 mid = ioState.surfaceYTarget.RawValue() -
                       GetRideHeightOffset().RawValue();
             }
-            const int32_t half = chord >> 1;
             pubFrontRaw = mid + half;
             pubRearRaw = mid - half;
         }
@@ -1306,23 +1478,15 @@ private:
             {
                 const int32_t prev = ioState.lastAttitudeRollChordRaw;
                 int32_t targetRoll = rollChord;
-                if (axleSplitNow)
-                {
-                    targetRoll = prev; // freeze roll on split
-                }
                 int32_t jump = targetRoll - prev;
                 int32_t maxStep = Tunables::kMaxAttitudeChordStepY.RawValue();
-                if (axleSplitNow)
-                {
-                    maxStep = 0;
-                }
-                else if (inJunctionHold)
+                if (axleSplitNow || inJunctionHold)
                 {
                     maxStep = Tunables::kJunctionMaxChordStepY.RawValue();
                 }
                 if (jump > maxStep) jump = maxStep;
                 if (jump < -maxStep) jump = -maxStep;
-                if (!axleSplitNow && jump != 0)
+                if (jump != 0)
                 {
                     jump >>= Tunables::kAttitudeChordBlendShift;
                     if (jump == 0 && (targetRoll - prev) != 0)
@@ -1631,48 +1795,13 @@ private:
 
         if constexpr (Tunables::kEnableContinuousGradeSlide)
         {
-            // --- Look-ahead MapHeight (front + seed+1) -----------------------------
-            int32_t aheadRideRaw = measuredRideRaw;
-            bool aheadValid = false;
-            {
-                const Fxp lookLong = Fxp::BuildRaw(
-                    Tunables::kProbeHalfWheelBase.RawValue() +
-                    (Tunables::kProbeHalfWheelBase.RawValue() >> 1));
-                SurfaceProbeSample ahead{};
-                const int32_t lookSeed =
-                    (seedSegmentId > 0) ? seedSegmentId : -1;
-                if (TryProbeSurfaceY(
-                        trackQuery,
-                        BuildProbePoint(worldPosition, sinYaw, cosYaw, lookLong,
-                                        Fxp::BuildRaw(0)),
-                        lookSeed,
-                        ahead,
-                        !Tunables::kEnableWheelStrictSurface,
-                        -1) &&
-                    ahead.valid)
-                {
-                    aheadValid = true;
-                    aheadRideRaw = ahead.y.RawValue() + GetRideHeightOffset().RawValue();
-                }
-                else if (lookSeed > 0 &&
-                         TryProbeSurfaceY(
-                             trackQuery,
-                             BuildProbePoint(worldPosition, sinYaw, cosYaw, lookLong,
-                                             Fxp::BuildRaw(0)),
-                             lookSeed + 1,
-                             ahead,
-                             !Tunables::kEnableWheelStrictSurface,
-                             -1) &&
-                         ahead.valid)
-                {
-                    aheadValid = true;
-                    aheadRideRaw = ahead.y.RawValue() + GetRideHeightOffset().RawValue();
-                }
-            }
+            // Low-cost: no extra look-ahead MapHeight — gradeDy holds topology.
+            const int32_t aheadRideRaw = measuredRideRaw;
+            const bool aheadValid = false;
+            (void)aheadRideRaw;
+            (void)aheadValid;
 
             // --- LPF MapHeight: convert segment steps into a continuous ramp -------
-            // Large measured drops (new segment) must not reach body as a dive.
-            // Nearly stopped: plant on measured (video 14-09-09 sink/float).
             int32_t planeY = measuredRideRaw;
             const bool nearlyStoppedPlane =
                 speedAbs < Tunables::kGradeHoldMinSpeed.RawValue();
@@ -1858,28 +1987,37 @@ private:
                 }
 
                 int32_t d = target - prev;
-                // Y-down: floating = prev < face (body shallower than asphalt).
+                // Y-down: floating = prev < face; buried = prev > face.
                 const int32_t air = faceRide - prev;
+                const int32_t bury = prev - faceRide;
                 if (air > maxAir)
                 {
-                    // Plant down hard — 3/4 residual toward face (16-17 too high).
+                    // DECLINE float: hard plant down (unchanged).
                     int32_t drop = air;
                     drop = (drop * 3) >> 2;
                     if (drop == 0) drop = 1;
                     if (drop > maxSlide) drop = maxSlide;
                     d = drop;
                 }
-                else if (prev - faceRide > maxPen)
+                else if (bury > maxPen)
                 {
-                    // Buried: climb half residual.
-                    int32_t lift = faceRide - prev;
-                    lift >>= 1;
-                    if (lift == 0) lift = -1;
+                    // ACLIVE bury: full lift to face (was half → stuck under mesh).
+                    int32_t lift = faceRide - prev; // negative
+                    if (bury > Tunables::kFloatCatchupY.RawValue())
+                    {
+                        // Clearly under: snap full residual this frame.
+                    }
+                    else
+                    {
+                        lift = (lift * 3) >> 2;
+                        if (lift == 0) lift = -1;
+                    }
                     if (lift < -maxUpStep) lift = -maxUpStep;
                     d = lift;
                 }
                 else
                 {
+                    // Near face: decline maxDown freer; climb uses maxUpStep.
                     int32_t maxDown = junctionHeave
                         ? Tunables::kJunctionMaxHeaveDownY.RawValue()
                         : maxSlide;

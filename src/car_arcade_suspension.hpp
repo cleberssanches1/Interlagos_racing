@@ -41,10 +41,11 @@ public:
     // Fast corner settle so attitude samples match live asphalt each frame.
     static constexpr int32_t kMaxWheelSpeedRaw = 0x00100000;       // 16 units/frame
     static constexpr int32_t kSettleThresholdRaw = 0x00000400; // 0.015625
-    // Climb face flips still need confirmation. Descent/junction never stalls.
+    // Climb face: 2 samples confirm (was 3 — lag buried body under new face).
+    // Descent still never stalls (descending branch skips reject).
     static constexpr int32_t kMaxFaceSwitchDeltaRaw = 0x00180000; // 24 units
     static constexpr uint8_t kSampleHoldFrames = 8u;
-    static constexpr uint8_t kFaceSwitchConfirmSamples = 3u;
+    static constexpr uint8_t kFaceSwitchConfirmSamples = 2u;
 
     static void Reset(ArcadeSuspensionState& state)
     {

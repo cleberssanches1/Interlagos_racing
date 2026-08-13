@@ -77,12 +77,12 @@ private:
     static constexpr int32_t kRadToDegApprox = 57;
     static constexpr int32_t kPitchDeadzoneRaw = (1 << 12); // 0.0625
     static constexpr int32_t kRollDeadzoneRaw = (1 << 12);
-    // Smooth crawl (15-42/15-44): follow continuous grade without snap.
-    static constexpr int32_t kDeltaFilterShift = 2; // quarter toward sample
-    static constexpr int32_t kMaxDeltaJumpRaw = 2 << 16;
-    static constexpr int32_t kMaxPitchStepDownDegX16 = static_cast<int32_t>(0x0000C000); // 0.75
-    static constexpr int32_t kMaxPitchStepUpDegX16 = static_cast<int32_t>(0x0000C000);   // 0.75
-    static constexpr int32_t kMaxRollStepDegX16 = static_cast<int32_t>(0x0000C000);      // 0.75
+    // Low-cost plant: still responsive with axle-only probes.
+    static constexpr int32_t kDeltaFilterShift = 1; // half toward sample
+    static constexpr int32_t kMaxDeltaJumpRaw = 4 << 16;
+    static constexpr int32_t kMaxPitchStepDownDegX16 = static_cast<int32_t>(0x00028000); // 2.5
+    static constexpr int32_t kMaxPitchStepUpDegX16 = static_cast<int32_t>(0x00028000);   // 2.5
+    static constexpr int32_t kMaxRollStepDegX16 = static_cast<int32_t>(0x00020000);      // 2.0
 
     void RefreshWheelGeometryFromCenters();
 
