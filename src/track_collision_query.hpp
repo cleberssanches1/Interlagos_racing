@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 
 #include "interfaces.hpp"
@@ -186,20 +185,32 @@ public:
                                         int32_t* outSegmentId = nullptr,
                                         int32_t seedSegmentId = -1) const override
     {
-        std::array<uint16_t, 24> familyIds{};
-        size_t familyCount = 0u;
-        if (!BuildFamilySetForSurfaceTypes(surfaceTypes, surfaceTypeCount, familyIds, familyCount))
+        if (!surfaceTypes || surfaceTypeCount == 0u ||
+            !trackSystem_ || !trackSystem_->Ready())
         {
             if (outSegmentId) *outSegmentId = -1;
             outSurfaceY = worldPosition.Y;
             return false;
         }
-        return SampleSurfaceYByFamilySet(worldPosition,
-                                         familyIds.data(),
-                                         familyCount,
-                                         outSurfaceY,
-                                         outSegmentId,
-                                         seedSegmentId);
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        int32_t sampledSegmentId = -1;
+        int32_t* sampledSegmentPtr = outSegmentId ? outSegmentId : &sampledSegmentId;
+        const bool found = trackSystem_->FindSurfaceYBySurfaceTypeSet(
+            worldPosition,
+            offset,
+            surfaceTypes,
+            surfaceTypeCount,
+            outSurfaceY,
+            sampledSegmentPtr,
+            resolvedSeedSegmentId);
+        if (found && *sampledSegmentPtr > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
+        }
+        return found;
     }
     bool SampleSurfaceYBySurfaceTypeSetStrict(const SRL::Math::Types::Vector3D& worldPosition,
                                               const uint8_t* surfaceTypes,
@@ -208,20 +219,33 @@ public:
                                               int32_t* outSegmentId = nullptr,
                                               int32_t seedSegmentId = -1) const override
     {
-        std::array<uint16_t, 24> familyIds{};
-        size_t familyCount = 0u;
-        if (!BuildFamilySetForSurfaceTypes(surfaceTypes, surfaceTypeCount, familyIds, familyCount))
+        if (!surfaceTypes || surfaceTypeCount == 0u ||
+            !trackSystem_ || !trackSystem_->Ready())
         {
             if (outSegmentId) *outSegmentId = -1;
             outSurfaceY = worldPosition.Y;
             return false;
         }
-        return SampleSurfaceYByFamilySetStrict(worldPosition,
-                                               familyIds.data(),
-                                               familyCount,
-                                               outSurfaceY,
-                                               outSegmentId,
-                                               seedSegmentId);
+        const SRL::Math::Types::Vector3D offset =
+            trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
+        const int32_t resolvedSeedSegmentId =
+            (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
+        int32_t sampledSegmentId = -1;
+        int32_t* sampledSegmentPtr = outSegmentId ? outSegmentId : &sampledSegmentId;
+        const bool found = trackSystem_->FindSurfaceYBySurfaceTypeSet(
+            worldPosition,
+            offset,
+            surfaceTypes,
+            surfaceTypeCount,
+            outSurfaceY,
+            sampledSegmentPtr,
+            resolvedSeedSegmentId,
+            false);
+        if (found && *sampledSegmentPtr > 0)
+        {
+            lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
+        }
+        return found;
     }
 
     bool SampleWheelSurfaceBySurfaceTypeSetStrict(
@@ -233,12 +257,7 @@ public:
         int16_t hintFaceIndex = -1) const override
     {
         outContact = Game::SurfaceContact{};
-        std::array<uint16_t, 24> familyIds{};
-        size_t familyCount = 0u;
-        if (!BuildFamilySetForSurfaceTypes(surfaceTypes,
-                                           surfaceTypeCount,
-                                           familyIds,
-                                           familyCount) ||
+        if (!surfaceTypes || surfaceTypeCount == 0u ||
             !trackSystem_ || !trackSystem_->Ready())
         {
             return false;
@@ -248,11 +267,11 @@ public:
             trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
         const int32_t resolvedSeedSegmentId =
             (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
-        const bool found = trackSystem_->FindSurfaceYByFamilySet(
+        const bool found = trackSystem_->FindSurfaceYBySurfaceTypeSet(
             worldPosition,
             offset,
-            familyIds.data(),
-            familyCount,
+            surfaceTypes,
+            surfaceTypeCount,
             outContact.surfaceY,
             &outContact.segmentId,
             resolvedSeedSegmentId,
@@ -382,65 +401,6 @@ public:
     }
 
 private:
-    static bool BuildFamilySetForSurfaceTypes(const uint8_t* surfaceTypes,
-                                              size_t surfaceTypeCount,
-                                              std::array<uint16_t, 24>& outFamilies,
-                                              size_t& outCount)
-    {
-        outCount = 0u;
-        if (!surfaceTypes || surfaceTypeCount == 0u) return false;
-
-        constexpr uint8_t kSurfaceTypeAsphalt = 1u;
-        constexpr uint8_t kSurfaceTypeEscapeArea = 2u;
-        constexpr uint8_t kSurfaceTypeGrass = 3u;
-        constexpr uint16_t kAsphaltFamilyId = 1u;
-        static constexpr std::array<uint16_t, 16> kDriveableFamilies = {
-            337u, 32u, 148u, 2u, 74u, 321u, 46u, 78u,
-            218u, 77u, 169u, 362u, 367u, 112u, 283u, 1u
-        };
-
-        bool wantAsphalt = false;
-        bool wantDriveable = false;
-        for (size_t i = 0; i < surfaceTypeCount; ++i)
-        {
-            const uint8_t st = surfaceTypes[i];
-            if (st == kSurfaceTypeAsphalt)
-            {
-                wantAsphalt = true;
-                wantDriveable = true;
-            }
-            else if (st == kSurfaceTypeEscapeArea || st == kSurfaceTypeGrass)
-            {
-                wantDriveable = true;
-            }
-        }
-
-        if (wantAsphalt && outCount < outFamilies.size())
-        {
-            outFamilies[outCount++] = kAsphaltFamilyId;
-        }
-        if (wantDriveable)
-        {
-            for (const uint16_t fam : kDriveableFamilies)
-            {
-                bool duplicate = false;
-                for (size_t i = 0; i < outCount; ++i)
-                {
-                    if (outFamilies[i] == fam)
-                    {
-                        duplicate = true;
-                        break;
-                    }
-                }
-                if (!duplicate && outCount < outFamilies.size())
-                {
-                    outFamilies[outCount++] = fam;
-                }
-            }
-        }
-        return outCount > 0u;
-    }
-
     static SRL::Math::Types::Fxp ScoreToCenter(const SRL::Math::Types::Vector3D& worldPosition,
                                                const SRL::Math::Types::Vector3D& center)
     {

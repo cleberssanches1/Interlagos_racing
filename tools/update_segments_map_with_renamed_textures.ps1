@@ -31,6 +31,40 @@ foreach ($item in $manifest.items) {
     }
 }
 
+# Completa o de-para a partir dos arquivos reais em lod_*/ARQ_TGA.
+# Assim map_Kd F06364.TGA resolve mesmo se o manifesto *_ren estiver incompleto.
+function Add-SourceStemLod {
+    param(
+        [hashtable]$Lookup,
+        [string]$Stem,
+        [string]$LodKey,
+        [string]$FileName
+    )
+    if ([string]::IsNullOrWhiteSpace($Stem) -or [string]::IsNullOrWhiteSpace($FileName)) { return }
+    $key = $Stem.ToLowerInvariant()
+    if (-not $Lookup.ContainsKey($key)) { $Lookup[$key] = @{} }
+    if (-not $Lookup[$key].ContainsKey($LodKey)) {
+        $Lookup[$key][$LodKey] = $FileName
+    }
+}
+
+$arqByLod = @(
+    @{ Lod = "64"; Dirs = @((Join-Path $ResultDir "lod_0\ARQ_TGA"), (Join-Path $ResultDir "lod_1\ARQ_TGA"), (Join-Path $ResultDir "obj_64\ARQ_TGA")) },
+    @{ Lod = "32"; Dirs = @((Join-Path $ResultDir "lod_2\ARQ_TGA"), (Join-Path $ResultDir "obj_32\ARQ_TGA")) },
+    @{ Lod = "16"; Dirs = @((Join-Path $ResultDir "obj_16\ARQ_TGA")) },
+    @{ Lod = "8";  Dirs = @((Join-Path $ResultDir "obj_8\ARQ_TGA")) }
+)
+foreach ($entry in $arqByLod) {
+    foreach ($dir in @($entry.Dirs)) {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -ieq ".tga" })) {
+            $stem = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            Add-SourceStemLod -Lookup $sourceLookup -Stem $stem -LodKey ([string]$entry.Lod) -FileName $f.Name
+            # Tambem indexa o target ISO curto F063_64.TGA se ja existir no manifesto.
+        }
+    }
+}
+
 function Normalize-MaterialFamilyName([string]$Name) {
     if ([string]::IsNullOrWhiteSpace($Name)) { return "" }
     $n = $Name.Trim()
@@ -95,9 +129,27 @@ function Set-FamilyLodMap($FamilyNode, [hashtable]$LodMap, [string]$SourceStem) 
 $familyStems = @{}
 $mtlAliases = @{}
 $resolvedFamilyByStem = @{}
-$obj64Dir = Join-Path $ResultDir "obj_64"
-if (Test-Path -LiteralPath $obj64Dir) {
-    $mtlFiles = @(Get-ChildItem -LiteralPath $obj64Dir -File -Filter *.mtl)
+# Preferir MTLs do design denso (lod_0), depois lod_1 e legado obj_64.
+# O de-para material -> map_Kd (ex. asfalto_64.001 -> F06364.TGA) vive nesses MTLs.
+$mtlScanDirs = @(
+    (Join-Path $ResultDir "lod_0"),
+    (Join-Path $ResultDir "lod_1"),
+    (Join-Path $ResultDir "obj_64")
+)
+$mtlFiles = New-Object System.Collections.Generic.List[object]
+$seenMtl = @{}
+foreach ($mtlDir in $mtlScanDirs) {
+    if (-not (Test-Path -LiteralPath $mtlDir)) { continue }
+    foreach ($mtl in @(Get-ChildItem -LiteralPath $mtlDir -File -Filter *.mtl -ErrorAction SilentlyContinue)) {
+        $key = $mtl.Name.ToLowerInvariant()
+        if ($seenMtl.ContainsKey($key)) { continue }
+        $seenMtl[$key] = $true
+        $mtlFiles.Add($mtl) | Out-Null
+    }
+}
+$obj64Dir = $mtlScanDirs | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($null -ne $obj64Dir -and $mtlFiles.Count -gt 0) {
+    Write-Host ("MTL de-para: {0} arquivo(s) em {1}" -f $mtlFiles.Count, ($mtlScanDirs -join ", "))
     $mtlEntries = New-Object System.Collections.Generic.List[object]
     $missingSourceStems = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($mtl in $mtlFiles) {

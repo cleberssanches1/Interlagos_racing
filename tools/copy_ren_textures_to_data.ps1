@@ -15,11 +15,21 @@ if (-not (Test-Path -LiteralPath $TextOutDir)) {
     New-Item -ItemType Directory -Force -Path $TextOutDir | Out-Null
 }
 
+# Prioridade de origem por LOD (3 Levels of Design):
+# - 64x64: lod_0/ARQ_TGA, lod_1/ARQ_TGA, depois legado
+# - 32x32: lod_2/ARQ_TGA, depois legado
 $sources = @(
-    @{ Lod = 8;  Dir = (Join-Path $DataDir "8_ren")  },
-    @{ Lod = 16; Dir = (Join-Path $DataDir "16_ren") },
-    @{ Lod = 32; Dir = (Join-Path $DataDir "32_ren") },
-    @{ Lod = 64; Dir = (Join-Path $DataDir "64_ren") }
+    @{ Lod = 8;  Dir = (Join-Path $DataDir "8_ren");  ExtraDirs = @((Join-Path $ResultDir "obj_8\ARQ_TGA")) },
+    @{ Lod = 16; Dir = (Join-Path $DataDir "16_ren"); ExtraDirs = @((Join-Path $ResultDir "obj_16\ARQ_TGA")) },
+    @{ Lod = 32; Dir = (Join-Path $DataDir "32_ren"); ExtraDirs = @(
+            (Join-Path $ResultDir "lod_2\ARQ_TGA"),
+            (Join-Path $ResultDir "obj_32\ARQ_TGA")
+        ) },
+    @{ Lod = 64; Dir = (Join-Path $DataDir "64_ren"); ExtraDirs = @(
+            (Join-Path $ResultDir "lod_0\ARQ_TGA"),
+            (Join-Path $ResultDir "lod_1\ARQ_TGA"),
+            (Join-Path $ResultDir "obj_64\ARQ_TGA")
+        ) }
 )
 
 function Build-TargetBaseName {
@@ -71,7 +81,13 @@ $skipped = 0
 foreach ($src in $sources) {
     $lod = [int]$src.Lod
         $files = @()
-        if (Test-Path -LiteralPath $src.Dir) {
+        # Preferir sempre as pastas ARQ_TGA do ResultDir (lod_0/1/2) quando existirem.
+        foreach ($extra in @($src.ExtraDirs)) {
+            if ([string]::IsNullOrWhiteSpace($extra)) { continue }
+            if (-not (Test-Path -LiteralPath $extra)) { continue }
+            $files += Get-ChildItem -LiteralPath $extra -File | Where-Object { $_.Extension -ieq ".tga" }
+        }
+        if ($files.Count -eq 0 -and (Test-Path -LiteralPath $src.Dir)) {
             $files += Get-ChildItem -LiteralPath $src.Dir -File | Where-Object { $_.Extension -ieq ".tga" }
         }
         if ($files.Count -eq 0) {
@@ -84,7 +100,9 @@ foreach ($src in $sources) {
             $pattern = "^F\\d{3}_?$lod\\.TGA$"
             $files += Get-ChildItem -LiteralPath $DataDir -File | Where-Object { $_.Name -match $pattern }
         }
-        $files = $files | Sort-Object Name
+        # Deduplicar por nome (lod_0 e lod_1 podem repetir os mesmos F###).
+        $files = @($files | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 } | Sort-Object Name)
+        Write-Host ("LOD {0}: {1} TGA(s) fonte" -f $lod, $files.Count)
         foreach ($f in $files) {
         $stem = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
         $newBase = Build-TargetBaseName -Stem $stem -Lod $lod

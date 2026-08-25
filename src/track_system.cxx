@@ -18477,7 +18477,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
                                           uint8_t* outSurfaceType,
                                           int16_t* outFaceIndex,
                                           int16_t hintFaceIndex,
-                                          bool useSharedFaceCache) const
+                                          bool useSharedFaceCache,
+                                          const uint8_t* allowedSurfaceTypes,
+                                          size_t allowedSurfaceTypeCount) const
 {
     SaturatingIncrementU16(surfaceQueryCallsThisFrame_);
     const bool useLocalNeighbor =
@@ -18487,10 +18489,21 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     if (outFamilyId) *outFamilyId = 0u;
     if (outSurfaceType) *outSurfaceType = 0u;
     if (outFaceIndex) *outFaceIndex = -1;
-    const bool acceptAnyFamily = (!familyIds || familyCount == 0u);
+    const bool filterBySurfaceType =
+        allowedSurfaceTypes && allowedSurfaceTypeCount > 0u;
+    const bool acceptAnyFamily =
+        !filterBySurfaceType && (!familyIds || familyCount == 0u);
     if (segmentRenderers_.empty()) return false;
 
     bool hasAnyFamily = acceptAnyFamily;
+    for (size_t i = 0; i < allowedSurfaceTypeCount && filterBySurfaceType; ++i)
+    {
+        if (allowedSurfaceTypes[i] != 0u)
+        {
+            hasAnyFamily = true;
+            break;
+        }
+    }
     for (size_t i = 0; i < familyCount && !acceptAnyFamily; ++i)
     {
         const uint16_t familyId = familyIds[i];
@@ -18520,6 +18533,16 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     {
         if (familyId == 0u) return false;
         if (acceptAnyFamily) return true;
+        if (filterBySurfaceType)
+        {
+            if (familyId >= surfaceTypeByFamilyId_.size()) return false;
+            const uint8_t familySurfaceType = surfaceTypeByFamilyId_[familyId];
+            for (size_t i = 0; i < allowedSurfaceTypeCount; ++i)
+            {
+                if (allowedSurfaceTypes[i] == familySurfaceType) return true;
+            }
+            return false;
+        }
         if (familyId < kFastFamilyMaskLimit) return familyMask[familyId] != 0u;
         if (!hasLargeFamilyId) return false;
         for (size_t i = 0; i < familyCount; ++i)
@@ -18538,30 +18561,53 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         SurfaceFamilyMapReady() &&
         SegmentCollisionMapReady())
     {
-        for (size_t i = 0; i < familyCount; ++i)
+        if (filterBySurfaceType)
         {
-            const uint16_t familyId = familyIds[i];
-            if (familyId == 0u) continue;
-            if (familyId >= surfaceTypeByFamilyId_.size())
+            for (size_t i = 0; i < allowedSurfaceTypeCount; ++i)
             {
-                requestedSurfaceTypesKnown = false;
-                break;
+                switch (allowedSurfaceTypes[i])
+                {
+                case 1u:
+                    wantsAsphaltLike = true;
+                    break;
+                case 2u:
+                case 3u:
+                    wantsOffroadLike = true;
+                    break;
+                default:
+                    requestedSurfaceTypesKnown = false;
+                    break;
+                }
+                if (!requestedSurfaceTypesKnown) break;
             }
-            const uint8_t surfaceTypeId = surfaceTypeByFamilyId_[familyId];
-            switch (surfaceTypeId)
+        }
+        else
+        {
+            for (size_t i = 0; i < familyCount; ++i)
             {
-            case 1u:
-                wantsAsphaltLike = true;
-                break;
-            case 2u:
-            case 3u:
-                wantsOffroadLike = true;
-                break;
-            default:
-                requestedSurfaceTypesKnown = false;
-                break;
+                const uint16_t familyId = familyIds[i];
+                if (familyId == 0u) continue;
+                if (familyId >= surfaceTypeByFamilyId_.size())
+                {
+                    requestedSurfaceTypesKnown = false;
+                    break;
+                }
+                const uint8_t surfaceTypeId = surfaceTypeByFamilyId_[familyId];
+                switch (surfaceTypeId)
+                {
+                case 1u:
+                    wantsAsphaltLike = true;
+                    break;
+                case 2u:
+                case 3u:
+                    wantsOffroadLike = true;
+                    break;
+                default:
+                    requestedSurfaceTypesKnown = false;
+                    break;
+                }
+                if (!requestedSurfaceTypesKnown) break;
             }
-            if (!requestedSurfaceTypesKnown) break;
         }
 
         if (requestedSurfaceTypesKnown && (wantsAsphaltLike || wantsOffroadLike))
@@ -19159,6 +19205,46 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     }
 
     return false;
+}
+
+bool TrackSystem::FindSurfaceYBySurfaceTypeSet(const Vector3D& worldPosition,
+                                               const Vector3D& trackOffset,
+                                               const uint8_t* surfaceTypes,
+                                               size_t surfaceTypeCount,
+                                               SRL::Math::Types::Fxp& outSurfaceY,
+                                               int32_t* outSegmentId,
+                                               int32_t seedSegmentId,
+                                               bool allowFallback,
+                                               uint16_t* outFamilyId,
+                                               uint8_t* outSurfaceType,
+                                               int16_t* outFaceIndex,
+                                               int16_t hintFaceIndex,
+                                               bool useSharedFaceCache) const
+{
+    if (!surfaceTypes || surfaceTypeCount == 0u)
+    {
+        outSurfaceY = worldPosition.Y;
+        if (outSegmentId) *outSegmentId = -1;
+        if (outFamilyId) *outFamilyId = 0u;
+        if (outSurfaceType) *outSurfaceType = 0u;
+        if (outFaceIndex) *outFaceIndex = -1;
+        return false;
+    }
+    return FindSurfaceYByFamilySet(worldPosition,
+                                   trackOffset,
+                                   nullptr,
+                                   0u,
+                                   outSurfaceY,
+                                   outSegmentId,
+                                   seedSegmentId,
+                                   allowFallback,
+                                   outFamilyId,
+                                   outSurfaceType,
+                                   outFaceIndex,
+                                   hintFaceIndex,
+                                   useSharedFaceCache,
+                                   surfaceTypes,
+                                   surfaceTypeCount);
 }
 
 bool TrackSystem::FindSurfaceContact(const Vector3D& worldPosition,

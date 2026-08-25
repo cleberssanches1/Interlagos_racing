@@ -55,6 +55,7 @@ function Normalize-MaterialFamilyName([string]$Name) {
 
 function Resolve-KnownMaterialFamilyOverride([string]$MaterialKey) {
     if ([string]::IsNullOrWhiteSpace($MaterialKey)) { return "" }
+    if ($MaterialKey.ToLowerInvariant() -match '^branco(?:\.\d+)?$') { return "teto" }
     switch ($MaterialKey.ToLowerInvariant()) {
         # seg_009.mtl: material sem map_Kd; no conjunto atual ele pertence ao mesmo grupo
         # branco/teto já mapeado para a family "teto".
@@ -75,7 +76,7 @@ function Normalize-StemKey([string]$Value) {
     return ([regex]::Replace($stem, '[^a-z0-9]+', ''))
 }
 
-function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [object[]]$Families) {
+function Build-MaterialAliasMap([string]$MtlPath, [hashtable]$FamilyIdByName, [object[]]$Families) {
     $directTexToFamilyId = @{}
     $materialToFamilyId = @{}
     $entries = New-Object System.Collections.Generic.List[object]
@@ -103,11 +104,13 @@ function Build-MaterialAliasMap([string]$MtlDir, [hashtable]$FamilyIdByName, [ob
         }
     }
 
-    if (-not (Test-Path -LiteralPath $MtlDir)) {
+    if (-not (Test-Path -LiteralPath $MtlPath)) {
         return $materialToFamilyId
     }
 
-    $mtlFiles = @(Get-ChildItem -LiteralPath $MtlDir -File -Filter *.mtl -ErrorAction SilentlyContinue)
+    # Only this segment's MTL may resolve its material names. Scanning the whole
+    # LOD directory makes later files overwrite equal names with another TGA.
+    $mtlFiles = @((Get-Item -LiteralPath $MtlPath -ErrorAction Stop))
     foreach ($mtl in $mtlFiles) {
         $currentName = ""
         foreach ($line in Get-Content -LiteralPath $mtl.FullName) {
@@ -164,6 +167,40 @@ function To-I16Uv([double]$v) {
     if ($scaled -lt -32768) { $scaled = -32768 }
     if ($scaled -gt 32767) { $scaled = 32767 }
     return [int16]$scaled
+}
+
+function Convert-FaceUvAxisToI16 {
+    param(
+        [double[]]$Values,
+        [bool]$NormalizeForOrientation
+    )
+
+    $encoded = New-Object System.Collections.Generic.List[int16]
+    if ($null -eq $Values -or $Values.Count -eq 0) {
+        return ,([int16[]]@())
+    }
+
+    # GEO keeps UVs only as temporary orientation metadata for the SDR builder.
+    # Blender legitimately exports tiled UVs below 0 or above 1. Quantizing those
+    # absolute values used to clamp several/all corners to the same int16 value,
+    # which destroyed the face orientation before SDR canonicalization.
+    if ($NormalizeForOrientation -and $Values.Count -eq 4) {
+        [double]$minValue = ($Values | Measure-Object -Minimum).Minimum
+        [double]$maxValue = ($Values | Measure-Object -Maximum).Maximum
+        [double]$span = $maxValue - $minValue
+        if ([Math]::Abs($span) -gt 1.0e-12) {
+            foreach ($value in $Values) {
+                $normalized = ([double]$value - $minValue) / $span
+                $encoded.Add((To-I16Uv $normalized)) | Out-Null
+            }
+            return ,([int16[]]$encoded.ToArray())
+        }
+    }
+
+    foreach ($value in $Values) {
+        $encoded.Add((To-I16Uv ([double]$value))) | Out-Null
+    }
+    return ,([int16[]]$encoded.ToArray())
 }
 
 function Get-SeamDropIndexSet {
@@ -224,7 +261,7 @@ foreach ($family in @($json.textureFamilies)) {
         }
     }
 }
-$materialAliasToFamilyId = Build-MaterialAliasMap -MtlDir $ObjDir -FamilyIdByName $familyIdByName -Families @($json.textureFamilies)
+$materialAliasToFamilyId = Build-MaterialAliasMap -MtlPath ([System.IO.Path]::ChangeExtension($objPath, ".mtl")) -FamilyIdByName $familyIdByName -Families @($json.textureFamilies)
 $hasSegmentMap = $true
 if (-not $segNode) {
     $hasSegmentMap = $false
@@ -411,6 +448,8 @@ if (-not $SkipGeo) {
             $vi = @(0,0,0,0)
             $uu = @(0,0,0,0)
             $vv = @(0,0,0,0)
+            $rawU = New-Object System.Collections.Generic.List[double]
+            $rawV = New-Object System.Collections.Generic.List[double]
             for ($i = 0; $i -lt $f.Count; $i++) {
                 $c = $f[$i]
                 if ($c.vi -lt 0 -or $c.vi -ge $verts.Count) { throw "Indice de vertice fora do range na face" }
@@ -418,9 +457,20 @@ if (-not $SkipGeo) {
                 if ($c.ti -ge 0 -and $c.ti -lt $uvs.Count) {
                     $u = [double]$uvs[$c.ti].u
                     $v = [double]$uvs[$c.ti].v
-                    $uu[$i] = To-I16Uv $u
-                    $vv[$i] = To-I16Uv $v
+                    $rawU.Add($u) | Out-Null
+                    $rawV.Add($v) | Out-Null
                 }
+                else {
+                    $rawU.Add(0.0) | Out-Null
+                    $rawV.Add(0.0) | Out-Null
+                }
+            }
+            $normalizeQuadUv = ($kind -eq 4 -and $rawU.Count -eq 4 -and $rawV.Count -eq 4)
+            [int16[]]$encodedU = Convert-FaceUvAxisToI16 -Values ([double[]]$rawU.ToArray()) -NormalizeForOrientation $normalizeQuadUv
+            [int16[]]$encodedV = Convert-FaceUvAxisToI16 -Values ([double[]]$rawV.ToArray()) -NormalizeForOrientation $normalizeQuadUv
+            for ($i = 0; $i -lt $f.Count; $i++) {
+                $uu[$i] = $encodedU[$i]
+                $vv[$i] = $encodedV[$i]
             }
             for ($i = 0; $i -lt 4; $i++) { Write-U16 $bw ([uint16]$vi[$i]) }
             for ($i = 0; $i -lt 4; $i++) { Write-I16 $bw ([int16]$uu[$i]) }

@@ -13,7 +13,7 @@
     [int]$TexPadWidth = 8,
     [switch]$UseLodSubfolders = $false,
     [switch]$SkipNyaExport = $false,
-    [switch]$RebuildSegmentsMap = $false,
+    [switch]$RebuildSegmentsMap = $true,
     [bool]$ExportSurfaceFamilyMap = $true,
     [bool]$ExportFaceSurfaceMap = $true,
     [bool]$EnableSeamFaceDedup = $true,
@@ -35,20 +35,9 @@ function Resolve-DefaultSourceObjDir {
         return $RequestedSourceObjDir
     }
 
-    # 3 Levels of Design: prefer lod_0 (max faces) for map/GEO authority.
+    # Full build authority is always lod_0. Legacy obj_* fallbacks are forbidden.
     $candidates = @(
-        (Join-Path $ResultRootDir "lod_0"),
-        (Join-Path $ResultRootDir "lod_1"),
-        (Join-Path $ResultRootDir "lod_2"),
-        # Legacy 4-folder layout (fallback)
-        (Join-Path $ResultRootDir "obj_64"),
-        (Join-Path $ResultRootDir "obj_32"),
-        (Join-Path $ResultRootDir "obj_16"),
-        (Join-Path $ResultRootDir "obj_8"),
-        $ResultRootDir,
-        "C:\Models\png\sectors\source\lod_0",
-        "C:\Models\png\sectors\source\obj_64",
-        "C:\Models\png\sectors\source"
+        (Join-Path $ResultRootDir "lod_0")
     )
 
     foreach ($candidate in $candidates) {
@@ -299,8 +288,14 @@ function Invoke-WallAuditBatch {
 
 $SourceObjDir = Resolve-DefaultSourceObjDir -RequestedSourceObjDir $SourceObjDir -ResultRootDir $ResultDir
 if (-not (Test-Path -LiteralPath $SourceObjDir)) { throw "SourceObjDir nao encontrado: $SourceObjDir" }
-if (-not (Test-Path -LiteralPath $PackageDir)) { New-Item -Path $PackageDir -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path -LiteralPath $CdDataDir)) { New-Item -Path $CdDataDir -ItemType Directory -Force | Out-Null }
+$publishPackageDir = [System.IO.Path]::GetFullPath($PackageDir)
+$publishCdDataDir = [System.IO.Path]::GetFullPath($CdDataDir)
+$buildRunId = Get-Date -Format "yyyyMMdd_HHmmss_fff"
+$stagingRoot = Join-Path (Split-Path -Parent $publishPackageDir) (".interlagos_build_{0}" -f $buildRunId)
+$PackageDir = Join-Path $stagingRoot "package"
+$CdDataDir = Join-Path $stagingRoot "cd_data"
+New-Item -Path $PackageDir -ItemType Directory -Force | Out-Null
+New-Item -Path $CdDataDir -ItemType Directory -Force | Out-Null
 if ($AuditWallsStrict) { $AuditWalls = $true }
 if ($AuditWalls -and [string]::IsNullOrWhiteSpace($AuditWallsReportDir)) {
     $AuditWallsReportDir = Join-Path $PackageDir "wall_audit"
@@ -313,8 +308,10 @@ if ($sourceObjCount -le 0) {
 
 Write-Host ("Build config: SourceObjDir={0} (objs:{1})" -f $SourceObjDir, $sourceObjCount)
 Write-Host ("Build config: ResultDir={0}" -f $ResultDir)
-Write-Host ("Build config: PackageDir={0}" -f $PackageDir)
-Write-Host ("Build config: CdDataDir={0}" -f $CdDataDir)
+Write-Host ("Build staging: PackageDir={0}" -f $PackageDir)
+Write-Host ("Build staging: CdDataDir={0}" -f $CdDataDir)
+Write-Host ("Publish target: PackageDir={0}" -f $publishPackageDir)
+Write-Host ("Publish target: CdDataDir={0}" -f $publishCdDataDir)
 
 $scriptDir = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($scriptDir)) {
@@ -335,6 +332,9 @@ $script:seg1FamScript = Join-Path $scriptDir "build_seg1_facefam_bin.ps1"
 $script:packByTypeScript = Join-Path $scriptDir "pack_assets_by_type.ps1"
 $script:copyRenScript = Join-Path $scriptDir "copy_ren_textures_to_data.ps1"
 $script:updateSegmentsMapScript = Join-Path $scriptDir "update_segments_map_with_renamed_textures.ps1"
+$script:freshSegmentsMapScript = Join-Path $scriptDir "rebuild_segments_map_fresh.ps1"
+$script:freshTexturePrepScript = Join-Path $scriptDir "prepare_lod_textures_fresh.ps1"
+$script:freshTexbanksScript = Join-Path $scriptDir "generate_texbanks_fresh.ps1"
 $script:canonicalizeSegmentsMapScript = Join-Path $scriptDir "canonicalize_segments_map_texture_families.ps1"
 $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 $script:seamOwnershipScript = Join-Path $scriptDir "build_seam_face_ownership.ps1"
@@ -350,6 +350,9 @@ if (-not (Test-Path -LiteralPath $script:seg1FamScript)) { throw "Script nao enc
 if (-not (Test-Path -LiteralPath $script:packByTypeScript)) { throw "Script nao encontrado: $script:packByTypeScript" }
 if (-not (Test-Path -LiteralPath $script:copyRenScript)) { throw "Script nao encontrado: $script:copyRenScript" }
 if (-not (Test-Path -LiteralPath $script:updateSegmentsMapScript)) { throw "Script nao encontrado: $script:updateSegmentsMapScript" }
+if (-not (Test-Path -LiteralPath $script:freshSegmentsMapScript)) { throw "Script nao encontrado: $script:freshSegmentsMapScript" }
+if (-not (Test-Path -LiteralPath $script:freshTexturePrepScript)) { throw "Script nao encontrado: $script:freshTexturePrepScript" }
+if (-not (Test-Path -LiteralPath $script:freshTexbanksScript)) { throw "Script nao encontrado: $script:freshTexbanksScript" }
 if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
 if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnershipScript)) {
@@ -359,10 +362,12 @@ if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnership
 
 Write-Host "=== Etapa 1/3: Exportar NYA + segments_map.json ==="
 $jsonPath = Join-Path $PackageDir "segments_map.json"
+$nyaExportDir = Join-Path $stagingRoot "nya_export"
+New-Item -ItemType Directory -Path $nyaExportDir -Force | Out-Null
 $exportArgs = @{
     ConverterDir = $ConverterDir
     SourceObjDir = $SourceObjDir
-    ResultDir = $ResultDir
+    ResultDir = $nyaExportDir
     CdDataDir = $PackageDir
     Pattern = $Pattern
     Shading = $Shading
@@ -370,11 +375,8 @@ $exportArgs = @{
     TexHeight = $TexHeight
     TexPadWidth = $TexPadWidth
 }
-if ($RebuildSegmentsMap) {
-    $exportArgs.PreserveSidecars = $true
-}
 if ($SkipNyaExport) {
-    Write-Host ("SkipNyaExport ativo: reutilizando {0}" -f $jsonPath)
+    throw "SkipNyaExport nao e permitido no build_all integral. Use um fluxo incremental separado."
 }
 else {
     & $script:exportScript @exportArgs
@@ -440,28 +442,18 @@ function Test-SegmentsMapCoverage {
     Write-Host ("segments_map coverage OK: objs={0} mapped={1}" -f $expectedIds.Count, $mappedIds.Count)
 }
 
-if ($RebuildSegmentsMap) {
-    Write-Host "RebuildSegmentsMap ativo: mantendo o segments_map.json novo da exportacao nesta etapa."
-}
-else {
-    $sourceMap = Get-SegmentsMapSource -MapDir $PackageDir
-    if ([string]::IsNullOrWhiteSpace($sourceMap)) {
-        Write-Host "Nenhuma fonte antiga de segments_map encontrada; mantendo o arquivo gerado na exportacao."
-    }
-    else {
-        Copy-Item -LiteralPath $sourceMap -Destination $jsonPath -Force
-        Write-Host ("segments_map.json atualizado a partir de {0}" -f $sourceMap)
-    }
-}
+Write-Host "=== Etapa 2.1/7: Recriar families a partir dos OBJ/MTL atuais ==="
+& $script:freshSegmentsMapScript `
+    -SegmentsMapPath $jsonPath `
+    -ResultDir $ResultDir `
+    -Pattern $Pattern
 
 Test-SegmentsMapCoverage `
     -ObjRootDir $SourceObjDir `
     -ObjPattern $Pattern `
     -SegmentsMapPath $jsonPath
 
-Write-Host "=== Etapa 2.5/7: Canonizar aliases de textura no segments_map ==="
-& $script:canonicalizeSegmentsMapScript `
-    -SegmentsMapPath $jsonPath
+Write-Host "=== Etapa 2.5/7: Families novas e deterministicas prontas ==="
 
 function Test-SegmentsMapFamilyReferences {
     param(
@@ -886,22 +878,13 @@ function Write-SegmentCollisionMapBinary {
     Write-Host ("segment collision map gerado: {0} segs={1}" -f $OutBinPath, $segments.Count)
 }
 
-Write-Host "=== Etapa 2.6/7: Renomear/copiar texturas com sufixo ==="
-& $script:copyRenScript `
-    -DataDir $PackageDir `
-    -TextOutDir $CdDataDir `
-    -ResultDir $ResultDir
+Write-Host "=== Etapa 2.6/7: Preparar texturas por agrupamento LOD ==="
+& $script:freshTexturePrepScript `
+    -JsonPath $jsonPath `
+    -ResultDir $ResultDir `
+    -OutDir $PackageDir
 
-Write-Host "=== Etapa 2.7/7: Atualizar segments_map com texturas renomeadas ==="
-$renManifestPath = Join-Path $PackageDir "ren_textures_copy_map.json"
-& $script:updateSegmentsMapScript `
-    -SegmentsMapPath $jsonPath `
-    -RenManifestPath $renManifestPath `
-    -ResultDir $ResultDir
-
-Write-Host "=== Etapa 2.8/7: Recanonizar families apos remap de texturas ==="
-& $script:canonicalizeSegmentsMapScript `
-    -SegmentsMapPath $jsonPath
+Write-Host "=== Etapa 2.8/7: Catalogo permanece fechado (sem append/reuso) ==="
 
 Write-Host "=== Etapa 2.9/7: Validar referencias de familyId no segments_map ==="
 Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
@@ -941,49 +924,19 @@ Write-Host "=== Etapa 3/7: Gerar GEO/MAT (3 Levels of Design: lod_0/1/2) ==="
 $lod0Dir = Join-Path $ResultDir "lod_0"
 $lod1Dir = Join-Path $ResultDir "lod_1"
 $lod2Dir = Join-Path $ResultDir "lod_2"
-$legacy64 = Join-Path $ResultDir "obj_64"
-$legacy32 = Join-Path $ResultDir "obj_32"
 
 $designPasses = @()
-if (Test-Path -LiteralPath $lod0Dir) {
-    $designPasses +=
-        @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 64; SkipGeo = $false; AssetTag = "" }
-}
-elseif (Test-Path -LiteralPath $legacy64) {
-    Write-Host "Aviso: lod_0 ausente; usando legacy obj_64 como malha densa."
-    $designPasses +=
-        @{ Name = "obj_64"; Dir = $legacy64; Lod = 64; SkipGeo = $false; AssetTag = "" }
-}
-else {
-    throw "Nenhuma pasta lod_0 (nem obj_64) em $ResultDir"
-}
-
-$lowDir = $null
-if (Test-Path -LiteralPath $lod1Dir) { $lowDir = $lod1Dir }
-elseif (Test-Path -LiteralPath $legacy32) { $lowDir = $legacy32 }
-
-$hasSeparateLod2 =
-    ($null -ne $lowDir) -and
-    (Test-Path -LiteralPath $lod2Dir) -and
-    ($lod2Dir -ne $lowDir)
-
-if ($null -ne $lowDir) {
-    # lod_1 sempre fornece a malha baixa e o material intermediario M64.
-    $designPasses +=
-        @{ Name = "lod_1"; Dir = $lowDir; Lod = 64; SkipGeo = $false; AssetTag = "L" }
-
-    # Sem uma origem lod_2 separada, M32 usa os materiais de lod_1 como fallback.
-    # Quando lod_2 existe, evita gerar aqui o mesmo S###LM32.MAT que seria
-    # imediatamente sobrescrito pelo passe seguinte.
-    if (-not $hasSeparateLod2) {
-        $designPasses +=
-            @{ Name = "lod_1"; Dir = $lowDir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
+foreach ($requiredDir in @($lod0Dir, $lod1Dir, $lod2Dir)) {
+    if (-not (Test-Path -LiteralPath $requiredDir)) {
+        throw "Agrupamento LOD obrigatorio ausente: $requiredDir"
     }
 }
-# lod_2 fornece somente os materiais distantes M32 e reutiliza S###L.GEO.
-if ($hasSeparateLod2) {
-    $designPasses += @{ Name = "lod_2"; Dir = $lod2Dir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
-}
+$designPasses += @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 64; SkipGeo = $false; AssetTag = "" }
+$designPasses += @{ Name = "lod_1"; Dir = $lod1Dir; Lod = 64; SkipGeo = $false; AssetTag = "L" }
+# The far material group comes only from lod_2. It shares the low geometry tag
+# because the current Saturn runtime has two geometry slots, but never reuses
+# lod_1 material bindings or texture sources.
+$designPasses += @{ Name = "lod_2"; Dir = $lod2Dir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
 
 # A configuracao suportada nao possui lod_0/M32. Remova residuos de builds
 # anteriores antes do empacotamento para que MAT32.BIN contenha somente LM32.
@@ -1056,6 +1009,7 @@ foreach ($entry in $designPasses) {
         }
         catch {
             Write-Host ("Falha {0} LOD{1} SEG_{2:D3}: {3}" -f $entry.Name, $entry.Lod, $id, $_.Exception.Message)
+            throw
         }
     }
 }
@@ -1262,18 +1216,15 @@ function Remove-CdDataAuxFiles {
 }
 
 Write-Host "=== Etapa 4.1/7: Criar aliases 8.3 para segments_map ==="
-$upperCdDir = Join-Path (Split-Path -Parent $CdDataDir) "CD\DATA"
 $targetDirs = @($CdDataDir)
-if ($upperCdDir -ne $CdDataDir) { $targetDirs += $upperCdDir }
 Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
 
-Write-Host "=== Etapa 5/6: Gerar TEXBANK_*.BIN ==="
-& $script:texbanksScript `
+Write-Host "=== Etapa 5/6: Gerar apenas TBK32/TBK64 estritos ==="
+& $script:freshTexbanksScript `
     -JsonPath $jsonPath `
-    -TextureRoot $PackageDir `
+    -PreparedTextureDir $PackageDir `
     -OutDir $CdDataDir `
-    -ReportDir $PackageDir `
-    -UseLodSubfolders:$UseLodSubfolders
+    -ReportDir $PackageDir
 
 Write-Host "=== Etapa 6/6: Gerar S001FAM.BIN ==="
 $seg1FamOut = Join-Path $CdDataDir "S001FAM.BIN"
@@ -1357,8 +1308,6 @@ Write-Host ("HAS TRKRDRL.BIN   : {0}" -f $hasTrkRdrLowBin)
 Write-Host ("HAS SFMAP.BIN     : {0}" -f $hasSurfaceFamilyMapBin)
 Write-Host ("HAS SCMAP.BIN     : {0}" -f $hasSegmentCollisionMapBin)
 Write-Host ("HAS FSMAP.BIN     : {0}" -f $hasFaceSurfaceMapBin)
-Write-Host ("HAS MAT8.BIN      : {0}" -f $hasMat8Bin)
-Write-Host ("HAS MAT16.BIN     : {0}" -f $hasMat16Bin)
 Write-Host ("HAS MAT32.BIN     : {0}" -f $hasMat32Bin)
 Write-Host ("HAS MAT64.BIN     : {0}" -f $hasMat64Bin)
 Write-Host ("HAS packs manifest: {0}" -f $hasPacksManifest)
@@ -1367,7 +1316,7 @@ $validationErrors = New-Object System.Collections.Generic.List[string]
 if ($geoCount -lt $expectedCount) { $validationErrors.Add(("GEO insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $geoCount)) | Out-Null }
 if ($rdrCount -lt $expectedCount) { $validationErrors.Add(("RDR insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $rdrCount)) | Out-Null }
 if ($matCount -lt $expectedCount) { $validationErrors.Add(("MAT insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $matCount)) | Out-Null }
-if ($texbankCount -lt 4) { $validationErrors.Add(("TEXBANK_*.BIN insuficiente: esperado>=4, encontrado={0}" -f $texbankCount)) | Out-Null }
+if ($texbankCount -ne 2) { $validationErrors.Add(("TEXBANK estrito invalido: esperado=2 (32/64), encontrado={0}" -f $texbankCount)) | Out-Null }
 if (-not $hasSegmentsMap) { $validationErrors.Add("segments_map.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasTexManifest) { $validationErrors.Add("texbanks_manifest.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasTgaCompat) { $validationErrors.Add("tga_compat_report.json ausente em pacote_rancing") | Out-Null }
@@ -1378,8 +1327,6 @@ if (-not $hasTrkRdrBin) { $validationErrors.Add("TRKRDR.BIN ausente em cd\\data"
 if ($ExportSurfaceFamilyMap -and -not $hasSurfaceFamilyMapBin) { $validationErrors.Add("SFMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportSurfaceFamilyMap -and -not $hasSegmentCollisionMapBin) { $validationErrors.Add("SCMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportFaceSurfaceMap -and -not $hasFaceSurfaceMapBin) { $validationErrors.Add("FSMAP.BIN ausente em cd\\data") | Out-Null }
-if (-not $hasMat8Bin) { $validationErrors.Add("MAT8.BIN ausente em cd\\data") | Out-Null }
-if (-not $hasMat16Bin) { $validationErrors.Add("MAT16.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat64Bin) { $validationErrors.Add("MAT64.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasPacksManifest) { $validationErrors.Add("packs_manifest.json ausente em pacote_rancing") | Out-Null }
@@ -1391,52 +1338,52 @@ if ($validationErrors.Count -gt 0) {
 }
 
 Write-Host "Validacao final: OK"
-Write-Host "Arquivos soltos finais em: $PackageDir"
-Write-Host "Arquivos BIN/TXT finais em: $CdDataDir"
-if ($RebuildSegmentsMap) {
-    Write-Host "=== Reconstruindo segments_map completo ==="
-    & ".\tools\build_segments_map_full.ps1" `
-        -ResultDir $ResultDir `
-        -OutJsonPath $jsonPath `
-        -SourceJsonPath $jsonPath `
-        -Shading $Shading `
-        -TexWidth $TexWidth `
-        -TexHeight $TexHeight `
-        -TexPadWidth $TexPadWidth
-    Write-Host "=== Reaplicar anotacao de tipo de solo apos rebuild ==="
-    Annotate-SegmentsMapSurfaceTypes -SegmentsMapPath $jsonPath
-    if ($ExportSurfaceFamilyMap) {
-        Write-Host "=== Regerar mapa compacto de superficie apos rebuild ==="
-        $surfaceMapBinPath = Join-Path $PackageDir "SFMAP.BIN"
-        Write-SurfaceFamilyMapBinary -SegmentsMapPath $jsonPath -OutBinPath $surfaceMapBinPath
-        Copy-Item -LiteralPath $surfaceMapBinPath -Destination (Join-Path $CdDataDir "SFMAP.BIN") -Force
-        Write-Host "=== Regerar mapa de colisao por segmento apos rebuild ==="
-        $segmentCollisionMapPath = Join-Path $PackageDir "SCMAP.BIN"
-        Write-SegmentCollisionMapBinary -SegmentsMapPath $jsonPath -OutBinPath $segmentCollisionMapPath
-        Copy-Item -LiteralPath $segmentCollisionMapPath -Destination (Join-Path $CdDataDir "SCMAP.BIN") -Force
-    }
-    if ($ExportFaceSurfaceMap) {
-        Write-Host "=== Regerar indice espacial de faces/solo apos rebuild ==="
-        $faceSurfaceMapPath = Join-Path $PackageDir "FSMAP.BIN"
-        $faceSurfaceReportPath = Join-Path $PackageDir "face_surface_map_report.json"
-        & python $script:faceSurfaceMapScript `
-            --geometry-dir $PackageDir `
-            --segments-map $jsonPath `
-            --output $faceSurfaceMapPath `
-            --report $faceSurfaceReportPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "Falha ao regerar FSMAP.BIN apos rebuild (exit=$LASTEXITCODE)."
-        }
-        Copy-Item -LiteralPath $faceSurfaceMapPath -Destination (Join-Path $CdDataDir "FSMAP.BIN") -Force
-    }
-    Write-Host "=== Validando segments_map final apos rebuild ==="
-    Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
-    Write-Host "=== Minificando segments_map final apos rebuild ==="
-    & python $script:minifyJsonScript $jsonPath
-    Write-Host "=== Recriando aliases 8.3 apos rebuild final ==="
-    Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
-    Write-Host "=== Limpeza final: Remover auxiliares de cd/data apos rebuild ==="
-    Remove-CdDataAuxFiles -TargetDirs $targetDirs
-} else {
-    Write-Host "segments_map.json mantido (rebuild desativado)."
+Write-Host "=== Publicacao atomica dos artefatos validados ==="
+$publishBackupRoot = Join-Path "C:\saturn\backups" ("Interlagos_build_publish_{0}" -f $buildRunId)
+New-Item -ItemType Directory -Path $publishBackupRoot -Force | Out-Null
+
+$packageParent = [System.IO.Path]::GetFullPath((Split-Path -Parent $publishPackageDir)).TrimEnd('\')
+$packageLeaf = Split-Path -Leaf $publishPackageDir
+if ($packageLeaf -ne "pacote_rancing") {
+    throw "Publicacao recusada: PackageDir inesperado: $publishPackageDir"
 }
+if (Test-Path -LiteralPath $publishPackageDir) {
+    $resolvedPublishPackage = [System.IO.Path]::GetFullPath($publishPackageDir)
+    if (-not $resolvedPublishPackage.StartsWith($packageParent + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Publicacao recusada fora do parent esperado: $resolvedPublishPackage"
+    }
+    Move-Item -LiteralPath $publishPackageDir -Destination (Join-Path $publishBackupRoot "package_previous")
+}
+Move-Item -LiteralPath $PackageDir -Destination $publishPackageDir
+
+New-Item -ItemType Directory -Path $publishCdDataDir -Force | Out-Null
+# These legacy banks violate the current two-tier texture design and must not
+# survive a full build. They are recoverable in the pre-build backup.
+foreach ($legacyName in @("TBK8.BIN", "TBK16.BIN", "TEXBANK_8.BIN", "TEXBANK_16.BIN", "MAT8.BIN", "MAT16.BIN", "TGA8.BIN", "TGA16.BIN", "RTMAP.TXT")) {
+    $legacyPath = Join-Path $publishCdDataDir $legacyName
+    if (Test-Path -LiteralPath $legacyPath) { Remove-Item -LiteralPath $legacyPath -Force }
+}
+foreach ($file in @(Get-ChildItem -LiteralPath $CdDataDir -File -ErrorAction Stop)) {
+    Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $publishCdDataDir $file.Name) -Force
+}
+
+$publishInfo = [pscustomobject]@{
+    version = 1
+    publishedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    runId = $buildRunId
+    packageDir = $publishPackageDir
+    cdDataDir = $publishCdDataDir
+    previousPackageBackup = (Join-Path $publishBackupRoot "package_previous")
+    textureLods = @(32, 64)
+}
+$publishInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $publishPackageDir "build_publish_manifest.json") -Encoding UTF8
+
+$resolvedStagingRoot = [System.IO.Path]::GetFullPath($stagingRoot)
+$expectedStagingParent = [System.IO.Path]::GetFullPath((Split-Path -Parent $publishPackageDir)).TrimEnd('\')
+if ($resolvedStagingRoot.StartsWith($expectedStagingParent + '\.interlagos_build_', [System.StringComparison]::OrdinalIgnoreCase) -and
+    (Test-Path -LiteralPath $resolvedStagingRoot)) {
+    Remove-Item -LiteralPath $resolvedStagingRoot -Recurse -Force
+}
+Write-Host ("Arquivos soltos finais em: {0}" -f $publishPackageDir)
+Write-Host ("Arquivos BIN/TXT finais em: {0}" -f $publishCdDataDir)
+Write-Host ("Pacote anterior preservado em: {0}" -f (Join-Path $publishBackupRoot "package_previous"))

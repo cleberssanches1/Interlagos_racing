@@ -11,6 +11,7 @@ param(
     [int]$QuadUvHighTolerance = 704,
     [switch]$CanonicalizeHighToleranceAllFamilies = $true,
     [string]$SegmentsMapPath = "",
+    [string]$OrientationReportPath = "",
     [string[]]$CanonicalizeExcludeSourceStems = @(),
     [string[]]$CanonicalizeHighToleranceSourceStems = @("f02164", "f01764", "f04764", "f00764", "f00964", "f03764", "f00864", "f03464")
 )
@@ -22,6 +23,7 @@ $script:canonicalizeExcludeFamilyId = @{}
 $script:canonicalizeHighToleranceFamilyId = @{}
 $script:manualOrientationFixBySegmentFamily = @{}
 $script:surfaceTypeByFamilyId = @{}
+$script:orientationReportEntries = New-Object System.Collections.Generic.List[object]
 
 $script:SurfaceTypeUnknown = [byte]0
 $script:SurfaceTypeAsphalt = [byte]1
@@ -255,6 +257,11 @@ function Build-ManualOrientationFixMap(
     Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 53  -EndSeg 53  -Stems @("f02764") -Op "rot90"
     Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 54  -EndSeg 54  -Stems @("f00664") -Op "rot90"
 
+    # Segment 63 contains two independently unwrapped F05464 quads. Their OBJ
+    # corner order already carries the Blender orientation; the generic +U edge
+    # heuristic rotates one of them by 90 degrees.
+    Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 63  -EndSeg 63  -Stems @("f05464") -Op "preserve"
+
     Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 56  -EndSeg 97  -Stems @("f00864") -Op "rot180"
     Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 78  -EndSeg 78  -Stems @("f00764") -Op "rot180"
     Add-ManualOrientationRule -Dst $out -FamilyByStem $familyByStem -StartSeg 81  -EndSeg 81  -Stems @("f00764") -Op "rot180"
@@ -463,106 +470,40 @@ function Reorder-QuadVerticesFromUv([object]$Face, [int]$EdgeTolerance) {
         return ,$result
     }
 
-    # Candidate permutations:
-    # - first 4: rotations (preserve winding)
-    # - last 4: mirrored variants (flip)
-    $permutations = @(
-        @(0, 1, 2, 3),
-        @(1, 2, 3, 0),
-        @(2, 3, 0, 1),
-        @(3, 0, 1, 2),
-        @(0, 3, 2, 1),
-        @(3, 2, 1, 0),
-        @(2, 1, 0, 3),
-        @(1, 0, 3, 2)
-    )
-
-    # Two V conventions:
-    # - vMinTop = false: (minV at top)
-    # - vMinTop = true : (maxV at top)
-    $targetSets = @(
-        [pscustomobject]@{
-            u = @($minU, $maxU, $maxU, $minU)
-            v = @($minV, $minV, $maxV, $maxV)
-        },
-        [pscustomobject]@{
-            u = @($minU, $maxU, $maxU, $minU)
-            v = @($maxV, $maxV, $minV, $minV)
+    # The draw-ready format does not keep per-corner UVs: the VDP1 textured quad
+    # maps its horizontal texture axis onto the first polygon edge. Choose the
+    # cyclic OBJ edge whose UV direction is most closely aligned with +U.
+    # This preserves an already-correct TL->TR edge (for example F02664) while
+    # still recovering rotated/tiled islands such as F05464. Min/max corner
+    # selection is not sufficient because choosing BL instead of TL rotates the
+    # full texture by 90 degrees. Never mirror: that would reverse OBJ winding.
+    [double]$rangeU = [Math]::Max(1.0, ([double]$maxU - [double]$minU))
+    [double]$rangeV = [Math]::Max(1.0, ([double]$maxV - [double]$minV))
+    [double]$bestAlignment = [double]::NegativeInfinity
+    [int]$startCorner = 0
+    for ($i = 0; $i -lt 4; $i++) {
+        [int]$next = ($i + 1) % 4
+        [double]$du = (([double][int]$Face.u[$next]) - ([double][int]$Face.u[$i])) / $rangeU
+        [double]$dv = (([double][int]$Face.v[$next]) - ([double][int]$Face.v[$i])) / $rangeV
+        [double]$length = [Math]::Sqrt(($du * $du) + ($dv * $dv))
+        if ($length -le 0.000000001) {
+            continue
         }
-    )
 
-    $scale = [double][Math]::Max(1, ($maxU - $minU) + ($maxV - $minV))
-    $tol = [double][Math]::Max(0, $EdgeTolerance)
-
-    $bestAllScore = [double]::PositiveInfinity
-    $bestAllMaxCorner = [double]::PositiveInfinity
-    $bestAllPermIndex = -1
-    $bestAllTargetIndex = -1
-
-    $bestRotScore = [double]::PositiveInfinity
-    $bestRotMaxCorner = [double]::PositiveInfinity
-    $bestRotPermIndex = -1
-    $bestRotTargetIndex = -1
-
-    for ($pi = 0; $pi -lt $permutations.Count; $pi++) {
-        $perm = $permutations[$pi]
-        for ($ti = 0; $ti -lt $targetSets.Count; $ti++) {
-            $target = $targetSets[$ti]
-            $sumScore = [double]0.0
-            $maxCorner = [double]0.0
-            for ($corner = 0; $corner -lt 4; $corner++) {
-                $src = [int]$perm[$corner]
-                $du = [Math]::Abs(([double][int]$Face.u[$src]) - [double][int]$target.u[$corner])
-                $dv = [Math]::Abs(([double][int]$Face.v[$src]) - [double][int]$target.v[$corner])
-                $cornerScore = [double]($du + $dv)
-                $sumScore += $cornerScore
-                if ($cornerScore -gt $maxCorner) { $maxCorner = $cornerScore }
-            }
-
-            if ($sumScore -lt $bestAllScore) {
-                $bestAllScore = $sumScore
-                $bestAllMaxCorner = $maxCorner
-                $bestAllPermIndex = $pi
-                $bestAllTargetIndex = $ti
-            }
-
-            if ($pi -lt 4 -and $sumScore -lt $bestRotScore) {
-                $bestRotScore = $sumScore
-                $bestRotMaxCorner = $maxCorner
-                $bestRotPermIndex = $pi
-                $bestRotTargetIndex = $ti
-            }
+        [double]$alignment = $du / $length
+        if ($alignment -gt $bestAlignment) {
+            $bestAlignment = $alignment
+            $startCorner = $i
         }
     }
 
-    if ($bestAllPermIndex -lt 0) {
-        return ,$result
-    }
-
-    # Prefer rotation-only unless mirrored mapping is clearly better.
-    $useRotationOnly = $false
-    if ($bestRotPermIndex -ge 0) {
-        $rotationBias = $scale * 0.05
-        if ($bestRotScore -le ($bestAllScore + $rotationBias)) {
-            $useRotationOnly = $true
-        }
-    }
-
-    $chosenPermIndex = if ($useRotationOnly) { $bestRotPermIndex } else { $bestAllPermIndex }
-    $chosenMaxCorner = if ($useRotationOnly) { $bestRotMaxCorner } else { $bestAllMaxCorner }
-
-    # Confidence gate: avoid changing faces with ambiguous/non-rectangular UV layout.
-    $maxAllowed = [double][Math]::Max($tol, ($scale * 0.35))
-    if ($chosenMaxCorner -gt $maxAllowed) {
-        return ,$result
-    }
-
-    $chosenPerm = $permutations[$chosenPermIndex]
+    # Keep the parameter for CLI compatibility with existing build scripts.
+    $null = $EdgeTolerance
     return @(
-        [uint16]$Face.vertex[[int]$chosenPerm[0]],
-        [uint16]$Face.vertex[[int]$chosenPerm[1]],
-        [uint16]$Face.vertex[[int]$chosenPerm[2]],
-        [uint16]$Face.vertex[[int]$chosenPerm[3]]
+        [uint16]$Face.vertex[($startCorner + 0) % 4],
+        [uint16]$Face.vertex[($startCorner + 1) % 4],
+        [uint16]$Face.vertex[($startCorner + 2) % 4],
+        [uint16]$Face.vertex[($startCorner + 3) % 4]
     )
 }
 
@@ -783,7 +724,15 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
             )
 
             if ([int]$srcFace.kind -eq 4) {
+                $manualOp = ""
+                if ($script:manualOrientationFixBySegmentFamily.ContainsKey($Id)) {
+                    $segFix = $script:manualOrientationFixBySegmentFamily[$Id]
+                    if ($segFix -and $segFix.ContainsKey($familyId)) {
+                        $manualOp = [string]$segFix[$familyId]
+                    }
+                }
                 $allowCanonicalize = $CanonicalizeQuadUvOrder
+                if ($manualOp -eq "preserve") { $allowCanonicalize = $false }
                 if ($allowCanonicalize -and $script:canonicalizeExcludeFamilyId.ContainsKey($familyId)) {
                     $allowCanonicalize = $false
                 }
@@ -799,13 +748,34 @@ function Write-Sdr([int]$Id, [object]$Geo, [object]$Mat, [string]$TargetPath) {
                     $indices = [uint16[]](Reorder-QuadVerticesFromUv $srcFace $effectiveTol)
                 }
 
-                if ($script:manualOrientationFixBySegmentFamily.ContainsKey($Id)) {
-                    $segFix = $script:manualOrientationFixBySegmentFamily[$Id]
-                    if ($segFix -and $segFix.ContainsKey($familyId)) {
-                        $op = [string]$segFix[$familyId]
-                        $indices = [uint16[]](Apply-QuadOrientationOp $indices $op)
-                    }
+                if (-not [string]::IsNullOrWhiteSpace($manualOp) -and $manualOp -ne "preserve") {
+                    $indices = [uint16[]](Apply-QuadOrientationOp $indices $manualOp)
                 }
+
+                $rotation = -1
+                for ($candidate = 0; $candidate -lt 4; $candidate++) {
+                    $matches = $true
+                    for ($corner = 0; $corner -lt 4; $corner++) {
+                        if ([uint16]$indices[$corner] -ne [uint16]$srcFace.vertex[($candidate + $corner) % 4]) {
+                            $matches = $false
+                            break
+                        }
+                    }
+                    if ($matches) { $rotation = $candidate * 90; break }
+                }
+                $script:orientationReportEntries.Add([pscustomobject]([ordered]@{
+                    segmentId = [int]$Id
+                    faceIndex = [int]$fi
+                    familyId = [int]$familyId
+                    assetTag = [string]$tag
+                    uvU = @($srcFace.u | ForEach-Object { [int]$_ })
+                    uvV = @($srcFace.v | ForEach-Object { [int]$_ })
+                    sourceVertices = @($srcFace.vertex | ForEach-Object { [int]$_ })
+                    outputVertices = @($indices | ForEach-Object { [int]$_ })
+                    rotationDegrees = [int]$rotation
+                    manualOperation = [string]$manualOp
+                    windingPreserved = ($rotation -ge 0)
+                })) | Out-Null
             } else {
                 $indices[3] = $indices[2]
             }
@@ -895,3 +865,15 @@ foreach ($id in $segmentIds) {
 }
 
 Write-Host ("SDR gerados: {0}" -f $written)
+
+if ([string]::IsNullOrWhiteSpace($OrientationReportPath)) {
+    $reportSuffix = if ([string]::IsNullOrWhiteSpace($tag)) { "high" } else { $tag.ToLowerInvariant() }
+    $OrientationReportPath = Join-Path $OutDir ("uv_orientation_report_{0}.json" -f $reportSuffix)
+}
+[pscustomobject]@{
+    version = 1
+    generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    assetTag = $tag
+    entries = @($script:orientationReportEntries.ToArray())
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OrientationReportPath -Encoding UTF8
+Write-Host ("UV orientation report: {0}" -f $OrientationReportPath)

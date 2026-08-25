@@ -413,15 +413,16 @@ inline SRL::Math::Types::Fxp ResolveRouteGroundYAt(const AutoLapRouteState& stat
                                                    size_t routeIndex,
                                                    const SRL::Math::Types::Fxp& fallbackY)
 {
-    static constexpr uint16_t kAsphaltFamilyId = 1u;
+    static constexpr uint8_t kAsphaltSurfaceType = 1u;
 
     if (HasCenterAtIndex(state, routeIndex))
     {
         SRL::Math::Types::Fxp asphaltY{};
-        if (trackSystem.FindSurfaceYByFamilyId(
+        if (trackSystem.FindSurfaceYBySurfaceTypeSet(
                 state.centers[routeIndex],
                 trackSegOffset,
-                kAsphaltFamilyId,
+                &kAsphaltSurfaceType,
+                1u,
                 asphaltY))
         {
             return asphaltY;

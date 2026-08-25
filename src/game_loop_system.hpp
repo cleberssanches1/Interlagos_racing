@@ -1052,11 +1052,11 @@ private:
                 (cameraSurfaceGuardState_.segmentId > 0)
                     ? static_cast<int32_t>(cameraSurfaceGuardState_.segmentId)
                     : static_cast<int32_t>(latestActiveSegmentId_);
-            const bool found = context_.trackSystem->FindSurfaceYByFamilySet(
+            const bool found = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
                 desiredCameraLocation,
                 context_.trackSegOffset,
-                Game::CarPhysics::Tunables::kDriveableFamilies.data(),
-                Game::CarPhysics::Tunables::kDriveableFamilies.size(),
+                Game::CarPhysics::Tunables::kDriveableSurfaceTypes.data(),
+                Game::CarPhysics::Tunables::kDriveableSurfaceTypes.size(),
                 surfaceY,
                 &segmentId,
                 seedSegmentId,

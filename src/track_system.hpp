@@ -142,7 +142,22 @@ public:
                                  uint8_t* outSurfaceType = nullptr,
                                  int16_t* outFaceIndex = nullptr,
                                  int16_t hintFaceIndex = -1,
-                                 bool useSharedFaceCache = true) const;
+                                 bool useSharedFaceCache = true,
+                                 const uint8_t* allowedSurfaceTypes = nullptr,
+                                 size_t allowedSurfaceTypeCount = 0u) const;
+    bool FindSurfaceYBySurfaceTypeSet(const SRL::Math::Types::Vector3D& worldPosition,
+                                      const SRL::Math::Types::Vector3D& trackOffset,
+                                      const uint8_t* surfaceTypes,
+                                      size_t surfaceTypeCount,
+                                      SRL::Math::Types::Fxp& outSurfaceY,
+                                      int32_t* outSegmentId = nullptr,
+                                      int32_t seedSegmentId = -1,
+                                      bool allowFallback = true,
+                                      uint16_t* outFamilyId = nullptr,
+                                      uint8_t* outSurfaceType = nullptr,
+                                      int16_t* outFaceIndex = nullptr,
+                                      int16_t hintFaceIndex = -1,
+                                      bool useSharedFaceCache = true) const;
     bool FindSurfaceContact(const SRL::Math::Types::Vector3D& worldPosition,
                             const SRL::Math::Types::Vector3D& trackOffset,
                             Game::SurfaceContact& outContact,
