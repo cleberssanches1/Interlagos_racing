@@ -17,13 +17,20 @@
     [bool]$ExportSurfaceFamilyMap = $true,
     [bool]$ExportFaceSurfaceMap = $true,
     [bool]$EnableSeamFaceDedup = $true,
+    [bool]$SkipMaterialsWithoutImages = $true,
     [switch]$AuditWalls = $false,
     [switch]$AuditWallsStrict = $false,
-    [string]$AuditWallsReportDir = ""
+    [string]$AuditWallsReportDir = "",
+    [string]$SurfaceTextureManifestPath = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($SurfaceTextureManifestPath)) {
+    $SurfaceTextureManifestPath = Join-Path $PSScriptRoot "track_surface_texture_manifest.json"
+}
+$script:SurfaceTypeByManifestStem = @{}
+$script:SurfaceManifestExpectedStems = @{}
 
 function Resolve-DefaultSourceObjDir {
     param(
@@ -308,6 +315,7 @@ if ($sourceObjCount -le 0) {
 
 Write-Host ("Build config: SourceObjDir={0} (objs:{1})" -f $SourceObjDir, $sourceObjCount)
 Write-Host ("Build config: ResultDir={0}" -f $ResultDir)
+Write-Host ("Build config: SkipMaterialsWithoutImages={0}" -f $SkipMaterialsWithoutImages)
 Write-Host ("Build staging: PackageDir={0}" -f $PackageDir)
 Write-Host ("Build staging: CdDataDir={0}" -f $CdDataDir)
 Write-Host ("Publish target: PackageDir={0}" -f $publishPackageDir)
@@ -446,7 +454,8 @@ Write-Host "=== Etapa 2.1/7: Recriar families a partir dos OBJ/MTL atuais ==="
 & $script:freshSegmentsMapScript `
     -SegmentsMapPath $jsonPath `
     -ResultDir $ResultDir `
-    -Pattern $Pattern
+    -Pattern $Pattern `
+    -SkipMaterialsWithoutImages:$SkipMaterialsWithoutImages
 
 Test-SegmentsMapCoverage `
     -ObjRootDir $SourceObjDir `
@@ -599,23 +608,18 @@ function Normalize-SurfaceStem {
     return $base
 }
 
-function Resolve-SurfaceTypeIdFromFamily {
+function Get-SurfaceStemFromFamily {
     param(
         $Family
     )
-    if ($null -eq $Family) { return 0 }
-
-    if ($Family.PSObject.Properties.Name -contains "surfaceTypeId") {
-        $explicit = [int]$Family.surfaceTypeId
-        if ($explicit -ge 0 -and $explicit -le 255) { return $explicit }
-    }
-    if ($Family.PSObject.Properties.Name -contains "surfaceType") {
-        $fromName = Convert-SurfaceTypeNameToId ([string]$Family.surfaceType)
-        if ($fromName -gt 0) { return $fromName }
-    }
+    if ($null -eq $Family) { return "" }
 
     $stem = ""
-    if ($Family.PSObject.Properties.Name -contains "sourceStem") {
+    if ($Family.PSObject.Properties.Name -contains "baseSourceStem") {
+        $stem = Normalize-SurfaceStem ([string]$Family.baseSourceStem)
+    }
+    if ([string]::IsNullOrWhiteSpace($stem) -and
+        $Family.PSObject.Properties.Name -contains "sourceStem") {
         $stem = Normalize-SurfaceStem ([string]$Family.sourceStem)
     }
     if ([string]::IsNullOrWhiteSpace($stem) -and
@@ -634,8 +638,75 @@ function Resolve-SurfaceTypeIdFromFamily {
         $Family.PSObject.Properties.Name -contains "name") {
         $stem = Normalize-SurfaceStem ([string]$Family.name)
     }
+    return $stem
+}
 
-    $asphaltStems = @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "asfalto", "roadpit", "roadgrid")
+function Import-SurfaceTextureManifest {
+    param(
+        [string]$Path
+    )
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "manifesto de texturas de solo inexistente: $Path"
+    }
+
+    $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    if ($null -eq $manifest -or
+        -not ($manifest.PSObject.Properties.Name -contains "surfaceTextures")) {
+        throw "manifesto de texturas de solo invalido: $Path"
+    }
+
+    $script:SurfaceTypeByManifestStem = @{}
+    $script:SurfaceManifestExpectedStems = @{}
+    foreach ($group in @($manifest.surfaceTextures)) {
+        if ($null -eq $group) { continue }
+        $typeId = Convert-SurfaceTypeNameToId ([string]$group.surfaceType)
+        if ($typeId -le 0) {
+            throw "tipo de solo desconhecido no manifesto: $($group.surfaceType)"
+        }
+        foreach ($token in @($group.sourceStems)) {
+            $stem = Normalize-SurfaceStem ([string]$token)
+            if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+            if ($script:SurfaceTypeByManifestStem.ContainsKey($stem) -and
+                [int]$script:SurfaceTypeByManifestStem[$stem] -ne $typeId) {
+                throw "textura '$stem' possui tipos de solo conflitantes no manifesto"
+            }
+            $script:SurfaceTypeByManifestStem[$stem] = [int]$typeId
+            $script:SurfaceManifestExpectedStems[$stem] = $false
+        }
+    }
+    if ($script:SurfaceTypeByManifestStem.Count -eq 0) {
+        throw "manifesto de texturas de solo sem entradas: $Path"
+    }
+    Write-Host ("manifesto de solo carregado: {0} texturas={1}" -f $Path, $script:SurfaceTypeByManifestStem.Count)
+}
+
+function Resolve-SurfaceTypeIdFromFamily {
+    param(
+        $Family
+    )
+    if ($null -eq $Family) { return 0 }
+
+    if ($Family.PSObject.Properties.Name -contains "surfaceTypeId") {
+        $explicit = [int]$Family.surfaceTypeId
+        # Zero means unknown and must not hide a later manifest/rule match.
+        if ($explicit -gt 0 -and $explicit -le 255) { return $explicit }
+    }
+    if ($Family.PSObject.Properties.Name -contains "surfaceType") {
+        $fromName = Convert-SurfaceTypeNameToId ([string]$Family.surfaceType)
+        if ($fromName -gt 0) { return $fromName }
+    }
+
+    $stem = Get-SurfaceStemFromFamily -Family $Family
+
+    if ($script:SurfaceTypeByManifestStem.ContainsKey($stem)) {
+        return [int]$script:SurfaceTypeByManifestStem[$stem]
+    }
+
+    # f07564/f07664 are the current Interlagos asphalt source textures. Keep
+    # their explicit stems here: sourceStem takes precedence over the material
+    # name, so relying on the "asfalto" name alone would classify them as
+    # unknown and strict wheel-ground probes would reject the road.
+    $asphaltStems = @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "f07564", "f07664", "asfalto", "roadpit", "roadgrid")
     $escapeStems = @("f01864", "f00164", "f00264", "f00364", "f00464", "f00564")
     $grassStems = @("f06864", "f04364", "f02564", "f02464", "f02364")
 
@@ -643,6 +714,36 @@ function Resolve-SurfaceTypeIdFromFamily {
     if ($escapeStems -contains $stem) { return 2 }
     if ($grassStems -contains $stem) { return 3 }
     return 0
+}
+
+function Assert-SurfaceTextureManifestCoverage {
+    param(
+        [string]$SegmentsMapPath
+    )
+    $json = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
+    foreach ($family in @($json.textureFamilies)) {
+        if ($null -eq $family) { continue }
+        $stem = Get-SurfaceStemFromFamily -Family $family
+        if (-not $script:SurfaceManifestExpectedStems.ContainsKey($stem)) { continue }
+        $expectedType = [int]$script:SurfaceTypeByManifestStem[$stem]
+        $actualType = if ($family.PSObject.Properties.Name -contains "surfaceTypeId") {
+            [int]$family.surfaceTypeId
+        } else {
+            0
+        }
+        if ($actualType -ne $expectedType) {
+            throw "textura de solo '$stem' recebeu tipo $actualType; esperado $expectedType"
+        }
+        $script:SurfaceManifestExpectedStems[$stem] = $true
+    }
+
+    $missing = @($script:SurfaceManifestExpectedStems.Keys | Where-Object {
+        -not [bool]$script:SurfaceManifestExpectedStems[$_]
+    } | Sort-Object)
+    if ($missing.Count -gt 0) {
+        throw "texturas do manifesto ausentes no catalogo de familias: $($missing -join ', ')"
+    }
+    Write-Host ("manifesto de solo validado: {0} texturas encontradas" -f $script:SurfaceManifestExpectedStems.Count)
 }
 
 function Annotate-SegmentsMapSurfaceTypes {
@@ -889,7 +990,9 @@ Write-Host "=== Etapa 2.8/7: Catalogo permanece fechado (sem append/reuso) ==="
 Write-Host "=== Etapa 2.9/7: Validar referencias de familyId no segments_map ==="
 Test-SegmentsMapFamilyReferences -SegmentsMapPath $jsonPath
 Write-Host "=== Etapa 2.95/7: Anotar tipo de solo por face ==="
+Import-SurfaceTextureManifest -Path $SurfaceTextureManifestPath
 Annotate-SegmentsMapSurfaceTypes -SegmentsMapPath $jsonPath
+Assert-SurfaceTextureManifestCoverage -SegmentsMapPath $jsonPath
 if ($ExportSurfaceFamilyMap) {
     Write-Host "=== Etapa 2.96/7: Gerar mapa compacto de superficie por family ==="
     $surfaceMapBinPath = Join-Path $PackageDir "SFMAP.BIN"
@@ -999,6 +1102,7 @@ foreach ($entry in $designPasses) {
                 Lod = $entry.Lod
                 SeamOwnershipPath = $seamOwnershipPath
                 AssetTag = $assetTag
+                SkipMaterialsWithoutImages = $SkipMaterialsWithoutImages
             }
             if ($entry.SkipGeo) {
                 & $componentScriptPath @argList -SkipGeo
@@ -1219,14 +1323,20 @@ Write-Host "=== Etapa 4.1/7: Criar aliases 8.3 para segments_map ==="
 $targetDirs = @($CdDataDir)
 Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
 
-Write-Host "=== Etapa 5/6: Gerar apenas TBK32/TBK64 estritos ==="
+Write-Host "=== Etapa 5/7: Gerar bancos independentes TBKLOD0/TBKLOD1/TBKLOD2 ==="
+foreach ($staleBankName in @("TBK32.BIN", "TBK64.BIN", "TBKLOD0.BIN", "TBKLOD1.BIN", "TBKLOD2.BIN")) {
+    $staleBankPath = Join-Path $CdDataDir $staleBankName
+    if (Test-Path -LiteralPath $staleBankPath) {
+        Remove-Item -LiteralPath $staleBankPath -Force
+    }
+}
 & $script:freshTexbanksScript `
     -JsonPath $jsonPath `
     -PreparedTextureDir $PackageDir `
     -OutDir $CdDataDir `
     -ReportDir $PackageDir
 
-Write-Host "=== Etapa 6/6: Gerar S001FAM.BIN ==="
+Write-Host "=== Etapa 6/7: Gerar S001FAM.BIN ==="
 $seg1FamOut = Join-Path $CdDataDir "S001FAM.BIN"
 & $script:seg1FamScript `
     -JsonPath $jsonPath `
@@ -1269,6 +1379,8 @@ $matCount = [Math]::Max($matCountLong, $matCountShort)
 $texbankCountLegacy = @(Get-ChildItem -Path $CdDataDir -File -Filter "TEXBANK_*.BIN").Count
 $texbankCountShort = @(Get-ChildItem -Path $CdDataDir -File -Filter "TBK*.BIN").Count
 $texbankCount = $texbankCountLegacy + $texbankCountShort
+$expectedTexbanks = @("TBKLOD0.BIN", "TBKLOD1.BIN", "TBKLOD2.BIN")
+$missingTexbanks = @($expectedTexbanks | Where-Object { -not (Test-Path -LiteralPath (Join-Path $CdDataDir $_)) })
 
 $segmentsMapPath = Join-Path $PackageDir "segments_map.json"
 $texManifestPath = Join-Path $PackageDir "texbanks_manifest.json"
@@ -1316,7 +1428,10 @@ $validationErrors = New-Object System.Collections.Generic.List[string]
 if ($geoCount -lt $expectedCount) { $validationErrors.Add(("GEO insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $geoCount)) | Out-Null }
 if ($rdrCount -lt $expectedCount) { $validationErrors.Add(("RDR insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $rdrCount)) | Out-Null }
 if ($matCount -lt $expectedCount) { $validationErrors.Add(("MAT insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $matCount)) | Out-Null }
-if ($texbankCount -ne 2) { $validationErrors.Add(("TEXBANK estrito invalido: esperado=2 (32/64), encontrado={0}" -f $texbankCount)) | Out-Null }
+if ($texbankCount -ne 3 -or $missingTexbanks.Count -gt 0) {
+    $validationErrors.Add(("TEXBANK estrito invalido: esperados={0}; encontrado={1}; ausentes={2}" -f
+        ($expectedTexbanks -join ","), $texbankCount, ($missingTexbanks -join ","))) | Out-Null
+}
 if (-not $hasSegmentsMap) { $validationErrors.Add("segments_map.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasTexManifest) { $validationErrors.Add("texbanks_manifest.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasTgaCompat) { $validationErrors.Add("tga_compat_report.json ausente em pacote_rancing") | Out-Null }
@@ -1357,9 +1472,17 @@ if (Test-Path -LiteralPath $publishPackageDir) {
 Move-Item -LiteralPath $PackageDir -Destination $publishPackageDir
 
 New-Item -ItemType Directory -Path $publishCdDataDir -Force | Out-Null
-# These legacy banks violate the current two-tier texture design and must not
-# survive a full build. They are recoverable in the pre-build backup.
-foreach ($legacyName in @("TBK8.BIN", "TBK16.BIN", "TEXBANK_8.BIN", "TEXBANK_16.BIN", "MAT8.BIN", "MAT16.BIN", "TGA8.BIN", "TGA16.BIN", "RTMAP.TXT")) {
+# Remove every previously published texture bank before copying the validated
+# three-LOD set. This prevents TBK32/TBK64 (or another stale bank) from leaking
+# into the next ISO. Other legacy runtime artifacts remain explicitly scoped.
+$publishedBankFiles = @(
+    Get-ChildItem -LiteralPath $publishCdDataDir -File -Filter "TBK*.BIN" -ErrorAction SilentlyContinue
+    Get-ChildItem -LiteralPath $publishCdDataDir -File -Filter "TEXBANK_*.BIN" -ErrorAction SilentlyContinue
+)
+foreach ($publishedBankFile in $publishedBankFiles) {
+    Remove-Item -LiteralPath $publishedBankFile.FullName -Force
+}
+foreach ($legacyName in @("MAT8.BIN", "MAT16.BIN", "TGA8.BIN", "TGA16.BIN", "RTMAP.TXT")) {
     $legacyPath = Join-Path $publishCdDataDir $legacyName
     if (Test-Path -LiteralPath $legacyPath) { Remove-Item -LiteralPath $legacyPath -Force }
 }
@@ -1368,13 +1491,17 @@ foreach ($file in @(Get-ChildItem -LiteralPath $CdDataDir -File -ErrorAction Sto
 }
 
 $publishInfo = [pscustomobject]@{
-    version = 1
+    version = 2
     publishedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     runId = $buildRunId
     packageDir = $publishPackageDir
     cdDataDir = $publishCdDataDir
     previousPackageBackup = (Join-Path $publishBackupRoot "package_previous")
-    textureLods = @(32, 64)
+    textureBanks = @(
+        [pscustomobject]@{ lod = "lod_0"; file = "TBKLOD0.BIN"; bankId = 0; runtimeIndex = 3 }
+        [pscustomobject]@{ lod = "lod_1"; file = "TBKLOD1.BIN"; bankId = 1; runtimeIndex = 1 }
+        [pscustomobject]@{ lod = "lod_2"; file = "TBKLOD2.BIN"; bankId = 2; runtimeIndex = 2 }
+    )
 }
 $publishInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $publishPackageDir "build_publish_manifest.json") -Encoding UTF8
 

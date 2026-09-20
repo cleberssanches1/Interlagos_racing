@@ -1,0 +1,502 @@
+﻿{
+    "version":  1,
+    "generatedAtUtc":  "2026-08-25T14:57:52Z",
+    "assetTag":  "L",
+    "entries":  [
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  0,
+                        "familyId":  47,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    0,
+                                    32502,
+                                    32767,
+                                    264
+                                ],
+                        "uvV":  [
+                                    210,
+                                    0,
+                                    32767,
+                                    32614
+                                ],
+                        "sourceVertices":  [
+                                               2,
+                                               4,
+                                               7,
+                                               6
+                                           ],
+                        "outputVertices":  [
+                                               2,
+                                               4,
+                                               7,
+                                               6
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  1,
+                        "familyId":  22,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    32767,
+                                    32742,
+                                    0,
+                                    25
+                                ],
+                        "uvV":  [
+                                    449,
+                                    32767,
+                                    32317,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               11,
+                                               15,
+                                               16,
+                                               12
+                                           ],
+                        "outputVertices":  [
+                                               12,
+                                               11,
+                                               15,
+                                               16
+                                           ],
+                        "rotationDegrees":  270,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  2,
+                        "familyId":  22,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    8,
+                                    32767,
+                                    32759,
+                                    0
+                                ],
+                        "uvV":  [
+                                    0,
+                                    298,
+                                    32767,
+                                    32469
+                                ],
+                        "sourceVertices":  [
+                                               25,
+                                               8,
+                                               13,
+                                               14
+                                           ],
+                        "outputVertices":  [
+                                               25,
+                                               8,
+                                               13,
+                                               14
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  3,
+                        "familyId":  20,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    754,
+                                    0,
+                                    32013,
+                                    32767
+                                ],
+                        "uvV":  [
+                                    1537,
+                                    32767,
+                                    31230,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               0,
+                                               17,
+                                               18,
+                                               1
+                                           ],
+                        "outputVertices":  [
+                                               17,
+                                               18,
+                                               1,
+                                               0
+                                           ],
+                        "rotationDegrees":  90,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  4,
+                        "familyId":  20,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    0,
+                                    1871,
+                                    32767,
+                                    30896
+                                ],
+                        "uvV":  [
+                                    2159,
+                                    32767,
+                                    30608,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               17,
+                                               19,
+                                               20,
+                                               18
+                                           ],
+                        "outputVertices":  [
+                                               19,
+                                               20,
+                                               18,
+                                               17
+                                           ],
+                        "rotationDegrees":  90,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  5,
+                        "familyId":  21,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    0,
+                                    32767,
+                                    32767,
+                                    0
+                                ],
+                        "uvV":  [
+                                    30370,
+                                    32767,
+                                    2397,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               8,
+                                               22,
+                                               21,
+                                               25
+                                           ],
+                        "outputVertices":  [
+                                               8,
+                                               22,
+                                               21,
+                                               25
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  6,
+                        "familyId":  21,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    0,
+                                    32767,
+                                    27887,
+                                    0
+                                ],
+                        "uvV":  [
+                                    30591,
+                                    32767,
+                                    2106,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               22,
+                                               24,
+                                               23,
+                                               21
+                                           ],
+                        "outputVertices":  [
+                                               22,
+                                               24,
+                                               23,
+                                               21
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  7,
+                        "familyId":  11,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    95,
+                                    32767,
+                                    32672,
+                                    0
+                                ],
+                        "uvV":  [
+                                    31705,
+                                    32767,
+                                    1062,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               14,
+                                               13,
+                                               26,
+                                               27
+                                           ],
+                        "outputVertices":  [
+                                               14,
+                                               13,
+                                               26,
+                                               27
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  8,
+                        "familyId":  5,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    32767,
+                                    32767,
+                                    0,
+                                    0
+                                ],
+                        "uvV":  [
+                                    32767,
+                                    0,
+                                    0,
+                                    32767
+                                ],
+                        "sourceVertices":  [
+                                               28,
+                                               29,
+                                               31,
+                                               30
+                                           ],
+                        "outputVertices":  [
+                                               30,
+                                               28,
+                                               29,
+                                               31
+                                           ],
+                        "rotationDegrees":  270,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  9,
+                        "familyId":  55,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    1957,
+                                    32767,
+                                    30830,
+                                    0
+                                ],
+                        "uvV":  [
+                                    866,
+                                    0,
+                                    31901,
+                                    32767
+                                ],
+                        "sourceVertices":  [
+                                               3,
+                                               2,
+                                               6,
+                                               5
+                                           ],
+                        "outputVertices":  [
+                                               3,
+                                               2,
+                                               6,
+                                               5
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  10,
+                        "familyId":  56,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    25800,
+                                    0,
+                                    6971,
+                                    32767
+                                ],
+                        "uvV":  [
+                                    32530,
+                                    32767,
+                                    240,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               4,
+                                               10,
+                                               9,
+                                               7
+                                           ],
+                        "outputVertices":  [
+                                               4,
+                                               10,
+                                               9,
+                                               7
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  11,
+                        "familyId":  57,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    32767,
+                                    32210,
+                                    0,
+                                    557
+                                ],
+                        "uvV":  [
+                                    0,
+                                    28416,
+                                    32767,
+                                    4351
+                                ],
+                        "sourceVertices":  [
+                                               3,
+                                               5,
+                                               8,
+                                               25
+                                           ],
+                        "outputVertices":  [
+                                               3,
+                                               5,
+                                               8,
+                                               25
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  12,
+                        "familyId":  58,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    31521,
+                                    26552,
+                                    0,
+                                    32767
+                                ],
+                        "uvV":  [
+                                    32335,
+                                    32767,
+                                    1339,
+                                    0
+                                ],
+                        "sourceVertices":  [
+                                               10,
+                                               11,
+                                               12,
+                                               9
+                                           ],
+                        "outputVertices":  [
+                                               10,
+                                               11,
+                                               12,
+                                               9
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  13,
+                        "familyId":  4,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    28,
+                                    32767,
+                                    32739,
+                                    0
+                                ],
+                        "uvV":  [
+                                    0,
+                                    28,
+                                    32767,
+                                    32739
+                                ],
+                        "sourceVertices":  [
+                                               32,
+                                               34,
+                                               35,
+                                               33
+                                           ],
+                        "outputVertices":  [
+                                               32,
+                                               34,
+                                               35,
+                                               33
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    },
+                    {
+                        "segmentId":  188,
+                        "faceIndex":  14,
+                        "familyId":  16,
+                        "assetTag":  "L",
+                        "uvU":  [
+                                    41,
+                                    32767,
+                                    32726,
+                                    0
+                                ],
+                        "uvV":  [
+                                    0,
+                                    288,
+                                    32767,
+                                    32479
+                                ],
+                        "sourceVertices":  [
+                                               0,
+                                               1,
+                                               37,
+                                               36
+                                           ],
+                        "outputVertices":  [
+                                               0,
+                                               1,
+                                               37,
+                                               36
+                                           ],
+                        "rotationDegrees":  0,
+                        "manualOperation":  "",
+                        "windingPreserved":  true
+                    }
+                ]
+}

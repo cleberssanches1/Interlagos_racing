@@ -89,17 +89,23 @@ void TestResolveLodBandsForConfiguredWindow(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
 
-    for (size_t rank = 0; rank < TrackLodConfig::kTexture64Segments; ++rank)
+    for (size_t rank = 0; rank < TrackLodConfig::kLod0Segments; ++rank)
     {
-        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod64);
+        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod0);
+    }
+    for (size_t rank = TrackLodConfig::kLod0Segments;
+         rank < TrackLodConfig::kTexture64Segments;
+         ++rank)
+    {
+        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod1);
     }
     for (size_t rank = TrackLodConfig::kTexture64Segments;
          rank < TrackLodConfig::kVisibleSegments;
          ++rank)
     {
-        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod32);
+        EXPECT_EQ(ctx, ResolveLodIndexByRank(rank), kLod2);
     }
-    EXPECT_EQ(ctx, ResolveLodIndexByRank(TrackLodConfig::kVisibleSegments), kLod32);
+    EXPECT_EQ(ctx, ResolveLodIndexByRank(TrackLodConfig::kVisibleSegments), kLod2);
 
     EXPECT_EQ(ctx, ResolveDesignLodByRank(0u), static_cast<uint8_t>(0u));
     EXPECT_EQ(ctx,
@@ -113,9 +119,9 @@ void TestResolveLodBandsForConfiguredWindow(TestContext& ctx)
         CountWindowSegmentsByLod(TrackLodConfig::kVisibleSegments);
     const std::array<size_t, 4> expectedCounts{{
         0u,
-        0u,
-        TrackLodConfig::kTexture32Segments,
-        TrackLodConfig::kTexture64Segments
+        TrackLodConfig::kLod1Segments,
+        TrackLodConfig::kLod2Segments,
+        TrackLodConfig::kLod0Segments
     }};
     EXPECT_EQ(ctx, counts, expectedCounts);
 }
@@ -266,9 +272,11 @@ void TestForwardSlideBoundaryPrewarmPlanMatchesContract(TestContext& ctx)
 
     const std::vector<BoundaryPrewarmTarget> plan = BuildForwardSlideBoundaryPrewarmPlan(
         TrackLodConfig::kVisibleSegments);
-    EXPECT_EQ(ctx, plan.size(), static_cast<size_t>(1u));
-    EXPECT_EQ(ctx, plan[0].logicalRank, TrackLodConfig::kTexture64Segments);
-    EXPECT_EQ(ctx, plan[0].targetLodIndex, kLod64);
+    EXPECT_EQ(ctx, plan.size(), static_cast<size_t>(2u));
+    EXPECT_EQ(ctx, plan[0].logicalRank, TrackLodConfig::kLod0Segments);
+    EXPECT_EQ(ctx, plan[0].targetLodIndex, kLod1);
+    EXPECT_EQ(ctx, plan[1].logicalRank, TrackLodConfig::kTexture64Segments);
+    EXPECT_EQ(ctx, plan[1].targetLodIndex, kLod2);
 }
 
 void TestWindowLodCountsInvariantAcrossLap(TestContext& ctx)
@@ -277,9 +285,9 @@ void TestWindowLodCountsInvariantAcrossLap(TestContext& ctx)
 
     const std::array<size_t, 4> expectedCounts{{
         0u,
-        0u,
-        TrackLodConfig::kTexture32Segments,
-        TrackLodConfig::kTexture64Segments
+        TrackLodConfig::kLod1Segments,
+        TrackLodConfig::kLod2Segments,
+        TrackLodConfig::kLod0Segments
     }};
     for (int32_t startId = 1; startId <= 305; ++startId)
     {

@@ -26,6 +26,7 @@ function Get-TgaInfo([string]$Path) {
         width = [int][System.BitConverter]::ToUInt16($bytes, 12)
         height = [int][System.BitConverter]::ToUInt16($bytes, 14)
         pixelDepth = [int]$bytes[16]
+        descriptor = [int]$bytes[17]
     }
 }
 
@@ -89,6 +90,80 @@ function Invoke-PalettedResize([string]$Source, [string]$Destination, [int]$Widt
     }
 }
 
+function Invoke-PalettedUvUnwrap([string]$Source, [string]$Destination, [object[]]$UvCoords, [int]$Width, [int]$Height) {
+    # A distorted sprite do VDP1 always consumes um retangulo completo. Sample
+    # o quadrilatero UV do OBJ para uma textura retangular por face, seguindo a
+    # mesma interpolacao usada por ModelConverter/Texture.GetUnwrap.
+    if ($UvCoords.Count -ne 4) { throw "UV unwrap exige exatamente quatro cantos: $Destination" }
+    [byte[]]$sourceBytes = [System.IO.File]::ReadAllBytes($Source)
+    $sourceInfo = Get-TgaInfo $Source
+    if ($sourceInfo.colorMapType -ne 1 -or
+        $sourceInfo.imageType -ne 1 -or
+        $sourceInfo.pixelDepth -ne 8 -or
+        $sourceInfo.colorMapFirstIndex -ne 0 -or
+        $sourceInfo.colorMapLength -le 0 -or
+        $sourceInfo.colorMapEntryBits -notin @(24, 32)) {
+        throw "TGA fonte incompativel com UV unwrap indexado seguro: $Source"
+    }
+    if ($Width -le 0 -or $Height -le 0 -or ($Width % 8) -ne 0) {
+        throw "Dimensao de UV unwrap invalida para VDP1: ${Width}x${Height}"
+    }
+    if (($sourceInfo.pixelDataOffset + ($sourceInfo.width * $sourceInfo.height)) -gt $sourceBytes.Length) {
+        throw "TGA fonte truncado nos pixels: $Source"
+    }
+
+    [byte[]]$targetBytes = New-Object byte[] ($sourceInfo.pixelDataOffset + ($Width * $Height))
+    [System.Array]::Copy($sourceBytes, 0, $targetBytes, 0, $sourceInfo.pixelDataOffset)
+    $targetBytes[12] = [byte]($Width -band 0xFF)
+    $targetBytes[13] = [byte](($Width -shr 8) -band 0xFF)
+    $targetBytes[14] = [byte]($Height -band 0xFF)
+    $targetBytes[15] = [byte](($Height -shr 8) -band 0xFF)
+
+    $sourceTopOrigin = (($sourceInfo.descriptor -band 0x20) -ne 0)
+    $targetTopOrigin = $sourceTopOrigin
+    for ($targetTopY = 0; $targetTopY -lt $Height; $targetTopY++) {
+        # Converter percorre y do fundo para o topo; em coordenada logica
+        # top-down isso equivale ao complemento abaixo.
+        [double]$portionY = 1.0 - (($targetTopY + 0.5) / [double]$Height)
+        for ($x = 0; $x -lt $Width; $x++) {
+            [double]$portionX = ($x + 0.5) / [double]$Width
+
+            [double]$topU = ([double]$UvCoords[0].u) + ((([double]$UvCoords[1].u) - ([double]$UvCoords[0].u)) * $portionX)
+            [double]$topV = ([double]$UvCoords[0].v) + ((([double]$UvCoords[1].v) - ([double]$UvCoords[0].v)) * $portionX)
+            [double]$bottomU = ([double]$UvCoords[3].u) + ((([double]$UvCoords[2].u) - ([double]$UvCoords[3].u)) * $portionX)
+            [double]$bottomV = ([double]$UvCoords[3].v) + ((([double]$UvCoords[2].v) - ([double]$UvCoords[3].v)) * $portionX)
+            [double]$sampleU = $bottomU + (($topU - $bottomU) * $portionY)
+            [double]$sampleV = $bottomV + (($topV - $bottomV) * $portionY)
+
+            [int]$sourceX = [int][Math]::Truncate($sampleU * ($sourceInfo.width - 1))
+            [int]$sourceTopY = ($sourceInfo.height - 1) - [int][Math]::Truncate($sampleV * ($sourceInfo.height - 1))
+            if ($sourceX -ge $sourceInfo.width) { $sourceX %= $sourceInfo.width }
+            elseif ($sourceX -lt 0) { $sourceX = $sourceInfo.width - ([Math]::Abs($sourceX + 1) % $sourceInfo.width) - 1 }
+            if ($sourceTopY -ge $sourceInfo.height) { $sourceTopY %= $sourceInfo.height }
+            elseif ($sourceTopY -lt 0) { $sourceTopY = $sourceInfo.height - ([Math]::Abs($sourceTopY + 1) % $sourceInfo.height) - 1 }
+
+            $sourceFileY = if ($sourceTopOrigin) { $sourceTopY } else { $sourceInfo.height - 1 - $sourceTopY }
+            $targetFileY = if ($targetTopOrigin) { $targetTopY } else { $Height - 1 - $targetTopY }
+            $sourceOffset = $sourceInfo.pixelDataOffset + ($sourceFileY * $sourceInfo.width) + $sourceX
+            $targetOffset = $sourceInfo.pixelDataOffset + ($targetFileY * $Width) + $x
+            $targetBytes[$targetOffset] = $sourceBytes[$sourceOffset]
+        }
+    }
+
+    [System.IO.File]::WriteAllBytes($Destination, $targetBytes)
+    $outInfo = Get-TgaInfo $Destination
+    if ($outInfo.width -ne $Width -or $outInfo.height -ne $Height) {
+        throw "UV unwrap gerou dimensao inesperada: $Destination"
+    }
+    $paletteBytes = $sourceInfo.colorMapLength * [int][Math]::Ceiling($sourceInfo.colorMapEntryBits / 8.0)
+    for ($i = 0; $i -lt $paletteBytes; $i++) {
+        $paletteOffset = 18 + $sourceInfo.idLength + $i
+        if ($targetBytes[$paletteOffset] -ne $sourceBytes[$paletteOffset]) {
+            throw "UV unwrap alterou a paleta/indice transparente 0: $Destination"
+        }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $JsonPath)) { throw "JsonPath ausente: $JsonPath" }
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
@@ -103,73 +178,68 @@ foreach ($root in $roots.Values) {
 
 $json = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json
 $entries = New-Object System.Collections.Generic.List[object]
+$bankSpecs = @(
+    [pscustomobject]@{ sourceGroup = "lod_0"; bankId = 0; runtimeIndex = 3; nominalTextureSize = 64 },
+    [pscustomobject]@{ sourceGroup = "lod_1"; bankId = 1; runtimeIndex = 1; nominalTextureSize = 64 },
+    [pscustomobject]@{ sourceGroup = "lod_2"; bankId = 2; runtimeIndex = 2; nominalTextureSize = 32 }
+)
+foreach ($spec in $bankSpecs) {
+    New-Item -ItemType Directory -Path (Join-Path $OutDir $spec.sourceGroup) -Force | Out-Null
+}
+
 foreach ($family in @($json.textureFamilies | Sort-Object { [int]$_.id })) {
     if ($null -eq $family.sourceFiles) { throw "Family $($family.id) sem sourceFiles." }
-    $source0 = Join-Path $roots.lod_0 ([string]$family.sourceFiles.lod_0)
-    $source1 = Join-Path $roots.lod_1 ([string]$family.sourceFiles.lod_1)
-    $source2 = Join-Path $roots.lod_2 ([string]$family.sourceFiles.lod_2)
-    foreach ($source in @($source0, $source1, $source2)) {
+    $hasUvUnwrap = ($family.PSObject.Properties.Name -contains "uvUnwrap" -and $null -ne $family.uvUnwrap)
+
+    foreach ($spec in $bankSpecs) {
+        $sourceName = [string]$family.sourceFiles.PSObject.Properties[$spec.sourceGroup].Value
+        $source = Join-Path $roots[$spec.sourceGroup] $sourceName
         if (-not (Test-Path -LiteralPath $source)) { throw "Fonte TGA ausente: $source" }
-    }
-    $hash0 = (Get-FileHash -LiteralPath $source0 -Algorithm SHA256).Hash
-    $hash1 = (Get-FileHash -LiteralPath $source1 -Algorithm SHA256).Hash
-    if ($hash0 -ne $hash1) { throw "Conteudo lod_0/lod_1 divergente para family $($family.id)." }
 
-    $target64 = Join-Path $OutDir ([string]$family.imageFiles."64")
-    $target32 = Join-Path $OutDir ([string]$family.imageFiles."32")
-    $info0 = Get-TgaInfo $source0
-    $info2 = Get-TgaInfo $source2
+        if ($family.PSObject.Properties.Name -contains "bankFiles") {
+            $targetName = [string]$family.bankFiles.PSObject.Properties[$spec.sourceGroup].Value
+        }
+        else {
+            $targetName = [string]$family.imageFiles.PSObject.Properties["$($spec.nominalTextureSize)"].Value
+        }
+        if ([string]::IsNullOrWhiteSpace($targetName)) {
+            throw "Family $($family.id) sem bankFiles[$($spec.sourceGroup)]."
+        }
+        $destination = Join-Path (Join-Path $OutDir $spec.sourceGroup) $targetName
+        $sourceInfo = Get-TgaInfo $source
+        $transform = "copy_preserve_source"
+        if ($hasUvUnwrap) {
+            $uv = @($family.uvUnwrap.uvByLod.PSObject.Properties[$spec.sourceGroup].Value)
+            Invoke-PalettedUvUnwrap $source $destination $uv $sourceInfo.width $sourceInfo.height
+            $transform = "uv_face_unwrap_$($spec.sourceGroup)"
+        }
+        else {
+            Copy-Item -LiteralPath $source -Destination $destination -Force
+        }
 
-    $transform64 = "copy"
-    if ($info0.width -eq 32 -and $info0.height -eq 32) {
-        Invoke-PalettedResize $source0 $target64 64 64
-        $transform64 = "nearest_32x32_to_64x64"
-    }
-    else {
-        Copy-Item -LiteralPath $source0 -Destination $target64 -Force
-    }
-
-    $target32Width = $info2.width
-    $target32Height = $info2.height
-    $transform32 = "copy"
-    $maxDim = [Math]::Max($info2.width, $info2.height)
-    if ($maxDim -gt 32) {
-        $scale = 32.0 / [double]$maxDim
-        $target32Width = [Math]::Max(8, [int][Math]::Round(($info2.width * $scale) / 8.0) * 8)
-        $target32Height = [Math]::Max(1, [int][Math]::Round($info2.height * $scale))
-        Invoke-PalettedResize $source2 $target32 $target32Width $target32Height
-        $transform32 = "nearest_fit_32"
-    }
-    else {
-        Copy-Item -LiteralPath $source2 -Destination $target32 -Force
-    }
-
-    foreach ($spec in @(
-        [pscustomobject]@{ lod = 64; sourceGroup = "lod_0"; source = $source0; destination = $target64; transform = $transform64 },
-        [pscustomobject]@{ lod = 32; sourceGroup = "lod_2"; source = $source2; destination = $target32; transform = $transform32 }
-    )) {
-        $sourceInfo = Get-TgaInfo $spec.source
-        $outInfo = Get-TgaInfo $spec.destination
+        $outInfo = Get-TgaInfo $destination
         $entries.Add([pscustomobject]([ordered]@{
             familyId = [int]$family.id
             family = [string]$family.name
-            lod = [int]$spec.lod
+            bankId = [int]$spec.bankId
+            runtimeIndex = [int]$spec.runtimeIndex
+            nominalTextureSize = [int]$spec.nominalTextureSize
             sourceGroup = [string]$spec.sourceGroup
-            sourcePath = [System.IO.Path]::GetFullPath([string]$spec.source)
-            sourceSha256 = (Get-FileHash -LiteralPath $spec.source -Algorithm SHA256).Hash
+            sourcePath = [System.IO.Path]::GetFullPath($source)
+            sourceSha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
             sourceWidth = [int]$sourceInfo.width
             sourceHeight = [int]$sourceInfo.height
-            targetPath = [System.IO.Path]::GetFullPath([string]$spec.destination)
-            targetSha256 = (Get-FileHash -LiteralPath $spec.destination -Algorithm SHA256).Hash
+            targetPath = [System.IO.Path]::GetFullPath($destination)
+            targetSha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
             width = [int]$outInfo.width
             height = [int]$outInfo.height
-            transform = [string]$spec.transform
+            transform = $transform
         })) | Out-Null
     }
 }
 
 $manifest = [pscustomobject]([ordered]@{
-    version = 2
+    version = 3
     generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     allowedRoots = @($roots.Values)
     entries = @($entries.ToArray())

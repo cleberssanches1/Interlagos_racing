@@ -62,12 +62,18 @@ struct BackgroundManager
         if (!loaded && cachedPathCount > 0)
         {
             ++retryTicks;
-            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
-            constexpr size_t kMinRetryHwrBytes = 64u * 1024u;
+            // SkyPanorama allocates its TGA/tile staging in LWR. Checking HWR
+            // here allowed retries while the allocator that matters was still
+            // exhausted or fragmented.
+            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+            const size_t largestLwrBlock = SRL::Memory::LowWorkRam::GetLargestFreeBlockSize();
+            constexpr size_t kMinRetryLwrBytes = 96u * 1024u;
+            constexpr size_t kMinRetryLwrBlockBytes = 48u * 1024u;
             constexpr uint32_t kRetryCadenceFrames = 180u;
             constexpr uint16_t kMaxRetryAttempts = 20u;
             if (retryAttempts < kMaxRetryAttempts &&
-                hwr.FreeSize >= kMinRetryHwrBytes &&
+                lwr.FreeSize >= kMinRetryLwrBytes &&
+                largestLwrBlock >= kMinRetryLwrBlockBytes &&
                 (retryTicks % kRetryCadenceFrames) == 0u)
             {
                 loaded = env.Load(cachedPaths.data(), cachedPathCount);

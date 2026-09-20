@@ -368,7 +368,7 @@ private:
             };
 
             // Resident state currently visible in the renderer.
-            uint8_t currentLodIndex = 0xFF; // 2:32, 3:64 (0/1 reserved)
+            uint8_t currentLodIndex = 0xFF; // 1:lod_1, 2:lod_2, 3:lod_0
             int8_t currentBaseRank = -1;
             // Design mesh tier: 0 = high (lod_0 / TRKRDR), 1 = low (lod_1+ / TRKRDRL).
             uint8_t currentDesignGeoTier = 0xFF;
@@ -432,7 +432,7 @@ private:
     struct Seg1FamilySlotEntry
     {
         uint16_t familyId = 0;
-        std::array<uint16_t, 4> lodSlots{{0, 0, 0, 0}}; // 2:32, 3:64 (0/1 reserved)
+        std::array<uint16_t, 4> lodSlots{{0, 0, 0, 0}}; // 1:lod_1, 2:lod_2, 3:lod_0
         std::array<uint16_t, 4> workingRefs{{0, 0, 0, 0}};
         std::array<uint8_t, 4> unusedFrames{{0, 0, 0, 0}};
     };
@@ -444,9 +444,10 @@ private:
     };
     struct Seg1TexbankCart
     {
-        int16_t lod = 8;
+        int16_t bankId = -1;
         void* cartPtr = nullptr;
         uint32_t size = 0;
+        bool ownsCartPtr = true;
         TrackLowWorkVector<Seg1TexbankEntry> entries{};
     };
     struct Seg1TgaCartEntry
@@ -528,8 +529,8 @@ private:
     void ReleaseSeg1Texbanks();
     void ReleaseSeg1TgaCatalog();
     bool PreloadTgaCatalogFromSegmentsMap();
-    bool LoadSeg1TexbankIndexToCart(size_t lodIndex, int lodValue);
-    bool BuildSeg1TexbankCandidatePaths(int lodValue,
+    bool LoadSeg1TexbankIndexToCart(size_t lodIndex, int bankId);
+    bool BuildSeg1TexbankCandidatePaths(int bankId,
                                         std::array<std::array<char, 40>, 16>& storage,
                                         const char** outCandidates,
                                         size_t& outCount);
@@ -557,7 +558,7 @@ private:
                               bool* outSawMissingFamily,
                               bool* outSawDecodeFail,
                               bool* outSawUploadFail,
-                              int* outLoadedFromLodValue);
+                              int* outLoadedFromBankId);
     bool PreloadFullTrackFamilyLodCache();
     // Build per family texture slots for all lod levels used by segment renderers.
     bool BuildTrackFamilyLodSlots(FamilySlotVector& outSlots);

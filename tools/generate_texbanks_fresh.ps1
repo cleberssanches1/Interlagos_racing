@@ -39,6 +39,11 @@ New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null
 $sourceManifestPath = Join-Path $PreparedTextureDir "texture_sources_manifest.json"
 if (-not (Test-Path -LiteralPath $sourceManifestPath)) { throw "Manifesto de origem ausente: $sourceManifestPath" }
 $sourceManifest = Get-Content -LiteralPath $sourceManifestPath -Raw | ConvertFrom-Json
+$bankSpecs = @(
+    [pscustomobject]@{ sourceGroup = "lod_0"; bankId = 0; runtimeIndex = 3; nominalTextureSize = 64; fileName = "TBKLOD0.BIN"; indexName = "TBKLOD0.json" },
+    [pscustomobject]@{ sourceGroup = "lod_1"; bankId = 1; runtimeIndex = 1; nominalTextureSize = 64; fileName = "TBKLOD1.BIN"; indexName = "TBKLOD1.json" },
+    [pscustomobject]@{ sourceGroup = "lod_2"; bankId = 2; runtimeIndex = 2; nominalTextureSize = 32; fileName = "TBKLOD2.BIN"; indexName = "TBKLOD2.json" }
+)
 $allowedSuffixes = @(
     '\lod_0\ARQ_TGA',
     '\lod_1\ARQ_TGA',
@@ -51,11 +56,9 @@ foreach ($entry in @($sourceManifest.entries)) {
         if ($parent.EndsWith($suffix, [System.StringComparison]::OrdinalIgnoreCase)) { $allowed = $true; break }
     }
     if (-not $allowed) { throw "Origem fora da whitelist: $($entry.sourcePath)" }
-    if ([int]$entry.lod -eq 64 -and [string]$entry.sourceGroup -ne "lod_0") {
-        throw "Entrada TBK64 fora do agrupamento lod_0: family $($entry.familyId)"
-    }
-    if ([int]$entry.lod -eq 32 -and [string]$entry.sourceGroup -ne "lod_2") {
-        throw "Entrada TBK32 fora do agrupamento lod_2: family $($entry.familyId)"
+    $expectedSpec = @($bankSpecs | Where-Object { [int]$_.bankId -eq [int]$entry.bankId }) | Select-Object -First 1
+    if ($null -eq $expectedSpec -or [string]$entry.sourceGroup -ne [string]$expectedSpec.sourceGroup) {
+        throw "Entrada de banco/agrupamento invalida: family $($entry.familyId) bankId=$($entry.bankId) group=$($entry.sourceGroup)"
     }
 }
 
@@ -65,21 +68,25 @@ if ($families.Count -eq 0) { throw "textureFamilies vazio." }
 
 $bankSummaries = New-Object System.Collections.Generic.List[object]
 $compatEntries = New-Object System.Collections.Generic.List[object]
-foreach ($lod in @(32, 64)) {
+foreach ($bankSpec in $bankSpecs) {
     $entries = New-Object System.Collections.Generic.List[object]
     foreach ($family in $families) {
-        if ($null -eq $family.imageFiles -or -not ($family.imageFiles.PSObject.Properties.Name -contains "$lod")) {
-            throw "Family $($family.id) sem imageFiles[$lod]."
+        $sourceEntry = @($sourceManifest.entries | Where-Object {
+            [int]$_.familyId -eq [int]$family.id -and [int]$_.bankId -eq [int]$bankSpec.bankId
+        }) | Select-Object -First 1
+        if ($null -eq $sourceEntry) {
+            throw "Manifesto sem family $($family.id) bankId $($bankSpec.bankId) ($($bankSpec.sourceGroup))."
         }
-        $fileName = [string]$family.imageFiles."$lod"
-        $path = Join-Path $PreparedTextureDir $fileName
+        $path = [string]$sourceEntry.targetPath
         if (-not (Test-Path -LiteralPath $path)) { throw "Textura preparada ausente: $path" }
+        $preparedRoot = [System.IO.Path]::GetFullPath($PreparedTextureDir).TrimEnd('\') + '\'
+        $fullPath = [System.IO.Path]::GetFullPath($path)
+        if (-not $fullPath.StartsWith($preparedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Textura preparada fora da pasta autorizada: $fullPath"
+        }
+        $fileName = [System.IO.Path]::GetFileName($fullPath)
         [byte[]]$bytes = [System.IO.File]::ReadAllBytes($path)
         $info = Get-TgaInfo $bytes $path
-        $sourceEntry = @($sourceManifest.entries | Where-Object {
-            [int]$_.familyId -eq [int]$family.id -and [int]$_.lod -eq $lod
-        }) | Select-Object -First 1
-        if ($null -eq $sourceEntry) { throw "Manifesto sem family $($family.id) lod $lod." }
         $entries.Add([pscustomobject]@{
             familyId = [uint32]$family.id
             name = [string]$family.name
@@ -106,13 +113,14 @@ foreach ($lod in @(32, 64)) {
     [uint32]$cursor = $dataOffset
     foreach ($entry in $entries) { $entry.offset = $cursor; $cursor += $entry.size }
 
-    $bankPath = Join-Path $OutDir ("TBK{0}.BIN" -f $lod)
+    $bankPath = Join-Path $OutDir $bankSpec.fileName
     $stream = [System.IO.File]::Open($bankPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $writer = $null
     try {
         $writer = New-Object System.IO.BinaryWriter($stream)
         Write-U32 $writer 0x314B4254
-        Write-U16 $writer 1
-        Write-U16 $writer ([uint16]$lod)
+        Write-U16 $writer 2
+        Write-U16 $writer ([uint16]$bankSpec.bankId)
         Write-U32 $writer ([uint32]$entries.Count)
         Write-U32 $writer $dataOffset
         Write-U32 $writer 0
@@ -130,7 +138,7 @@ foreach ($lod in @(32, 64)) {
         $stream.Dispose()
     }
 
-    $indexPath = Join-Path $ReportDir ("TBK{0}.json" -f $lod)
+    $indexPath = Join-Path $ReportDir $bankSpec.indexName
     $indexEntries = @($entries | ForEach-Object {
         [pscustomobject]([ordered]@{
             familyId = [int]$_.familyId
@@ -150,30 +158,43 @@ foreach ($lod in @(32, 64)) {
             tgaHeight = $_.tgaHeight
         })
     })
-    [pscustomobject]@{ version = 2; lod = $lod; count = $entries.Count; bank = [System.IO.Path]::GetFileName($bankPath); entries = $indexEntries } |
+    [pscustomobject]@{
+        version = 3
+        bankId = [int]$bankSpec.bankId
+        designLod = [string]$bankSpec.sourceGroup
+        runtimeIndex = [int]$bankSpec.runtimeIndex
+        nominalTextureSize = [int]$bankSpec.nominalTextureSize
+        count = $entries.Count
+        bank = [System.IO.Path]::GetFileName($bankPath)
+        entries = $indexEntries
+    } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $indexPath -Encoding UTF8
 
     foreach ($entry in $indexEntries) {
         $compatEntries.Add([pscustomobject]@{
-            lod = $lod; familyId = $entry.familyId; file = $entry.file
+            bankId = [int]$bankSpec.bankId; designLod = [string]$bankSpec.sourceGroup
+            runtimeIndex = [int]$bankSpec.runtimeIndex; nominalTextureSize = [int]$bankSpec.nominalTextureSize
+            familyId = $entry.familyId; file = $entry.file
             sourcePath = $entry.sourcePath; sourceGroup = $entry.sourceGroup; transform = $entry.transform
             colorMapType = $entry.tgaColorMapType; imageType = $entry.tgaImageType
             pixelDepth = $entry.tgaPixelDepth; width = $entry.tgaWidth; height = $entry.tgaHeight
         }) | Out-Null
     }
     $bankSummaries.Add([pscustomobject]@{
-        lod = $lod; bankPath = $bankPath; indexPath = $indexPath
+        bankId = [int]$bankSpec.bankId; designLod = [string]$bankSpec.sourceGroup
+        runtimeIndex = [int]$bankSpec.runtimeIndex; nominalTextureSize = [int]$bankSpec.nominalTextureSize
+        bankPath = $bankPath; indexPath = $indexPath
         count = $entries.Count; bytes = (Get-Item -LiteralPath $bankPath).Length
     }) | Out-Null
-    Write-Host ("OK TBK{0}.BIN entries:{1}" -f $lod, $entries.Count)
+    Write-Host ("OK {0} designLod:{1} bankId:{2} entries:{3}" -f $bankSpec.fileName, $bankSpec.sourceGroup, $bankSpec.bankId, $entries.Count)
 }
 
 $compatPath = Join-Path $ReportDir "tga_compat_report.json"
-[pscustomobject]@{ version = 2; generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"); entries = @($compatEntries.ToArray()) } |
+[pscustomobject]@{ version = 3; generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"); entries = @($compatEntries.ToArray()) } |
     ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $compatPath -Encoding UTF8
 $manifestPath = Join-Path $ReportDir "texbanks_manifest.json"
 [pscustomobject]@{
-    version = 2
+    version = 3
     generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     sourceJson = [System.IO.Path]::GetFullPath($JsonPath)
     preparedTextureDir = [System.IO.Path]::GetFullPath($PreparedTextureDir)

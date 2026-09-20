@@ -11,8 +11,11 @@
 namespace TrackStreamingPolicy
 {
 static constexpr uint16_t kNoTexture = 0u;
-static constexpr uint8_t kLod32 = 2u;
-static constexpr uint8_t kLod64 = 3u;
+static constexpr uint8_t kLod0 = 3u;
+static constexpr uint8_t kLod1 = 1u;
+static constexpr uint8_t kLod2 = 2u;
+static constexpr uint8_t kLod32 = kLod2;
+static constexpr uint8_t kLod64 = kLod0;
 
 struct LodBandConfig
 {
@@ -58,13 +61,13 @@ constexpr uint8_t ResolveDesignLodByRank(size_t rank, const LodBandConfig& confi
 
 constexpr uint8_t ResolveLodIndexByRank(size_t rank, const LodBandConfig& config = {}) noexcept
 {
-    const size_t lod64End = static_cast<size_t>(config.lod64Count);
-    const size_t lod32End = lod64End + static_cast<size_t>(config.lod32Count);
+    const size_t lod0End = static_cast<size_t>(config.designLod0Count);
+    const size_t lod1End = static_cast<size_t>(config.lod64Count);
 
-    // Texture size only: lod_0 and lod_1 share 64×64; lod_2 uses 32×32.
-    if (rank < lod64End) return kLod64;
-    if (rank < lod32End) return kLod32;
-    return kLod32;
+    // Runtime slot indexes are deliberately independent from texture dimensions.
+    if (rank < lod0End) return kLod0;
+    if (rank < lod1End) return kLod1;
+    return kLod2;
 }
 
 inline std::array<size_t, 4> CountWindowSegmentsByLod(size_t windowCount,
@@ -122,8 +125,8 @@ inline std::vector<BoundaryPrewarmTarget> BuildForwardSlideBoundaryPrewarmPlan(
 {
     std::vector<BoundaryPrewarmTarget> plan{};
     const std::array<size_t, 2> boundaryRanks{{
+        static_cast<size_t>(config.designLod0Count),
         static_cast<size_t>(config.lod64Count),
-        static_cast<size_t>(config.lod64Count + config.lod32Count),
     }};
 
     plan.reserve(boundaryRanks.size());
@@ -133,7 +136,8 @@ inline std::vector<BoundaryPrewarmTarget> BuildForwardSlideBoundaryPrewarmPlan(
         if (logicalRank == 0u || logicalRank >= windowCount) continue;
         BoundaryPrewarmTarget target{};
         target.logicalRank = logicalRank;
-        target.targetLodIndex = ResolveLodIndexByRank(logicalRank - 1u, config);
+        // Prewarm the bank required by the segment entering the new band.
+        target.targetLodIndex = ResolveLodIndexByRank(logicalRank, config);
         plan.push_back(target);
     }
     return plan;

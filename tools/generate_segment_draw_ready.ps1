@@ -54,13 +54,18 @@ function Build-CanonicalizeExcludeFamilyIdMap(
         if ([string]::IsNullOrWhiteSpace($stem)) { continue }
         [void]$exclude.Add($stem)
     }
-    if ($exclude.Count -eq 0) { return $out }
-
     try {
         $json = Get-Content -LiteralPath $MapPath -Raw | ConvertFrom-Json
         foreach ($family in @($json.textureFamilies)) {
             if ($null -eq $family) { continue }
             if (-not ($family.PSObject.Properties.Name -contains "id")) { continue }
+            # uvUnwrap already bakes the OBJ corner order into the derived
+            # bitmap. Rotating vertices again would rotate the bitmap a second
+            # time and break continuity across the shared Blender UV island.
+            if ($family.PSObject.Properties.Name -contains "uvUnwrap" -and $null -ne $family.uvUnwrap) {
+                $out[[uint32]$family.id] = $true
+                continue
+            }
             if (-not ($family.PSObject.Properties.Name -contains "sourceStem")) { continue }
             $stem = Normalize-SourceStem ([string]$family.sourceStem)
             if ([string]::IsNullOrWhiteSpace($stem)) { continue }
@@ -143,7 +148,10 @@ function Build-SurfaceTypeByFamilyIdMap(
     if (-not (Test-Path -LiteralPath $MapPath)) { return $out }
 
     $asphaltStems = New-Object 'System.Collections.Generic.HashSet[string]'
-    foreach ($stem in @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364")) {
+    # Keep this fallback catalog synchronized with build_all. Normal builds
+    # consume the explicit value annotated in segments_map, but standalone SDR
+    # generation must classify the current asphalt sources identically.
+    foreach ($stem in @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "f07564", "f07664")) {
         [void]$asphaltStems.Add($stem)
     }
     $escapeStems = New-Object 'System.Collections.Generic.HashSet[string]'

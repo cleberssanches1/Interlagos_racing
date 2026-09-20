@@ -8,6 +8,10 @@ param(
     # When true, only rewrite MAT (keep existing GEO). Used for multi-design LODs
     # that share the high-detail mesh from lod_0.
     [switch]$SkipGeo = $false,
+    # Omit faces whose material has no map_Kd. The source face order is kept
+    # until after seam ownership is applied, then GEO and MAT are compacted
+    # together so their runtime indices remain aligned.
+    [switch]$SkipMaterialsWithoutImages = $false,
     # Asset tag: "" => S001.GEO / S001M64.MAT ; "L" => S001L.GEO / S001LM64.MAT (mid/far mesh)
     [string]$AssetTag = ""
 )
@@ -116,7 +120,11 @@ function Build-MaterialAliasMap([string]$MtlPath, [hashtable]$FamilyIdByName, [o
         foreach ($line in Get-Content -LiteralPath $mtl.FullName) {
             $t = $line.Trim()
             if ($t.StartsWith("newmtl ")) {
-                $currentName = (Normalize-MaterialFamilyName ($t.Substring(7).Trim())).ToLowerInvariant()
+                # Preserve the exact Blender material token.  Numeric suffixes
+                # such as .152/.155 can point to different TGAs in the same MTL;
+                # collapsing both to one normalized key makes the last map_Kd
+                # silently overwrite the earlier face binding.
+                $currentName = ($t.Substring(7).Trim()).ToLowerInvariant()
                 continue
             }
             if ([string]::IsNullOrWhiteSpace($currentName)) { continue }
@@ -152,6 +160,25 @@ function Build-MaterialAliasMap([string]$MtlPath, [hashtable]$FamilyIdByName, [o
     }
 
     return $materialToFamilyId
+}
+
+function Get-MaterialsWithImageReference([string]$MtlPath) {
+    $materials = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    if (-not (Test-Path -LiteralPath $MtlPath)) { return ,$materials }
+
+    $currentName = ""
+    foreach ($line in Get-Content -LiteralPath $MtlPath) {
+        $t = $line.Trim()
+        if ($t.StartsWith("newmtl ", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $currentName = $t.Substring(7).Trim()
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($currentName)) { continue }
+        if ($t -notmatch '^(?i)map_Kd\s+(.+)$') { continue }
+        if ([string]::IsNullOrWhiteSpace($Matches[1].Trim().Trim('"'))) { continue }
+        [void]$materials.Add($currentName)
+    }
+    return ,$materials
 }
 
 function To-Fxp32([double]$v) {
@@ -246,9 +273,13 @@ if (-not (Test-Path $objPath)) { throw "OBJ nao encontrado: $objPath" }
 $json = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json
 $segNode = $json.segments | Where-Object { [int]$_.id -eq $SegmentId } | Select-Object -First 1
 $familyIdByName = @{}
+$uvUnwrapFamilyId = @{}
 foreach ($family in @($json.textureFamilies)) {
     if ($null -eq $family) { continue }
     $familyId = [uint32]$family.id
+    if ($family.PSObject.Properties.Name -contains "uvUnwrap" -and $null -ne $family.uvUnwrap) {
+        $uvUnwrapFamilyId[$familyId] = $true
+    }
     if (-not ($family.PSObject.Properties.Name -contains "name")) { continue }
     $familyName = [string]$family.name
     if ([string]::IsNullOrWhiteSpace($familyName)) { continue }
@@ -261,7 +292,9 @@ foreach ($family in @($json.textureFamilies)) {
         }
     }
 }
-$materialAliasToFamilyId = Build-MaterialAliasMap -MtlPath ([System.IO.Path]::ChangeExtension($objPath, ".mtl")) -FamilyIdByName $familyIdByName -Families @($json.textureFamilies)
+$mtlPath = [System.IO.Path]::ChangeExtension($objPath, ".mtl")
+$materialAliasToFamilyId = Build-MaterialAliasMap -MtlPath $mtlPath -FamilyIdByName $familyIdByName -Families @($json.textureFamilies)
+$materialsWithImageReference = Get-MaterialsWithImageReference -MtlPath $mtlPath
 $hasSegmentMap = $true
 if (-not $segNode) {
     $hasSegmentMap = $false
@@ -285,7 +318,9 @@ $verts = New-Object System.Collections.Generic.List[object]
 $uvs = New-Object System.Collections.Generic.List[object]
 $faces = New-Object System.Collections.Generic.List[object]
 $objFaceFamilies = New-Object System.Collections.Generic.List[uint32]
+$objFaceHasImageReference = New-Object System.Collections.Generic.List[bool]
 $currentMaterialFamilyId = [uint32]0
+$currentMaterialHasImageReference = $false
 
 $lines = Get-Content -LiteralPath $objPath
 foreach ($line in $lines) {
@@ -317,16 +352,21 @@ foreach ($line in $lines) {
 
     if ($t.StartsWith("usemtl ")) {
         $matName = $t.Substring(7).Trim()
+        $exactKey = $matName.ToLowerInvariant()
+        $currentMaterialHasImageReference = $materialsWithImageReference.Contains($matName)
         $familyName = Normalize-MaterialFamilyName $matName
         $key = $familyName.ToLowerInvariant()
-        if ($materialAliasToFamilyId.ContainsKey($key)) {
+        if ($materialAliasToFamilyId.ContainsKey($exactKey)) {
+            $currentMaterialFamilyId = [uint32]$materialAliasToFamilyId[$exactKey]
+        }
+        elseif ($materialAliasToFamilyId.ContainsKey($key)) {
             $currentMaterialFamilyId = [uint32]$materialAliasToFamilyId[$key]
         }
         elseif ($familyIdByName.ContainsKey($key)) {
             $currentMaterialFamilyId = [uint32]$familyIdByName[$key]
         }
         else {
-            $overrideFamily = Resolve-KnownMaterialFamilyOverride $key
+            $overrideFamily = if ($SkipMaterialsWithoutImages) { "" } else { Resolve-KnownMaterialFamilyOverride $key }
             if (-not [string]::IsNullOrWhiteSpace($overrideFamily) -and
                 $familyIdByName.ContainsKey($overrideFamily.ToLowerInvariant())) {
                 $currentMaterialFamilyId = [uint32]$familyIdByName[$overrideFamily.ToLowerInvariant()]
@@ -355,10 +395,12 @@ foreach ($line in $lines) {
             for ($i = 1; $i -lt ($corners.Count - 1); $i++) {
                 $faces.Add(@($corners[0], $corners[$i], $corners[$i + 1])) | Out-Null
                 $objFaceFamilies.Add([uint32]$currentMaterialFamilyId) | Out-Null
+                $objFaceHasImageReference.Add([bool]$currentMaterialHasImageReference) | Out-Null
             }
         } else {
             $faces.Add($corners) | Out-Null
             $objFaceFamilies.Add([uint32]$currentMaterialFamilyId) | Out-Null
+            $objFaceHasImageReference.Add([bool]$currentMaterialHasImageReference) | Out-Null
         }
     }
 }
@@ -367,21 +409,31 @@ if ($verts.Count -eq 0 -or $faces.Count -eq 0) {
     throw "OBJ sem vertices/faces suficientes: $objPath"
 }
 if ($objFaceFamilies.Count -eq $faces.Count -and $objFaceFamilies.Count -gt 0) {
-    # Prefer the OBJ face order, but do not erase a valid family coming from the map
-    # when a helper material in the OBJ could not be resolved.
+    # A per-face UV-unwrapped variant from the fresh map cannot be inferred from
+    # usemtl and is authoritative.  For ordinary faces retain each OBJ group's
+    # own LOD material binding; use the map only as fallback for unresolved
+    # helper materials.
     $mergedFaceFamilies = New-Object System.Collections.Generic.List[uint32]
     for ($i = 0; $i -lt $objFaceFamilies.Count; $i++) {
-        $resolved = [uint32]$objFaceFamilies[$i]
-        if ($resolved -ne 0) {
-            $mergedFaceFamilies.Add($resolved) | Out-Null
+        if ($SkipMaterialsWithoutImages -and
+            $i -lt $objFaceHasImageReference.Count -and
+            -not [bool]$objFaceHasImageReference[$i]) {
+            $mergedFaceFamilies.Add([uint32]0) | Out-Null
             continue
         }
 
-        if ($i -lt $faceFamilies.Count) {
-            $mergedFaceFamilies.Add([uint32]$faceFamilies[$i]) | Out-Null
+        $mapped = if ($i -lt $faceFamilies.Count) { [uint32]$faceFamilies[$i] } else { [uint32]0 }
+        if ($mapped -ne 0 -and $uvUnwrapFamilyId.ContainsKey($mapped)) {
+            $mergedFaceFamilies.Add($mapped) | Out-Null
+            continue
+        }
+
+        $resolved = [uint32]$objFaceFamilies[$i]
+        if ($resolved -ne 0) {
+            $mergedFaceFamilies.Add($resolved) | Out-Null
         }
         else {
-            $mergedFaceFamilies.Add([uint32]0) | Out-Null
+            $mergedFaceFamilies.Add($mapped) | Out-Null
         }
     }
     $faceFamilies = @($mergedFaceFamilies.ToArray())
@@ -392,6 +444,7 @@ $dropFaceIndexSet = Get-SeamDropIndexSet -Path $SeamOwnershipPath -LodValue $Lod
 if ($dropFaceIndexSet.Count -gt 0) {
     $filteredFaces = New-Object System.Collections.Generic.List[object]
     $filteredFamilies = New-Object System.Collections.Generic.List[uint32]
+    $filteredImageReferences = New-Object System.Collections.Generic.List[bool]
     for ($i = 0; $i -lt $faces.Count; $i++) {
         if ($dropFaceIndexSet.Contains($i)) { continue }
         $filteredFaces.Add($faces[$i]) | Out-Null
@@ -401,6 +454,9 @@ if ($dropFaceIndexSet.Count -gt 0) {
         else {
             $filteredFamilies.Add([uint32]0) | Out-Null
         }
+        $hasImageReference = $i -lt $objFaceHasImageReference.Count -and
+            [bool]$objFaceHasImageReference[$i]
+        $filteredImageReferences.Add($hasImageReference) | Out-Null
     }
     $removedCount = $faces.Count - $filteredFaces.Count
     if ($removedCount -gt 0) {
@@ -408,6 +464,44 @@ if ($dropFaceIndexSet.Count -gt 0) {
     }
     $faces = $filteredFaces
     $faceFamilies = @($filteredFamilies.ToArray())
+    $objFaceHasImageReference = $filteredImageReferences
+}
+
+# The fresh family map intentionally carries a zero family for image-less
+# source materials until this point.  Earlier removal would shift the source
+# face indexes used by seam ownership and optional UV-unwrapped families.  Now
+# compact GEO and MAT in the same pass, so no familyId=0 face reaches RDR.
+if ($SkipMaterialsWithoutImages) {
+    if ($faceFamilies.Count -ne $faces.Count -or
+        $objFaceHasImageReference.Count -ne $faces.Count) {
+        throw ("Face metadata desalinhada antes de remover material sem imagem: seg={0} lod={1} geo={2} families={3} imageRefs={4}" -f
+            $SegmentId, $Lod, $faces.Count, $faceFamilies.Count, $objFaceHasImageReference.Count)
+    }
+
+    $texturedFaces = New-Object System.Collections.Generic.List[object]
+    $texturedFamilies = New-Object System.Collections.Generic.List[uint32]
+    $droppedUntexturedFaces = 0
+    for ($i = 0; $i -lt $faces.Count; $i++) {
+        if (-not [bool]$objFaceHasImageReference[$i]) {
+            $droppedUntexturedFaces++
+            continue
+        }
+        $familyId = [uint32]$faceFamilies[$i]
+        if ($familyId -eq 0) {
+            throw ("Face com map_Kd ficou sem familyId: seg={0} lod={1} face={2}" -f $SegmentId, $Lod, $i)
+        }
+        $texturedFaces.Add($faces[$i]) | Out-Null
+        $texturedFamilies.Add($familyId) | Out-Null
+    }
+    if ($texturedFaces.Count -eq 0) {
+        throw ("Segmento sem faces texturizadas apos filtrar map_Kd: seg={0} lod={1}" -f $SegmentId, $Lod)
+    }
+    if ($droppedUntexturedFaces -gt 0) {
+        Write-Host ("Materiais sem imagem removidos SEG_{0:D3} LOD{1}: -{2} face(s)" -f
+            $SegmentId, $Lod, $droppedUntexturedFaces)
+    }
+    $faces = $texturedFaces
+    $faceFamilies = @($texturedFamilies.ToArray())
 }
 
 $tag = if ([string]::IsNullOrWhiteSpace($AssetTag)) { "" } else { $AssetTag.Trim().ToUpperInvariant() }

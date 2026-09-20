@@ -27,7 +27,7 @@ PHYSICS_POC_MODE ?= 1
 AUDIO_PROFILE ?= 1
 
 # Visible track residency. Override at build time, for example:
-# make TRACK_LOD0_SEGMENTS=2 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
+# make TRACK_LOD0_SEGMENTS=3 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
 # lod_0: detailed GEO + 64x64; lod_1: lighter GEO + 64x64;
 # lod_2: lighter GEO + 32x32. Their sum is the visible window size.
 TRACK_LOD0_SEGMENTS ?= 2

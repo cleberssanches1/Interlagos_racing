@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "description": "Texturas explicitamente aceitas pela deteccao de solo da pista.",
+  "surfaceTextures": [
+    {
+      "surfaceType": "asphalt",
+      "sourceStems": [
+        "F047a2",
+        "F047b2",
+        "F047c1",
+        "F047d1",
+        "F075a1",
+        "F075b1",
+        "F075c1",
+        "F075d1",
+        "F076a1",
+        "F076b1",
+        "F076c1",
+        "F076d1"
+      ]
+    }
+  ]
+}

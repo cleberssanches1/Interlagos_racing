@@ -2,11 +2,17 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$SegmentsMapPath,
     [string]$ResultDir = "C:\Models\png\sectors\result",
-    [string]$Pattern = "seg_*.obj"
+    [string]$Pattern = "seg_*.obj",
+    [string]$UvFaceUnwrapRulesPath = "",
+    [switch]$SkipMaterialsWithoutImages = $false
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($UvFaceUnwrapRulesPath)) {
+    $UvFaceUnwrapRulesPath = Join-Path $PSScriptRoot "uv_face_unwrap_rules.json"
+}
 
 function Normalize-MaterialFamilyName([string]$Name) {
     if ([string]::IsNullOrWhiteSpace($Name)) { return "" }
@@ -54,6 +60,70 @@ function Read-MtlTextureMap([string]$MtlPath) {
         $out[$current.ToLowerInvariant()] = $fileName
     }
     return $out
+}
+
+function Read-ObjGeneratedFaceUvRecords([string]$ObjPath) {
+    if (-not (Test-Path -LiteralPath $ObjPath)) { throw "OBJ ausente: $ObjPath" }
+
+    $mtlMap = Read-MtlTextureMap ([System.IO.Path]::ChangeExtension($ObjPath, ".mtl"))
+    $uvs = New-Object System.Collections.Generic.List[object]
+    foreach ($raw in [System.IO.File]::ReadLines($ObjPath)) {
+        $line = $raw.Trim()
+        if (-not $line.StartsWith("vt ", [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $parts = @($line.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+        if ($parts.Count -lt 3) { continue }
+        $uvs.Add([pscustomobject]([ordered]@{ u = [double]$parts[1]; v = [double]$parts[2] })) | Out-Null
+    }
+
+    $faces = New-Object System.Collections.Generic.List[object]
+    $currentMaterial = ""
+    $generatedFaceIndex = 0
+    foreach ($raw in [System.IO.File]::ReadLines($ObjPath)) {
+        $line = $raw.Trim()
+        if ($line.StartsWith("usemtl ", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $currentMaterial = $line.Substring(7).Trim()
+            continue
+        }
+        if (-not $line.StartsWith("f ", [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+
+        $parts = @($line.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+        $sourceCorners = New-Object System.Collections.Generic.List[object]
+        for ($i = 1; $i -lt $parts.Count; $i++) {
+            $indices = @($parts[$i].Split('/'))
+            $textureIndex = if ($indices.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($indices[1])) { [int]$indices[1] } else { 0 }
+            if ($textureIndex -gt 0) { $textureIndex-- }
+            elseif ($textureIndex -lt 0) { $textureIndex = $uvs.Count + $textureIndex }
+            else { $textureIndex = -1 }
+            if ($textureIndex -lt 0 -or $textureIndex -ge $uvs.Count) {
+                throw "Indice UV invalido '$($parts[$i])' em $ObjPath"
+            }
+            $sourceCorners.Add($uvs[$textureIndex]) | Out-Null
+        }
+
+        $generatedFaces = New-Object System.Collections.Generic.List[object]
+        if ($sourceCorners.Count -gt 4) {
+            for ($i = 1; $i -lt ($sourceCorners.Count - 1); $i++) {
+                $generatedFaces.Add(@($sourceCorners[0], $sourceCorners[$i], $sourceCorners[$i + 1])) | Out-Null
+            }
+        }
+        else {
+            $generatedFaces.Add(@($sourceCorners.ToArray())) | Out-Null
+        }
+
+        $materialKey = $currentMaterial.ToLowerInvariant()
+        $textureName = if ($mtlMap.ContainsKey($materialKey)) { [string]$mtlMap[$materialKey] } else { "" }
+        foreach ($generated in $generatedFaces) {
+            $faces.Add([pscustomobject]([ordered]@{
+                index = [int]$generatedFaceIndex
+                material = $currentMaterial
+                textureName = $textureName
+                textureStem = [System.IO.Path]::GetFileNameWithoutExtension($textureName).ToLowerInvariant()
+                uv = @($generated | ForEach-Object { [pscustomobject]([ordered]@{ u = [double]$_.u; v = [double]$_.v }) })
+            })) | Out-Null
+            $generatedFaceIndex++
+        }
+    }
+    return @($faces.ToArray())
 }
 
 function Get-TargetTextureName([string]$SourceStem, [int]$Lod) {
@@ -151,9 +221,20 @@ foreach ($lodName in @("lod_0", "lod_1", "lod_2")) {
     }
 }
 
-# Resolve the known helper material with no map_Kd through its canonical family.
+# Preserve one family slot per generated face. When build_all requests skipping
+# image-less materials, the empty texture is retained here and becomes familyId
+# zero below; this keeps OBJ/GEO/MAT face indices aligned without adding a fake
+# texture family.
+$skippedMaterialKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+$skippedGeneratedFaceCount = 0
 foreach ($record in $records) {
     if (-not [string]::IsNullOrWhiteSpace([string]$record.textureName)) { continue }
+    if ($SkipMaterialsWithoutImages) {
+        [void]$skippedMaterialKeys.Add(("{0}:seg_{1:D3}:{2}" -f $record.lod, $record.segmentId, $record.material))
+        $skippedGeneratedFaceCount += [int]$record.generatedFaceCount
+        continue
+    }
+
     $fallbackMaterial = [string]$record.normalizedMaterial
     if (-not ($materialToTextures.ContainsKey($fallbackMaterial) -and
               $materialToTextures[$fallbackMaterial].Count -eq 1)) {
@@ -173,6 +254,7 @@ foreach ($record in $records) {
 
 $familyMetaByStem = @{}
 foreach ($record in $records) {
+    if ([string]::IsNullOrWhiteSpace([string]$record.textureName)) { continue }
     $textureKey = ([string]$record.textureName).ToLowerInvariant()
     foreach ($lodName in @("lod_0", "lod_1", "lod_2")) {
         if (-not $tgaIndex[$lodName].ContainsKey($textureKey)) {
@@ -204,11 +286,6 @@ foreach ($stem in @($familyMetaByStem.Keys | Sort-Object)) {
     $file0 = $tgaIndex.lod_0[([string]$meta.sourceName).ToLowerInvariant()]
     $file1 = $tgaIndex.lod_1[([string]$meta.sourceName).ToLowerInvariant()]
     $file2 = $tgaIndex.lod_2[([string]$meta.sourceName).ToLowerInvariant()]
-    $hash0 = (Get-FileHash -LiteralPath $file0.FullName -Algorithm SHA256).Hash
-    $hash1 = (Get-FileHash -LiteralPath $file1.FullName -Algorithm SHA256).Hash
-    if ($hash0 -ne $hash1) {
-        throw "lod_0 e lod_1 possuem conteudo divergente para $($meta.sourceName); um unico TBK64 nao pode representar ambos."
-    }
     $target64 = Get-TargetTextureName $stem 64
     $target32 = Get-TargetTextureName $stem 32
     $families.Add([pscustomobject]([ordered]@{
@@ -221,10 +298,107 @@ foreach ($stem in @($familyMetaByStem.Keys | Sort-Object)) {
             lod_1 = $file1.Name
             lod_2 = $file2.Name
         })
+        bankFiles = [pscustomobject]([ordered]@{
+            lod_0 = $target64
+            lod_1 = $target64
+            lod_2 = $target32
+        })
         variants = [pscustomobject]([ordered]@{ "32" = $target32; "64" = $target64 })
         imageFiles = [pscustomobject]([ordered]@{ "32" = $target32; "64" = $target64 })
     })) | Out-Null
     $nextId++
+}
+
+# VDP1 applies one complete rectangular texture to each distorted sprite.  When
+# Blender spreads a single UV island over multiple faces, the runtime therefore
+# needs a pre-unwrapped texture for each participating face.  Keep this opt-in:
+# applying it to every shared OBJ edge would turn ordinary tiled track surfaces
+# into thousands of families and exhaust Saturn texture memory.
+$uvVariantFamilyIdBySegmentFace = @{}
+$uvRuleAudit = New-Object System.Collections.Generic.List[object]
+$uvRules = @()
+if (Test-Path -LiteralPath $UvFaceUnwrapRulesPath) {
+    $ruleJson = Get-Content -LiteralPath $UvFaceUnwrapRulesPath -Raw | ConvertFrom-Json
+    if ($null -ne $ruleJson -and $ruleJson.PSObject.Properties.Name -contains "rules") {
+        $uvRules = @($ruleJson.rules)
+    }
+}
+
+$uvFaceCache = @{}
+foreach ($rule in @($uvRules | Sort-Object { [int]$_.segmentId }, { [string]$_.textureStem })) {
+    $segmentId = [int]$rule.segmentId
+    $baseStem = ([string]$rule.textureStem).Trim().ToLowerInvariant()
+    if ($segmentId -lt 0 -or [string]::IsNullOrWhiteSpace($baseStem)) {
+        throw "Regra UV invalida em $UvFaceUnwrapRulesPath"
+    }
+    if (-not $familyIdByStem.ContainsKey($baseStem)) {
+        throw "Regra UV referencia textura sem family base: seg=$segmentId stem=$baseStem"
+    }
+    $baseFamilyId = [int]$familyIdByStem[$baseStem]
+    $baseFamily = @($families | Where-Object { [int]$_.id -eq $baseFamilyId })[0]
+
+    foreach ($faceIndexValue in @($rule.faceIndices | Sort-Object -Unique)) {
+        $faceIndex = [int]$faceIndexValue
+        $variantKey = "{0}:{1}" -f $segmentId, $faceIndex
+        if ($uvVariantFamilyIdBySegmentFace.ContainsKey($variantKey)) {
+            throw "Regra UV duplicada para segmento $segmentId face $faceIndex"
+        }
+
+        $uvByLod = [ordered]@{}
+        foreach ($lodName in @("lod_0", "lod_1", "lod_2")) {
+            $objPath = Join-Path $lodDirs[$lodName] ("seg_{0:D3}.obj" -f $segmentId)
+            $cacheKey = $objPath.ToLowerInvariant()
+            if (-not $uvFaceCache.ContainsKey($cacheKey)) {
+                $uvFaceCache[$cacheKey] = @(Read-ObjGeneratedFaceUvRecords $objPath)
+            }
+            $faceRecord = @($uvFaceCache[$cacheKey] | Where-Object { [int]$_.index -eq $faceIndex }) | Select-Object -First 1
+            if ($null -eq $faceRecord) {
+                throw "Regra UV referencia face ausente: lod=$lodName seg=$segmentId face=$faceIndex"
+            }
+            if ([string]$faceRecord.textureStem -ne $baseStem) {
+                throw ("Regra UV encontrou textura inesperada: lod={0} seg={1} face={2} esperada={3} atual={4}" -f
+                    $lodName, $segmentId, $faceIndex, $baseStem, $faceRecord.textureStem)
+            }
+            if (@($faceRecord.uv).Count -ne 4) {
+                throw "Regra UV suporta apenas quad: lod=$lodName seg=$segmentId face=$faceIndex"
+            }
+            $uvByLod[$lodName] = @($faceRecord.uv)
+        }
+
+        $assetStem = "U{0:D3}F{1:D3}" -f $segmentId, $faceIndex
+        $target64 = "${assetStem}_64.TGA"
+        $target32 = "${assetStem}_32.TGA"
+        $derivedId = $nextId
+        $families.Add([pscustomobject]([ordered]@{
+            id = $derivedId
+            name = ("{0}__uv_s{1:D3}_f{2:D3}" -f [string]$baseFamily.name, $segmentId, $faceIndex)
+            sourceStem = ("{0}_uv_s{1:D3}_f{2:D3}" -f $baseStem, $segmentId, $faceIndex)
+            baseSourceStem = $baseStem
+            baseFamilyId = $baseFamilyId
+            aliases = @()
+            sourceFiles = [pscustomobject]([ordered]@{
+                lod_0 = [string]$baseFamily.sourceFiles.lod_0
+                lod_1 = [string]$baseFamily.sourceFiles.lod_1
+                lod_2 = [string]$baseFamily.sourceFiles.lod_2
+            })
+            bankFiles = [pscustomobject]([ordered]@{
+                lod_0 = $target64
+                lod_1 = $target64
+                lod_2 = $target32
+            })
+            variants = [pscustomobject]([ordered]@{ "32" = $target32; "64" = $target64 })
+            imageFiles = [pscustomobject]([ordered]@{ "32" = $target32; "64" = $target64 })
+            uvUnwrap = [pscustomobject]([ordered]@{
+                segmentId = $segmentId
+                faceIndex = $faceIndex
+                sourceStem = $baseStem
+                uvByLod = [pscustomobject]$uvByLod
+            })
+        })) | Out-Null
+        $uvVariantFamilyIdBySegmentFace[$variantKey] = $derivedId
+        $uvRuleAudit.Add([pscustomobject]@{ segmentId = $segmentId; faceIndex = $faceIndex; baseStem = $baseStem; familyId = $derivedId }) | Out-Null
+        $nextId++
+    }
 }
 
 $oldJson = Get-Content -LiteralPath $SegmentsMapPath -Raw | ConvertFrom-Json
@@ -242,10 +416,24 @@ foreach ($record in @($records | Where-Object { $_.lod -eq "lod_0" })) {
 $segments = New-Object System.Collections.Generic.List[object]
 foreach ($segmentId in @($highRecordsBySegment.Keys | Sort-Object)) {
     $faceFamilies = New-Object System.Collections.Generic.List[int]
+    $generatedFaceIndex = 0
     foreach ($record in $highRecordsBySegment[$segmentId]) {
-        $stem = [System.IO.Path]::GetFileNameWithoutExtension([string]$record.textureName).ToLowerInvariant()
-        $familyId = [int]$familyIdByStem[$stem]
-        for ($i = 0; $i -lt [int]$record.generatedFaceCount; $i++) { $faceFamilies.Add($familyId) | Out-Null }
+        $baseFamilyId = 0
+        if (-not [string]::IsNullOrWhiteSpace([string]$record.textureName)) {
+            $stem = [System.IO.Path]::GetFileNameWithoutExtension([string]$record.textureName).ToLowerInvariant()
+            $baseFamilyId = [int]$familyIdByStem[$stem]
+        }
+        for ($i = 0; $i -lt [int]$record.generatedFaceCount; $i++) {
+            $variantKey = "{0}:{1}" -f $segmentId, $generatedFaceIndex
+            $familyId = if ($uvVariantFamilyIdBySegmentFace.ContainsKey($variantKey)) {
+                [int]$uvVariantFamilyIdBySegmentFace[$variantKey]
+            }
+            else {
+                $baseFamilyId
+            }
+            $faceFamilies.Add($familyId) | Out-Null
+            $generatedFaceIndex++
+        }
     }
     $faceArray = [int[]]$faceFamilies.ToArray()
     $old = if ($oldSegmentById.ContainsKey([int]$segmentId)) { $oldSegmentById[[int]$segmentId] } else { $null }
@@ -267,13 +455,16 @@ foreach ($segmentId in @($highRecordsBySegment.Keys | Sort-Object)) {
 }
 
 $outJson = [pscustomobject]([ordered]@{
-    version = 2
+    version = 3
     generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     exporter = $oldJson.exporter
     familyBuild = [pscustomobject]@{
         mode = "fresh"
         sourceGroups = @("lod_0", "lod_1", "lod_2")
+        textureBanks = @("TBKLOD0.BIN", "TBKLOD1.BIN", "TBKLOD2.BIN")
         textureRoots = @($textureDirs.Values)
+        uvFaceUnwrapRulesPath = if (Test-Path -LiteralPath $UvFaceUnwrapRulesPath) { [System.IO.Path]::GetFullPath($UvFaceUnwrapRulesPath) } else { "" }
+        uvFaceUnwrapCount = $uvRuleAudit.Count
     }
     textureFamilies = @($families.ToArray())
     segments = @($segments.ToArray())
@@ -282,3 +473,10 @@ $outJson | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath $SegmentsMapPath 
 
 Write-Host ("Fresh segments_map: segments={0} families={1} ids=1..{1}" -f $segments.Count, $families.Count)
 Write-Host ("Texture roots: {0}" -f ($textureDirs.Values -join "; "))
+if ($SkipMaterialsWithoutImages -and $skippedMaterialKeys.Count -gt 0) {
+    Write-Host ("Materiais sem imagem ignorados: ocorrencias={0} faces={1} (familyId=0)" -f
+        $skippedMaterialKeys.Count, $skippedGeneratedFaceCount)
+}
+if ($uvRuleAudit.Count -gt 0) {
+    Write-Host ("UV face unwrap: regras={0} variantes={1}" -f $uvRules.Count, $uvRuleAudit.Count)
+}

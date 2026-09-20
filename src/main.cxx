@@ -1084,6 +1084,21 @@ static int RunPhysicsPocMode()
     const bool logTrack = kEnableRuntimeStatsLogs;
     const char* scenarioName = "trk+car";
 
+    auto LogPocRam = [](int row, const char* tag)
+    {
+        if constexpr (kEnableRuntimeStatsLogs)
+        {
+            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+            const auto crt = SRL::Memory::CartRam::GetReport();
+            MLOG(0, row, "%s H:%lu L:%lu C:%lu",
+                 tag,
+                 static_cast<unsigned long>(hwr.FreeSize),
+                 static_cast<unsigned long>(lwr.FreeSize),
+                 static_cast<unsigned long>(crt.FreeSize));
+        }
+    };
+
     MLOG(1, 3, "POC FISICA MODE");
     MLOG(1, 4, "POC AB mode:%s trk:%u car:%u",
          scenarioName,
@@ -1123,9 +1138,8 @@ static int RunPhysicsPocMode()
         "/CD/DATA/CEUP.TGA"
     };
     const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
-    // Delay BG load until after track init in POC mode.
-    // This keeps HWR/VRAM pressure lower during critical track bootstrap.
-    (void)bgReady;
+    // Load the VDP2 panorama before the track consumes/fragments LWR.
+    // Car remains first so its established VDP1 allocation order is preserved.
 
     CameraSystem cameraSystem;
     cameraSystem.SetDebugLogsEnabled(false);
@@ -1152,11 +1166,20 @@ static int RunPhysicsPocMode()
     }
     ModelObject* carPtr = carPipe.ActiveModel();
     bool carValid = carPipe.Loaded();
+    LogPocRam(8, "RAM car");
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
     SRL::Types::HighColor lightColor = SRL::Types::HighColor::FromRGB555(31, 31, 31);
     SRL::Scene3D::SetDirectionalLight(lightDirection);
     SRL::Scene3D::LightSetColor(lightColor);
+
+    if (enableBg)
+    {
+        AppState::Set(AppState::Stage::BackgroundInit, 0);
+        SRL::Cd::ChangeDir((const char*)0);
+        bgReady = bgManager.Init(skyPaths, skyPathCount);
+    }
+    LogPocRam(9, bgReady ? "RAM bg+" : "RAM bg-");
 
     static TrackSystem trackSystem;
     // POC dual-SH2 split (stable after async-sim freeze on throttle):
@@ -1183,6 +1206,7 @@ static int RunPhysicsPocMode()
         SRL::Cd::ChangeDir((const char*)0);
         trackSystemReady = trackSystem.Initialize(trackConfig);
     }
+    LogPocRam(10, trackSystemReady ? "RAM trk+" : "RAM trk-");
     MLOG(1, 5, "POC TRK rd:%u sg:%u",
          trackSystemReady ? 1u : 0u,
          static_cast<unsigned>(trackSystem.SegmentCount()));
@@ -1224,11 +1248,6 @@ static int RunPhysicsPocMode()
         // Keep non-track textures (car) outside track heap reset window,
         // matching the protection used by the main runtime flow.
         trackSystem.RebaseTrackTextureHeapBase();
-    }
-    if (enableBg)
-    {
-        SRL::Cd::ChangeDir((const char*)0);
-        bgReady = bgManager.Init(skyPaths, skyPathCount);
     }
     if constexpr (kLog)
     {
