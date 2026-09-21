@@ -406,6 +406,8 @@ static constexpr bool kEnableLeakABSkipTrackRenderSubmit = false;
 static constexpr bool kEnableTrackWindowOverlayTelemetry = false;
 static constexpr bool kEnableLegacyFamilyOverlayTelemetry = false;
 static constexpr bool kEnableLegacyTrackOverlayTelemetry = false;
+// Fase A (belt stability plan): compact HUD for soft-admit / ownership / upload misses.
+static constexpr bool kEnableBeltTelemetryOverlay = true;
 // SH2 overlays disabled to keep screen focused on FPS + WorkRAM tracking.
 static constexpr bool kEnableSh2UsageOverlay = false;
 static constexpr bool kEnableLegacyTrackOverlaySh2Telemetry = false;
@@ -6739,7 +6741,8 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
             }
             return true;
         }
-        // Slot invÃ¡lido, aposentado ou reutilizado â€” limpar e recarregar.
+        // Slot invalid/retired/reused — clear and reload.
+        if (beltOwnedMismatchThisFrame_ < 255u) ++beltOwnedMismatchThisFrame_;
         slotEntry.lodSlots[targetLodIndex] = No_Texture;
     }
 
@@ -6778,6 +6781,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         if (!bankEntry)
         {
             if (outSawMissingFamily) *outSawMissingFamily = true;
+            if (beltMissFamilyThisFrame_ < 255u) ++beltMissFamilyThisFrame_;
             continue;
         }
 
@@ -6794,6 +6798,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
             SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
             SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
             if (outSawDecodeFail) *outSawDecodeFail = true;
+            if (beltDecodeFailThisFrame_ < 255u) ++beltDecodeFailThisFrame_;
             continue;
         }
 
@@ -6804,6 +6809,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         if (slot < 0)
         {
             if (outSawUploadFail) *outSawUploadFail = true;
+            if (beltUploadFailThisFrame_ < 255u) ++beltUploadFailThisFrame_;
             continue;
         }
 
@@ -7299,7 +7305,12 @@ bool TrackSystem::EnsureFamilyLodSlotLoaded(FamilySlotVector& familySlots,
     const uint16_t existing = slotEntry->lodSlots[lodIndex];
     if (existing != No_Texture &&
         IsVdp1TextureSlotOwnedByFamilyLod(existing, familyId, lodIndex)) return true;
-    if (existing != No_Texture) slotEntry->lodSlots[lodIndex] = No_Texture; // limpar slot stale
+    if (existing != No_Texture)
+    {
+        // Stale numeric slot (retired/reused) — count for belt telemetry.
+        if (beltOwnedMismatchThisFrame_ < 255u) ++beltOwnedMismatchThisFrame_;
+        slotEntry->lodSlots[lodIndex] = No_Texture;
+    }
     if (!bypassUploadBudget &&
         ReadyFlag() &&
         textureUploadsThisFrame_ >= GetTextureUploadBudgetPerFrame()) return false;
@@ -9511,12 +9522,14 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         incomingPrepared.lodState.desiredLodIndex =
             ResolveSegmentLodIndexByRank(incomingLogicalRank);
         incomingSoftAdmit = true;
+        if (beltSoftAdmitThisFrame_ < 255u) ++beltSoftAdmitThisFrame_;
         incomingRebuilt = true;
     }
     else if (HasMissingRequiredFaceTextureSlots(incomingPrepared.lodState.currentFaceSlots,
                                                 &incomingPrepared.lodState.faceFamilyIds))
     {
         incomingSoftAdmit = true;
+        if (beltSoftAdmitThisFrame_ < 255u) ++beltSoftAdmitThisFrame_;
         incomingPrepared.lodState.desiredLodIndex =
             ResolveSegmentLodIndexByRank(incomingLogicalRank);
     }
@@ -15358,6 +15371,16 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     wallQueryHitsLastFrame_ = wallQueryHitsThisFrame_;
     wallQuerySegmentsScannedLastFrame_ = wallQuerySegmentsScannedThisFrame_;
     wallQueryFacesScannedLastFrame_ = wallQueryFacesScannedThisFrame_;
+    beltSoftAdmitLastFrame_ = beltSoftAdmitThisFrame_;
+    beltOwnedMismatchLastFrame_ = beltOwnedMismatchThisFrame_;
+    beltUploadFailLastFrame_ = beltUploadFailThisFrame_;
+    beltDecodeFailLastFrame_ = beltDecodeFailThisFrame_;
+    beltMissFamilyLastFrame_ = beltMissFamilyThisFrame_;
+    beltMissingFaceSlotsLastFrame_ = beltMissingFaceSlotsThisFrame_;
+    textureUploadsLastFrame_ = textureUploadsThisFrame_;
+    runtimePrefetchHitsLastFrame_ = runtimePrefetchHitsThisFrame_;
+    runtimePrefetchMissesLastFrame_ = runtimePrefetchMissesThisFrame_;
+    runtimeSlidesLastFrame_ = runtimeSlidesThisFrame_;
     surfaceQueryCallsThisFrame_ = 0u;
     surfaceQueryFallbackHitsThisFrame_ = 0u;
     surfaceQueryGlobalPassesThisFrame_ = 0u;
@@ -15374,6 +15397,12 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     frameIdThisFrame_ = frameId;
     AdvanceReusableTrackTextureSlotCooldowns();
     textureUploadsThisFrame_ = 0;
+    beltSoftAdmitThisFrame_ = 0;
+    beltOwnedMismatchThisFrame_ = 0;
+    beltUploadFailThisFrame_ = 0;
+    beltDecodeFailThisFrame_ = 0;
+    beltMissFamilyThisFrame_ = 0;
+    beltMissingFaceSlotsThisFrame_ = 0;
     ClearUsedTextureSlots(usedTextureSlotsThisFrame_);
     runtimeRdrBuildsThisFrame_ = 0;
     runtimeSdrBuildsThisFrame_ = 0;
@@ -18234,6 +18263,78 @@ void TrackSystem::PresentSh2UsageOverlay()
 
 void TrackSystem::RunEndFrameResourceMaintenance()
 {
+    if constexpr (kEnableBeltTelemetryOverlay)
+    {
+        // Count missing required face slots across the active window (pre-release).
+        uint32_t missingFaces = 0u;
+        for (size_t si = 0; si < segmentRenderers_.size(); ++si)
+        {
+            SegmentRenderEntry& entry = segmentRenderers_[si];
+            missingFaces += CountMissingOrDeadRequiredFaceTextureSlots(
+                entry.lodState.currentFaceSlots,
+                &entry.lodState.faceFamilyIds);
+        }
+        beltMissingFaceSlotsThisFrame_ = static_cast<uint16_t>(std::min<uint32_t>(
+            missingFaces, static_cast<uint32_t>(std::numeric_limits<uint16_t>::max())));
+
+        // Sticky peaks so a one-frame spike remains readable on video capture.
+        static uint8_t sHold = 0u;
+        static uint8_t sSa = 0u, sOm = 0u, sUf = 0u, sDf = 0u, sMf = 0u;
+        static uint16_t sMs = 0u;
+        static uint8_t sUp = 0u, sSl = 0u, sPfH = 0u, sPfM = 0u;
+        static uint32_t sHwr = 0u;
+        static uint16_t sRq = 0u, sRf = 0u;
+        const bool spike =
+            beltSoftAdmitThisFrame_ != 0u ||
+            beltOwnedMismatchThisFrame_ != 0u ||
+            beltUploadFailThisFrame_ != 0u ||
+            beltDecodeFailThisFrame_ != 0u ||
+            beltMissFamilyThisFrame_ != 0u ||
+            beltMissingFaceSlotsThisFrame_ != 0u ||
+            runtimeSlidesThisFrame_ != 0u;
+        if (spike || sHold == 0u)
+        {
+            sSa = beltSoftAdmitThisFrame_;
+            sOm = beltOwnedMismatchThisFrame_;
+            sUf = beltUploadFailThisFrame_;
+            sDf = beltDecodeFailThisFrame_;
+            sMf = beltMissFamilyThisFrame_;
+            sMs = beltMissingFaceSlotsThisFrame_;
+            sUp = textureUploadsThisFrame_;
+            sSl = runtimeSlidesThisFrame_;
+            sPfH = runtimePrefetchHitsThisFrame_;
+            sPfM = runtimePrefetchMissesThisFrame_;
+            bool hwrOk = false;
+            sHwr = static_cast<uint32_t>(GetHighWorkRamFreeBytesSafe(&hwrOk));
+            if (!hwrOk) sHwr = 0u;
+            sRq = g_trackRetiredQueuedThisFrame;
+            sRf = g_trackRetiredFlushedThisFrame;
+            sHold = 45u; // ~0.75s @ 60Hz / ~1.5s @ 30Hz
+        }
+        else if (sHold > 0u)
+        {
+            --sHold;
+        }
+
+        // Rows (0,2..4): avoid contested (1,16..18) used by WM/V1/OVR/S1/FPS neighbors.
+        SRL::Debug::Print(0, 2, "BLT sa:%u om:%u uf:%u df:%u mf:%u   ",
+                          static_cast<unsigned>(sSa),
+                          static_cast<unsigned>(sOm),
+                          static_cast<unsigned>(sUf),
+                          static_cast<unsigned>(sDf),
+                          static_cast<unsigned>(sMf));
+        SRL::Debug::Print(0, 3, "BL2 ms:%u up:%u/%u sl:%u pf:%u/%u   ",
+                          static_cast<unsigned>(sMs),
+                          static_cast<unsigned>(sUp),
+                          static_cast<unsigned>(GetTextureUploadBudgetPerFrame()),
+                          static_cast<unsigned>(sSl),
+                          static_cast<unsigned>(sPfH),
+                          static_cast<unsigned>(sPfM));
+        SRL::Debug::Print(0, 4, "BL3 hwr:%u rq:%u rf:%u            ",
+                          static_cast<unsigned>(sHwr),
+                          static_cast<unsigned>(sRq),
+                          static_cast<unsigned>(sRf));
+    }
     if constexpr (kEnableTrackPhaseRamTelemetry)
     {
         const auto hwr = SRL::Memory::HighWorkRam::GetReport();

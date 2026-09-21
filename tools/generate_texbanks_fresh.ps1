@@ -87,6 +87,11 @@ foreach ($bankSpec in $bankSpecs) {
         $fileName = [System.IO.Path]::GetFileName($fullPath)
         [byte[]]$bytes = [System.IO.File]::ReadAllBytes($path)
         $info = Get-TgaInfo $bytes $path
+        $nominal = [int]$bankSpec.nominalTextureSize
+        if ([int]$info.width -ne $nominal -or [int]$info.height -ne $nominal) {
+            throw ("TGA fora do tamanho nominal {0}x{0}: family {1} bank {2} got {3}x{4} ({5})" -f
+                $nominal, $family.id, $bankSpec.sourceGroup, $info.width, $info.height, $path)
+        }
         $entries.Add([pscustomobject]@{
             familyId = [uint32]$family.id
             name = [string]$family.name

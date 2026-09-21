@@ -207,17 +207,30 @@ foreach ($family in @($json.textureFamilies | Sort-Object { [int]$_.id })) {
         }
         $destination = Join-Path (Join-Path $OutDir $spec.sourceGroup) $targetName
         $sourceInfo = Get-TgaInfo $source
+        $targetSize = [int]$spec.nominalTextureSize
         $transform = "copy_preserve_source"
         if ($hasUvUnwrap) {
+            # Unwrap direto no tamanho nominal do banco (64 ou 32) para o VDP1
+            # sempre receber tile completo no LOD esperado.
             $uv = @($family.uvUnwrap.uvByLod.PSObject.Properties[$spec.sourceGroup].Value)
-            Invoke-PalettedUvUnwrap $source $destination $uv $sourceInfo.width $sourceInfo.height
-            $transform = "uv_face_unwrap_$($spec.sourceGroup)"
+            Invoke-PalettedUvUnwrap $source $destination $uv $targetSize $targetSize
+            $transform = ("uv_face_unwrap_{0}_to_{1}" -f $spec.sourceGroup, $targetSize)
+        }
+        elseif ($sourceInfo.width -eq $targetSize -and $sourceInfo.height -eq $targetSize) {
+            Copy-Item -LiteralPath $source -Destination $destination -Force
+            $transform = "copy_preserve_source"
         }
         else {
-            Copy-Item -LiteralPath $source -Destination $destination -Force
+            # Upsample/downsample nearest preservando paleta (indice 0 = transparencia).
+            Invoke-PalettedResize $source $destination $targetSize $targetSize
+            $transform = ("paletted_resize_{0}x{1}_to_{2}x{2}" -f $sourceInfo.width, $sourceInfo.height, $targetSize)
         }
 
         $outInfo = Get-TgaInfo $destination
+        if ($outInfo.width -ne $targetSize -or $outInfo.height -ne $targetSize) {
+            throw ("Textura preparada fora do tamanho nominal {0}x{0}: family {1} got {2}x{3} ({4})" -f
+                $targetSize, $family.id, $outInfo.width, $outInfo.height, $destination)
+        }
         $entries.Add([pscustomobject]([ordered]@{
             familyId = [int]$family.id
             family = [string]$family.name

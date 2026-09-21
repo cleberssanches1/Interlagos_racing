@@ -1336,6 +1336,26 @@ foreach ($staleBankName in @("TBK32.BIN", "TBK64.BIN", "TBKLOD0.BIN", "TBKLOD1.B
     -OutDir $CdDataDir `
     -ReportDir $PackageDir
 
+Write-Host "=== Etapa 5.1/7: Auditoria de orcamento/texturas (orphans + tamanhos nominais) ==="
+$auditScript = Join-Path $scriptDir "audit_track_texture_budget.py"
+if (Test-Path -LiteralPath $auditScript) {
+    $auditArgs = @(
+        $auditScript,
+        "--segments-map", $jsonPath,
+        "--package-dir", $PackageDir,
+        "--window", "16",
+        "--fail-on-orphan",
+        "--fail-on-bad-size"
+    )
+    & python @auditArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Auditoria de texturas falhou (orphans ou tamanhos fora do nominal 64/32)."
+    }
+}
+else {
+    Write-Host "Aviso: audit_track_texture_budget.py ausente; pulando auditoria."
+}
+
 Write-Host "=== Etapa 6/7: Gerar S001FAM.BIN ==="
 $seg1FamOut = Join-Path $CdDataDir "S001FAM.BIN"
 & $script:seg1FamScript `

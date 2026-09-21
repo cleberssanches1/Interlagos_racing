@@ -887,6 +887,23 @@ private:
     uint8_t textureUploadsThisFrame_ = 0;
     static constexpr uint8_t kTextureUploadsBudgetPerFrame = 4;
     uint8_t GetTextureUploadBudgetPerFrame() const;
+    // Belt telemetry (Fase A) — latched last-frame for HUD after BeginFrame reset.
+    uint8_t beltSoftAdmitThisFrame_ = 0;
+    uint8_t beltOwnedMismatchThisFrame_ = 0;
+    uint8_t beltUploadFailThisFrame_ = 0;
+    uint8_t beltDecodeFailThisFrame_ = 0;
+    uint8_t beltMissFamilyThisFrame_ = 0;
+    uint16_t beltMissingFaceSlotsThisFrame_ = 0;
+    uint8_t beltSoftAdmitLastFrame_ = 0;
+    uint8_t beltOwnedMismatchLastFrame_ = 0;
+    uint8_t beltUploadFailLastFrame_ = 0;
+    uint8_t beltDecodeFailLastFrame_ = 0;
+    uint8_t beltMissFamilyLastFrame_ = 0;
+    uint16_t beltMissingFaceSlotsLastFrame_ = 0;
+    uint8_t textureUploadsLastFrame_ = 0;
+    uint8_t runtimePrefetchHitsLastFrame_ = 0;
+    uint8_t runtimePrefetchMissesLastFrame_ = 0;
+    uint8_t runtimeSlidesLastFrame_ = 0;
     uint8_t runtimeRdrBuildsThisFrame_ = 0;
     uint8_t runtimeSdrBuildsThisFrame_ = 0;
     uint8_t runtimeFaceRemapsThisFrame_ = 0;

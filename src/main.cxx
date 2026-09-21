@@ -477,7 +477,12 @@ struct CarPipeline
     ModelObject* ActiveModel() const { return wramCopy ? wramCopy.get() : cart.car.get(); }
 
     // Indica se h????? um modelo utiliz?????vel.
-    bool Loaded() const { return cart.loaded && ActiveModel(); }
+    bool Loaded() const
+    {
+        // WRAM-first moves the car out of the temporary Cart result and clears
+        // cart.loaded, so the active WRAM model is also a valid loaded state.
+        return ActiveModel() != nullptr && (wramCopy != nullptr || cart.loaded);
+    }
 };
 
 // Executa a carga CD -> cart (4MB) e opcionalmente cart -> WRAM.
