@@ -17,9 +17,6 @@
     [bool]$ExportSurfaceFamilyMap = $true,
     [bool]$ExportFaceSurfaceMap = $true,
     [bool]$EnableSeamFaceDedup = $true,
-    [bool]$EnableLod0AsphaltEdgeWeld = $true,
-    [double]$Lod0AsphaltEdgeWeldTolerance = 0.25,
-    [string]$Lod0AsphaltWeldBackupDir = "",
     [bool]$SkipMaterialsWithoutImages = $true,
     [switch]$AuditWalls = $false,
     [switch]$AuditWallsStrict = $false,
@@ -350,7 +347,6 @@ $script:canonicalizeSegmentsMapScript = Join-Path $scriptDir "canonicalize_segme
 $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 $script:seamOwnershipScript = Join-Path $scriptDir "build_seam_face_ownership.ps1"
 $script:faceSurfaceMapScript = Join-Path $scriptDir "build_face_surface_map.py"
-$script:lod0AsphaltWeldScript = Join-Path $scriptDir "weld_lod0_asphalt_edges.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -367,9 +363,6 @@ if (-not (Test-Path -LiteralPath $script:freshTexturePrepScript)) { throw "Scrip
 if (-not (Test-Path -LiteralPath $script:freshTexbanksScript)) { throw "Script nao encontrado: $script:freshTexbanksScript" }
 if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
-if ($EnableLod0AsphaltEdgeWeld -and -not (Test-Path -LiteralPath $script:lod0AsphaltWeldScript)) {
-    throw "Script de solda LOD0 nao encontrado: $script:lod0AsphaltWeldScript"
-}
 if ($EnableSeamFaceDedup -and -not (Test-Path -LiteralPath $script:seamOwnershipScript)) {
     Write-Warning ("Script de seam dedup nao encontrado: {0}. Etapa sera ignorada." -f $script:seamOwnershipScript)
     $EnableSeamFaceDedup = $false
@@ -1024,32 +1017,6 @@ if ($AuditWalls) {
         -Pattern $Pattern `
         -ReportDir $AuditWallsReportDir `
         -Strict:$AuditWallsStrict
-}
-
-if ($EnableLod0AsphaltEdgeWeld) {
-    if ($Lod0AsphaltEdgeWeldTolerance -le 0.0) {
-        throw "Lod0AsphaltEdgeWeldTolerance deve ser maior que zero."
-    }
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($null -eq $pythonCmd) {
-        throw "Python nao encontrado no PATH; solda de arestas LOD0 nao pode ser executada."
-    }
-    $lod0WeldObjDir = Join-Path $ResultDir "lod_0"
-    $lod0WeldReportPath = Join-Path $PackageDir "lod0_asphalt_weld_report.json"
-    if ([string]::IsNullOrWhiteSpace($Lod0AsphaltWeldBackupDir)) {
-        $Lod0AsphaltWeldBackupDir = Join-Path "C:\saturn\backups" ("Interlagos_lod0_asphalt_weld_{0}" -f $buildRunId)
-    }
-    Write-Host "=== Etapa 2.99/7: Soldar arestas de asfalto LOD0 ==="
-    & python $script:lod0AsphaltWeldScript `
-        --obj-dir $lod0WeldObjDir `
-        --segments-map $jsonPath `
-        --report $lod0WeldReportPath `
-        --tolerance $Lod0AsphaltEdgeWeldTolerance `
-        --apply `
-        --backup-dir $Lod0AsphaltWeldBackupDir
-    if ($LASTEXITCODE -ne 0) {
-        throw "Falha na solda de arestas de asfalto LOD0 (exit=$LASTEXITCODE)."
-    }
 }
 
 Write-Host "=== Etapa 3/7: Gerar GEO/MAT (3 Levels of Design: lod_0/1/2) ==="

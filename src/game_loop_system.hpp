@@ -1297,6 +1297,9 @@ private:
         const SRL::Math::Types::Vector3D& shadowPos = shadowPacket.shadowPosition;
         const auto yaw = BuildShadowDrawYaw(shadowPacket);
         context_.carShadowRenderer->Render(shadowPos, yaw, false);
+        lastRenderedCarFacesThisFrame_ = GameLoopRuntime::ClampToU16(
+            static_cast<uint32_t>(lastRenderedCarFacesThisFrame_) +
+            context_.carShadowRenderer->LastRenderFaceCount());
     }
 
     void RenderCar(const CameraFrameState& camera)
@@ -1335,7 +1338,9 @@ private:
         GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, renderInputs.gameplayYawDeg);
         const auto telemetry =
             GameLoopRuntime::SubmitCarRenderRuntime(*context_.renderPipeline, *car);
-        lastRenderedCarFacesThisFrame_ = telemetry.renderedFaceCount;
+        lastRenderedCarFacesThisFrame_ = GameLoopRuntime::ClampToU16(
+            static_cast<uint32_t>(lastRenderedCarFacesThisFrame_) +
+            static_cast<uint32_t>(telemetry.renderedFaceCount));
     }
 
     SRL::Math::Types::Vector3D ResolveCarRenderPosition()
@@ -1486,6 +1491,10 @@ private:
                                           trackFrameContext.cameraLocation,
                                           trackFrameContext.cameraLookTarget,
                                           trackFrameContext.carWorldPosition);
+        // BuildTrackRenderPacket carries the preceding coordinator snapshot. Read
+        // again after RenderFrame so the HUD records polygons sent this frame.
+        lastSubmittedTrackFacesThisFrame_ = GameLoopRuntime::ClampToU16(
+            context_.trackSystem->Telemetry().submittedTrackFaces);
         CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
         context_.trackSystem->EndFrame();
@@ -1559,6 +1568,7 @@ private:
         const bool allowOptionalHudTelemetry =
             !Game::MemoryBudgetRuntimeBridge::ShouldAvoidHudOptionalTelemetry();
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
+                                                      SRL_AppGetVblankCounter(),
                                                       context_.EnableRuntimeStatsLogs() &&
                                                           allowOptionalHudTelemetry,
                                                       context_.LogTrack(),

@@ -32,6 +32,7 @@ public:
 
     // Print periodic system memory and VDP1 usage logs.
     void PresentPeriodicFrameStats(uint32_t frameCounter,
+                                   uint32_t vblankCounter,
                                    bool enableRuntimeStatsLogs,
                                    bool logTrack,
                                    bool logCar,
@@ -40,6 +41,10 @@ public:
                                    uint32_t submittedTrackFaces,
                                    uint32_t submittedCarFaces)
     {
+        PresentPolygonBudgetOverlay(vblankCounter,
+                                    submittedTrackFaces,
+                                    submittedCarFaces);
+
         if (!enableRuntimeStatsLogs) return;
 
         const int32_t hwrFree = SRL::Memory::CartRam::GetFreeSpace();
@@ -104,10 +109,126 @@ public:
     }
 
 private:
+    // SGL_MAX_POLYGONS is the per-frame SGL work-area limit. Track
+    // initialization reserves 64 for non-track content, so this reports the
+    // shared ceiling and the peak headroom for additional visible 3D objects.
+    static constexpr uint32_t kPolygonBudget = static_cast<uint32_t>(SGL_MAX_POLYGONS);
+#ifdef SRL_MODE_NTSC
+    static constexpr uint32_t kDisplayRefreshHz = 60u;
+#else
+    static constexpr uint32_t kDisplayRefreshHz = 50u;
+#endif
+    static constexpr uint32_t kPolygonSampleVblanks = kDisplayRefreshHz * 10u;
+
+    void PresentPolygonBudgetOverlay(uint32_t vblankCounter,
+                                     uint32_t submittedTrackFaces,
+                                     uint32_t submittedCarFaces)
+    {
+        if (!polygonSampleVblankValid_)
+        {
+            polygonSampleStartVblank_ = vblankCounter;
+            polygonSampleVblankValid_ = true;
+        }
+
+        const uint32_t submittedFacesNow = submittedTrackFaces + submittedCarFaces;
+        polygonTrackFacesAccum_ += submittedTrackFaces;
+        polygonCarFacesAccum_ += submittedCarFaces;
+        ++polygonSampleFrames_;
+        if (submittedFacesNow > polygonPeakFaces_)
+        {
+            polygonPeakFaces_ = submittedFacesNow;
+        }
+
+        if ((vblankCounter - polygonSampleStartVblank_) < kPolygonSampleVblanks)
+        {
+            return;
+        }
+
+        const uint32_t sampleFrames = (polygonSampleFrames_ > 0u)
+            ? polygonSampleFrames_
+            : 1u;
+        const uint32_t averageTrackFaces = polygonTrackFacesAccum_ / sampleFrames;
+        const uint32_t averageCarFaces = polygonCarFacesAccum_ / sampleFrames;
+        const uint32_t averageFaces = averageTrackFaces + averageCarFaces;
+        const int32_t peakMargin = static_cast<int32_t>(kPolygonBudget) -
+                                   static_cast<int32_t>(polygonPeakFaces_);
+
+        // Row 17 is independent from optional verbose HUD telemetry. It is
+        // refreshed by real VBlank time every ten seconds.
+        SRL::Debug::Print(0, 17, "POLY10 T:%u C:%u A:%u P:%u M:%d",
+                          static_cast<unsigned>(averageTrackFaces),
+                          static_cast<unsigned>(averageCarFaces),
+                          static_cast<unsigned>(averageFaces),
+                          static_cast<unsigned>(polygonPeakFaces_),
+                          static_cast<int>(peakMargin));
+
+        PresentMemoryBudgetOverlay();
+
+        polygonSampleStartVblank_ = vblankCounter;
+        polygonTrackFacesAccum_ = 0u;
+        polygonCarFacesAccum_ = 0u;
+        polygonSampleFrames_ = 0u;
+        polygonPeakFaces_ = 0u;
+    }
+
+    // Values are used/free KiB. VDP1 represents only its usable texture heap:
+    // the preceding command-table reservation is deliberately excluded. VDP2
+    // includes the fixed NBG3/ASCII reservation as used memory.
+    static void PresentMemoryBudgetOverlay()
+    {
+        const auto highWorkRam = SRL::Memory::HighWorkRam::GetReport();
+        const auto lowWorkRam = SRL::Memory::LowWorkRam::GetReport();
+
+        const size_t highFree = highWorkRam.FreeSize;
+        const size_t highUsed = (highWorkRam.TotalSize >= highFree)
+            ? (highWorkRam.TotalSize - highFree)
+            : 0u;
+        const size_t lowFree = lowWorkRam.FreeSize;
+        const size_t lowUsed = (lowWorkRam.TotalSize >= lowFree)
+            ? (lowWorkRam.TotalSize - lowFree)
+            : 0u;
+
+        constexpr size_t kVdp1TextureCapacity =
+            static_cast<size_t>(SRL::VDP1::UserAreaEnd - (SpriteVRAM + CGADDRESS));
+        const size_t vdp1ReportedFree = SRL::VDP1::GetAvailableMemory();
+        const size_t vdp1Free = (SRL::VDP1::GetTextureCount() == 0u)
+            ? kVdp1TextureCapacity
+            : ((vdp1ReportedFree <= kVdp1TextureCapacity)
+                ? vdp1ReportedFree
+                : kVdp1TextureCapacity);
+        const size_t vdp1Used = kVdp1TextureCapacity - vdp1Free;
+
+        const size_t vdp2Free =
+            SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::A0) +
+            SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::A1) +
+            SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::B0) +
+            SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::B1);
+        constexpr size_t kVdp2PhysicalCapacity = 512u * 1024u;
+        const size_t vdp2Used = (vdp2Free <= kVdp2PhysicalCapacity)
+            ? (kVdp2PhysicalCapacity - vdp2Free)
+            : 0u;
+
+        SRL::Debug::Print(0, 18, "MEM10 H:%u/%u L:%u/%u V1:%u/%u V2:%u/%u",
+                          static_cast<unsigned>(highUsed / 1024u),
+                          static_cast<unsigned>(highFree / 1024u),
+                          static_cast<unsigned>(lowUsed / 1024u),
+                          static_cast<unsigned>(lowFree / 1024u),
+                          static_cast<unsigned>(vdp1Used / 1024u),
+                          static_cast<unsigned>(vdp1Free / 1024u),
+                          static_cast<unsigned>(vdp2Used / 1024u),
+                          static_cast<unsigned>(vdp2Free / 1024u));
+    }
+
     HudStats stats_{};
     uint64_t accumSubmittedFaces_ = 0;
     uint32_t accumSamples_ = 0;
     uint32_t peakVdp1Used_ = 0;
     uint32_t heapPctFiltered_ = 0;
     bool heapPctFilterInit_ = false;
+    uint32_t polygonSampleStartVblank_ = 0u;
+    uint32_t polygonTrackFacesAccum_ = 0u;
+    uint32_t polygonCarFacesAccum_ = 0u;
+    uint32_t polygonSampleFrames_ = 0u;
+    uint32_t polygonPeakFaces_ = 0u;
+    bool polygonSampleVblankValid_ = false;
 };

@@ -2333,6 +2333,12 @@ static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackReusableTextureSlotReuseCool
 static std::array<uint32_t, SRL_MAX_TEXTURES> g_trackTextureSlotCapacityBytes{};
 static uint16_t g_trackUploadsFreshThisFrame = 0u;
 static uint16_t g_trackUploadsReusedThisFrame = 0u;
+// Separar as alocacoes novas por classe deixa claro se uma textura 64x64
+// esta expandindo o heap porque nao havia um slot reutilizavel compativel.
+// Sao apenas contadores fixos: nao acrescentam churn de LWR no hot path.
+static std::array<uint16_t, 2> g_trackUploadsFreshBySizeThisFrame{};
+static std::array<uint16_t, 2> g_trackUploadsReusedBySizeThisFrame{};
+static std::array<uint16_t, 2> g_trackUploadsNoReusableBySizeThisFrame{};
 static uint16_t g_trackRetiredQueuedThisFrame = 0u;
 static uint16_t g_trackRetiredFlushedThisFrame = 0u;
 // Give VDP1/CRAM state more time to age out before a retired slot is reused.
@@ -2790,6 +2796,18 @@ struct DecodedTgaTexture
     TrackLowWorkVector<uint8_t> pixels{};
 };
 
+// A esteira atual trabalha com 32x32 e 64x64. Classificar por dimensao (e
+// nao por bytes) mantem a telemetria estavel quando o modo de paleta muda.
+static uint8_t TrackTextureSizeClass(const DecodedTgaTexture& tex)
+{
+    return (tex.width >= 64u || tex.height >= 64u) ? 1u : 0u;
+}
+
+static void SaturatingIncrementTrackTextureCounter(uint16_t& value)
+{
+    if (value < std::numeric_limits<uint16_t>::max()) ++value;
+}
+
 // Keep decode scratch bounded. The decoder uses a static scratch object so one
 // oversized texture can otherwise keep TrackTexture-tagged LWR capacity high
 // for the whole race session.
@@ -3220,14 +3238,22 @@ static int32_t UploadDecodedTextureToVdp1(const DecodedTgaTexture& tex)
         }
     };
 
+    const uint8_t textureSizeClass = TrackTextureSizeClass(tex);
+    const bool reusableQueueHadEntries = !g_trackReusableTextureSlots.empty();
     const int32_t reusedSlot = tryReuseQueuedSlot();
     if (reusedSlot >= 0)
     {
-        if (g_trackUploadsReusedThisFrame < std::numeric_limits<uint16_t>::max())
-        {
-            ++g_trackUploadsReusedThisFrame;
-        }
+        SaturatingIncrementTrackTextureCounter(g_trackUploadsReusedThisFrame);
+        SaturatingIncrementTrackTextureCounter(
+            g_trackUploadsReusedBySizeThisFrame[textureSizeClass]);
         return reusedSlot;
+    }
+    if (reusableQueueHadEntries)
+    {
+        // Havia slots aposentados, mas nenhum tinha tamanho/cooldown compativel.
+        // Este e o sinal que antecede crescimento do heap VDP1 em voltas longas.
+        SaturatingIncrementTrackTextureCounter(
+            g_trackUploadsNoReusableBySizeThisFrame[textureSizeClass]);
     }
 
     uint16_t paletteId = 0;
@@ -3255,9 +3281,11 @@ static int32_t UploadDecodedTextureToVdp1(const DecodedTgaTexture& tex)
             std::max<uint32_t>(g_trackTextureSlotCapacityBytes[static_cast<size_t>(slot)],
                                requiredBytes);
     }
-    if (slot >= 0 && g_trackUploadsFreshThisFrame < std::numeric_limits<uint16_t>::max())
+    if (slot >= 0)
     {
-        ++g_trackUploadsFreshThisFrame;
+        SaturatingIncrementTrackTextureCounter(g_trackUploadsFreshThisFrame);
+        SaturatingIncrementTrackTextureCounter(
+            g_trackUploadsFreshBySizeThisFrame[textureSizeClass]);
     }
     return slot;
 }
@@ -9659,8 +9687,10 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     }
     if (slideScratchRenderer_)
     {
-        // compact outliers once on demobilize to stop capacity ratchet over laps.
-        slideScratchRenderer_->RecycleRuntimeState(true);
+        // O scratch volta a ser preenchido no proximo slide. Preserve as
+        // capacidades normais para nao fazer free/realloc por segmento; o
+        // proprio RecycleRuntimeState ainda reduz apenas outliers >2x o piso.
+        slideScratchRenderer_->RecycleRuntimeState();
     }
 
     slot.id = nextId;
@@ -12713,7 +12743,9 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
         }
         if (slideScratchRenderer_)
         {
-            slideScratchRenderer_->RecycleRuntimeState(true);
+            // Caminho legado: mesma regra do slide deterministico. Manter a
+            // capacidade comum evita fragmentacao e picos de LWR por volta.
+            slideScratchRenderer_->RecycleRuntimeState();
         }
         slot.id = nextId;
         slot.logicalSegmentCount = 1;
@@ -15434,6 +15466,9 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     workRamMaintenance_.releasedPrefetchNowThisFrame = 0;
     g_trackUploadsFreshThisFrame = 0u;
     g_trackUploadsReusedThisFrame = 0u;
+    g_trackUploadsFreshBySizeThisFrame = { 0u, 0u };
+    g_trackUploadsReusedBySizeThisFrame = { 0u, 0u };
+    g_trackUploadsNoReusableBySizeThisFrame = { 0u, 0u };
     g_trackRetiredQueuedThisFrame = 0u;
     g_trackRetiredFlushedThisFrame = 0u;
     workRamMaintenance_.memoryPressureLevelThisFrame = 0;
@@ -18281,7 +18316,9 @@ void TrackSystem::RunEndFrameResourceMaintenance()
         static uint8_t sHold = 0u;
         static uint8_t sSa = 0u, sOm = 0u, sUf = 0u, sDf = 0u, sMf = 0u;
         static uint16_t sMs = 0u;
-        static uint8_t sUp = 0u, sSl = 0u, sPfH = 0u, sPfM = 0u;
+        static uint16_t sFresh32 = 0u, sFresh64 = 0u;
+        static uint16_t sReuse32 = 0u, sReuse64 = 0u;
+        static uint16_t sNoReuse32 = 0u, sNoReuse64 = 0u;
         static uint32_t sHwr = 0u;
         static uint16_t sRq = 0u, sRf = 0u;
         const bool spike =
@@ -18300,10 +18337,12 @@ void TrackSystem::RunEndFrameResourceMaintenance()
             sDf = beltDecodeFailThisFrame_;
             sMf = beltMissFamilyThisFrame_;
             sMs = beltMissingFaceSlotsThisFrame_;
-            sUp = textureUploadsThisFrame_;
-            sSl = runtimeSlidesThisFrame_;
-            sPfH = runtimePrefetchHitsThisFrame_;
-            sPfM = runtimePrefetchMissesThisFrame_;
+            sFresh32 = g_trackUploadsFreshBySizeThisFrame[0];
+            sFresh64 = g_trackUploadsFreshBySizeThisFrame[1];
+            sReuse32 = g_trackUploadsReusedBySizeThisFrame[0];
+            sReuse64 = g_trackUploadsReusedBySizeThisFrame[1];
+            sNoReuse32 = g_trackUploadsNoReusableBySizeThisFrame[0];
+            sNoReuse64 = g_trackUploadsNoReusableBySizeThisFrame[1];
             bool hwrOk = false;
             sHwr = static_cast<uint32_t>(GetHighWorkRamFreeBytesSafe(&hwrOk));
             if (!hwrOk) sHwr = 0u;
@@ -18323,13 +18362,13 @@ void TrackSystem::RunEndFrameResourceMaintenance()
                           static_cast<unsigned>(sUf),
                           static_cast<unsigned>(sDf),
                           static_cast<unsigned>(sMf));
-        SRL::Debug::Print(0, 3, "BL2 ms:%u up:%u/%u sl:%u pf:%u/%u   ",
-                          static_cast<unsigned>(sMs),
-                          static_cast<unsigned>(sUp),
-                          static_cast<unsigned>(GetTextureUploadBudgetPerFrame()),
-                          static_cast<unsigned>(sSl),
-                          static_cast<unsigned>(sPfH),
-                          static_cast<unsigned>(sPfM));
+        SRL::Debug::Print(0, 3, "BL2 fr:%u/%u ru:%u/%u nc:%u/%u  ",
+                          static_cast<unsigned>(sFresh32),
+                          static_cast<unsigned>(sFresh64),
+                          static_cast<unsigned>(sReuse32),
+                          static_cast<unsigned>(sReuse64),
+                          static_cast<unsigned>(sNoReuse32),
+                          static_cast<unsigned>(sNoReuse64));
         SRL::Debug::Print(0, 4, "BL3 hwr:%u rq:%u rf:%u            ",
                           static_cast<unsigned>(sHwr),
                           static_cast<unsigned>(sRq),
