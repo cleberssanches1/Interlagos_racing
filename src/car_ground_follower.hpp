@@ -220,10 +220,13 @@ public:
         const int64_t dyRaw64 =
             (static_cast<int64_t>(ioState.gradeTanRaw) *
              static_cast<int64_t>(forwardSpeed.RawValue())) >> 16;
+        const int32_t predictionLimit = IsHighSpeedClimb(ioState)
+            ? Tunables::kHighSpeedClimbPredictMaxY.RawValue()
+            : Tunables::kGradePredictYMax.RawValue();
         int32_t dyRaw = static_cast<int32_t>(
             std::clamp<int64_t>(dyRaw64,
-                                -static_cast<int64_t>(Tunables::kGradePredictYMax.RawValue()),
-                                static_cast<int64_t>(Tunables::kGradePredictYMax.RawValue())));
+                                -static_cast<int64_t>(predictionLimit),
+                                static_cast<int64_t>(predictionLimit)));
         if (dyRaw == 0)
         {
             return;
@@ -323,7 +326,10 @@ public:
             // Previous climb-only 1/4 left body buried after continuous overshoot.
             {
                 const int32_t error = tgt - cur;
-                const int32_t maxUp = Tunables::kMaxBodySlideUpY.RawValue();
+                const bool highSpeedClimb = IsHighSpeedClimb(ioState);
+                const int32_t maxUp = highSpeedClimb
+                    ? Tunables::kHighSpeedClimbResponseMaxY.RawValue()
+                    : Tunables::kMaxBodySlideUpY.RawValue();
                 const int32_t maxSlideDown = Tunables::kMaxBodySlideDownY.RawValue();
                 const int32_t snapEps = Tunables::kHeaveSnapEpsY.RawValue();
                 const int32_t spdAbs = (ioState.lastForwardSpeedRaw < 0)
@@ -387,6 +393,16 @@ public:
                         next = tgt;
                         step = tgt - cur;
                     }
+                }
+                // The target is an already confirmed strict asphalt sample.
+                // At high speed on an uphill, never retain a body position
+                // below that face simply because the normal visual adhesion
+                // cap needs several frames to catch up.
+                if (highSpeedClimb && error < 0 &&
+                    next > tgt + Tunables::kMaxPenetrateMeasuredY.RawValue())
+                {
+                    next = tgt + Tunables::kMaxPenetrateMeasuredY.RawValue();
+                    step = next - cur;
                 }
                 velocity = step;
             }
@@ -469,6 +485,20 @@ public:
     }
 
 private:
+    static bool IsHighSpeedClimb(const GroundState& state)
+    {
+        return state.gradeValid &&
+               state.lastForwardSpeedRaw >= Tunables::kFastProbeSpeedThreshold.RawValue() &&
+               state.gradeTanRaw <= -Tunables::kHighSpeedClimbMinTan.RawValue();
+    }
+
+    static int32_t GetGradeClimbLimitRaw(const GroundState& state)
+    {
+        return IsHighSpeedClimb(state)
+            ? Tunables::kHighSpeedClimbResponseMaxY.RawValue()
+            : Tunables::kMaxYStepUpPerFrame.RawValue();
+    }
+
     struct SurfaceProbeSample
     {
         Fxp y = Fxp::BuildRaw(0);
@@ -851,7 +881,8 @@ private:
                         wheelIndex,
                         sample.y.RawValue(),
                         sample.segmentId,
-                        sample.faceIndex))
+                        sample.faceIndex,
+                        IsHighSpeedClimb(ioState)))
                 {
                     sampledWheelMask = static_cast<uint8_t>(
                         sampledWheelMask | wheelBit);
@@ -899,7 +930,7 @@ private:
             ioState.suspension.diagonalPhase ^= 1u;
             int32_t dyHold = ioState.surfaceTargetVelocityRaw;
             const int32_t maxDy = Tunables::kMaxBodySlideDownY.RawValue();
-            const int32_t maxUp = Tunables::kMaxYStepUpPerFrame.RawValue();
+            const int32_t maxUp = GetGradeClimbLimitRaw(ioState);
             if (dyHold > maxDy) dyHold = maxDy;
             if (dyHold < -maxUp) dyHold = -maxUp;
             if (dyHold != 0)
@@ -998,7 +1029,7 @@ private:
                     // Clamp: negative = climb (up), positive = descend (Y-down).
                     int32_t dy = static_cast<int32_t>(std::clamp<int64_t>(
                         dy64,
-                        -static_cast<int64_t>(Tunables::kMaxYStepUpPerFrame.RawValue()),
+                        -static_cast<int64_t>(GetGradeClimbLimitRaw(ioState)),
                         static_cast<int64_t>(Tunables::kMaxYStepDownPerFrame.RawValue())));
                     ride = ioState.surfaceYTarget.RawValue() + dy;
                 }
@@ -1765,6 +1796,10 @@ private:
         // Heave base: face = raw 4-wheel + ride offset (16-17 plant on asphalt).
         const int32_t rawMeasuredRide =
             targetPlaneCenterYRaw + GetRideHeightOffset().RawValue();
+        const int32_t speedAbs = (ioState.lastForwardSpeedRaw < 0)
+            ? -ioState.lastForwardSpeedRaw
+            : ioState.lastForwardSpeedRaw;
+        const bool highSpeedClimb = IsHighSpeedClimb(ioState);
         // Prefer face; continuous only for telemetry / look-ahead seed.
         int32_t measuredRideRaw = rawMeasuredRide;
         const bool junctionHeaveNow = axleSplitNow;
@@ -1776,7 +1811,7 @@ private:
                  static_cast<int64_t>(ioState.lastForwardSpeedRaw)) >> 16;
             int32_t g = static_cast<int32_t>(std::clamp<int64_t>(
                 dy64,
-                -static_cast<int64_t>(Tunables::kMaxBodySlideUpY.RawValue()),
+                -static_cast<int64_t>(GetGradeClimbLimitRaw(ioState)),
                 static_cast<int64_t>(Tunables::kMaxBodySlideDownY.RawValue())));
             cont += g;
             // 3/4 face + 1/4 continuous (was 1/2 — left car high on decline).
@@ -1787,19 +1822,31 @@ private:
 
         // Speed-aware seam limit: crawl uses tight rate-limit so MapHeight
         // segment steps become ramps (AAA stair damp / ground-hug pattern).
-        const int32_t speedAbs = (ioState.lastForwardSpeedRaw < 0)
-            ? -ioState.lastForwardSpeedRaw
-            : ioState.lastForwardSpeedRaw;
         const bool lowSpeedHeave =
             speedAbs < Tunables::kLowSpeedForHeaveSmooth.RawValue();
 
         if constexpr (Tunables::kEnableContinuousGradeSlide)
         {
-            // Low-cost: no extra look-ahead MapHeight — gradeDy holds topology.
-            const int32_t aheadRideRaw = measuredRideRaw;
-            const bool aheadValid = false;
-            (void)aheadRideRaw;
-            (void)aheadValid;
+            // The normal Saturn path remains two axle probes. A single strict
+            // sample is added only while a confirmed steep uphill is crossed
+            // at high speed, giving grade prediction one frame of lead.
+            SurfaceProbeSample aheadSample{};
+            bool aheadValid = false;
+            if (highSpeedClimb && frontValid && rearValid && !axleJunction &&
+                trackQuery && frontSeg > 0)
+            {
+                aheadValid = TryProbeSurfaceY(
+                    trackQuery,
+                    BuildProbePoint(worldPosition, sinYaw, cosYaw,
+                                    Tunables::kHighSpeedClimbLookAheadLong,
+                                    Fxp::BuildRaw(0)),
+                    frontSeg,
+                    aheadSample,
+                    false) && aheadSample.valid;
+            }
+            const int32_t aheadRideRaw = aheadValid
+                ? (aheadSample.y.RawValue() + GetRideHeightOffset().RawValue())
+                : measuredRideRaw;
 
             // --- LPF MapHeight: convert segment steps into a continuous ramp -------
             int32_t planeY = measuredRideRaw;
@@ -1872,7 +1919,7 @@ private:
                      static_cast<int64_t>(ioState.lastForwardSpeedRaw)) >> 16;
                 gradeDy = static_cast<int32_t>(std::clamp<int64_t>(
                     dy64,
-                    -static_cast<int64_t>(Tunables::kMaxYStepUpPerFrame.RawValue()),
+                    -static_cast<int64_t>(GetGradeClimbLimitRaw(ioState)),
                     static_cast<int64_t>(Tunables::kMaxYStepDownPerFrame.RawValue())));
             }
 
@@ -1895,12 +1942,13 @@ private:
                             static_cast<int64_t>(lookDist);
                         int32_t lookDy = static_cast<int32_t>(std::clamp<int64_t>(
                             step64,
-                            -static_cast<int64_t>(
-                                Tunables::kMaxYStepUpPerFrame.RawValue()),
+                            -static_cast<int64_t>(GetGradeClimbLimitRaw(ioState)),
                             static_cast<int64_t>(
                                 Tunables::kMaxYStepDownPerFrame.RawValue())));
-                        // Prefer larger |dy| that matches continuous descent.
-                        if (lookDy > gradeDy) gradeDy = lookDy;
+                        // During the uphill assist, use only an earlier/more
+                        // upward prediction. Do not turn a crest into a
+                        // premature downhill correction.
+                        if (lookDy < gradeDy) gradeDy = lookDy;
                     }
                     // Ease plane toward deeper ahead (1/8).
                     if (aheadRideRaw > planeY)
@@ -1910,9 +1958,7 @@ private:
                     const int32_t lookTan = static_cast<int32_t>(
                         (static_cast<int64_t>(aheadRideRaw - measuredRideRaw) << 16) /
                         static_cast<int64_t>(lookDist));
-                    const int32_t lookAbs =
-                        (lookTan < 0) ? -lookTan : lookTan;
-                    if (lookAbs > Tunables::kTopoGradeDeclineMin.RawValue())
+                    if (lookTan < -Tunables::kHighSpeedClimbMinTan.RawValue())
                     {
                         // Soft pull only — never hard replace.
                         if (!ioState.gradeValid)
@@ -1943,7 +1989,9 @@ private:
             const int32_t maxAir = Tunables::kMaxAirAboveMeasuredY.RawValue();
             const int32_t maxPen = Tunables::kMaxPenetrateMeasuredY.RawValue();
             const int32_t maxSlide = Tunables::kMaxBodySlideDownY.RawValue();
-            const int32_t maxUpStep = Tunables::kMaxBodySlideUpY.RawValue();
+            const int32_t maxUpStep = highSpeedClimb
+                ? Tunables::kHighSpeedClimbResponseMaxY.RawValue()
+                : Tunables::kMaxBodySlideUpY.RawValue();
             const bool highSpeedPlant =
                 speedAbs >= Tunables::kHighSpeedPlantGlue.RawValue();
 

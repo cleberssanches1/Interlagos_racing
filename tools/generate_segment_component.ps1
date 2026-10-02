@@ -5,8 +5,9 @@ param(
     [string]$OutDir = "C:\saturn\SaturnRingLib-main\Projects\pacote_rancing",
     [int]$Lod = 8,
     [string]$SeamOwnershipPath = "",
-    # When true, only rewrite MAT (keep existing GEO). Used for multi-design LODs
-    # that share the high-detail mesh from lod_0.
+    # When true, only rewrite MAT (keep existing GEO). The filtered face count
+    # must remain identical to that GEO because renderer attributes are indexed
+    # by face.
     [switch]$SkipGeo = $false,
     # Omit faces whose material has no map_Kd. The source face order is kept
     # until after seam ownership is applied, then GEO and MAT are compacted
@@ -584,6 +585,15 @@ if (-not $SkipGeo) {
 else {
     if (-not (Test-Path -LiteralPath $geoShortPath)) {
         throw ("SkipGeo mas GEO ausente: {0}" -f $geoShortPath)
+    }
+    [byte[]]$existingGeoBytes = [System.IO.File]::ReadAllBytes($geoShortPath)
+    if ($existingGeoBytes.Length -lt 24) {
+        throw ("SkipGeo mas GEO invalido: {0}" -f $geoShortPath)
+    }
+    $existingGeoFaceCount = [int][System.BitConverter]::ToUInt32($existingGeoBytes, 20)
+    if ($existingGeoFaceCount -ne $faces.Count) {
+        throw ("SkipGeo exige o mesmo contrato de faces: seg={0} GEO={1} MAT={2} fonte={3}" -f
+            $SegmentId, $existingGeoFaceCount, $faces.Count, $objPath)
     }
     Write-Host ("SkipGeo: reutilizando {0}" -f $geoShortPath)
 }

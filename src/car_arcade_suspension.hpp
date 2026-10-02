@@ -74,7 +74,8 @@ public:
                         uint8_t wheelIndex,
                         int32_t surfaceYRaw,
                         int32_t segmentId,
-                        int32_t faceIndex = -1)
+                        int32_t faceIndex = -1,
+                        bool acceptFastClimbFace = false)
     {
         if (wheelIndex >= 4u) return false;
         const uint8_t bit = static_cast<uint8_t>(1u << wheelIndex);
@@ -90,7 +91,7 @@ public:
         const bool descending = (state.validMask & bit) != 0u &&
             surfaceYRaw > state.targetYRaw[wheelIndex];
         // Reject only large climb/noise flips. Descent must accept junctions.
-        if (faceChanged && !descending &&
+        if (faceChanged && !descending && !acceptFastClimbFace &&
             Abs(surfaceYRaw - state.targetYRaw[wheelIndex]) > kMaxFaceSwitchDeltaRaw &&
             state.faceSwitchRejectCount[wheelIndex] + 1u < kFaceSwitchConfirmSamples)
         {

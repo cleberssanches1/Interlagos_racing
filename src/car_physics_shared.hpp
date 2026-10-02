@@ -418,6 +418,11 @@ struct Tunables
     // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant −0.09.
     static constexpr Fxp kRideHeightOffset = Fxp::BuildRaw(-0x00001700);   // ~-0.09
     static constexpr Fxp kFastProbeSpeedThreshold = Fxp::BuildRaw(0x00246572); // ~36.3963
+    // Extra ground work is reserved for a confirmed, fast uphill only.  This
+    // keeps the two-probe Saturn path unchanged on flats and descents.
+    static constexpr Fxp kHighSpeedClimbMinTan = Fxp::BuildRaw(0x00000C00);   // ~0.05
+    static constexpr Fxp kHighSpeedClimbPredictMaxY = Fxp::BuildRaw(0x00080000); // 8.0
+    static constexpr Fxp kHighSpeedClimbResponseMaxY = Fxp::BuildRaw(0x00080000); // 8.0
     // gradeDy climb was 1.0 while drop 3.0 → body lagged under asphalt on aclives.
     // Match climb capacity to drop for continuous grade; decline path unchanged.
     static constexpr Fxp kMaxYStepUpPerFrame = Fxp::BuildRaw(0x00030000);      // 3.0 climb gradeDy
@@ -458,6 +463,9 @@ struct Tunables
     static constexpr Fxp kLookAheadLong = Fxp::BuildRaw(
         ContactGeometry::kHalfWheelBaseRaw +
         (ContactGeometry::kHalfWheelBaseRaw >> 1)); // 56.25
+    // One strict look-ahead sample, enabled only by the fast-climb gate above.
+    // It is intentionally not the general four-probe/look-ahead path.
+    static constexpr Fxp kHighSpeedClimbLookAheadLong = kLookAheadLong;
     // Heave: continuous gradeDy + face glue (few probes).
     static constexpr Fxp kMaxRideTargetStepY = Fxp::BuildRaw(0x00040000);      // 4.0
     static constexpr Fxp kMaxRideTargetStepLowSpeedY = Fxp::BuildRaw(0x00018000); // 1.5

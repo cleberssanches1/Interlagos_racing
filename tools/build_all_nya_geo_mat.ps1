@@ -29,6 +29,24 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Invariante do build integral: o catalogo de familias e todos os mapas de
+# superficie devem nascer novamente dos OBJ/MTL da execucao atual. Os
+# parametros abaixo continuam aceitos apenas para compatibilidade com comandos
+# e atalhos antigos; no build_all eles nao podem desativar a regeneracao.
+if (-not [bool]$RebuildSegmentsMap) {
+    Write-Warning "RebuildSegmentsMap=False ignorado: o build_all sempre recria o segments_map.json."
+}
+if (-not $ExportSurfaceFamilyMap) {
+    Write-Warning "ExportSurfaceFamilyMap=False ignorado: SFMAP.BIN e SCMAP.BIN sao obrigatorios no build_all."
+}
+if (-not $ExportFaceSurfaceMap) {
+    Write-Warning "ExportFaceSurfaceMap=False ignorado: FSMAP.BIN e obrigatorio no build_all."
+}
+$RebuildSegmentsMap = $true
+$ExportSurfaceFamilyMap = $true
+$ExportFaceSurfaceMap = $true
+
 if ([string]::IsNullOrWhiteSpace($SurfaceTextureManifestPath)) {
     $SurfaceTextureManifestPath = Join-Path $PSScriptRoot "track_surface_texture_manifest.json"
 }
@@ -319,6 +337,7 @@ if ($sourceObjCount -le 0) {
 Write-Host ("Build config: SourceObjDir={0} (objs:{1})" -f $SourceObjDir, $sourceObjCount)
 Write-Host ("Build config: ResultDir={0}" -f $ResultDir)
 Write-Host ("Build config: SkipMaterialsWithoutImages={0}" -f $SkipMaterialsWithoutImages)
+Write-Host "Build invariant: segments_map.json, SFMAP.BIN, SCMAP.BIN e FSMAP.BIN serao recriados nesta execucao."
 Write-Host ("Build staging: PackageDir={0}" -f $PackageDir)
 Write-Host ("Build staging: CdDataDir={0}" -f $CdDataDir)
 Write-Host ("Publish target: PackageDir={0}" -f $publishPackageDir)
@@ -401,30 +420,7 @@ if (-not (Test-Path -LiteralPath $jsonPath)) {
     throw "segments_map.json nao foi gerado em: $jsonPath"
 }
 
-Write-Host "=== Etapa 2/7: Atualizar segments_map.json válido ==="
-function Get-SegmentsMapSource {
-    param(
-        [string]$MapDir
-    )
-    $candidates = @(
-        "SAP.json",
-        "SAP",
-        "sap.json",
-        "seg_map.json",
-        "seg_map",
-        "segments_map_before_rebuild.json",
-        "segments_map",
-        "segmap",
-        "smap"
-    )
-    foreach ($name in $candidates) {
-        $path = Join-Path $MapDir $name
-        if (Test-Path -LiteralPath $path) {
-            return $path
-        }
-    }
-    return $null
-}
+Write-Host "=== Etapa 2/7: Regerar segments_map.json a partir dos OBJ/MTL atuais ==="
 
 function Test-SegmentsMapCoverage {
     param(
@@ -463,6 +459,15 @@ Write-Host "=== Etapa 2.1/7: Recriar families a partir dos OBJ/MTL atuais ==="
     -ResultDir $ResultDir `
     -Pattern $Pattern `
     -SkipMaterialsWithoutImages:$SkipMaterialsWithoutImages
+
+$freshSegmentsMap = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json
+if ($null -eq $freshSegmentsMap -or
+    -not ($freshSegmentsMap.PSObject.Properties.Name -contains "familyBuild") -or
+    $null -eq $freshSegmentsMap.familyBuild -or
+    [string]$freshSegmentsMap.familyBuild.mode -ne "fresh") {
+    throw "segments_map.json nao foi confirmado como rebuild fresh nesta execucao: $jsonPath"
+}
+Write-Host ("segments_map fresh confirmado: generatedAtUtc={0}" -f $freshSegmentsMap.generatedAtUtc)
 
 Test-SegmentsMapCoverage `
     -ObjRootDir $SourceObjDir `
@@ -747,10 +752,18 @@ function Assert-SurfaceTextureManifestCoverage {
     $missing = @($script:SurfaceManifestExpectedStems.Keys | Where-Object {
         -not [bool]$script:SurfaceManifestExpectedStems[$_]
     } | Sort-Object)
+    $configuredCount = [int]$script:SurfaceManifestExpectedStems.Count
+    $matchedCount = [int]($configuredCount - $missing.Count)
     if ($missing.Count -gt 0) {
-        throw "texturas do manifesto ausentes no catalogo de familias: $($missing -join ', ')"
+        # O catalogo fresh, reconstruido dos OBJ/MTL atuais, e a autoridade.
+        # Uma entrada do manifesto pode deixar de existir quando a textura e
+        # removida dos modelos; nesse caso ela deve ser podada desta execucao,
+        # e nao ressuscitada nem bloquear a geracao dos mapas.
+        Write-Warning ("texturas obsoletas do manifesto ignoradas (nao referenciadas nos modelos atuais): {0}" -f
+            ($missing -join ', '))
     }
-    Write-Host ("manifesto de solo validado: {0} texturas encontradas" -f $script:SurfaceManifestExpectedStems.Count)
+    Write-Host ("manifesto de solo resolvido contra catalogo fresh: ativas={0} obsoletas={1} configuradas={2}" -f
+        $matchedCount, $missing.Count, $configuredCount)
 }
 
 function Annotate-SegmentsMapSurfaceTypes {
@@ -1056,7 +1069,8 @@ Write-Host "=== Etapa 3/7: Gerar GEO/MAT (3 Levels of Design: lod_0/1/2) ==="
 # Fase 2 dual mesh:
 # - lod_0: S###.GEO + S###M64 (alta, ranks 0-1 + MapHeight authority)
 # - lod_1: S###L.GEO + S###LM64 (media, ranks 2-9)
-# - lod_2: S###LM32 (far tex, ranks 10-19; reusa malha L)
+# - lod_2: S###LM32 (far tex, ranks 10-19; reusa integralmente a malha,
+#   UVs e ordem de faces do lod_1; apenas o banco de texturas vem de lod_2)
 $lod0Dir = Join-Path $ResultDir "lod_0"
 $lod1Dir = Join-Path $ResultDir "lod_1"
 $lod2Dir = Join-Path $ResultDir "lod_2"
@@ -1069,10 +1083,10 @@ foreach ($requiredDir in @($lod0Dir, $lod1Dir, $lod2Dir)) {
 }
 $designPasses += @{ Name = "lod_0"; Dir = $lod0Dir; Lod = 64; SkipGeo = $false; AssetTag = "" }
 $designPasses += @{ Name = "lod_1"; Dir = $lod1Dir; Lod = 64; SkipGeo = $false; AssetTag = "L" }
-# The far material group comes only from lod_2. It shares the low geometry tag
-# because the current Saturn runtime has two geometry slots, but never reuses
-# lod_1 material bindings or texture sources.
-$designPasses += @{ Name = "lod_2"; Dir = $lod2Dir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
+# O runtime possui apenas duas geometrias (high e low). Portanto LM32 deve usar
+# exatamente o mesmo contrato por face de LM64/S###L.GEO. As imagens 32x32
+# continuam vindo exclusivamente de lod_2/ARQ_TGA durante a geracao de TBKLOD2.
+$designPasses += @{ Name = "lod_2"; Dir = $lod1Dir; Lod = 32; SkipGeo = $true; AssetTag = "L" }
 
 # A configuracao suportada nao possui lod_0/M32. Remova residuos de builds
 # anteriores antes do empacotamento para que MAT32.BIN contenha somente LM32.
@@ -1152,6 +1166,62 @@ foreach ($entry in $designPasses) {
 }
 
 Write-Host ("Concluido GEO/MAT design LOD: {0} segmentos distintos" -f $segmentsDone.Count)
+
+function Get-MatFamilyIds([string]$MatPath) {
+    if (-not (Test-Path -LiteralPath $MatPath)) {
+        throw "MAT ausente no contrato low LOD: $MatPath"
+    }
+    [byte[]]$bytes = [System.IO.File]::ReadAllBytes($MatPath)
+    if ($bytes.Length -lt 20) {
+        throw "MAT pequeno no contrato low LOD: $MatPath"
+    }
+    $faceCount = [int][System.BitConverter]::ToUInt32($bytes, 16)
+    $expectedLength = 20 + ($faceCount * 4)
+    if ($bytes.Length -ne $expectedLength) {
+        throw ("MAT com tamanho divergente no contrato low LOD: {0} faces={1} esperado={2} len={3}" -f
+            $MatPath, $faceCount, $expectedLength, $bytes.Length)
+    }
+    [uint32[]]$families = New-Object 'uint32[]' $faceCount
+    for ($i = 0; $i -lt $faceCount; $i++) {
+        $families[$i] = [uint32][System.BitConverter]::ToUInt32($bytes, 20 + ($i * 4))
+    }
+    # Deixe o pipeline enumerar os IDs; o chamador usa @(...). Prefixar com
+    # virgula criaria um array aninhado e quebraria o cast para [uint32[]].
+    return $families
+}
+
+function Assert-LowLodFaceContract {
+    param(
+        [string]$BaseDir,
+        [int[]]$SegmentIds
+    )
+
+    foreach ($id in @($SegmentIds | Sort-Object -Unique)) {
+        $geoPath = Join-Path $BaseDir ("S{0:D3}L.GEO" -f $id)
+        $mat64Path = Join-Path $BaseDir ("S{0:D3}LM64.MAT" -f $id)
+        $mat32Path = Join-Path $BaseDir ("S{0:D3}LM32.MAT" -f $id)
+        $geoFaceCount = Get-GeoFaceCount -GeoPath $geoPath
+        if ($geoFaceCount -lt 0) {
+            throw "GEO low ausente ou invalido no contrato LOD: $geoPath"
+        }
+        [uint32[]]$families64 = @(Get-MatFamilyIds -MatPath $mat64Path)
+        [uint32[]]$families32 = @(Get-MatFamilyIds -MatPath $mat32Path)
+        if ($families64.Count -ne $geoFaceCount -or $families32.Count -ne $geoFaceCount) {
+            throw ("Contrato low LOD divergente SEG_{0:D3}: GEO={1} LM64={2} LM32={3}" -f
+                $id, $geoFaceCount, $families64.Count, $families32.Count)
+        }
+        for ($faceIndex = 0; $faceIndex -lt $geoFaceCount; $faceIndex++) {
+            if ($families64[$faceIndex] -ne $families32[$faceIndex]) {
+                throw ("Contrato low LOD divergente SEG_{0:D3} face={1}: LM64 family={2} LM32 family={3}" -f
+                    $id, $faceIndex, $families64[$faceIndex], $families32[$faceIndex])
+            }
+        }
+    }
+}
+
+Write-Host "=== Etapa 3.05/7: Validar contrato de faces LOD1/LOD2 ==="
+Assert-LowLodFaceContract -BaseDir $PackageDir -SegmentIds @($segmentsDone)
+Write-Host ("Contrato LOD1/LOD2 OK: segmentos={0}; geometria/UV/familias compartilhadas" -f $segmentsDone.Count)
 
 function Test-GeoMatPayload {
     param(
