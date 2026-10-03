@@ -430,8 +430,13 @@ private:
         SRL::Math::Types::Vector3D bestCenter{};
         int32_t bestId = -1;
 
-        constexpr int32_t kBackSearch = 2;
-        constexpr int32_t kForwardSearch = 12;
+        // Normal streaming progression is adjacent.  A wide forward search can
+        // walk across several segment centers while the car is stationary in a
+        // hairpin, even though it has not crossed the corresponding road faces.
+        // Global reacquisition remains available before the first lock; after
+        // that, surface probes provide the authoritative segment id.
+        constexpr int32_t kBackSearch = 1;
+        constexpr int32_t kForwardSearch = 1;
         for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
         {
             const int32_t candidateId = WrapSegmentId(seedSegmentId + delta, total);

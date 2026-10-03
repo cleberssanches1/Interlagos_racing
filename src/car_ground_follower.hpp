@@ -193,6 +193,17 @@ public:
                            ioState,
                            ioFrameState);
 
+        // Streaming must follow the segment that actually supports the car.
+        // The center-based sample above is only a seed: in tight curves the
+        // center of scenery-heavy segments can move ahead of the asphalt and
+        // evict the segment that is still below the camera.  Wheel probes
+        // resolve real drivable faces and deliberately prefer the rear axle at
+        // seams, so keep the previous segment resident until the car crosses.
+        if (ioState.hasGroundSupport && ioState.lastSurfaceSegmentId > 0)
+        {
+            return static_cast<int32_t>(ioState.lastSurfaceSegmentId);
+        }
+
         if (sampledSegmentId <= 0 && ioState.lastSurfaceSegmentId > 0)
         {
             sampledSegmentId = static_cast<int32_t>(ioState.lastSurfaceSegmentId);
