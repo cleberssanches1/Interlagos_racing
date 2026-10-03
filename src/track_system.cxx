@@ -219,6 +219,7 @@ struct RdrBuildScratch
     TrackLowWorkVector<SRL::Math::Types::Vector3D> verts{};
     TrackLowWorkVector<SRL::Types::Polygon> faces{};
     TrackLowWorkVector<SRL::Types::Attribute> attrs{};
+    TrackLowWorkVector<uint32_t> lights{};
 };
 
 struct SdrBuildScratch
@@ -845,6 +846,7 @@ static void TrimRuntimeBlobScratchCaches(bool aggressive)
         g_rdrBuildScratch.faces.clear();
         g_sdrBuildScratch.faces.clear();
         g_rdrBuildScratch.attrs.clear();
+        g_rdrBuildScratch.lights.clear();
         g_sdrBuildScratch.attrs.clear();
         return;
     }
@@ -861,6 +863,7 @@ static void TrimRuntimeBlobScratchCaches(bool aggressive)
     (void)TrimVectorSlack(g_rdrBuildScratch.faces, 0u, true, blobLwrFreeHint);
     (void)TrimVectorSlack(g_sdrBuildScratch.faces, 0u, true, blobLwrFreeHint);
     (void)TrimVectorSlack(g_rdrBuildScratch.attrs, 0u, true, blobLwrFreeHint);
+    (void)TrimVectorSlack(g_rdrBuildScratch.lights, 0u, true, blobLwrFreeHint);
     (void)TrimVectorSlack(g_sdrBuildScratch.attrs, 0u, true, blobLwrFreeHint);
 }
 
@@ -900,6 +903,7 @@ static uint32_t EstimateRuntimeBlobScratchBytesLow()
     bytes += VectorCapacityBytesSafe(g_rdrBuildScratch.faces);
     bytes += VectorCapacityBytesSafe(g_sdrBuildScratch.faces);
     bytes += VectorCapacityBytesSafe(g_rdrBuildScratch.attrs);
+    bytes += VectorCapacityBytesSafe(g_rdrBuildScratch.lights);
     bytes += VectorCapacityBytesSafe(g_sdrBuildScratch.attrs);
     return (bytes > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()))
         ? std::numeric_limits<uint32_t>::max()
@@ -4063,6 +4067,10 @@ static bool LoadRdrMappedForSegment(int segmentId,
                     {
                         g_rdrBuildScratch.attrs.reserve(sTrackRdrPackCache.view.header.maxFaceCount);
                     }
+                    if (g_rdrBuildScratch.lights.capacity() < sTrackRdrPackCache.view.header.maxFaceCount)
+                    {
+                        g_rdrBuildScratch.lights.reserve(sTrackRdrPackCache.view.header.maxFaceCount);
+                    }
                 }
                 return true;
             }
@@ -4427,14 +4435,20 @@ static bool BuildRendererFromRdr(int segmentId,
     auto& verts = g_rdrBuildScratch.verts;
     auto& faces = g_rdrBuildScratch.faces;
     auto& attrs = g_rdrBuildScratch.attrs;
+    auto& lights = g_rdrBuildScratch.lights;
     verts.clear();
     faces.clear();
     attrs.clear();
+    lights.clear();
     // Use floor-only reservation â€” never shrink below pre-reserved capacity.
     // CompactEmptyVectorForTarget was shrinking to segment size, undoing PrimeRuntimeScratchCapacities.
     EnsureVectorCapacityFloor(verts, rdrView.header.vertexCount);
     EnsureVectorCapacityFloor(faces, rdrView.header.faceCount);
     EnsureVectorCapacityFloor(attrs, rdrView.header.faceCount);
+    if (rdrView.hasBakedLighting)
+    {
+        EnsureVectorCapacityFloor(lights, rdrView.header.faceCount);
+    }
     if (outFamilyIds)
     {
         outFamilyIds->clear();
@@ -4526,9 +4540,33 @@ static bool BuildRendererFromRdr(int segmentId,
         attr.Gouraud = No_Gouraud;
         attr.Direction = sa.direction;
         attrs.push_back(attr);
+
+        if (rdrView.hasBakedLighting)
+        {
+            SegmentRuntimeDraw::BakedLightEntry baked{};
+            const size_t loff = rdrView.lightingOffset +
+                static_cast<size_t>(fi) * sizeof(SegmentRuntimeDraw::BakedLightEntry);
+            if (!SegmentRuntimeDraw::Loader::ReadBakedLightEntryLeAt(
+                    rdrView.data, rdrView.blobSize, loff, baked))
+            {
+                SRL::Debug::Print(1, 15, "RDR light read fail %03d f:%u",
+                                  segmentId, static_cast<unsigned>(fi));
+                SRL::Memory::HighWorkRam::SetDebugTag(previousHwrTag);
+                SRL::Memory::LowWorkRam::SetDebugTag(previousLwrTag);
+                return false;
+            }
+            lights.push_back(static_cast<uint32_t>(baked.corner0) |
+                             (static_cast<uint32_t>(baked.corner1) << 8u) |
+                             (static_cast<uint32_t>(baked.corner2) << 16u) |
+                             (static_cast<uint32_t>(baked.corner3) << 24u));
+        }
     }
 
-    const bool ok = renderer.InitializeFromComponentDataRecycled(verts, faces, attrs);
+    bool ok = renderer.InitializeFromComponentDataRecycled(verts, faces, attrs);
+    if (ok && rdrView.hasBakedLighting)
+    {
+        ok = renderer.SetBakedLightingRecycled(lights);
+    }
     if (!ok)
     {
         SRL::Debug::Print(1, 15, "RDR init cmp fail %03d", segmentId);
@@ -10706,6 +10744,7 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
         if (g_rdrBuildScratch.verts.capacity() < vertReserveFloor) g_rdrBuildScratch.verts.reserve(vertReserveFloor);
         if (g_rdrBuildScratch.faces.capacity() < faceReserveFloor) g_rdrBuildScratch.faces.reserve(faceReserveFloor);
         if (g_rdrBuildScratch.attrs.capacity() < faceReserveFloor) g_rdrBuildScratch.attrs.reserve(faceReserveFloor);
+        if (g_rdrBuildScratch.lights.capacity() < faceReserveFloor) g_rdrBuildScratch.lights.reserve(faceReserveFloor);
     }
     else
     {
@@ -10715,6 +10754,7 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
         if (g_rdrBuildScratch.verts.capacity() < reserveVerts) g_rdrBuildScratch.verts.reserve(reserveVerts);
         if (g_rdrBuildScratch.faces.capacity() < reserveFaces) g_rdrBuildScratch.faces.reserve(reserveFaces);
         if (g_rdrBuildScratch.attrs.capacity() < reserveFaces) g_rdrBuildScratch.attrs.reserve(reserveFaces);
+        if (g_rdrBuildScratch.lights.capacity() < reserveFaces) g_rdrBuildScratch.lights.reserve(reserveFaces);
     }
     if (slideIncomingFamilyIdsScratch_.capacity() < faceReserveFloor) slideIncomingFamilyIdsScratch_.reserve(faceReserveFloor);
     if (slideIncomingFaceRankOffsetsScratch_.capacity() < faceReserveFloor) slideIncomingFaceRankOffsetsScratch_.reserve(faceReserveFloor);
@@ -16781,6 +16821,9 @@ void TrackSystem::RenderVisibleSegmentOrder(
     bool& segment01Logged,
     bool& segment01Prepared)
 {
+    // Reset the track-owned VDP1 Gouraud allocation once per submitted frame.
+    // TrackRenderer then assigns non-overlapping entries to visible segments.
+    TrackGouraud::FrameArena::BeginFrame();
     const bool runtimeStatsLogsEnabled = runtimeDiagnostics_.RuntimeStatsLogsEnabled();
     const bool emitRareRuntimeStatsLogs =
         runtimeStatsLogsEnabled && ((frameIdThisFrame_ & 0x0Fu) == 0u);

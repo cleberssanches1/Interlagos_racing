@@ -57,12 +57,60 @@ constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 // Car smooth-face GRDA base in VDP1 gouraud VRAM (ATTR.Gouraud = 0xe000 + offset).
 // Must stay above any track dynamic-light face count written into the shared pool.
 static constexpr size_t kCarGouraudOffset = 4096;
-static constexpr int32_t kFixedSpawnX = 5177;
-static constexpr int32_t kFixedSpawnY = 208;
-static constexpr int32_t kFixedSpawnZ = 1054;
+static constexpr int32_t kFallbackSpawnX = 5177;
+static constexpr int32_t kFallbackSpawnY = 208;
+static constexpr int32_t kFallbackSpawnZ = 1054;
 volatile uint32_t g_srlAppVblankCounter = 0;
 
 using CarAnchorPoints = Game::CdAssetSystem::CarAnchorPoints;
+
+// Align the initial car position with the logical head of the render window.
+// The catalog center supplies X/Z; Y is projected onto asphalt so the bounds
+// center of tall scenery cannot leave the car above or below the road.
+static bool ResolveInitialCarSpawn(const TrackSystem& trackSystem,
+                                   bool trackSystemReady,
+                                   const Vector3D& trackOffset,
+                                   Vector3D& ioCarWorldPosition,
+                                   int32_t* outSegmentId = nullptr)
+{
+    if (outSegmentId) *outSegmentId = -1;
+    if (!trackSystemReady || !trackSystem.Ready()) return false;
+
+    int32_t firstRenderedSegmentId = -1;
+    if (!trackSystem.GetRenderWindowSegmentIdAt(0u, firstRenderedSegmentId) ||
+        firstRenderedSegmentId <= 0)
+    {
+        return false;
+    }
+
+    Vector3D segmentCenter{};
+    if (!trackSystem.FindSegmentCenterById(firstRenderedSegmentId,
+                                           trackOffset,
+                                           segmentCenter))
+    {
+        return false;
+    }
+
+    static constexpr uint8_t kAsphaltSurfaceType = 1u;
+    Fxp surfaceY = segmentCenter.Y;
+    int32_t surfaceSegmentId = -1;
+    if (trackSystem.FindSurfaceYBySurfaceTypeSet(segmentCenter,
+                                                 trackOffset,
+                                                 &kAsphaltSurfaceType,
+                                                 1u,
+                                                 surfaceY,
+                                                 &surfaceSegmentId,
+                                                 firstRenderedSegmentId,
+                                                 false) &&
+        surfaceSegmentId == firstRenderedSegmentId)
+    {
+        segmentCenter.Y = surfaceY;
+    }
+
+    ioCarWorldPosition = segmentCenter;
+    if (outSegmentId) *outSegmentId = firstRenderedSegmentId;
+    return true;
+}
 
 extern "C" uint32_t SRL_AppGetVblankCounter()
 {
@@ -1271,9 +1319,13 @@ static int RunPhysicsPocMode()
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
     Vector3D trackSegOffset(0.0, 0.0, 0.0);
 
-    Vector3D carWorldPosition(Fxp::BuildRaw(kFixedSpawnX << 16),
-                              Fxp::BuildRaw(kFixedSpawnY << 16),
-                              Fxp::BuildRaw(kFixedSpawnZ << 16));
+    Vector3D carWorldPosition(Fxp::BuildRaw(kFallbackSpawnX << 16),
+                              Fxp::BuildRaw(kFallbackSpawnY << 16),
+                              Fxp::BuildRaw(kFallbackSpawnZ << 16));
+    (void)ResolveInitialCarSpawn(trackSystem,
+                                 trackSystemReady,
+                                 trackSegOffset,
+                                 carWorldPosition);
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
     PocTrackCollisionQuery pocTrackCollision{};
     Game::ITrackCollisionQuery* collisionQuery =
@@ -1562,9 +1614,9 @@ int GameApp::Run()
     // Center of model from bounds to keep imported cars in camera view.
     Vector3D modelCenter = ComputeCarModelCenter(carPtr, meshCount, isSmoothMesh);
     Vector3D modelOffset(-modelCenter.X, -modelCenter.Y, -modelCenter.Z);
-    Vector3D carWorldPosition(Fxp::BuildRaw(kFixedSpawnX << 16),
-                              Fxp::BuildRaw(kFixedSpawnY << 16),
-                              Fxp::BuildRaw(kFixedSpawnZ << 16));
+    Vector3D carWorldPosition(Fxp::BuildRaw(kFallbackSpawnX << 16),
+                              Fxp::BuildRaw(kFallbackSpawnY << 16),
+                              Fxp::BuildRaw(kFallbackSpawnZ << 16));
 
     AppState::Set(AppState::Stage::TrackInit, 0);
     // Keep TrackSystem out of the main thread stack.
@@ -1581,6 +1633,10 @@ int GameApp::Run()
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;
+    (void)ResolveInitialCarSpawn(trackSystem,
+                                 trackSystemReady,
+                                 trackSegOffset,
+                                 carWorldPosition);
     if constexpr (kEnableRuntimeStatsLogs)
     {
         PrintBootRam(2, "RAM trk ");

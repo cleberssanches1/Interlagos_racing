@@ -4,7 +4,9 @@ param(
     [int]$SegmentId = 0,
     # "" => S###.SDR/RDR ; "L" => S###L.SDR/RDR (mid/far design mesh)
     [string]$AssetTag = "",
-    [switch]$AllSegments = $false
+    [switch]$AllSegments = $false,
+    [string]$LightingDir = "",
+    [switch]$RequireBakedLighting = $false
 )
 
 Set-StrictMode -Version Latest
@@ -90,6 +92,40 @@ function Load-Sdr([string]$Path) {
     }
 }
 
+function Load-Lit([string]$Path, [int]$ExpectedSegmentId, [int]$ExpectedFaceCount) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+
+    [byte[]]$bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 32) { throw "LIT pequeno demais: $Path" }
+    $magic = Read-U32 $bytes 0
+    $version = Read-U16 $bytes 4
+    $headerSize = Read-U16 $bytes 6
+    $segmentId = Read-U16 $bytes 8
+    $faceCount = Read-U32 $bytes 12
+    $entriesOffset = Read-U32 $bytes 16
+    $entrySize = Read-U16 $bytes 20
+    if ($magic -ne 0x3154494C) { throw "Magic LIT invalido em $Path" }
+    if ($version -ne 1 -or $headerSize -lt 32) { throw "Versao/header LIT invalido em $Path" }
+    if ([int]$segmentId -ne $ExpectedSegmentId) { throw "segmentId LIT divergente em $Path" }
+    if ([int]$faceCount -ne $ExpectedFaceCount) { throw "faceCount LIT divergente em $Path" }
+    if ($entrySize -ne 4) { throw "entrySize LIT invalido em $Path" }
+    $payloadBytes = [uint32]($faceCount * $entrySize)
+    if ([uint64]$entriesOffset + [uint64]$payloadBytes -gt [uint64]$bytes.Length) {
+        throw "payload LIT fora do arquivo em $Path"
+    }
+    for ($i = 0; $i -lt $payloadBytes; $i++) {
+        if ($bytes[[int]$entriesOffset + $i] -gt 31) {
+            throw "nivel LIT fora de 0..31 em $Path offset=$i"
+        }
+    }
+    return [pscustomobject]@{
+        bytes = $bytes
+        entriesOffset = [int]$entriesOffset
+        payloadBytes = [int]$payloadBytes
+        faceCount = [int]$faceCount
+    }
+}
+
 function Clamp-SortMode([uint16]$Raw) {
     if ($Raw -gt 3) { return [byte]0 }
     return [byte](3 - $Raw)
@@ -125,7 +161,7 @@ function Build-RuntimeAttr([byte[]]$Bytes, [int]$Offset) {
     }
 }
 
-function Write-Rdr([object]$Sdr, [string]$TargetPath) {
+function Write-Rdr([object]$Sdr, [object]$Lit, [string]$TargetPath) {
     $headerSize = [uint32]80
     $verticesBytes = [uint32]($Sdr.vertexCount * 12)
     $facesBytes = [uint32]($Sdr.faceCount * 24)
@@ -136,6 +172,14 @@ function Write-Rdr([object]$Sdr, [string]$TargetPath) {
     $facesOffset = Align-4 ($verticesOffset + $verticesBytes)
     $attrsOffset = Align-4 ($facesOffset + $facesBytes)
     $familyOffset = Align-4 ($attrsOffset + $attrsBytes)
+    $lightingOffset = [uint32]0
+    $lightingCount = [uint32]0
+    $headerFlags = [uint16]0
+    if ($null -ne $Lit) {
+        $lightingOffset = Align-4 ($familyOffset + $familyBytes)
+        $lightingCount = [uint32]$Sdr.faceCount
+        $headerFlags = [uint16]($headerFlags -bor 0x0001)
+    }
 
     $targetDir = Split-Path -Parent $TargetPath
     if (-not (Test-Path -LiteralPath $targetDir)) {
@@ -150,7 +194,7 @@ function Write-Rdr([object]$Sdr, [string]$TargetPath) {
         Write-U16 $bw 1
         Write-U16 $bw 80
         Write-U16 $bw ([uint16]$Sdr.segmentId)
-        Write-U16 $bw 0
+        Write-U16 $bw $headerFlags
         Write-U32 $bw ([uint32]$Sdr.vertexCount)
         Write-U32 $bw ([uint32]$Sdr.faceCount)
         Write-I32 $bw ([int32]$Sdr.centerX)
@@ -166,8 +210,8 @@ function Write-Rdr([object]$Sdr, [string]$TargetPath) {
         Write-U32 $bw $facesOffset
         Write-U32 $bw $attrsOffset
         Write-U32 $bw $familyOffset
-        Write-U32 $bw 0
-        Write-U32 $bw 0
+        Write-U32 $bw $lightingOffset
+        Write-U32 $bw $lightingCount
 
         while ($fs.Position -lt $verticesOffset) { $bw.Write([byte]0) }
         $bw.Write($Sdr.bytes, $Sdr.verticesOffset, $verticesBytes)
@@ -189,6 +233,10 @@ function Write-Rdr([object]$Sdr, [string]$TargetPath) {
 
         while ($fs.Position -lt $familyOffset) { $bw.Write([byte]0) }
         $bw.Write($Sdr.bytes, $Sdr.familyIdsOffset, $familyBytes)
+        if ($null -ne $Lit) {
+            while ($fs.Position -lt $lightingOffset) { $bw.Write([byte]0) }
+            $bw.Write($Lit.bytes, $Lit.entriesOffset, $Lit.payloadBytes)
+        }
         $bw.Flush()
     }
     finally {
@@ -204,14 +252,20 @@ if ($tag -ne "" -and $tag -ne "L") { throw "AssetTag invalido '$AssetTag' (use '
 
 $segmentIds = Resolve-SegmentList -BaseDir $DataDir -SingleId $SegmentId -UseAll:$AllSegments -Tag $tag
 $written = 0
+$resolvedLightingDir = if ([string]::IsNullOrWhiteSpace($LightingDir)) { $DataDir } else { $LightingDir }
 
 foreach ($id in $segmentIds) {
     $sdrPath = Join-Path $DataDir ("S{0:D3}{1}.SDR" -f $id, $tag)
     $outPath = Join-Path $OutDir ("S{0:D3}{1}.RDR" -f $id, $tag)
+    $litPath = Join-Path $resolvedLightingDir ("S{0:D3}{1}.LIT" -f $id, $tag)
     $sdr = Load-Sdr -Path $sdrPath
-    Write-Rdr -Sdr $sdr -TargetPath $outPath
+    $lit = Load-Lit -Path $litPath -ExpectedSegmentId $sdr.segmentId -ExpectedFaceCount $sdr.faceCount
+    if ($RequireBakedLighting -and $null -eq $lit) {
+        throw "Iluminacao baked obrigatoria ausente: $litPath"
+    }
+    Write-Rdr -Sdr $sdr -Lit $lit -TargetPath $outPath
     $written++
-    Write-Host ("RDR ok: {0}" -f $outPath)
+    Write-Host ("RDR ok: {0} lighting={1}" -f $outPath, ($null -ne $lit))
 }
 
 Write-Host ("RDR gerados: {0}" -f $written)

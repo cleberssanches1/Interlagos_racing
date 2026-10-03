@@ -38,6 +38,7 @@ $maxBlobSize = [uint32]0
 $maxVertexCount = [uint32]0
 $maxFaceCount = [uint32]0
 $maxFamilyCount = [uint32]0
+$totalLightingBytes = [uint64]0
 
 foreach ($file in $files) {
     if ($tag -eq "L") {
@@ -62,6 +63,19 @@ foreach ($file in $files) {
     $familyBytes = [int]($faceCount * 2)
     if (($familyIdsOffset + $familyBytes) -gt $bytes.Length) {
         throw "Tabela de familias invalida em $($file.FullName)"
+    }
+    $rdrFlags = [uint16](Read-U16 $bytes 10)
+    if (($rdrFlags -band 0x0001) -ne 0) {
+        $lightingOffset = [uint32](Read-U32 $bytes 72)
+        $lightingCount = [uint32](Read-U32 $bytes 76)
+        $lightingBytes = [uint64]$lightingCount * 4
+        if ($lightingCount -ne $faceCount) {
+            throw "Contagem de iluminacao divergente em $($file.FullName): faces=$faceCount light=$lightingCount"
+        }
+        if ([uint64]$lightingOffset + $lightingBytes -gt [uint64]$bytes.Length) {
+            throw "Tabela de iluminacao invalida em $($file.FullName)"
+        }
+        $totalLightingBytes += $lightingBytes
     }
 
     $familySet = New-Object 'System.Collections.Generic.HashSet[uint16]'
@@ -176,3 +190,4 @@ Write-Host ("TRKRDR ok tag='{7}': {0} segs:{1} maxId:{2} maxBlob:{3} maxV:{4} ma
     $maxFaceCount,
     $maxFamilyCount,
     $tag)
+Write-Host ("TRKRDR lighting tag='{0}': bytes={1}" -f $tag, $totalLightingBytes)

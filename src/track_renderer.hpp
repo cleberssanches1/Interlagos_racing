@@ -5,6 +5,7 @@
 #include "sgl_poly_renderer.hpp"
 #include "track_sgl_renderer.hpp"
 #include "track_vdp1_renderer.hpp"
+#include "track_gouraud_table.hpp"
 #include "track_serialized.hpp"
 #include "track_zone_alloc.hpp"
 #include <vector>
@@ -47,6 +48,7 @@ public:
     using ComponentVertVector = TrackRendererLowWorkVector<SRL::Math::Types::Vector3D>;
     using ComponentFaceVector = TrackRendererLowWorkVector<SRL::Types::Polygon>;
     using ComponentAttrVector = TrackRendererLowWorkVector<SRL::Types::Attribute>;
+    using ComponentLightVector = TrackRendererLowWorkVector<uint32_t>;
 
     struct MemoryStats
     {
@@ -253,6 +255,7 @@ public:
         componentVerts_.swap(vertsMoved);
         componentFaces_.swap(facesMoved);
         componentAttrs_.swap(attrsMoved);
+        componentLights_.clear();
         hasTrack_ = true;
         isSmooth_ = false;
         meshCount_ = 1;
@@ -311,6 +314,9 @@ public:
         lastDrawnMeshes_ = 0;
         smoothCache_.clear();
         flatCache_.clear();
+        componentLights_.clear();
+        lastGouraudBase_ = kInvalidGouraudBase;
+        lastGouraudFrame_ = 0u;
 
         const bool reuseReservedStorage =
             componentVertCapacityFloor_ > 0u || componentFaceCapacityFloor_ > 0u;
@@ -452,6 +458,9 @@ public:
         lastDrawnMeshes_ = 0;
         smoothCache_.clear();
         flatCache_.clear();
+        componentLights_.clear();
+        lastGouraudBase_ = kInvalidGouraudBase;
+        lastGouraudFrame_ = 0u;
 
         const bool reuseReservedStorage =
             componentVertCapacityFloor_ > 0u || componentFaceCapacityFloor_ > 0u;
@@ -520,6 +529,28 @@ public:
         return true;
     }
 
+    template <typename LightVecT>
+    bool SetBakedLightingRecycled(LightVecT& lights)
+    {
+        componentLights_.clear();
+        lastGouraudBase_ = kInvalidGouraudBase;
+        lastGouraudFrame_ = 0u;
+        if (!componentMode_ || lights.size() != componentFaces_.size())
+        {
+            lights.clear();
+            return false;
+        }
+        const size_t required = std::max(componentFaceCapacityFloor_,
+                                         static_cast<size_t>(lights.size()));
+        if (componentLights_.capacity() < required) componentLights_.reserve(required);
+        componentLights_.insert(componentLights_.end(),
+                                std::make_move_iterator(lights.begin()),
+                                std::make_move_iterator(lights.end()));
+        lights.clear();
+        memStats_.bytes += static_cast<uint32_t>(componentLights_.size() * sizeof(uint32_t));
+        return true;
+    }
+
     // Draw a limited set of meshes using one of the rendering backends (original, SGL direct or 2D debug).
     void Render(SRL::Math::Types::Vector3D light, const SRL::Math::Types::Vector3D& /*cameraPos*/)
     {
@@ -527,6 +558,7 @@ public:
         if (componentMode_)
         {
             if (componentVerts_.empty() || componentFaces_.empty() || componentAttrs_.size() != componentFaces_.size()) return;
+            PrepareBakedLighting();
             if (useVdp1Commands_)
             {
                 const size_t submitted = TrackVdp1Renderer::DrawMesh(componentVerts_.data(),
@@ -1074,6 +1106,7 @@ public:
         bytes += CapacityBytes(componentVerts_);
         bytes += CapacityBytes(componentFaces_);
         bytes += CapacityBytes(componentAttrs_);
+        bytes += CapacityBytes(componentLights_);
         bytes += CapacityBytes(meshCenters_);
         bytes += CapacityBytes(meshMap_);
         bytes += CapacityBytes(meshBytes_);
@@ -1116,6 +1149,10 @@ public:
         {
             componentAttrs_.reserve(componentFaceCapacityFloor_);
         }
+        if (componentLights_.capacity() < componentFaceCapacityFloor_)
+        {
+            componentLights_.reserve(componentFaceCapacityFloor_);
+        }
     }
 
     bool CompactRuntimeState(bool aggressive = false)
@@ -1129,6 +1166,9 @@ public:
                                         aggressive);
         compacted |= CompactVectorSlack(componentAttrs_,
                                         std::max(componentAttrs_.size(), componentFaceCapacityFloor_),
+                                        aggressive);
+        compacted |= CompactVectorSlack(componentLights_,
+                                        std::max(componentLights_.size(), componentFaceCapacityFloor_),
                                         aggressive);
         compacted |= CompactVectorSlack(meshCenters_, meshCenters_.size(), aggressive);
         compacted |= CompactVectorSlack(meshMap_, meshMap_.size(), aggressive);
@@ -1660,6 +1700,9 @@ public:
         componentVerts_.clear();
         componentFaces_.clear();
         componentAttrs_.clear();
+        componentLights_.clear();
+        lastGouraudBase_ = kInvalidGouraudBase;
+        lastGouraudFrame_ = 0u;
         meshCenters_.clear();
         meshBytes_.clear();
         meshMap_.clear();
@@ -1677,6 +1720,10 @@ public:
             {
                 componentAttrs_.reserve(componentFaceCapacityFloor_);
             }
+            if (componentLights_.capacity() < componentFaceCapacityFloor_)
+            {
+                componentLights_.reserve(componentFaceCapacityFloor_);
+            }
         }
         // If component vectors grew far beyond the floor (outlier segment), compact
         // them back to the floor now. This is a one-time cost paid when the outlier
@@ -1688,6 +1735,7 @@ public:
             {
                 { ComponentFaceVector tmp; tmp.reserve(faceFloor); componentFaces_.swap(tmp); }
                 { ComponentAttrVector tmp; tmp.reserve(faceFloor); componentAttrs_.swap(tmp); }
+                { ComponentLightVector tmp; tmp.reserve(faceFloor); componentLights_.swap(tmp); }
             }
         }
         if (componentVertCapacityFloor_ > 0u)
@@ -1799,6 +1847,7 @@ private:
         decltype(componentVerts_)().swap(componentVerts_);
         decltype(componentFaces_)().swap(componentFaces_);
         decltype(componentAttrs_)().swap(componentAttrs_);
+        decltype(componentLights_)().swap(componentLights_);
         decltype(meshCenters_)().swap(meshCenters_);
         decltype(meshBytes_)().swap(meshBytes_);
         decltype(meshMap_)().swap(meshMap_);
@@ -1815,6 +1864,61 @@ private:
         lastDrawnMeshes_ = 0;
         smoothCache_.clear();
         flatCache_.clear();
+        lastGouraudBase_ = kInvalidGouraudBase;
+        lastGouraudFrame_ = 0u;
+    }
+
+    void PrepareBakedLighting()
+    {
+        if (componentLights_.size() != componentAttrs_.size() || componentLights_.empty())
+        {
+            DisableBakedLightingAttributes();
+            return;
+        }
+
+        uint16_t baseEntry = 0u;
+        if (!TrackGouraud::FrameArena::Reserve(componentLights_.size(), baseEntry))
+        {
+            DisableBakedLightingAttributes();
+            return;
+        }
+
+        const uint32_t frame = TrackGouraud::FrameArena::FrameId();
+        const bool rewriteTable =
+            lastGouraudBase_ != baseEntry ||
+            lastGouraudFrame_ == 0u ||
+            static_cast<uint32_t>(lastGouraudFrame_ + 1u) != frame;
+
+        for (size_t i = 0; i < componentAttrs_.size(); ++i)
+        {
+            auto& attr = componentAttrs_[i];
+            attr.Sort = static_cast<uint8_t>(
+                (attr.Sort & static_cast<uint8_t>(~(UseLight | UseGouraud))) |
+                static_cast<uint8_t>(UseGouraud));
+            attr.Display = static_cast<uint16_t>(attr.Display | static_cast<uint16_t>(CL_Gouraud));
+            const uint16_t entry = static_cast<uint16_t>(baseEntry + i);
+            attr.Gouraud = TrackGouraud::FrameArena::AttributeAddress(entry);
+            if (rewriteTable)
+            {
+                TrackGouraud::FrameArena::WritePackedEntry(entry, componentLights_[i]);
+            }
+        }
+        lastGouraudBase_ = baseEntry;
+        lastGouraudFrame_ = frame;
+    }
+
+    void DisableBakedLightingAttributes()
+    {
+        for (auto& attr : componentAttrs_)
+        {
+            attr.Sort = static_cast<uint8_t>(
+                attr.Sort & static_cast<uint8_t>(~(UseLight | UseGouraud)));
+            attr.Display = static_cast<uint16_t>(
+                attr.Display & ~static_cast<uint16_t>(CL_Gouraud));
+            attr.Gouraud = No_Gouraud;
+        }
+        lastGouraudBase_ = kInvalidGouraudBase;
+        lastGouraudFrame_ = 0u;
     }
     // Ensure a mesh has a cached copy with forced attributes for flat lighting.
     void EnsureCached(size_t idx)
@@ -1914,6 +2018,10 @@ private:
     ComponentVertVector componentVerts_{};
     ComponentFaceVector componentFaces_{};
     ComponentAttrVector componentAttrs_{};
+    ComponentLightVector componentLights_{};
+    static constexpr uint16_t kInvalidGouraudBase = 0xffffu;
+    uint16_t lastGouraudBase_ = kInvalidGouraudBase;
+    uint32_t lastGouraudFrame_ = 0u;
 
     struct SmoothCache {
         bool valid = false;

@@ -34,6 +34,9 @@ public:
         size_t facesOffset = 0;
         size_t attrsOffset = 0;
         size_t familyIdsOffset = 0;
+        size_t lightingOffset = 0;
+        size_t lightingCount = 0;
+        bool hasBakedLighting = false;
         const uint8_t* data = nullptr;
         size_t blobSize = 0;
     };
@@ -170,6 +173,30 @@ public:
         return ReadFamilyIdLeAt(bytes.data(), bytes.size(), offset, out);
     }
 
+    static bool ReadBakedLightEntryLeAt(const uint8_t* data,
+                                        size_t size,
+                                        size_t offset,
+                                        BakedLightEntry& out)
+    {
+        if (!data) return false;
+        if (offset + sizeof(BakedLightEntry) > size) return false;
+        const uint8_t* p = data + offset;
+        out.corner0 = p[0];
+        out.corner1 = p[1];
+        out.corner2 = p[2];
+        out.corner3 = p[3];
+        return out.corner0 <= 31u && out.corner1 <= 31u &&
+               out.corner2 <= 31u && out.corner3 <= 31u;
+    }
+
+    template <typename ByteVec>
+    static bool ReadBakedLightEntryLeAt(const ByteVec& bytes,
+                                        size_t offset,
+                                        BakedLightEntry& out)
+    {
+        return ReadBakedLightEntryLeAt(bytes.data(), bytes.size(), offset, out);
+    }
+
     static bool Parse(const uint8_t* data, size_t size, View& out)
     {
         out = {};
@@ -181,6 +208,12 @@ public:
         out.facesOffset = static_cast<size_t>(out.header.facesOffset);
         out.attrsOffset = static_cast<size_t>(out.header.attrsOffset);
         out.familyIdsOffset = static_cast<size_t>(out.header.familyIdsOffset);
+        out.hasBakedLighting = HasBakedLighting(out.header);
+        if (out.hasBakedLighting)
+        {
+            out.lightingOffset = static_cast<size_t>(out.header.reserved0);
+            out.lightingCount = static_cast<size_t>(out.header.reserved1);
+        }
         out.data = data;
         out.blobSize = size;
         out.valid = true;

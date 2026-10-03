@@ -41,7 +41,13 @@ inline CarShadowRuntimeDecision BuildCarShadowRuntimeDecision(
     bool hasShadowRenderer)
 {
     CarShadowRuntimeDecision decision{};
-    constexpr bool kEnableCarShadowRendering = true;
+    // SBA.NYA is an eight-mesh planar overlay.  It is anchored only at the
+    // car's sampled ground Y, so it cannot follow the changing road surface
+    // under a chase camera.  Its black half-transparent faces were therefore
+    // being mistaken for abrupt lighting changes immediately behind the car.
+    // Keep the track's baked per-face illumination as the sole road shading
+    // until a terrain-conforming shadow renderer is available.
+    constexpr bool kEnableCarShadowRendering = false;
     constexpr bool kUseBlobShadow = false;
     constexpr int32_t kShadowGroundBiasUnitsBlob = 10;
     constexpr int32_t kShadowGroundBiasUnitsModel = 1;

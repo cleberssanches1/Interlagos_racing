@@ -8,6 +8,9 @@ namespace SegmentRuntimeDraw
 // Stable on-disk format for one runtime-oriented segment blob.
 static constexpr uint32_t kMagicRdr1 = 0x31524452; // "RDR1"
 static constexpr uint16_t kVersion1 = 1;
+// Backward-compatible RDR1 extension. When set, reserved0 is the byte offset
+// and reserved1 is the number of four-corner baked-light entries.
+static constexpr uint16_t kHeaderFlagHasBakedLighting = 1u << 0;
 
 struct HeaderV1
 {
@@ -79,6 +82,19 @@ struct Attr
     uint16_t direction = 0;
 };
 
+struct BakedLightEntry
+{
+    uint8_t corner0 = 0;
+    uint8_t corner1 = 0;
+    uint8_t corner2 = 0;
+    uint8_t corner3 = 0;
+};
+
+inline bool HasBakedLighting(const HeaderV1& header)
+{
+    return (header.flags & kHeaderFlagHasBakedLighting) != 0u;
+}
+
 inline bool IsRangeValid(size_t blobSize, uint32_t offset, uint32_t bytes)
 {
     if (offset > blobSize) return false;
@@ -106,6 +122,14 @@ inline bool IsHeaderSane(const HeaderV1& header, size_t blobSize)
     if (!IsRangeValid(blobSize, header.facesOffset, facesBytes)) return false;
     if (!IsRangeValid(blobSize, header.attrsOffset, attrsBytes)) return false;
     if (!IsRangeValid(blobSize, header.familyIdsOffset, familyBytes)) return false;
+
+    if (HasBakedLighting(header))
+    {
+        if (header.reserved1 != header.faceCount) return false;
+        const uint32_t lightingBytes =
+            static_cast<uint32_t>(header.reserved1 * sizeof(BakedLightEntry));
+        if (!IsRangeValid(blobSize, header.reserved0, lightingBytes)) return false;
+    }
 
     return true;
 }

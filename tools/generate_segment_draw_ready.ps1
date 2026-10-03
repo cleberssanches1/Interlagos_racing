@@ -151,7 +151,7 @@ function Build-SurfaceTypeByFamilyIdMap(
     # Keep this fallback catalog synchronized with build_all. Normal builds
     # consume the explicit value annotated in segments_map, but standalone SDR
     # generation must classify the current asphalt sources identically.
-    foreach ($stem in @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "f07564", "f07664")) {
+    foreach ($stem in @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "f07564", "f07664", "f07764")) {
         [void]$asphaltStems.Add($stem)
     }
     $escapeStems = New-Object 'System.Collections.Generic.HashSet[string]'

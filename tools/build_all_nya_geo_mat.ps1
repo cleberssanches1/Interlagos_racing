@@ -24,7 +24,8 @@
     [switch]$AuditWalls = $false,
     [switch]$AuditWallsStrict = $false,
     [string]$AuditWallsReportDir = "",
-    [string]$SurfaceTextureManifestPath = ""
+    [string]$SurfaceTextureManifestPath = "",
+    [string]$TrackLightingProfilePath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -49,6 +50,9 @@ $ExportFaceSurfaceMap = $true
 
 if ([string]::IsNullOrWhiteSpace($SurfaceTextureManifestPath)) {
     $SurfaceTextureManifestPath = Join-Path $PSScriptRoot "track_surface_texture_manifest.json"
+}
+if ([string]::IsNullOrWhiteSpace($TrackLightingProfilePath)) {
+    $TrackLightingProfilePath = Join-Path $PSScriptRoot "track_lighting_profile.json"
 }
 $script:SurfaceTypeByManifestStem = @{}
 $script:SurfaceManifestExpectedStems = @{}
@@ -370,6 +374,8 @@ $script:minifyJsonScript = Join-Path $scriptDir "minify_json.py"
 $script:seamOwnershipScript = Join-Path $scriptDir "build_seam_face_ownership.ps1"
 $script:faceSurfaceMapScript = Join-Path $scriptDir "build_face_surface_map.py"
 $script:lod0AsphaltWeldScript = Join-Path $scriptDir "weld_lod0_asphalt_edges.py"
+$script:trackLightingScript = Join-Path $scriptDir "generate_track_baked_lighting.py"
+$script:validateTrackLightingScript = Join-Path $scriptDir "validate_track_baked_lighting.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -386,6 +392,9 @@ if (-not (Test-Path -LiteralPath $script:freshTexturePrepScript)) { throw "Scrip
 if (-not (Test-Path -LiteralPath $script:freshTexbanksScript)) { throw "Script nao encontrado: $script:freshTexbanksScript" }
 if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw "Script nao encontrado: $script:canonicalizeSegmentsMapScript" }
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
+if (-not (Test-Path -LiteralPath $script:trackLightingScript)) { throw "Script nao encontrado: $script:trackLightingScript" }
+if (-not (Test-Path -LiteralPath $script:validateTrackLightingScript)) { throw "Script nao encontrado: $script:validateTrackLightingScript" }
+if (-not (Test-Path -LiteralPath $TrackLightingProfilePath)) { throw "Perfil de iluminacao nao encontrado: $TrackLightingProfilePath" }
 if ($EnableLod0AsphaltEdgeWeld -and -not (Test-Path -LiteralPath $script:lod0AsphaltWeldScript)) {
     throw "Script de solda LOD0 nao encontrado: $script:lod0AsphaltWeldScript"
 }
@@ -714,11 +723,11 @@ function Resolve-SurfaceTypeIdFromFamily {
         return [int]$script:SurfaceTypeByManifestStem[$stem]
     }
 
-    # f07564/f07664 are the current Interlagos asphalt source textures. Keep
+    # f07564/f07664/f07764 are the current Interlagos asphalt source textures. Keep
     # their explicit stems here: sourceStem takes precedence over the material
     # name, so relying on the "asfalto" name alone would classify them as
     # unknown and strict wheel-ground probes would reject the road.
-    $asphaltStems = @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "f07564", "f07664", "asfalto", "roadpit", "roadgrid")
+    $asphaltStems = @("f01064", "f04664", "f04764", "f05964", "f06064", "f06164", "f06264", "f06364", "f07564", "f07664", "f07764", "asfalto", "roadpit", "roadgrid")
     $escapeStems = @("f01864", "f00164", "f00264", "f00364", "f00464", "f00564")
     $grassStems = @("f06864", "f04364", "f02564", "f02464", "f02364")
 
@@ -1333,16 +1342,44 @@ if ($lowGeoSample.Count -gt 0) {
         -CanonicalizeHighToleranceAllFamilies
 }
 
+Write-Host "=== Etapa 3.55/7: Regerar iluminacao Gouraud offline (high + low) ==="
+$trackLightingReportPath = Join-Path $PackageDir "track_lighting_report.json"
+& python $script:trackLightingScript `
+    --data-dir $PackageDir `
+    --out-dir $PackageDir `
+    --profile $TrackLightingProfilePath `
+    --report $trackLightingReportPath `
+    --clean
+if ($LASTEXITCODE -ne 0) {
+    throw "Falha ao gerar mapas de iluminacao do circuito (exit=$LASTEXITCODE)."
+}
+& python $script:validateTrackLightingScript `
+    --data-dir $PackageDir `
+    --lighting-dir $PackageDir `
+    --report $trackLightingReportPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Falha ao validar mapas de iluminacao do circuito (exit=$LASTEXITCODE)."
+}
+$trackLightingTablePath = Join-Path $PackageDir "TLIT.BIN"
+if (-not (Test-Path -LiteralPath $trackLightingTablePath)) {
+    throw "Tabela de iluminacao nao foi gerada: $trackLightingTablePath"
+}
+Copy-Item -LiteralPath $trackLightingTablePath -Destination (Join-Path $CdDataDir "TLIT.BIN") -Force
+
 Write-Host "=== Etapa 3.6/7: Gerar blobs runtime RDR1 (high + low) ==="
 & $script:rdrScript `
     -DataDir $PackageDir `
     -OutDir $PackageDir `
+    -LightingDir $PackageDir `
+    -RequireBakedLighting `
     -AssetTag "" `
     -AllSegments
 if ($lowGeoSample.Count -gt 0) {
     & $script:rdrScript `
         -DataDir $PackageDir `
         -OutDir $PackageDir `
+        -LightingDir $PackageDir `
+        -RequireBakedLighting `
         -AssetTag "L" `
         -AllSegments
 }
@@ -1519,6 +1556,10 @@ $hasGeoBin = Test-Path -LiteralPath (Join-Path $CdDataDir "GEO.BIN")
 $hasRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "RDR.BIN")
 $hasTrkRdrBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDR.BIN")
 $hasTrkRdrLowBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TRKRDRL.BIN")
+$hasTrackLightingBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TLIT.BIN")
+$hasTrackLightingReport = Test-Path -LiteralPath (Join-Path $PackageDir "track_lighting_report.json")
+$trackLightingHighCount = @(Get-ChildItem -LiteralPath $PackageDir -File -Filter "S???.LIT" -ErrorAction SilentlyContinue).Count
+$trackLightingLowCount = @(Get-ChildItem -LiteralPath $PackageDir -File -Filter "S???L.LIT" -ErrorAction SilentlyContinue).Count
 $hasSurfaceFamilyMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SFMAP.BIN")
 $hasSegmentCollisionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SCMAP.BIN")
 $hasFaceSurfaceMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "FSMAP.BIN")
@@ -1540,6 +1581,10 @@ Write-Host ("HAS GEO.BIN       : {0}" -f $hasGeoBin)
 Write-Host ("HAS RDR.BIN       : {0}" -f $hasRdrBin)
 Write-Host ("HAS TRKRDR.BIN    : {0}" -f $hasTrkRdrBin)
 Write-Host ("HAS TRKRDRL.BIN   : {0}" -f $hasTrkRdrLowBin)
+Write-Host ("HAS TLIT.BIN      : {0}" -f $hasTrackLightingBin)
+Write-Host ("LIGHT MAPS HIGH   : {0}" -f $trackLightingHighCount)
+Write-Host ("LIGHT MAPS LOW    : {0}" -f $trackLightingLowCount)
+Write-Host ("HAS LIGHT REPORT  : {0}" -f $hasTrackLightingReport)
 Write-Host ("HAS SFMAP.BIN     : {0}" -f $hasSurfaceFamilyMapBin)
 Write-Host ("HAS SCMAP.BIN     : {0}" -f $hasSegmentCollisionMapBin)
 Write-Host ("HAS FSMAP.BIN     : {0}" -f $hasFaceSurfaceMapBin)
@@ -1562,6 +1607,14 @@ if (-not $hasSeg1Fam) { $validationErrors.Add("S001FAM.BIN ausente em cd\\data")
 if (-not $hasGeoBin) { $validationErrors.Add("GEO.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasRdrBin) { $validationErrors.Add("RDR.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasTrkRdrBin) { $validationErrors.Add("TRKRDR.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasTrackLightingBin) { $validationErrors.Add("TLIT.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasTrackLightingReport) { $validationErrors.Add("track_lighting_report.json ausente em pacote_rancing") | Out-Null }
+if ($trackLightingHighCount -lt $expectedCount) {
+    $validationErrors.Add(("LIT high insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $trackLightingHighCount)) | Out-Null
+}
+if ($lowGeoSample.Count -gt 0 -and $trackLightingLowCount -lt $expectedCount) {
+    $validationErrors.Add(("LIT low insuficiente: esperado={0}, encontrado={1}" -f $expectedCount, $trackLightingLowCount)) | Out-Null
+}
 if ($ExportSurfaceFamilyMap -and -not $hasSurfaceFamilyMapBin) { $validationErrors.Add("SFMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportSurfaceFamilyMap -and -not $hasSegmentCollisionMapBin) { $validationErrors.Add("SCMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportFaceSurfaceMap -and -not $hasFaceSurfaceMapBin) { $validationErrors.Add("FSMAP.BIN ausente em cd\\data") | Out-Null }
