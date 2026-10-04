@@ -168,6 +168,83 @@ void TestWindowSlidesBackwardKeepingSameBandShape(TestContext& ctx)
     }
 }
 
+void TestRingReorientationKeepsResidentWindowAndReverseSlides(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    constexpr uint16_t totalSegments = 290u;
+    constexpr size_t windowCount = 5u;
+    WindowRingState state{};
+    state.startSegmentId = 100;
+    state.headIndex = 0u;
+    state.direction = 1;
+    state.physicalStep = 1;
+
+    state = ReorientWindowRing(state, totalSegments, windowCount, -1);
+    EXPECT_EQ(ctx, state.startSegmentId, 104);
+    EXPECT_EQ(ctx, state.headIndex, static_cast<size_t>(4u));
+    EXPECT_EQ(ctx, static_cast<int>(state.direction), -1);
+    EXPECT_EQ(ctx, static_cast<int>(state.physicalStep), -1);
+
+    const std::array<size_t, 5> reversedPhysical{{4u, 3u, 2u, 1u, 0u}};
+    std::array<size_t, 5> actualPhysical{};
+    for (size_t rank = 0; rank < windowCount; ++rank)
+    {
+        actualPhysical[rank] = LogicalToPhysicalWindowIndex(
+            state.headIndex, state.physicalStep, rank, windowCount);
+    }
+    EXPECT_EQ(ctx, actualPhysical, reversedPhysical);
+    EXPECT_EQ(ctx,
+              ResolveWindowIncomingSegmentId(
+                  state.startSegmentId, totalSegments, windowCount, state.direction),
+              99);
+
+    std::array<int32_t, 5> residentIds{{100, 101, 102, 103, 104}};
+    residentIds[state.headIndex] = 99; // retire logical head 104, load far tail 99
+    state = AdvanceWindowRing(state, totalSegments, windowCount);
+    EXPECT_EQ(ctx, state.startSegmentId, 103);
+    EXPECT_EQ(ctx, state.headIndex, static_cast<size_t>(3u));
+    const std::array<int32_t, 5> expectedAfterReverseSlide{{103, 102, 101, 100, 99}};
+    for (size_t rank = 0; rank < windowCount; ++rank)
+    {
+        const size_t physical = LogicalToPhysicalWindowIndex(
+            state.headIndex, state.physicalStep, rank, windowCount);
+        EXPECT_EQ(ctx, residentIds[physical], expectedAfterReverseSlide[rank]);
+    }
+
+    state = ReorientWindowRing(state, totalSegments, windowCount, +1);
+    EXPECT_EQ(ctx, state.startSegmentId, 99);
+    EXPECT_EQ(ctx, state.headIndex, static_cast<size_t>(4u));
+    EXPECT_EQ(ctx, static_cast<int>(state.direction), 1);
+    EXPECT_EQ(ctx, static_cast<int>(state.physicalStep), 1);
+    const std::array<int32_t, 5> expectedAfterSecondFlip{{99, 100, 101, 102, 103}};
+    for (size_t rank = 0; rank < windowCount; ++rank)
+    {
+        const size_t physical = LogicalToPhysicalWindowIndex(
+            state.headIndex, state.physicalStep, rank, windowCount);
+        EXPECT_EQ(ctx, residentIds[physical], expectedAfterSecondFlip[rank]);
+    }
+}
+
+void TestRingReorientationWrapsAtLapBoundary(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    WindowRingState state{};
+    state.startSegmentId = 288;
+    state.headIndex = 2u;
+    state.direction = 1;
+    state.physicalStep = 1;
+    state = ReorientWindowRing(state, 290u, 5u, -1);
+
+    EXPECT_EQ(ctx, state.startSegmentId, 2);
+    EXPECT_EQ(ctx, state.headIndex, static_cast<size_t>(1u));
+    EXPECT_EQ(ctx,
+              ResolveWindowIncomingSegmentId(
+                  state.startSegmentId, 290u, 5u, state.direction),
+              287);
+}
+
 void TestWindowWrapsAcrossLapBoundary(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
@@ -305,6 +382,73 @@ void TestWindowLodCountsInvariantAcrossLap(TestContext& ctx)
     }
 }
 
+void TestResidentSurfaceRecoveryPolicy(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    // A containing face always completes the query locally.
+    EXPECT_TRUE(ctx, !ShouldRunResidentSurfaceRecovery(true, false, false));
+    EXPECT_TRUE(ctx, !ShouldRunResidentSurfaceRecovery(true, true, true));
+
+    // A permissive query can consume its local planar fallback.
+    EXPECT_TRUE(ctx, !ShouldRunResidentSurfaceRecovery(false, true, true));
+
+    // A strict wheel query cannot consume that fallback and must search the
+    // rest of the resident window for an actual containing driveable face.
+    EXPECT_TRUE(ctx, ShouldRunResidentSurfaceRecovery(false, true, false));
+    EXPECT_TRUE(ctx, ShouldRunResidentSurfaceRecovery(false, false, false));
+
+    // A permissive query still needs recovery when local probing found nothing.
+    EXPECT_TRUE(ctx, ShouldRunResidentSurfaceRecovery(false, false, true));
+}
+
+void TestHeadingOnlyDirectionFlipRequiresLowMotion(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    constexpr uint16_t maxHeadingOnlyMotion = 1u;
+    EXPECT_TRUE(ctx, ShouldAllowHeadingOnlyDirectionFlip(
+                         true, true, 0u, maxHeadingOnlyMotion));
+    EXPECT_TRUE(ctx, ShouldAllowHeadingOnlyDirectionFlip(
+                         true, true, 1u, maxHeadingOnlyMotion));
+    EXPECT_TRUE(ctx, !ShouldAllowHeadingOnlyDirectionFlip(
+                          true, true, 2u, maxHeadingOnlyMotion));
+
+    // The first frame has no speed history and must still support a stationary
+    // turn. Once the supporting segment changes, progression decides instead.
+    EXPECT_TRUE(ctx, ShouldAllowHeadingOnlyDirectionFlip(
+                         true, false, 0u, maxHeadingOnlyMotion));
+    EXPECT_TRUE(ctx, !ShouldAllowHeadingOnlyDirectionFlip(
+                          false, true, 0u, maxHeadingOnlyMotion));
+}
+
+void TestOppositeDirectionProgressRejectsFastSingleStepJitter(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    constexpr uint16_t maxSingleStepMotion = 1u;
+
+    // A fast one-segment regression is ambiguous in a folded hairpin.
+    EXPECT_TRUE(ctx, !ShouldConfirmOppositeDirectionProgress(
+                          1, true, 19u, maxSingleStepMotion));
+
+    // A deliberate slow U-turn may switch after the first crossed boundary.
+    EXPECT_TRUE(ctx, ShouldConfirmOppositeDirectionProgress(
+                         1, true, 1u, maxSingleStepMotion));
+
+    // Two consecutive logical steps are authoritative at any speed.
+    EXPECT_TRUE(ctx, ShouldConfirmOppositeDirectionProgress(
+                         2, true, 19u, maxSingleStepMotion));
+
+    // Missing speed history must not turn one noisy report into a reversal.
+    EXPECT_TRUE(ctx, !ShouldConfirmOppositeDirectionProgress(
+                          1, false, 0u, maxSingleStepMotion));
+    EXPECT_TRUE(ctx, !ShouldConfirmOppositeDirectionProgress(
+                          0, true, 0u, maxSingleStepMotion));
+    EXPECT_TRUE(ctx, !ShouldConfirmOppositeDirectionProgress(
+                          3, true, 0u, maxSingleStepMotion));
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -318,6 +462,8 @@ int main()
         {"ResolveLodBandsForConfiguredWindow", &TestResolveLodBandsForConfiguredWindow},
         {"WindowSlidesForwardKeepingSameBandShape", &TestWindowSlidesForwardKeepingSameBandShape},
         {"WindowSlidesBackwardKeepingSameBandShape", &TestWindowSlidesBackwardKeepingSameBandShape},
+        {"RingReorientationKeepsResidentWindowAndReverseSlides", &TestRingReorientationKeepsResidentWindowAndReverseSlides},
+        {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},
         {"CollectRetiredSlotsForRemovedFamilies", &TestCollectRetiredSlotsForRemovedFamilies},
         {"CollectRetiredSlotsDeduplicatesAcrossLods", &TestCollectRetiredSlotsDeduplicatesAcrossLods},
@@ -325,6 +471,9 @@ int main()
         {"TopNearCameraRanksStayBoundedToFourSegments", &TestTopNearCameraRanksStayBoundedToFourSegments},
         {"ForwardSlideBoundaryPrewarmPlanMatchesContract", &TestForwardSlideBoundaryPrewarmPlanMatchesContract},
         {"WindowLodCountsInvariantAcrossLap", &TestWindowLodCountsInvariantAcrossLap},
+        {"ResidentSurfaceRecoveryPolicy", &TestResidentSurfaceRecoveryPolicy},
+        {"HeadingOnlyDirectionFlipRequiresLowMotion", &TestHeadingOnlyDirectionFlipRequiresLowMotion},
+        {"OppositeDirectionProgressRejectsFastSingleStepJitter", &TestOppositeDirectionProgressRejectsFastSingleStepJitter},
     };
 
     TestContext ctx{};

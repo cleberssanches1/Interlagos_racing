@@ -40,6 +40,55 @@ struct BoundaryPrewarmTarget
     uint8_t targetLodIndex = kLod32;
 };
 
+struct WindowRingState
+{
+    int32_t startSegmentId = 1;
+    size_t headIndex = 0u;
+    int8_t direction = 1;
+    int8_t physicalStep = 1;
+};
+
+// Decide whether a surface query must expand from its local neighborhood to
+// the already-resident streaming window. A strict wheel query cannot consume
+// an outside-face planar fallback, so that fallback must not suppress recovery.
+constexpr bool ShouldRunResidentSurfaceRecovery(bool foundInside,
+                                                 bool foundFallback,
+                                                 bool allowFallback) noexcept
+{
+    if (foundInside) return false;
+    return !foundFallback || !allowFallback;
+}
+
+// Camera heading alone is ambiguous while crossing a long hairpin inside one
+// logical segment. Use it to anticipate a deliberate U-turn only while the car
+// is stationary/slow; real opposite segment progression remains authoritative
+// at every speed.
+constexpr bool ShouldAllowHeadingOnlyDirectionFlip(bool anchorUnchanged,
+                                                    bool speedProxyValid,
+                                                    uint16_t planarUnitsPerFrame,
+                                                    uint16_t maxHeadingOnlyUnitsPerFrame) noexcept
+{
+    if (!anchorUnchanged) return false;
+    if (!speedProxyValid) return true;
+    return planarUnitsPerFrame <= maxHeadingOnlyUnitsPerFrame;
+}
+
+// A single segment reported behind the current anchor is not sufficient at
+// speed: wheel contacts can briefly select the preceding face where a hairpin
+// folds back beside itself.  Two segments of opposite progression are
+// unambiguous; at low speed one segment is enough so a deliberate U-turn does
+// not wait unnecessarily for another boundary crossing.
+constexpr bool ShouldConfirmOppositeDirectionProgress(int32_t oppositeProgress,
+                                                       bool speedProxyValid,
+                                                       uint16_t planarUnitsPerFrame,
+                                                       uint16_t maxSingleStepUnitsPerFrame) noexcept
+{
+    if (oppositeProgress <= 0 || oppositeProgress > 2) return false;
+    if (oppositeProgress >= 2) return true;
+    if (!speedProxyValid) return false;
+    return planarUnitsPerFrame <= maxSingleStepUnitsPerFrame;
+}
+
 constexpr int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount) noexcept
 {
     if (totalSegmentCount == 0u) return -1;
@@ -47,6 +96,71 @@ constexpr int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentC
     int32_t normalized = (segmentId - 1) % total;
     if (normalized < 0) normalized += total;
     return normalized + 1;
+}
+
+constexpr size_t LogicalToPhysicalWindowIndex(size_t headIndex,
+                                               int8_t physicalStep,
+                                               size_t logicalIndex,
+                                               size_t windowCount) noexcept
+{
+    if (windowCount == 0u) return 0u;
+    const size_t head = headIndex % windowCount;
+    const size_t rank = logicalIndex % windowCount;
+    return (physicalStep < 0)
+        ? ((head + windowCount - rank) % windowCount)
+        : ((head + rank) % windowCount);
+}
+
+constexpr int32_t ResolveWindowIncomingSegmentId(int32_t startSegmentId,
+                                                  uint16_t totalSegmentCount,
+                                                  size_t windowCount,
+                                                  int8_t direction) noexcept
+{
+    const int32_t dir = (direction < 0) ? -1 : 1;
+    return WrapSegmentIdToRange(
+        startSegmentId + (dir * static_cast<int32_t>(windowCount)),
+        totalSegmentCount);
+}
+
+constexpr WindowRingState ReorientWindowRing(WindowRingState state,
+                                              uint16_t totalSegmentCount,
+                                              size_t windowCount,
+                                              int8_t newDirection) noexcept
+{
+    newDirection = (newDirection < 0) ? -1 : 1;
+    state.direction = (state.direction < 0) ? -1 : 1;
+    state.physicalStep = (state.physicalStep < 0) ? -1 : 1;
+    if (windowCount == 0u || totalSegmentCount == 0u || state.direction == newDirection)
+    {
+        state.direction = newDirection;
+        return state;
+    }
+
+    const size_t tailRank = windowCount - 1u;
+    state.headIndex = LogicalToPhysicalWindowIndex(
+        state.headIndex, state.physicalStep, tailRank, windowCount);
+    state.startSegmentId = WrapSegmentIdToRange(
+        state.startSegmentId +
+            (static_cast<int32_t>(state.direction) * static_cast<int32_t>(tailRank)),
+        totalSegmentCount);
+    state.direction = newDirection;
+    state.physicalStep = static_cast<int8_t>(-state.physicalStep);
+    return state;
+}
+
+constexpr WindowRingState AdvanceWindowRing(WindowRingState state,
+                                            uint16_t totalSegmentCount,
+                                            size_t windowCount) noexcept
+{
+    if (windowCount == 0u || totalSegmentCount == 0u) return state;
+    state.direction = (state.direction < 0) ? -1 : 1;
+    state.physicalStep = (state.physicalStep < 0) ? -1 : 1;
+    state.startSegmentId = WrapSegmentIdToRange(
+        state.startSegmentId + static_cast<int32_t>(state.direction),
+        totalSegmentCount);
+    state.headIndex = LogicalToPhysicalWindowIndex(
+        state.headIndex, state.physicalStep, 1u, windowCount);
+    return state;
 }
 
 // Design band: 0 = lod_0, 1 = lod_1, 2 = lod_2 (for telemetry / future dual-GEO).

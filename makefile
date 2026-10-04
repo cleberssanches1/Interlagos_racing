@@ -31,8 +31,8 @@ AUDIO_PROFILE ?= 1
 # lod_0: detailed GEO + 64x64; lod_1: lighter GEO + 64x64;
 # lod_2: lighter GEO + 32x32. Their sum is the visible window size.
 TRACK_LOD0_SEGMENTS ?= 5
-TRACK_LOD1_SEGMENTS ?= 10
-TRACK_LOD2_SEGMENTS ?= 0
+TRACK_LOD1_SEGMENTS ?= 6
+TRACK_LOD2_SEGMENTS ?= 8
 
 # Extra compile flags — two profiles:
 #   make                      → debug (default): LWR stage tracing enabled

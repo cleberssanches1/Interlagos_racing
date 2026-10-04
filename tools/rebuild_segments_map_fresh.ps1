@@ -258,8 +258,28 @@ foreach ($record in $records) {
     $textureKey = ([string]$record.textureName).ToLowerInvariant()
     foreach ($lodName in @("lod_0", "lod_1", "lod_2")) {
         if (-not $tgaIndex[$lodName].ContainsKey($textureKey)) {
-            throw ("Textura {0} usada por seg {1} ausente no agrupamento {2}: {3}" -f
-                $record.textureName, $record.segmentId, $lodName, $textureDirs[$lodName])
+            # Alguns exports legados mantiveram um '_' final no nome do MTL
+            # (ex.: F07564_.tga), enquanto o LOD reduzido contem apenas o nome
+            # canonico F07564.tga. Aceite somente essa normalizacao exata; outras
+            # ausencias continuam fatais para nao mascarar assets incorretos.
+            $ext = [System.IO.Path]::GetExtension($textureKey)
+            $stemForAlias = [System.IO.Path]::GetFileNameWithoutExtension($textureKey)
+            $canonicalAliasKey = if ($stemForAlias.EndsWith('_')) {
+                $stemForAlias.Substring(0, $stemForAlias.Length - 1) + $ext
+            }
+            else {
+                ""
+            }
+            if (-not [string]::IsNullOrWhiteSpace($canonicalAliasKey) -and
+                $tgaIndex[$lodName].ContainsKey($canonicalAliasKey)) {
+                $tgaIndex[$lodName][$textureKey] = $tgaIndex[$lodName][$canonicalAliasKey]
+                Write-Host ("Alias TGA legado: {0} -> {1} ({2})" -f
+                    $record.textureName, $tgaIndex[$lodName][$canonicalAliasKey].Name, $lodName)
+            }
+            else {
+                throw ("Textura {0} usada por seg {1} ausente no agrupamento {2}: {3}" -f
+                    $record.textureName, $record.segmentId, $lodName, $textureDirs[$lodName])
+            }
         }
     }
 

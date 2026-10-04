@@ -348,12 +348,6 @@ static constexpr std::array<size_t, 4> kLeakIsolationForwardBoundaryRanks{{
     kNearBandFarEdgeRank,   // 10: demote / keep far 32 clean
     kDesignLod0EdgeRank     // 1: design lod_0 / lod_1 boundary
 }};
-static constexpr std::array<size_t, 4> kLeakIsolationBackwardBoundaryRanks{{
-    kNearBandFarEdgeRank,   // 10
-    kNearBandPromoRank,     // 9
-    kDesignLod0EdgeRank,    // 1
-    0u                      // head
-}};
 // Keep active window storage persistent and reuse slot renderers on rebuild.
 // This is a stepping stone before migrating to a full fixed ring N+staging pool.
 static constexpr bool kEnableTrackWindowFixedStorage = true;
@@ -419,6 +413,10 @@ static constexpr bool kTestRenderSegmentsAscendingById = false;
 // Tier 1: moderate speed, Tier 2: high speed.
 static constexpr uint16_t kPrefetchSpeedTier1UnitsPerFrame = 6u;
 static constexpr uint16_t kPrefetchSpeedTier2UnitsPerFrame = 12u;
+// Heading-only route reversal is useful before a stopped/slow car crosses into
+// the previous logical segment. Above this speed, world heading can rotate by
+// more than 120 degrees inside a genuine hairpin and must not flip the belt.
+static constexpr uint16_t kHeadingOnlyDirectionMaxUnitsPerFrame = 1u;
 static constexpr uint8_t kSafeModeRenderBackendId = 1; // 0:Scene3D 1:SglDirect 2:Vdp1
 static constexpr size_t kSegmentFamilyDedupScratchCap = 64u;
 static constexpr uint8_t kTrackFramePlanFlagFallback = 1u << 0;
@@ -429,6 +427,10 @@ static constexpr uint8_t kTrackLod2Index = 2u;
 static constexpr uint8_t kTrackLod0Index = 3u;
 static constexpr uint8_t kTrackLod32Index = kTrackLod2Index;
 static constexpr uint8_t kTrackLod64Index = kTrackLod0Index;
+// Shared ownership is an orthogonal token flag: logical index 0 still exists
+// in legacy fallback paths and must not be reinterpreted as shared64.
+static constexpr uint8_t kTrackShared64OwnerIndex = 0xFEu;
+static constexpr uint32_t kTrackShared64OwnerFlag = 0x80000000u;
 
 static inline uint8_t NormalizeTrackTextureLodIndex(uint8_t lodIndex)
 {
@@ -2266,7 +2268,7 @@ static size_t g_trackTextureSlotQueueCapacityFloor = 0u;
 static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackReusableTextureSlotFlags{};
 static std::array<uint8_t, SRL_MAX_TEXTURES> g_trackPendingRetiredTextureSlotFlags{};
 // Current logical owner of every dynamic track slot. Token layout:
-// [31:18] generation, [17:16] logical LOD, [15:0] family id.
+// [31] shared64, [30:18] generation, [17:16] logical LOD, [15:0] family id.
 // Fixed storage avoids allocator pressure and lets stale face references be
 // rejected even after the same numeric VDP1 slot is reused.
 static std::array<uint32_t, SRL_MAX_TEXTURES> g_trackTextureSlotOwnerTokens{};
@@ -2297,14 +2299,25 @@ static void ClearTrackTextureSlotOwner(uint16_t slot)
 static void AssignTrackTextureSlotOwner(uint16_t slot, uint16_t familyId, uint8_t lodIndex)
 {
     if (slot >= g_trackTextureSlotOwnerTokens.size() || familyId == 0u) return;
+    // Bit 31 is reserved for kTrackShared64OwnerFlag, leaving 13 generation bits.
     g_trackTextureSlotOwnerGeneration =
-        static_cast<uint16_t>((g_trackTextureSlotOwnerGeneration + 1u) & 0x3FFFu);
+        static_cast<uint16_t>((g_trackTextureSlotOwnerGeneration + 1u) & 0x1FFFu);
     if (g_trackTextureSlotOwnerGeneration == 0u) g_trackTextureSlotOwnerGeneration = 1u;
+    const uint8_t ownerLod = NormalizeTrackTextureLodIndex(lodIndex);
     const uint32_t token =
         (static_cast<uint32_t>(g_trackTextureSlotOwnerGeneration) << 18u) |
-        (static_cast<uint32_t>(NormalizeTrackTextureLodIndex(lodIndex) & 0x03u) << 16u) |
+        (static_cast<uint32_t>(ownerLod & 0x03u) << 16u) |
         static_cast<uint32_t>(familyId);
     g_trackTextureSlotOwnerTokens[slot] = token;
+}
+
+static void AssignTrackTextureSlotShared64Owner(uint16_t slot, uint16_t familyId)
+{
+    AssignTrackTextureSlotOwner(slot, familyId, kTrackLod0Index);
+    if (slot < g_trackTextureSlotOwnerTokens.size())
+    {
+        g_trackTextureSlotOwnerTokens[slot] |= kTrackShared64OwnerFlag;
+    }
 }
 
 static bool IsVdp1TextureSlotOwnedByFamily(uint16_t slot, uint16_t familyId)
@@ -2318,14 +2331,27 @@ static bool IsVdp1TextureSlotOwnedByFamilyLod(uint16_t slot,
                                                uint8_t lodIndex)
 {
     if (!IsVdp1TextureSlotOwnedByFamily(slot, familyId)) return false;
+    const uint8_t requestedLod = NormalizeTrackTextureLodIndex(lodIndex);
+    if ((g_trackTextureSlotOwnerTokens[slot] & kTrackShared64OwnerFlag) != 0u)
+    {
+        return requestedLod == kTrackLod0Index || requestedLod == kTrackLod1Index;
+    }
     const uint8_t ownerLod = static_cast<uint8_t>(
         (g_trackTextureSlotOwnerTokens[slot] >> 16u) & 0x03u);
-    return ownerLod == NormalizeTrackTextureLodIndex(lodIndex);
+    return ownerLod == requestedLod;
+}
+
+static bool IsVdp1TextureSlotShared64(uint16_t slot, uint16_t familyId)
+{
+    return IsVdp1TextureSlotOwnedByFamily(slot, familyId) &&
+           GetTrackTextureSlotOwnerLod(slot, familyId) == kTrackShared64OwnerIndex;
 }
 
 static uint8_t GetTrackTextureSlotOwnerLod(uint16_t slot, uint16_t familyId)
 {
     if (!IsVdp1TextureSlotOwnedByFamily(slot, familyId)) return 0xFFu;
+    if ((g_trackTextureSlotOwnerTokens[slot] & kTrackShared64OwnerFlag) != 0u)
+        return kTrackShared64OwnerIndex;
     return static_cast<uint8_t>((g_trackTextureSlotOwnerTokens[slot] >> 16u) & 0x03u);
 }
 
@@ -6213,7 +6239,9 @@ bool TrackSystem::LoadSeg1TexbankIndexToCart(size_t lodIndex, int bankId)
 {
     if (lodIndex >= seg1Texbanks_.size()) return false;
     auto& bank = seg1Texbanks_[lodIndex];
-    if (bank.bankId == bankId && bank.cartPtr && bank.size > 0 && !bank.entries.empty()) return true;
+    // A sparse override bank may legitimately contain zero entries when every
+    // LOD1 texture is shared with the LOD0 64x64 base bank.
+    if (bank.bankId == bankId && bank.cartPtr && bank.size >= 20u) return true;
 
     if (bank.cartPtr && bank.ownsCartPtr)
     {
@@ -6302,7 +6330,7 @@ bool TrackSystem::LoadSeg1TexbankIndexToCart(size_t lodIndex, int bankId)
             parsedEntries.push_back(e);
         }
     }
-    if (parsedEntries.empty())
+    if (parsedEntries.empty() && count != 0u)
     {
         SRL::Memory::CartRam::Free(mem);
         return false;
@@ -6775,6 +6803,21 @@ const TrackSystem::Seg1TexbankEntry* TrackSystem::FindTexbankEntryByFamily(const
     return nullptr;
 }
 
+bool TrackSystem::IsFamilyTextureShared64(uint16_t familyId)
+{
+    if (familyId == 0u) return false;
+    // Build contract v4: TBKLOD1 contains overrides only. Absence from this
+    // successfully loaded bank means LOD1 aliases the family in TBKLOD0.
+    // A legacy full TBKLOD1 remains backward-compatible: every family is an
+    // override, therefore no cross-LOD slot is shared.
+    if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(kTrackLod1Index),
+                                    TrackTextureBankId(kTrackLod1Index)))
+    {
+        return false;
+    }
+    return FindTexbankEntryByFamily(seg1Texbanks_[kTrackLod1Index], familyId) == nullptr;
+}
+
 bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
                                        uint8_t targetLodIndex,
                                        bool fallbackToLowerLods,
@@ -6792,6 +6835,9 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
     if (targetLodIndex > 3) return false;
     targetLodIndex = NormalizeTrackTextureLodIndex(targetLodIndex);
     if (slotEntry.familyId == 0) return false;
+    const bool shared64 =
+        (targetLodIndex == kTrackLod0Index || targetLodIndex == kTrackLod1Index) &&
+        IsFamilyTextureShared64(slotEntry.familyId);
     if (slotEntry.lodSlots[targetLodIndex] != No_Texture)
     {
         const uint16_t existingSlot = slotEntry.lodSlots[targetLodIndex];
@@ -6803,7 +6849,9 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         {
             if (outLoadedFromBankId)
             {
-                *outLoadedFromBankId = TrackTextureBankId(targetLodIndex);
+                *outLoadedFromBankId = shared64
+                    ? TrackTextureBankId(kTrackLod0Index)
+                    : TrackTextureBankId(targetLodIndex);
             }
             return true;
         }
@@ -6822,7 +6870,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
         }
         if (searchCount < std::size(searchOrder)) searchOrder[searchCount++] = lodIndex;
     };
-    appendUnique(targetLodIndex);
+    appendUnique(shared64 ? kTrackLod0Index : targetLodIndex);
     if (fallbackToLowerLods)
     {
         if (targetLodIndex == kTrackLod0Index) appendUnique(kTrackLod1Index);
@@ -6879,10 +6927,21 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
             continue;
         }
 
-        slotEntry.lodSlots[targetLodIndex] = static_cast<uint16_t>(slot);
-        AssignTrackTextureSlotOwner(static_cast<uint16_t>(slot),
-                                    slotEntry.familyId,
-                                    targetLodIndex);
+        if (shared64 && sourceLodIndex == kTrackLod0Index)
+        {
+            // One physical VDP1 texture backs both logical 64x64 bands.
+            slotEntry.lodSlots[kTrackLod0Index] = static_cast<uint16_t>(slot);
+            slotEntry.lodSlots[kTrackLod1Index] = static_cast<uint16_t>(slot);
+            AssignTrackTextureSlotShared64Owner(static_cast<uint16_t>(slot),
+                                                slotEntry.familyId);
+        }
+        else
+        {
+            slotEntry.lodSlots[targetLodIndex] = static_cast<uint16_t>(slot);
+            AssignTrackTextureSlotOwner(static_cast<uint16_t>(slot),
+                                        slotEntry.familyId,
+                                        targetLodIndex);
+        }
         if (outLoadedFromBankId) *outLoadedFromBankId = sourceBankId;
         return true;
     }
@@ -6892,7 +6951,9 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
 
 bool TrackSystem::PreloadFullTrackFamilyLodCache()
 {
-    // Keep the three independent design-LOD banks resident in slots [1..3].
+    // Keep the three logical design-LOD indexes resident in slots [1..3].
+    // In contract v4 index 1 is a sparse LOD1 override bank; shared 64x64
+    // payloads live only in the LOD0 base bank at index 3.
     const size_t loadBankStart = static_cast<size_t>(kTrackLod1Index);
     const size_t loadBankCount = seg1Texbanks_.size();
     // Index 0 remains reserved.
@@ -6913,10 +6974,8 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
         }
     }
 
-    // LOD0 and LOD1 commonly contain the exact same 64x64 payload. Keep their
-    // logical banks separate, but share the immutable Cart RAM bytes when only
-    // the two-byte bank-id field differs. This saves one full bank (~160 KiB)
-    // without coupling VDP1 slot lifetimes across LODs.
+    // Backward compatibility for legacy builds where LOD0 and LOD1 were both
+    // full banks and happened to be byte-identical apart from bank id.
     {
         auto& lod1Bank = seg1Texbanks_[kTrackLod1Index];
         auto& lod0Bank = seg1Texbanks_[kTrackLod0Index];
@@ -7313,10 +7372,8 @@ uint32_t TrackSystem::GetStrictPendingLodPriority(size_t logicalRank) const
         return 32u + static_cast<uint32_t>(logicalRank);
     }
 
-    const bool reverse = (windowDirection_ < 0);
-    const auto& boundaryRanks = reverse
-        ? kLeakIsolationBackwardBoundaryRanks
-        : kLeakIsolationForwardBoundaryRanks;
+    // Ranks are always logical near-to-far, independently of route direction.
+    const auto& boundaryRanks = kLeakIsolationForwardBoundaryRanks;
     for (size_t i = 0; i < boundaryRanks.size(); ++i)
     {
         if (logicalRank == boundaryRanks[i]) return static_cast<uint32_t>(i);
@@ -7818,21 +7875,20 @@ void TrackSystem::InvalidateActiveWindowLookupTables()
 
 size_t TrackSystem::LogicalToPhysicalWindowIndex(size_t logicalIndex, size_t windowCount) const
 {
-    if (windowCount == 0) return 0;
-    const size_t safeHead = (activeWindowHead_ < windowCount)
-        ? static_cast<size_t>(activeWindowHead_)
-        : 0u;
-    return (safeHead + (logicalIndex % windowCount)) % windowCount;
+    return TrackStreamingPolicy::LogicalToPhysicalWindowIndex(
+        static_cast<size_t>(activeWindowHead_),
+        windowPhysicalStep_,
+        logicalIndex,
+        windowCount);
 }
 
 int32_t TrackSystem::ResolveWindowOutgoingSegmentId(int8_t direction, size_t windowCount) const
 {
     if (windowCount == 0 || totalSegmentCount_ == 0) return -1;
-    const int32_t dir = (direction < 0) ? -1 : 1;
-    return (dir > 0)
-        ? WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_)
-        : WrapSegmentIdToRange(activeWindowStartId_ - (static_cast<int32_t>(windowCount) - 1),
-                               totalSegmentCount_);
+    (void)direction;
+    // A slide always retires logical rank zero.  The incoming segment is the
+    // new far tail in both route directions.
+    return WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
 }
 
 int32_t TrackSystem::ResolveWindowIncomingSegmentId(int8_t direction, size_t windowCount) const
@@ -7891,9 +7947,7 @@ bool TrackSystem::ResolveWindowDropIndexByDirection(int8_t direction,
         return true;
     }
 
-    const int32_t dir = (direction < 0) ? -1 : 1;
-    const size_t logicalDrop = (dir > 0) ? 0u : (windowCount - 1u);
-    outDropIdx = LogicalToPhysicalWindowIndex(logicalDrop, windowCount);
+    outDropIdx = LogicalToPhysicalWindowIndex(0u, windowCount);
     return true;
 }
 
@@ -7924,19 +7978,13 @@ bool TrackSystem::AdvanceWindowHeadByDirection(int8_t direction, size_t windowCo
         return false;
     }
 
-    const int32_t dir = (direction < 0) ? -1 : 1;
-    size_t head = (activeWindowHead_ < windowCount)
-        ? static_cast<size_t>(activeWindowHead_)
-        : 0u;
-    if (dir > 0)
-    {
-        head = (head + 1u) % windowCount;
-    }
-    else
-    {
-        head = (head + windowCount - 1u) % windowCount;
-    }
-    activeWindowHead_ = static_cast<uint16_t>(head);
+    (void)direction;
+    activeWindowHead_ = static_cast<uint16_t>(
+        TrackStreamingPolicy::LogicalToPhysicalWindowIndex(
+            static_cast<size_t>(activeWindowHead_),
+            windowPhysicalStep_,
+            1u,
+            windowCount));
     return true;
 }
 
@@ -8557,9 +8605,7 @@ void TrackSystem::UpdateStabilizedWindowLodBoundaries()
     if (!allowMandatoryPromotions) return;
     if (segmentRenderers_.empty()) return;
 
-    const auto& boundaryRanks = (windowDirection_ >= 0)
-        ? kLeakIsolationForwardBoundaryRanks
-        : kLeakIsolationBackwardBoundaryRanks;
+    const auto& boundaryRanks = kLeakIsolationForwardBoundaryRanks;
     // Promotions must close inside the slide event. If the first pass only
     // uploads some family slots, give the same four boundaries a couple of
     // extra passes before we leave the slide. This avoids per-frame churn.
@@ -8984,6 +9030,7 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
         segmentPool_.Reset();
         activeWindowHead_ = 0;
         windowDirection_ = direction;
+        windowPhysicalStep_ = 1;
         prewarmCooldown_ = 0;
         boundaryPrewarmCooldown_ = 0;
         slideScratchRenderer_.reset();
@@ -8999,7 +9046,9 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
 
     // Preserve previous window identity so a failed rebuild never blanks the track.
     const int32_t previousStartId = activeWindowStartId_;
+    const uint16_t previousHead = activeWindowHead_;
     const int8_t previousDirection = windowDirection_;
+    const int8_t previousPhysicalStep = windowPhysicalStep_;
     const bool hadReadyWindow =
         SegmentsReady() &&
         !segmentRenderers_.empty();
@@ -9014,6 +9063,7 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
 
     activeWindowStartId_ = wrappedStartId;
     windowDirection_ = direction;
+    windowPhysicalStep_ = 1;
 
     const size_t windowCount = std::min<size_t>(
         std::min<size_t>(loadLimit, kTrackSegmentLimit),
@@ -9226,7 +9276,9 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
             // Zero slots rebuilt — restore previous window identity and keep
             // whatever geometry is still in the fixed slots.
             activeWindowStartId_ = previousStartId;
+            activeWindowHead_ = previousHead;
             windowDirection_ = previousDirection;
+            windowPhysicalStep_ = previousPhysicalStep;
             SetSegmentsReady(true);
             SRL::Debug::Print(1, 11, "PKG window rebuild abort keep start:%d",
                               previousStartId);
@@ -9256,6 +9308,7 @@ bool TrackSystem::RebuildActiveSegmentWindow(int32_t startSegmentId, size_t load
         SetSegmentsReady(true);
     }
     activeWindowHead_ = 0;
+    windowPhysicalStep_ = 1;
 
     // slotPool_ nÃ£o Ã© alocado: a rotaÃ§Ã£o O(1) planejada nÃ£o foi implementada.
     // Alocar 21 SegmentRenderEntry+renderers+vetores em LWR sem uso Ã© ~210 KB perdidos.
@@ -9454,8 +9507,10 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     }
 
     const size_t windowCount = segmentRenderers_.size();
-    const size_t incomingLogicalRank =
-        (direction >= 0) ? (windowCount - 1u) : 0u;
+    // Sliding retires rank zero and appends one far-tail segment regardless of
+    // route direction.  Treating reverse input as rank zero was the source of
+    // the near/far LOD inversion and intermittent holes.
+    const size_t incomingLogicalRank = windowCount - 1u;
 
     Vector3D incomingCenter = slidePrefetchCenter_;
     // Persistent scratch — no LWR alloc/free per slide. Tail = low design geo.
@@ -9622,9 +9677,7 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         (boundaryFreeBytes <= (kWorkRamHardFloorBytes + (64u * 1024u))) ? 2u :
         3u;
     const int32_t dir = (direction < 0) ? -1 : 1;
-    const auto& boundaryRanks = (dir > 0)
-        ? kLeakIsolationForwardBoundaryRanks
-        : kLeakIsolationBackwardBoundaryRanks;
+    const auto& boundaryRanks = kLeakIsolationForwardBoundaryRanks;
     for (size_t ri = 0; ri < boundaryRanks.size(); ++ri)
     {
         const size_t logicalRank = boundaryRanks[ri];
@@ -9967,8 +10020,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     slideBackBuffer_.outgoingSegmentId = segmentRenderers_[dropIdx].id;
     slideBackBuffer_.nextStartId = nextStartId;
     const size_t windowCount = segmentRenderers_.size();
-    const size_t incomingLogicalRank =
-        (slideBackBuffer_.direction >= 0) ? (windowCount - 1u) : 0u;
+    const size_t incomingLogicalRank = windowCount - 1u;
 
     Vector3D incomingCenter = slidePrefetchCenter_;
     // Persistent scratch — no LWR alloc/free per slide. Tail = low design geo.
@@ -10112,9 +10164,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
 
     const int32_t dir = (slideBackBuffer_.direction < 0) ? -1 : 1;
     size_t updateCount = 0;
-    const auto& boundaryRanks = (dir > 0)
-        ? kLeakIsolationForwardBoundaryRanks
-        : kLeakIsolationBackwardBoundaryRanks;
+    const auto& boundaryRanks = kLeakIsolationForwardBoundaryRanks;
     for (size_t ri = 0; ri < boundaryRanks.size(); ++ri)
     {
         const size_t logicalRank = boundaryRanks[ri];
@@ -11144,6 +11194,12 @@ bool TrackSystem::ShouldCompactTrackTextureHeapInStabilization() const
         const auto& family = seg1FamilySlots_[i];
         for (size_t li = 0; li < family.lodSlots.size(); ++li)
         {
+            if (li == kTrackLod0Index &&
+                family.lodSlots[kTrackLod0Index] == family.lodSlots[kTrackLod1Index] &&
+                IsVdp1TextureSlotShared64(family.lodSlots[li], family.familyId))
+            {
+                continue; // shared LOD0/LOD1 slot was counted at index 1
+            }
             if (IsVdp1TextureSlotOwnedByFamilyLod(
                     family.lodSlots[li], family.familyId, static_cast<uint8_t>(li)) &&
                 liveSlots < std::numeric_limits<uint16_t>::max())
@@ -11744,6 +11800,11 @@ uint16_t TrackSystem::ReleaseTrackFamilyResourcesImmediate(MemoryPressureLevel l
             if (level == MemoryPressureLevel::Pressure && li < 2) continue;
             uint16_t& slot = family.lodSlots[static_cast<size_t>(li)];
             if (slot == No_Texture) continue;
+            const bool shared64 = IsVdp1TextureSlotShared64(slot, family.familyId);
+            if (shared64 && li == static_cast<int>(kTrackLod1Index))
+            {
+                continue; // shared pair is handled once through the LOD0 binding
+            }
             if (!IsVdp1TextureSlotOwnedByFamilyLod(
                     slot, family.familyId, static_cast<uint8_t>(li)))
             {
@@ -11751,10 +11812,24 @@ uint16_t TrackSystem::ReleaseTrackFamilyResourcesImmediate(MemoryPressureLevel l
                 family.unusedFrames[static_cast<size_t>(li)] = 0u;
                 continue;
             }
-            if (family.workingRefs[static_cast<size_t>(li)] != 0u) continue;
+            const bool referenced = shared64
+                ? (family.workingRefs[kTrackLod0Index] != 0u ||
+                   family.workingRefs[kTrackLod1Index] != 0u)
+                : family.workingRefs[static_cast<size_t>(li)] != 0u;
+            if (referenced) continue;
             QueuePendingRetiredTrackTextureSlot(slot);
-            slot = No_Texture;
-            family.unusedFrames[static_cast<size_t>(li)] = 0u;
+            if (shared64)
+            {
+                family.lodSlots[kTrackLod0Index] = No_Texture;
+                family.lodSlots[kTrackLod1Index] = No_Texture;
+                family.unusedFrames[kTrackLod0Index] = 0u;
+                family.unusedFrames[kTrackLod1Index] = 0u;
+            }
+            else
+            {
+                slot = No_Texture;
+                family.unusedFrames[static_cast<size_t>(li)] = 0u;
+            }
             ++released;
         }
     }
@@ -12158,6 +12233,50 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
     }
 }
 
+bool TrackSystem::ReorientActiveSegmentWindow(int8_t direction)
+{
+    direction = (direction < 0) ? -1 : 1;
+    const int8_t currentDirection = (windowDirection_ < 0) ? -1 : 1;
+    if (direction == currentDirection)
+    {
+        cameraWindowDirection_ = direction;
+        return true;
+    }
+    if (!SegmentsReady() || segmentRenderers_.empty() || totalSegmentCount_ == 0) return false;
+
+    const size_t windowCount = segmentRenderers_.size();
+    TrackStreamingPolicy::WindowRingState state{};
+    state.startSegmentId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
+    state.headIndex = static_cast<size_t>(activeWindowHead_);
+    state.direction = currentDirection;
+    state.physicalStep = windowPhysicalStep_;
+    const auto reoriented = TrackStreamingPolicy::ReorientWindowRing(
+        state, totalSegmentCount_, windowCount, direction);
+    if (reoriented.startSegmentId <= 0 || reoriented.headIndex >= windowCount) return false;
+    if (segmentRenderers_[reoriented.headIndex].id != reoriented.startSegmentId)
+    {
+        // Never reinterpret a damaged ring.  Keeping the current window is
+        // safer than exposing a direction whose logical ranks do not match its
+        // resident slots.
+        return false;
+    }
+
+    ResetSlidePrefetchState();
+    ResetSlideBackBuffer();
+    activeWindowStartId_ = static_cast<int16_t>(reoriented.startSegmentId);
+    activeWindowHead_ = static_cast<uint16_t>(reoriented.headIndex);
+    windowDirection_ = reoriented.direction;
+    windowPhysicalStep_ = reoriented.physicalStep;
+    cameraWindowDirection_ = direction;
+    InvalidateActiveWindowLookupTables();
+    UpdateDesiredStabilizedWindowLodTargets();
+    SeedPendingStabilizedLodRanksForWindow();
+    SetFamilyWorkingSetDirty(true);
+    prefetchRetryCooldown_ = 0u;
+    activeWindowSwitchCooldown_ = 0u;
+    return true;
+}
+
 bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
 {
     if (stepCount == 0) return true;
@@ -12173,9 +12292,7 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
     {
         if (kEnableTrackRuntimeStabilization)
         {
-            // Runtime estabilizado: evita rebuild de 20 segmentos quando
-            // ocorre oscilacao de direcao no tracking do carro.
-            direction = windowDirection_;
+            if (!ReorientActiveSegmentWindow(direction)) return false;
         }
         else
         {
@@ -12949,9 +13066,7 @@ void TrackSystem::PrewarmNextSegmentLod32()
     if (prewarmCap == 0) return;
 
     // Prefer admit LOD for the incoming rank (far band → 32 in forward isolation).
-    const size_t incomingRank = (windowDirection_ >= 0)
-        ? (windowCount - 1u)
-        : 0u;
+    const size_t incomingRank = windowCount - 1u;
     const uint8_t prewarmLod = ResolveSegmentLodIndexByRank(incomingRank);
 
     size_t warmed = 0;
@@ -13138,6 +13253,14 @@ void TrackSystem::MergeCurrentWindowFamilies()
 
                 uint8_t resolvedLodIndex = GetTrackTextureSlotOwnerLod(liveSlot, familyId);
 
+                if (resolvedLodIndex == kTrackShared64OwnerIndex)
+                {
+                    target->lodSlots[kTrackLod0Index] = liveSlot;
+                    target->lodSlots[kTrackLod1Index] = liveSlot;
+                    target->unusedFrames[kTrackLod0Index] = 0u;
+                    target->unusedFrames[kTrackLod1Index] = 0u;
+                    return;
+                }
                 if (resolvedLodIndex > 3u)
                 {
                     resolvedLodIndex = (fallbackLodIndex <= 3u)
@@ -13387,6 +13510,11 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
         {
             uint16_t& slot = family.lodSlots[li];
             uint8_t& unusedFrames = family.unusedFrames[li];
+            const bool shared64 = IsVdp1TextureSlotShared64(slot, family.familyId);
+            if (shared64 && li == kTrackLod0Index)
+            {
+                continue; // shared pair is aged once through index 1
+            }
             // Stabilized mode still needs strict recycling. The far LOD used to be
             // pinned forever here, which let far-band slots accumulate lap after
             // lap even after their source segments left the 20-segment window.
@@ -13411,7 +13539,10 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
 
             const bool referencedByFace =
                 (slot < usedTextureSlotsThisFrame_.size()) && (usedTextureSlotsThisFrame_[slot] != 0u);
-            const bool referencedByFamily = family.workingRefs[li] != 0u;
+            const bool referencedByFamily = shared64
+                ? (family.workingRefs[kTrackLod0Index] != 0u ||
+                   family.workingRefs[kTrackLod1Index] != 0u)
+                : family.workingRefs[li] != 0u;
             const bool keepSlot =
                 strictWindowRecycling
                     ? referencedByFace
@@ -13419,6 +13550,7 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
             if (keepSlot)
             {
                 unusedFrames = 0u;
+                if (shared64) family.unusedFrames[kTrackLod0Index] = 0u;
                 continue;
             }
 
@@ -13426,11 +13558,22 @@ void TrackSystem::ReleaseUnusedFamilyResourcesEndFrame()
             {
                 ++unusedFrames;
             }
+            if (shared64) family.unusedFrames[kTrackLod0Index] = unusedFrames;
             if (unusedFrames < lodGraceFrames) continue;
 
             QueueReusableTrackTextureSlot(slot);
-            slot = No_Texture;
-            unusedFrames = 0u;
+            if (shared64)
+            {
+                family.lodSlots[kTrackLod0Index] = No_Texture;
+                family.lodSlots[kTrackLod1Index] = No_Texture;
+                family.unusedFrames[kTrackLod0Index] = 0u;
+                family.unusedFrames[kTrackLod1Index] = 0u;
+            }
+            else
+            {
+                slot = No_Texture;
+                unusedFrames = 0u;
+            }
             if (workRamMaintenance_.releasedEndFrameSlotsThisFrame < std::numeric_limits<uint16_t>::max())
             {
                 ++workRamMaintenance_.releasedEndFrameSlotsThisFrame;
@@ -13572,6 +13715,12 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
         bool familyActive = false;
         for (uint8_t li = 0; li < 4; ++li)
         {
+            if (li == kTrackLod0Index &&
+                family.lodSlots[kTrackLod0Index] == family.lodSlots[kTrackLod1Index] &&
+                IsVdp1TextureSlotShared64(family.lodSlots[li], family.familyId))
+            {
+                continue;
+            }
             if (IsVdp1TextureSlotOwnedByFamilyLod(
                     family.lodSlots[li], family.familyId, li)) ++liveSlots;
             if (family.workingRefs[li] == 0u) continue;
@@ -13603,31 +13752,9 @@ int8_t TrackSystem::ResolveCameraWindowDirection(const Vector3D& trackOffset,
                                                  const Vector3D& cameraLocation,
                                                  const Vector3D& cameraLookTarget) const
 {
-    const int8_t currentDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
-    if (totalSegmentCount_ == 0 || segmentCenterCatalog_.empty()) return currentDirection;
-
-    int32_t anchorId = -1;
-    if (observedCarSegmentId_ > 0)
-    {
-        anchorId = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
-    }
-    else if (TrackedCarSegmentValid() && trackedCarSegmentId_ > 0)
-    {
-        anchorId = WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_);
-    }
-    else
-    {
-        anchorId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    }
-    if (anchorId <= 0) return currentDirection;
-
-    const int32_t nextId = WrapSegmentIdToRange(anchorId + 1, totalSegmentCount_);
-    if (nextId <= 0) return currentDirection;
-    if (static_cast<size_t>(anchorId) > segmentCenterCatalog_.size()) return currentDirection;
-    if (static_cast<size_t>(nextId) > segmentCenterCatalog_.size()) return currentDirection;
-
-    const Vector3D anchorCenter = segmentCenterCatalog_[static_cast<size_t>(anchorId - 1)] + trackOffset;
-    const Vector3D nextCenter = segmentCenterCatalog_[static_cast<size_t>(nextId - 1)] + trackOffset;
+    (void)trackOffset;
+    const int8_t currentDirection = (windowDirection_ < 0) ? -1 : 1;
+    if (!cameraDirectionReferenceValid_) return currentDirection;
 
     Vector3D cameraForward{};
     if (!BuildNormalizedFlatDirectionRaw(
@@ -13637,44 +13764,132 @@ int8_t TrackSystem::ResolveCameraWindowDirection(const Vector3D& trackOffset,
     {
         return currentDirection;
     }
-
-    Vector3D trackForward{};
-    if (!BuildNormalizedFlatDirectionRaw(
-            nextCenter.X.RawValue() - anchorCenter.X.RawValue(),
-            nextCenter.Z.RawValue() - anchorCenter.Z.RawValue(),
-            trackForward))
-    {
-        return currentDirection;
-    }
-
-    const int32_t dotRaw = ((cameraForward.X * trackForward.X) +
-                            (cameraForward.Z * trackForward.Z)).RawValue();
-    constexpr int32_t kSwitchToReverseDotRaw = -11380; // cos(100 deg)
-    constexpr int32_t kSwitchToForwardDotRaw = 11380;  // cos(80 deg)
-    if (currentDirection > 0)
-    {
-        return (dotRaw <= kSwitchToReverseDotRaw) ? -1 : +1;
-    }
-    return (dotRaw >= kSwitchToForwardDotRaw) ? +1 : -1;
+    const Vector3D referenceForward(
+        Fxp::BuildRaw(cameraDirectionReferenceXRaw_),
+        Fxp::BuildRaw(0),
+        Fxp::BuildRaw(cameraDirectionReferenceZRaw_));
+    const int32_t dotRaw = ((cameraForward.X * referenceForward.X) +
+                            (cameraForward.Z * referenceForward.Z)).RawValue();
+    // A deliberate U-turn must exceed 120 degrees relative to the heading
+    // captured on the last confirmed segment.  Ordinary sharp curves refresh
+    // that reference at every real surface transition and cannot flip the belt.
+    constexpr int32_t kDirectionFlipDotRaw = -32768; // cos(120 deg)
+    return (dotRaw <= kDirectionFlipDotRaw)
+        ? static_cast<int8_t>(-currentDirection)
+        : currentDirection;
 }
 
 void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
                                                     const Vector3D& cameraLocation,
                                                     const Vector3D& cameraLookTarget)
 {
-    // Keep window direction synced with camera forward intent.
-    // Use switch confirmation and cooldown to avoid transient direction thrash
-    // during 360 turns that can cause one-frame window holes.
     if (!SegmentsReady() || totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
 
-    const int8_t rawDesiredDirection =
-        ResolveCameraWindowDirection(trackOffset, cameraLocation, cameraLookTarget);
-    const int8_t currentDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
+    Vector3D cameraForward{};
+    if (!BuildNormalizedFlatDirectionRaw(
+            cameraLookTarget.X.RawValue() - cameraLocation.X.RawValue(),
+            cameraLookTarget.Z.RawValue() - cameraLocation.Z.RawValue(),
+            cameraForward))
+    {
+        return;
+    }
+
+    int32_t anchorId = (observedCarSegmentId_ > 0)
+        ? WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_)
+        : (TrackedCarSegmentValid()
+            ? WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_)
+            : -1);
+    if (anchorId <= 0) return;
+
+    const int8_t currentDirection = (windowDirection_ < 0) ? -1 : 1;
+    cameraWindowDirection_ = currentDirection;
+    if (!cameraDirectionReferenceValid_ || cameraDirectionReferenceSegmentId_ <= 0)
+    {
+        cameraDirectionReferenceXRaw_ = cameraForward.X.RawValue();
+        cameraDirectionReferenceZRaw_ = cameraForward.Z.RawValue();
+        cameraDirectionReferenceSegmentId_ = static_cast<int16_t>(anchorId);
+        cameraDirectionReferenceValid_ = true;
+        cameraDirectionPending_ = currentDirection;
+        cameraDirectionConfirmFrames_ = 0u;
+        return;
+    }
+
+    const int32_t referenceId = WrapSegmentIdToRange(
+        cameraDirectionReferenceSegmentId_, totalSegmentCount_);
+    const int32_t forwardProgress = WrapDistanceForward(
+        referenceId, anchorId, totalSegmentCount_);
+    const int32_t backwardProgress = WrapDistanceForward(
+        anchorId, referenceId, totalSegmentCount_);
+    const int32_t alongProgress = (currentDirection > 0) ? forwardProgress : backwardProgress;
+    const int32_t oppositeProgress = (currentDirection > 0) ? backwardProgress : forwardProgress;
+
+    int8_t rawDesiredDirection = currentDirection;
+    if (alongProgress > 0 && alongProgress <= 2)
+    {
+        // Confirmed movement in the current route direction.  Refreshing the
+        // reference per surface segment lets the camera follow hairpins without
+        // being mistaken for a U-turn.
+        cameraDirectionReferenceXRaw_ = cameraForward.X.RawValue();
+        cameraDirectionReferenceZRaw_ = cameraForward.Z.RawValue();
+        cameraDirectionReferenceSegmentId_ = static_cast<int16_t>(anchorId);
+    }
+    else if (TrackStreamingPolicy::ShouldConfirmOppositeDirectionProgress(
+                 oppositeProgress,
+                 PrefetchSpeedProxyValid(),
+                 prefetchSpeedProxyRaw_,
+                 kHeadingOnlyDirectionMaxUnitsPerFrame))
+    {
+        // The face-confirmed segment moved against the current belt direction.
+        // At speed, require two logical steps: a one-step regression is common
+        // where both sides of a hairpin are spatially close and wheel probes
+        // alternate between neighboring faces.
+        rawDesiredDirection = static_cast<int8_t>(-currentDirection);
+    }
+    else if (oppositeProgress > 0 && oppositeProgress <= 2)
+    {
+        // Keep the last confirmed forward reference. If this is a real reverse
+        // traversal, the next opposite segment will provide decisive evidence;
+        // if it is contact jitter, normal forward progression will re-anchor.
+        cameraDirectionPending_ = currentDirection;
+        cameraDirectionConfirmFrames_ = 0u;
+    }
+    else if (anchorId == referenceId)
+    {
+        const bool allowHeadingOnlyFlip =
+            TrackStreamingPolicy::ShouldAllowHeadingOnlyDirectionFlip(
+                true,
+                PrefetchSpeedProxyValid(),
+                prefetchSpeedProxyRaw_,
+                kHeadingOnlyDirectionMaxUnitsPerFrame);
+        if (allowHeadingOnlyFlip)
+        {
+            rawDesiredDirection = ResolveCameraWindowDirection(
+                trackOffset, cameraLocation, cameraLookTarget);
+        }
+        else
+        {
+            // Follow the continuously turning road while moving. Refreshing the
+            // reference prevents a long in-segment curve from accumulating the
+            // same angle as a deliberate stationary U-turn.
+            cameraDirectionReferenceXRaw_ = cameraForward.X.RawValue();
+            cameraDirectionReferenceZRaw_ = cameraForward.Z.RawValue();
+            cameraDirectionPending_ = currentDirection;
+            cameraDirectionConfirmFrames_ = 0u;
+        }
+    }
+    else
+    {
+        // Teleport/respawn/large recovery: re-anchor without interpreting the
+        // discontinuity as a direction change.
+        cameraDirectionReferenceXRaw_ = cameraForward.X.RawValue();
+        cameraDirectionReferenceZRaw_ = cameraForward.Z.RawValue();
+        cameraDirectionReferenceSegmentId_ = static_cast<int16_t>(anchorId);
+    }
+
     constexpr uint8_t kDirectionConfirmFrames = 3;
     constexpr uint8_t kDirectionFlipCooldownFrames = 8;
     if (cameraDirectionFlipCooldown_ > 0) --cameraDirectionFlipCooldown_;
 
-    int8_t desiredDirection = currentDirection;
     if (rawDesiredDirection != currentDirection)
     {
         if (cameraDirectionPending_ != rawDesiredDirection)
@@ -13692,72 +13907,33 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
         {
             return;
         }
-
-        desiredDirection = rawDesiredDirection;
-        cameraWindowDirection_ = desiredDirection;
-        cameraDirectionFlipCooldown_ = kDirectionFlipCooldownFrames;
-        cameraDirectionConfirmFrames_ = 0;
     }
     else
     {
         cameraDirectionPending_ = currentDirection;
         cameraDirectionConfirmFrames_ = 0;
-        desiredDirection = currentDirection;
-        cameraWindowDirection_ = desiredDirection;
-    }
-
-    int32_t anchorId = -1;
-    if (observedCarSegmentId_ > 0)
-    {
-        anchorId = WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_);
-    }
-    else if (TrackedCarSegmentValid() && trackedCarSegmentId_ > 0)
-    {
-        anchorId = WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_);
-    }
-    else
-    {
-        anchorId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    }
-    if (anchorId <= 0) return;
-    const int32_t desiredStartId =
-        ResolveWindowStartFromCarSegment(anchorId, totalSegmentCount_, desiredDirection);
-    if (desiredStartId <= 0) return;
-
-    bool needsRebuild = false;
-    if (desiredDirection < 0)
-    {
-        needsRebuild = (windowDirection_ >= 0);
-    }
-    else
-    {
-        needsRebuild = (windowDirection_ < 0);
-    }
-    if (!needsRebuild) return;
-
-    const size_t windowCount = segmentRenderers_.size();
-    const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
-    const int32_t forwardDistance = WrapDistanceForward(currentStartId, desiredStartId, totalSegmentCount_);
-    const int32_t backwardDistance = WrapDistanceForward(desiredStartId, currentStartId, totalSegmentCount_);
-    const int32_t half = static_cast<int32_t>(totalSegmentCount_) / 2;
-    const int32_t alongDistance = (desiredDirection > 0) ? forwardDistance : backwardDistance;
-
-    // Prefer incremental catch-up slides over full rebuild. A failed rebuild
-    // under memory pressure used to wipe the live window (blank track near
-    // mid-lap segments). Stabilized runtime always defers to target+slide.
-    if (kEnableTrackRuntimeStabilization ||
-        (alongDistance > 0 && alongDistance <= static_cast<int32_t>(windowCount)))
-    {
-        targetWindowStartId_ = desiredStartId;
-        trackedCarSegmentId_ = anchorId;
-        SetTrackedCarSegmentValid(true);
-        activeWindowSwitchCooldown_ = 0;
-        windowDirection_ = desiredDirection;
         return;
     }
 
-    if (!RebuildActiveSegmentWindow(desiredStartId, windowCount, desiredDirection)) return;
+    const int8_t desiredDirection = rawDesiredDirection;
+    if (!ReorientActiveSegmentWindow(desiredDirection))
+    {
+        cameraDirectionPending_ = currentDirection;
+        cameraDirectionConfirmFrames_ = 0u;
+        return;
+    }
 
+    cameraDirectionFlipCooldown_ = kDirectionFlipCooldownFrames;
+    cameraDirectionConfirmFrames_ = 0u;
+    cameraDirectionPending_ = desiredDirection;
+    cameraDirectionReferenceXRaw_ = cameraForward.X.RawValue();
+    cameraDirectionReferenceZRaw_ = cameraForward.Z.RawValue();
+    cameraDirectionReferenceSegmentId_ = static_cast<int16_t>(anchorId);
+    cameraDirectionReferenceValid_ = true;
+
+    const int32_t desiredStartId =
+        ResolveWindowStartFromCarSegment(anchorId, totalSegmentCount_, desiredDirection);
+    if (desiredStartId <= 0) return;
     targetWindowStartId_ = desiredStartId;
     trackedCarSegmentId_ = anchorId;
     SetTrackedCarSegmentValid(true);
@@ -13863,11 +14039,11 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         int32_t bestId = -1;
         SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
 
-        // Keep search narrow and biased to movement direction.
-        // Reverse traversal needs a slightly wider local search to avoid
-        // anchor oscillation when observed segment reports arrive late.
-        const int32_t kBackSearch = (desiredDirection > 0) ? 1 : 4;
-        const int32_t kForwardSearch = (desiredDirection > 0) ? 3 : 2;
+        // Geometry centers include scenery and are only a recovery hint. Keep
+        // this search symmetric and adjacent so an outlier center cannot skip
+        // the streaming anchor or imitate a direction change in a sharp bend.
+        const int32_t kBackSearch = 1;
+        const int32_t kForwardSearch = 1;
         for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
         {
             const int32_t candidateId = WrapSegmentIdToRange(seedId + delta, totalSegmentCount_);
@@ -13898,7 +14074,7 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         if (observedStartId > 0)
         {
             const int32_t observedForwardDistance = distanceAlongDirection(startId, observedStartId);
-            const int32_t observedBackwardDistance = wrapDistanceForward(observedStartId, startId);
+            const int32_t observedBackwardDistance = distanceAlongDirection(observedStartId, startId);
             if (observedForwardDistance > 0 &&
                 observedForwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2))
             {
@@ -13912,9 +14088,9 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
                 SetTrackedCarSegmentValid(true);
                 return false;
             }
-            // Reverse mode may report behind by a few ids during wrap/turn.
-            // Accept short backward deltas as valid incremental slides.
-            const int32_t backwardTolerance = (desiredDirection < 0) ? 3 : 1;
+            // A one-segment late collision report is valid in either route
+            // direction. Larger discontinuities fall through to local recovery.
+            const int32_t backwardTolerance = 1;
             if (observedBackwardDistance <= backwardTolerance)
             {
                 trackedCarSegmentId_ = observedId;
@@ -13923,21 +14099,6 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
             }
         }
 
-        const int32_t observedForwardDistance = distanceAlongDirection(startId, observedId);
-        if (observedForwardDistance > 0 && observedForwardDistance < (static_cast<int32_t>(totalSegmentCount_) / 2))
-        {
-            trackedCarSegmentId_ = observedId;
-            SetTrackedCarSegmentValid(true);
-            return queueDeferredSlide(
-                desiredDirection,
-                ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection));
-        }
-        if (observedForwardDistance == 0)
-        {
-            trackedCarSegmentId_ = observedId;
-            SetTrackedCarSegmentValid(true);
-            return false;
-        }
         if (runtimeDiagnostics_.RuntimeStatsLogsEnabled() && ((frameIdThisFrame_ & 0x0Fu) == 0u))
         {
             SRL::Debug::Print(1, 13, "TRK obs back s:%d o:%d t:%d",
@@ -14001,10 +14162,15 @@ void TrackSystem::ResetInitializationState()
     activeWindowStartId_ = 1;
     activeWindowHead_ = 0;
     windowDirection_ = 1;
+    windowPhysicalStep_ = 1;
     cameraWindowDirection_ = 1;
     cameraDirectionPending_ = 1;
     cameraDirectionConfirmFrames_ = 0;
     cameraDirectionFlipCooldown_ = 0;
+    cameraDirectionReferenceSegmentId_ = -1;
+    cameraDirectionReferenceXRaw_ = 0;
+    cameraDirectionReferenceZRaw_ = 0;
+    cameraDirectionReferenceValid_ = false;
     activeWindowSwitchCooldown_ = 0;
     targetWindowStartId_ = 1;
     trackedCarSegmentId_ = 1;
@@ -17212,6 +17378,12 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
         const auto& family = seg1FamilySlots_[i];
         for (size_t li = 0; li < family.lodSlots.size(); ++li)
         {
+            if (li == kTrackLod0Index &&
+                family.lodSlots[kTrackLod0Index] == family.lodSlots[kTrackLod1Index] &&
+                IsVdp1TextureSlotShared64(family.lodSlots[li], family.familyId))
+            {
+                continue;
+            }
             if (!IsVdp1TextureSlotOwnedByFamilyLod(
                     family.lodSlots[li], family.familyId, static_cast<uint8_t>(li))) continue;
             if (liveSlots < std::numeric_limits<uint16_t>::max()) ++liveSlots;
@@ -19530,10 +19702,13 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         }
     }
 
-    // Run the expensive global pass only when local probing found absolutely
-    // nothing. This keeps per-frame probing deterministic and avoids spikes in
-    // descents where local support exists but classifies as fallback.
-    bool shouldRunGlobalPass = (!foundInside && !foundFallback);
+    // Expand only after the local fast path failed to produce a result that
+    // this query is allowed to consume. In particular, strict wheel probes
+    // cannot use an outside-face planar fallback: treating one as success here
+    // made the car lose ground support across scenery-only logical segments.
+    const bool shouldRunGlobalPass =
+        TrackStreamingPolicy::ShouldRunResidentSurfaceRecovery(
+            foundInside, foundFallback, allowFallback);
     if (shouldRunGlobalPass &&
         useLocalNeighbor &&
         !allowFallback &&
@@ -19541,7 +19716,6 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         totalSegmentCount_ > 0)
     {
         SaturatingIncrementU16(surfaceQueryLocalOnlyMissesThisFrame_);
-        shouldRunGlobalPass = false;
     }
     if (shouldRunGlobalPass)
     {

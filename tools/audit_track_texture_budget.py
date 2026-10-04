@@ -87,6 +87,8 @@ def main() -> int:
     print("=== TBKLOD indexes ===")
     bad_sizes: List[str] = []
     missing_in_bank: Dict[str, List[int]] = {}
+    physical_ids_by_bank: Dict[str, Set[int]] = {}
+    shared_ids_by_bank: Dict[str, Set[int]] = {}
     for stem, nominal in expected.items():
         idx_path = package / f"{stem}.json"
         if not idx_path.is_file():
@@ -95,20 +97,43 @@ def main() -> int:
         idx = load_json(idx_path)
         entries = idx.get("entries") or []
         bank_ids = {int(e["familyId"]) for e in entries if e and "familyId" in e}
+        shared_ids = {int(fid) for fid in (idx.get("sharedFamilyIds") or [])}
+        physical_ids_by_bank[stem] = bank_ids
+        shared_ids_by_bank[stem] = shared_ids
+        covered_ids = bank_ids | shared_ids
         size_hist = Counter((int(e.get("tgaWidth", 0)), int(e.get("tgaHeight", 0))) for e in entries)
         fmt_hist = Counter(
             (int(e.get("tgaImageType", -1)), int(e.get("tgaPixelDepth", -1)), int(e.get("tgaColorMapType", -1)))
             for e in entries
         )
-        print(f"{stem}: count={len(entries)} nominal={nominal}")
+        print(
+            f"{stem}: physical={len(entries)} shared={len(shared_ids)} "
+            f"logical={len(covered_ids)} nominal={nominal}"
+        )
         print(f"  sizes={size_hist.most_common(8)}")
         print(f"  formats(imageType,depth,cmap)={fmt_hist.most_common(5)}")
         for (w, h), n in size_hist.items():
             if w != nominal or h != nominal:
                 bad_sizes.append(f"{stem}:{w}x{h}x{n}")
-        missing = sorted(fid for fid in used_window if fid not in bank_ids and fid in families)
+        overlap = sorted(bank_ids & shared_ids)
+        if overlap:
+            bad_sizes.append(f"{stem}:physical/shared-overlap:{overlap[:20]}")
+        missing = sorted(fid for fid in used_window if fid not in covered_ids and fid in families)
         missing_in_bank[stem] = missing
         print(f"  used-in-window missing from bank={len(missing)} {missing[:20]}")
+
+    shared64_missing_from_base = sorted(
+        shared_ids_by_bank.get("TBKLOD1", set())
+        - physical_ids_by_bank.get("TBKLOD0", set())
+    )
+    if shared64_missing_from_base:
+        bad_sizes.append(
+            f"TBKLOD1:shared-missing-from-TBKLOD0:{shared64_missing_from_base[:20]}"
+        )
+        print(
+            "TBKLOD1 shared families missing from TBKLOD0 base="
+            f"{len(shared64_missing_from_base)} {shared64_missing_from_base[:20]}"
+        )
 
     print("=== texture_sources_manifest (if present) ===")
     man_path = package / "texture_sources_manifest.json"

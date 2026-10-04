@@ -376,6 +376,7 @@ $script:faceSurfaceMapScript = Join-Path $scriptDir "build_face_surface_map.py"
 $script:lod0AsphaltWeldScript = Join-Path $scriptDir "weld_lod0_asphalt_edges.py"
 $script:trackLightingScript = Join-Path $scriptDir "generate_track_baked_lighting.py"
 $script:validateTrackLightingScript = Join-Path $scriptDir "validate_track_baked_lighting.py"
+$script:validateRuntimeSurfaceContractScript = Join-Path $scriptDir "validate_runtime_surface_contract.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -394,6 +395,7 @@ if (-not (Test-Path -LiteralPath $script:canonicalizeSegmentsMapScript)) { throw
 if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao encontrado: $script:minifyJsonScript" }
 if (-not (Test-Path -LiteralPath $script:trackLightingScript)) { throw "Script nao encontrado: $script:trackLightingScript" }
 if (-not (Test-Path -LiteralPath $script:validateTrackLightingScript)) { throw "Script nao encontrado: $script:validateTrackLightingScript" }
+if (-not (Test-Path -LiteralPath $script:validateRuntimeSurfaceContractScript)) { throw "Script nao encontrado: $script:validateRuntimeSurfaceContractScript" }
 if (-not (Test-Path -LiteralPath $TrackLightingProfilePath)) { throw "Perfil de iluminacao nao encontrado: $TrackLightingProfilePath" }
 if ($EnableLod0AsphaltEdgeWeld -and -not (Test-Path -LiteralPath $script:lod0AsphaltWeldScript)) {
     throw "Script de solda LOD0 nao encontrado: $script:lod0AsphaltWeldScript"
@@ -620,6 +622,11 @@ function Normalize-SurfaceStem {
     )
     if ([string]::IsNullOrWhiteSpace($Token)) { return "" }
     $base = [System.IO.Path]::GetFileNameWithoutExtension($Token).Trim().ToLowerInvariant()
+    # Alguns materiais reduzidos exportam o stem canônico com um separador
+    # residual (por exemplo, "f07564_"). Sem removê-lo, o RDR classifica a
+    # face como asfalto, mas SMAP/SFMAP registram a mesma família como unknown;
+    # a consulta estrita de roda então rejeita toda a pista do LOD reduzido.
+    $base = [regex]::Replace($base, '[_-]+$', '')
     if ($base -match '^(?<name>.+)_(8|16|32|64)(\..+)?$') {
         return $Matches['name']
     }
@@ -1384,6 +1391,16 @@ if ($lowGeoSample.Count -gt 0) {
         -AllSegments
 }
 
+Write-Host "=== Etapa 3.65/7: Validar contrato de solo SMAP/SFMAP/RDR ==="
+& python $script:validateRuntimeSurfaceContractScript `
+    --segments-map $jsonPath `
+    --surface-manifest $SurfaceTextureManifestPath `
+    --sfmap (Join-Path $PackageDir "SFMAP.BIN") `
+    --rdr-dir $PackageDir
+if ($LASTEXITCODE -ne 0) {
+    throw "Contrato de solo runtime inconsistente (exit=$LASTEXITCODE)."
+}
+
 Write-Host "=== Etapa 3.7/7: Gerar batches draw-ready BDR1 ==="
 & $script:bdrScript `
     -DataDir $PackageDir `
@@ -1463,7 +1480,7 @@ Write-Host "=== Etapa 4.1/7: Criar aliases 8.3 para segments_map ==="
 $targetDirs = @($CdDataDir)
 Copy-SegmentsMapShortNames -Source $jsonPath -TargetDirs $targetDirs
 
-Write-Host "=== Etapa 5/7: Gerar bancos independentes TBKLOD0/TBKLOD1/TBKLOD2 ==="
+Write-Host "=== Etapa 5/7: Gerar TBKLOD0 base 64 + TBKLOD1 overrides + TBKLOD2 32 ==="
 foreach ($staleBankName in @("TBK32.BIN", "TBK64.BIN", "TBKLOD0.BIN", "TBKLOD1.BIN", "TBKLOD2.BIN")) {
     $staleBankPath = Join-Path $CdDataDir $staleBankName
     if (Test-Path -LiteralPath $staleBankPath) {
@@ -1567,6 +1584,22 @@ $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
 $hasMat64Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT64.BIN")
+$hasShared64Contract = $false
+$shared64Count = 0
+$lod1OverrideCount = 0
+if ($hasTexManifest) {
+    $texManifest = Get-Content -LiteralPath $texManifestPath -Raw | ConvertFrom-Json
+    $hasShared64Contract =
+        [int]$texManifest.version -ge 4 -and
+        [string]$texManifest.sharing.mode -eq "lod0_base_lod1_overrides" -and
+        [int]$texManifest.sharing.baseBankId -eq 0 -and
+        [int]$texManifest.sharing.overrideBankId -eq 1
+    $lod1Summary = @($texManifest.banks | Where-Object { [int]$_.bankId -eq 1 }) | Select-Object -First 1
+    if ($null -ne $lod1Summary) {
+        $shared64Count = [int]$lod1Summary.sharedCount
+        $lod1OverrideCount = [int]$lod1Summary.count
+    }
+}
 
 Write-Host ("EXPECTED SEGMENTS: {0}" -f $expectedCount)
 Write-Host ("FOUND GEO         : {0} (long:{1} short:{2})" -f $geoCount, $geoCountLong, $geoCountShort)
@@ -1575,6 +1608,8 @@ Write-Host ("FOUND MAT         : {0} (long:{1} short:{2})" -f $matCount, $matCou
 Write-Host ("FOUND TEXBANK BIN : {0} (legacy:{1} short:{2})" -f $texbankCount, $texbankCountLegacy, $texbankCountShort)
 Write-Host ("HAS segments_map  : {0}" -f $hasSegmentsMap)
 Write-Host ("HAS manifest      : {0}" -f $hasTexManifest)
+Write-Host ("SHARED 64 CONTRACT: {0} (shared:{1} overrides:{2})" -f
+    $hasShared64Contract, $shared64Count, $lod1OverrideCount)
 Write-Host ("HAS TGA compat    : {0}" -f $hasTgaCompat)
 Write-Host ("HAS S001FAM.BIN   : {0}" -f $hasSeg1Fam)
 Write-Host ("HAS GEO.BIN       : {0}" -f $hasGeoBin)
@@ -1602,6 +1637,7 @@ if ($texbankCount -ne 3 -or $missingTexbanks.Count -gt 0) {
 }
 if (-not $hasSegmentsMap) { $validationErrors.Add("segments_map.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasTexManifest) { $validationErrors.Add("texbanks_manifest.json ausente em pacote_rancing") | Out-Null }
+elseif (-not $hasShared64Contract) { $validationErrors.Add("Contrato de texturas 64 compartilhadas ausente/invalido no manifesto") | Out-Null }
 if (-not $hasTgaCompat) { $validationErrors.Add("tga_compat_report.json ausente em pacote_rancing") | Out-Null }
 if (-not $hasSeg1Fam) { $validationErrors.Add("S001FAM.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasGeoBin) { $validationErrors.Add("GEO.BIN ausente em cd\\data") | Out-Null }
@@ -1674,8 +1710,8 @@ $publishInfo = [pscustomobject]@{
     cdDataDir = $publishCdDataDir
     previousPackageBackup = (Join-Path $publishBackupRoot "package_previous")
     textureBanks = @(
-        [pscustomobject]@{ lod = "lod_0"; file = "TBKLOD0.BIN"; bankId = 0; runtimeIndex = 3 }
-        [pscustomobject]@{ lod = "lod_1"; file = "TBKLOD1.BIN"; bankId = 1; runtimeIndex = 1 }
+        [pscustomobject]@{ lod = "lod_0"; role = "shared_64_base"; file = "TBKLOD0.BIN"; bankId = 0; runtimeIndex = 3 }
+        [pscustomobject]@{ lod = "lod_1"; role = "lod1_64_overrides"; file = "TBKLOD1.BIN"; bankId = 1; runtimeIndex = 1; sharedFromBankId = 0 }
         [pscustomobject]@{ lod = "lod_2"; file = "TBKLOD2.BIN"; bankId = 2; runtimeIndex = 2 }
     )
 }

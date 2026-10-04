@@ -22,6 +22,7 @@
 #include "track_render_coordinator.hpp"
 #include "track_renderer.hpp"
 #include "track_segment_pool.hpp"
+#include "track_streaming_policy.hpp"
 #include "track_zone_alloc.hpp"
 
 template <typename T>
@@ -551,6 +552,7 @@ private:
                              uint8_t lodIndex,
                              uint16_t& outSlot) const;
     const Seg1TexbankEntry* FindTexbankEntryByFamily(const Seg1TexbankCart& bank, uint16_t familyId) const;
+    bool IsFamilyTextureShared64(uint16_t familyId);
     bool TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
                               uint8_t targetLodIndex,
                               bool fallbackToLowerLods,
@@ -665,6 +667,7 @@ private:
     void UpdateVisibleSegmentLods(const std::vector<SegmentHandle>& nearToFarHandles);
     bool BuildSegmentCenterCatalog();
     bool RebuildActiveSegmentWindow(int32_t startSegmentId, size_t loadLimit, int8_t direction);
+    bool ReorientActiveSegmentWindow(int8_t direction);
     bool SlideActiveSegmentWindow(size_t stepCount, int8_t direction);
     void PrewarmNextSegmentLod32();
     void PrewarmUpcomingBoundaryLods();
@@ -833,11 +836,18 @@ private:
     int16_t activeWindowStartId_ = 1;
     uint16_t activeWindowHead_ = 0;
     int8_t windowDirection_ = 1;
+    // Physical traversal is independent from route id direction.  Flipping it
+    // lets the resident ring be viewed in reverse without rebuilding it.
+    int8_t windowPhysicalStep_ = 1;
     int8_t cameraWindowDirection_ = 1;
     // Camera direction switch stabilization to avoid render window flicker on 360 turns.
     int8_t cameraDirectionPending_ = 1;
     uint8_t cameraDirectionConfirmFrames_ = 0;
     uint8_t cameraDirectionFlipCooldown_ = 0;
+    int16_t cameraDirectionReferenceSegmentId_ = -1;
+    int32_t cameraDirectionReferenceXRaw_ = 0;
+    int32_t cameraDirectionReferenceZRaw_ = 0;
+    bool cameraDirectionReferenceValid_ = false;
     uint8_t activeWindowSwitchCooldown_ = 0;
     int16_t targetWindowStartId_ = 1;
     int16_t trackedCarSegmentId_ = 1;

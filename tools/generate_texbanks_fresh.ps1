@@ -15,6 +15,26 @@ $ErrorActionPreference = "Stop"
 function Write-U16([System.IO.BinaryWriter]$Writer, [uint16]$Value) { $Writer.Write($Value) }
 function Write-U32([System.IO.BinaryWriter]$Writer, [uint32]$Value) { $Writer.Write($Value) }
 
+function Get-CanonicalTgaSha256([byte[]]$Bytes, [string]$Path) {
+    if ($null -eq $Bytes -or $Bytes.Length -lt 18) { throw "TGA truncado: $Path" }
+    # O campo image-id nao participa do conteudo renderizado. Remova-o antes
+    # de comparar LOD0/LOD1 para que metadados de exportacao nao criem um
+    # override falso no banco compartilhado 64x64.
+    $idLength = [int]$Bytes[0]
+    if ((18 + $idLength) -gt $Bytes.Length) { throw "TGA com image-id truncado: $Path" }
+    [byte[]]$canonical = New-Object byte[] ($Bytes.Length - $idLength)
+    [Array]::Copy($Bytes, 0, $canonical, 0, 18)
+    $canonical[0] = 0
+    [Array]::Copy($Bytes, 18 + $idLength, $canonical, 18, $Bytes.Length - 18 - $idLength)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha.ComputeHash($canonical))).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
 function Get-TgaInfo([byte[]]$Bytes, [string]$Path) {
     if ($null -eq $Bytes -or $Bytes.Length -lt 18) { throw "TGA truncado: $Path" }
     $info = [pscustomobject]@{
@@ -68,8 +88,11 @@ if ($families.Count -eq 0) { throw "textureFamilies vazio." }
 
 $bankSummaries = New-Object System.Collections.Generic.List[object]
 $compatEntries = New-Object System.Collections.Generic.List[object]
+$lod0CanonicalHashes = @{}
 foreach ($bankSpec in $bankSpecs) {
     $entries = New-Object System.Collections.Generic.List[object]
+    $logicalEntries = New-Object System.Collections.Generic.List[object]
+    $sharedFamilyIds = New-Object System.Collections.Generic.List[int]
     foreach ($family in $families) {
         $sourceEntry = @($sourceManifest.entries | Where-Object {
             [int]$_.familyId -eq [int]$family.id -and [int]$_.bankId -eq [int]$bankSpec.bankId
@@ -78,7 +101,18 @@ foreach ($bankSpec in $bankSpecs) {
             throw "Manifesto sem family $($family.id) bankId $($bankSpec.bankId) ($($bankSpec.sourceGroup))."
         }
         $path = [string]$sourceEntry.targetPath
-        if (-not (Test-Path -LiteralPath $path)) { throw "Textura preparada ausente: $path" }
+        if (-not (Test-Path -LiteralPath $path)) {
+            # A publicacao atomica move a pasta de staging; manifests publicados
+            # podem conservar o targetPath absoluto antigo. Resolva novamente
+            # pelo grupo + nome, sempre dentro de PreparedTextureDir.
+            $relocatedPath = Join-Path (Join-Path $PreparedTextureDir ([string]$sourceEntry.sourceGroup)) ([System.IO.Path]::GetFileName($path))
+            if (Test-Path -LiteralPath $relocatedPath) {
+                $path = $relocatedPath
+            }
+            else {
+                throw "Textura preparada ausente: $path (relocado tentado: $relocatedPath)"
+            }
+        }
         $preparedRoot = [System.IO.Path]::GetFullPath($PreparedTextureDir).TrimEnd('\') + '\'
         $fullPath = [System.IO.Path]::GetFullPath($path)
         if (-not $fullPath.StartsWith($preparedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -87,19 +121,34 @@ foreach ($bankSpec in $bankSpecs) {
         $fileName = [System.IO.Path]::GetFileName($fullPath)
         [byte[]]$bytes = [System.IO.File]::ReadAllBytes($path)
         $info = Get-TgaInfo $bytes $path
+        $canonicalSha256 = Get-CanonicalTgaSha256 $bytes $path
         $nominal = [int]$bankSpec.nominalTextureSize
         if ([int]$info.width -ne $nominal -or [int]$info.height -ne $nominal) {
             throw ("TGA fora do tamanho nominal {0}x{0}: family {1} bank {2} got {3}x{4} ({5})" -f
                 $nominal, $family.id, $bankSpec.sourceGroup, $info.width, $info.height, $path)
         }
-        $entries.Add([pscustomobject]@{
+        $isSharedFromLod0 = $false
+        if ([int]$bankSpec.bankId -eq 0) {
+            $lod0CanonicalHashes[[int]$family.id] = $canonicalSha256
+        }
+        elseif ([int]$bankSpec.bankId -eq 1) {
+            if (-not $lod0CanonicalHashes.ContainsKey([int]$family.id)) {
+                throw "Hash canonico LOD0 ausente para family $($family.id)."
+            }
+            $isSharedFromLod0 =
+                [string]$lod0CanonicalHashes[[int]$family.id] -eq [string]$canonicalSha256
+        }
+
+        $logicalEntry = [pscustomobject]@{
             familyId = [uint32]$family.id
             name = [string]$family.name
             file = $fileName
             sourcePath = [string]$sourceEntry.sourcePath
             sourceGroup = [string]$sourceEntry.sourceGroup
             sourceSha256 = [string]$sourceEntry.sourceSha256
+            canonicalSha256 = $canonicalSha256
             transform = [string]$sourceEntry.transform
+            sharedFromBankId = $(if ($isSharedFromLod0) { 0 } else { -1 })
             payload = $bytes
             size = [uint32]$bytes.Length
             offset = [uint32]0
@@ -109,7 +158,14 @@ foreach ($bankSpec in $bankSpecs) {
             tgaPixelDepth = [int]$info.pixelDepth
             tgaWidth = [int]$info.width
             tgaHeight = [int]$info.height
-        }) | Out-Null
+        }
+        $logicalEntries.Add($logicalEntry) | Out-Null
+        if ($isSharedFromLod0) {
+            $sharedFamilyIds.Add([int]$family.id) | Out-Null
+        }
+        else {
+            $entries.Add($logicalEntry) | Out-Null
+        }
     }
 
     $headerSize = 20
@@ -152,7 +208,9 @@ foreach ($bankSpec in $bankSpecs) {
             sourcePath = $_.sourcePath
             sourceGroup = $_.sourceGroup
             sourceSha256 = $_.sourceSha256
+            canonicalSha256 = $_.canonicalSha256
             transform = $_.transform
+            sharedFromBankId = [int]$_.sharedFromBankId
             offset = [int64]$_.offset
             size = [int64]$_.size
             format = [int]$_.format
@@ -164,23 +222,27 @@ foreach ($bankSpec in $bankSpecs) {
         })
     })
     [pscustomobject]@{
-        version = 3
+        version = 4
         bankId = [int]$bankSpec.bankId
         designLod = [string]$bankSpec.sourceGroup
         runtimeIndex = [int]$bankSpec.runtimeIndex
         nominalTextureSize = [int]$bankSpec.nominalTextureSize
         count = $entries.Count
+        logicalCount = $logicalEntries.Count
+        sharedFromBankId = $(if ([int]$bankSpec.bankId -eq 1) { 0 } else { -1 })
+        sharedFamilyIds = @($sharedFamilyIds.ToArray())
         bank = [System.IO.Path]::GetFileName($bankPath)
         entries = $indexEntries
     } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $indexPath -Encoding UTF8
 
-    foreach ($entry in $indexEntries) {
+    foreach ($entry in @($logicalEntries.ToArray())) {
         $compatEntries.Add([pscustomobject]@{
             bankId = [int]$bankSpec.bankId; designLod = [string]$bankSpec.sourceGroup
             runtimeIndex = [int]$bankSpec.runtimeIndex; nominalTextureSize = [int]$bankSpec.nominalTextureSize
-            familyId = $entry.familyId; file = $entry.file
+            familyId = [int]$entry.familyId; file = $entry.file
             sourcePath = $entry.sourcePath; sourceGroup = $entry.sourceGroup; transform = $entry.transform
+            canonicalSha256 = $entry.canonicalSha256; sharedFromBankId = [int]$entry.sharedFromBankId
             colorMapType = $entry.tgaColorMapType; imageType = $entry.tgaImageType
             pixelDepth = $entry.tgaPixelDepth; width = $entry.tgaWidth; height = $entry.tgaHeight
         }) | Out-Null
@@ -189,21 +251,32 @@ foreach ($bankSpec in $bankSpecs) {
         bankId = [int]$bankSpec.bankId; designLod = [string]$bankSpec.sourceGroup
         runtimeIndex = [int]$bankSpec.runtimeIndex; nominalTextureSize = [int]$bankSpec.nominalTextureSize
         bankPath = $bankPath; indexPath = $indexPath
-        count = $entries.Count; bytes = (Get-Item -LiteralPath $bankPath).Length
+        count = $entries.Count; logicalCount = $logicalEntries.Count
+        sharedCount = $sharedFamilyIds.Count; sharedFromBankId = $(if ([int]$bankSpec.bankId -eq 1) { 0 } else { -1 })
+        bytes = (Get-Item -LiteralPath $bankPath).Length
     }) | Out-Null
-    Write-Host ("OK {0} designLod:{1} bankId:{2} entries:{3}" -f $bankSpec.fileName, $bankSpec.sourceGroup, $bankSpec.bankId, $entries.Count)
+    Write-Host ("OK {0} designLod:{1} bankId:{2} entries:{3} shared:{4} logical:{5}" -f
+        $bankSpec.fileName, $bankSpec.sourceGroup, $bankSpec.bankId,
+        $entries.Count, $sharedFamilyIds.Count, $logicalEntries.Count)
 }
 
 $compatPath = Join-Path $ReportDir "tga_compat_report.json"
-[pscustomobject]@{ version = 3; generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"); entries = @($compatEntries.ToArray()) } |
+[pscustomobject]@{ version = 4; generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"); entries = @($compatEntries.ToArray()) } |
     ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $compatPath -Encoding UTF8
 $manifestPath = Join-Path $ReportDir "texbanks_manifest.json"
 [pscustomobject]@{
-    version = 3
+    version = 4
     generatedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     sourceJson = [System.IO.Path]::GetFullPath($JsonPath)
     preparedTextureDir = [System.IO.Path]::GetFullPath($PreparedTextureDir)
     allowedRoots = @($sourceManifest.allowedRoots)
+    sharing = [pscustomobject]@{
+        mode = "lod0_base_lod1_overrides"
+        baseBankId = 0
+        overrideBankId = 1
+        textureSize = 64
+        comparison = "canonical_tga_sha256_without_image_id"
+    }
     banks = @($bankSummaries.ToArray())
     tgaCompatReport = $compatPath
 } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
