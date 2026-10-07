@@ -755,6 +755,8 @@ private:
     int8_t ResolveCameraWindowDirection(const SRL::Math::Types::Vector3D& trackOffset,
                                         const SRL::Math::Types::Vector3D& cameraLocation,
                                         const SRL::Math::Types::Vector3D& cameraLookTarget) const;
+    bool ResolveRouteDirectionTangent(int32_t segmentId,
+                                      SRL::Math::Types::Vector3D& outTangent) const;
     void UpdateCameraDrivenWindowDirection(const SRL::Math::Types::Vector3D& trackOffset,
                                            const SRL::Math::Types::Vector3D& cameraLocation,
                                            const SRL::Math::Types::Vector3D& cameraLookTarget);
@@ -959,6 +961,12 @@ private:
     mutable uint8_t surfaceQueryLastInsideType_ = 0u;
     TrackLowWorkU8Vector surfaceTypeByFamilyId_{};
     TrackLowWorkU8Vector segmentSurfaceFlagsById_{};
+    // Immutable route direction data loaded once from TDIR.BIN.  Each entry is
+    // Q15 X/Z plus a confidence byte; no frame-time allocation is involved.
+    TrackLowWorkI16Vector routeTangentXBySegment_{};
+    TrackLowWorkI16Vector routeTangentZBySegment_{};
+    TrackLowWorkU8Vector routeTangentConfidenceBySegment_{};
+    bool routeDirectionMapReady_ = false;
     // FSMAP remains in expansion Cart RAM; only these two scalars consume
     // Work RAM.  Queries parse records in place and never clone face data.
     void* faceSurfaceMapCartPtr_ = nullptr;

@@ -449,6 +449,30 @@ void TestOppositeDirectionProgressRejectsFastSingleStepJitter(TestContext& ctx)
                           3, true, 0u, maxSingleStepMotion));
 }
 
+void TestRouteRelativeDirectionDetectsTurnaroundWithoutProgress(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    constexpr int32_t reverseEnterDot = 32768;
+    // Car and route facing forward: keep the normal belt direction.
+    EXPECT_EQ(ctx, static_cast<int>(ResolveRouteRelativeDirection(
+                       +1, true, 65536, reverseEnterDot)), +1);
+
+    // A turnaround points against the same route tangent.  This must not
+    // depend on speed or on crossing a different segment.
+    EXPECT_EQ(ctx, static_cast<int>(ResolveRouteRelativeDirection(
+                       +1, true, -65536, reverseEnterDot)), -1);
+    EXPECT_EQ(ctx, static_cast<int>(ResolveRouteRelativeDirection(
+                       -1, true, 65536, reverseEnterDot)), +1);
+
+    // Near-sideways steering is not a reversal; hysteresis/confirmation in
+    // TrackSystem will only see a candidate beyond the configured threshold.
+    EXPECT_EQ(ctx, static_cast<int>(ResolveRouteRelativeDirection(
+                       +1, true, -32767, reverseEnterDot)), +1);
+    EXPECT_EQ(ctx, static_cast<int>(ResolveRouteRelativeDirection(
+                       +1, false, -65536, reverseEnterDot)), +1);
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -474,6 +498,7 @@ int main()
         {"ResidentSurfaceRecoveryPolicy", &TestResidentSurfaceRecoveryPolicy},
         {"HeadingOnlyDirectionFlipRequiresLowMotion", &TestHeadingOnlyDirectionFlipRequiresLowMotion},
         {"OppositeDirectionProgressRejectsFastSingleStepJitter", &TestOppositeDirectionProgressRejectsFastSingleStepJitter},
+        {"RouteRelativeDirectionDetectsTurnaroundWithoutProgress", &TestRouteRelativeDirectionDetectsTurnaroundWithoutProgress},
     };
 
     TestContext ctx{};

@@ -13748,6 +13748,32 @@ void TrackSystem::EmitFamilyWorkingSetTelemetry() const
                       static_cast<unsigned>(CountTrackedBanks(g_trackPaletteBanks.pal256)));
 }
 
+bool TrackSystem::ResolveRouteDirectionTangent(int32_t segmentId,
+                                               Vector3D& outTangent) const
+{
+    outTangent = Vector3D(0.0, 0.0, 0.0);
+    if (!routeDirectionMapReady_ || segmentId <= 0 || totalSegmentCount_ == 0) return false;
+    const int32_t wrappedId = WrapSegmentIdToRange(segmentId, totalSegmentCount_);
+    if (wrappedId <= 0) return false;
+    const size_t index = static_cast<size_t>(wrappedId);
+    if (index >= routeTangentConfidenceBySegment_.size() ||
+        index >= routeTangentXBySegment_.size() ||
+        index >= routeTangentZBySegment_.size() ||
+        routeTangentConfidenceBySegment_[index] == 0u)
+    {
+        return false;
+    }
+
+    const int16_t xQ15 = routeTangentXBySegment_[index];
+    const int16_t zQ15 = routeTangentZBySegment_[index];
+    if (xQ15 == 0 && zQ15 == 0) return false;
+    outTangent = Vector3D(Fxp::BuildRaw(static_cast<int32_t>(xQ15) * 2),
+                           Fxp::BuildRaw(0),
+                           Fxp::BuildRaw(static_cast<int32_t>(zQ15) * 2));
+    return true;
+}
+
+
 int8_t TrackSystem::ResolveCameraWindowDirection(const Vector3D& trackOffset,
                                                  const Vector3D& cameraLocation,
                                                  const Vector3D& cameraLookTarget) const
@@ -13803,6 +13829,23 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
 
     const int8_t currentDirection = (windowDirection_ < 0) ? -1 : 1;
     cameraWindowDirection_ = currentDirection;
+    Vector3D routeTangent{};
+    const bool routeTangentValid = ResolveRouteDirectionTangent(anchorId, routeTangent);
+    int32_t routeDotRaw = 0;
+    int8_t routeDesiredDirection = currentDirection;
+    if (routeTangentValid)
+    {
+        routeDotRaw = ((cameraForward.X * routeTangent.X) +
+                       (cameraForward.Z * routeTangent.Z)).RawValue();
+        // Same angular threshold as the old camera reference (about 120 deg),
+        // now evaluated against the local route instead of stale camera yaw.
+        constexpr int32_t kRouteReverseEnterDotRaw = 32768;
+        routeDesiredDirection = TrackStreamingPolicy::ResolveRouteRelativeDirection(
+            currentDirection,
+            true,
+            routeDotRaw,
+            kRouteReverseEnterDotRaw);
+    }
     if (!cameraDirectionReferenceValid_ || cameraDirectionReferenceSegmentId_ <= 0)
     {
         cameraDirectionReferenceXRaw_ = cameraForward.X.RawValue();
@@ -13824,7 +13867,14 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
     const int32_t oppositeProgress = (currentDirection > 0) ? backwardProgress : forwardProgress;
 
     int8_t rawDesiredDirection = currentDirection;
-    if (alongProgress > 0 && alongProgress <= 2)
+    if (routeDesiredDirection != currentDirection)
+    {
+        // This is independent of longitudinal movement.  The tangent moves
+        // with the road through a hairpin, so a real turnaround is detected
+        // while still inside the same surface segment.
+        rawDesiredDirection = routeDesiredDirection;
+    }
+    else if (alongProgress > 0 && alongProgress <= 2)
     {
         // Confirmed movement in the current route direction.  Refreshing the
         // reference per surface segment lets the camera follow hairpins without
@@ -13853,7 +13903,7 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
         cameraDirectionPending_ = currentDirection;
         cameraDirectionConfirmFrames_ = 0u;
     }
-    else if (anchorId == referenceId)
+    else if (anchorId == referenceId && !routeTangentValid)
     {
         const bool allowHeadingOnlyFlip =
             TrackStreamingPolicy::ShouldAllowHeadingOnlyDirectionFlip(
@@ -13877,7 +13927,7 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
             cameraDirectionConfirmFrames_ = 0u;
         }
     }
-    else
+    else if (!routeTangentValid)
     {
         // Teleport/respawn/large recovery: re-anchor without interpreting the
         // discontinuity as a direction change.
@@ -14448,6 +14498,10 @@ void TrackSystem::LoadSurfaceCollisionMaps()
     SetSurfaceFamilyMapReady(false);
     SetSegmentCollisionMapReady(false);
     segmentSurfaceFlagsById_.clear();
+    routeTangentXBySegment_.clear();
+    routeTangentZBySegment_.clear();
+    routeTangentConfidenceBySegment_.clear();
+    routeDirectionMapReady_ = false;
     if (faceSurfaceMapCartPtr_)
     {
         SRL::Memory::CartRam::Free(faceSurfaceMapCartPtr_);
@@ -14473,6 +14527,14 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         "DATA/SCMAP.BIN", "DATA/SCMAP.BIN;1",
         "cd/data/SCMAP.BIN", "cd/data/SCMAP.BIN;1",
         "SCMAP.BIN", "SCMAP.BIN;1"
+    };
+    const char* trackDirectionMapCandidates[] = {
+        "/CD/DATA/TDIR.BIN", "/CD/DATA/TDIR.BIN;1",
+        "/DATA/TDIR.BIN", "/DATA/TDIR.BIN;1",
+        "CD/DATA/TDIR.BIN", "CD/DATA/TDIR.BIN;1",
+        "DATA/TDIR.BIN", "DATA/TDIR.BIN;1",
+        "cd/data/TDIR.BIN", "cd/data/TDIR.BIN;1",
+        "TDIR.BIN", "TDIR.BIN;1"
     };
     const char* faceMapCandidates[] = {
         "/CD/DATA/FSMAP.BIN", "/CD/DATA/FSMAP.BIN;1",
@@ -14561,6 +14623,53 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         }
     }
 
+
+    std::vector<uint8_t> trackDirectionBlob{};
+    if (ReadCdFileBinary(trackDirectionMapCandidates,
+                         sizeof(trackDirectionMapCandidates) / sizeof(trackDirectionMapCandidates[0]),
+                         trackDirectionBlob) &&
+        trackDirectionBlob.size() >= 12u)
+    {
+        const uint32_t magic = ReadLe32(trackDirectionBlob.data() + 0u);
+        const uint16_t version = ReadLe16(trackDirectionBlob.data() + 4u);
+        const uint16_t recordSize = ReadLe16(trackDirectionBlob.data() + 6u);
+        const uint32_t entryCount = ReadLe32(trackDirectionBlob.data() + 8u);
+        const size_t needBytes = 12u + (static_cast<size_t>(entryCount) * 8u);
+        if (magic == 0x31524454u && version == 1u && recordSize == 8u &&
+            needBytes <= trackDirectionBlob.size())
+        {
+            TrackLowWorkI16Vector tangentX{};
+            TrackLowWorkI16Vector tangentZ{};
+            TrackLowWorkU8Vector confidence{};
+            const size_t tableSize = static_cast<size_t>(totalSegmentCount_) + 1u;
+            tangentX.resize(tableSize, 0);
+            tangentZ.resize(tableSize, 0);
+            confidence.resize(tableSize, 0u);
+            uint32_t loaded = 0u;
+            size_t off = 12u;
+            for (uint32_t index = 0u; index < entryCount; ++index, off += 8u)
+            {
+                const uint16_t segmentId = ReadLe16(trackDirectionBlob.data() + off + 0u);
+                if (segmentId == 0u || static_cast<size_t>(segmentId) >= tableSize) continue;
+                const int16_t x = static_cast<int16_t>(ReadLe16(trackDirectionBlob.data() + off + 2u));
+                const int16_t z = static_cast<int16_t>(ReadLe16(trackDirectionBlob.data() + off + 4u));
+                const uint8_t entryConfidence = trackDirectionBlob[off + 6u];
+                if (entryConfidence == 0u || (x == 0 && z == 0)) continue;
+                tangentX[segmentId] = x;
+                tangentZ[segmentId] = z;
+                confidence[segmentId] = entryConfidence;
+                ++loaded;
+            }
+            if (loaded > 0u)
+            {
+                routeTangentXBySegment_.swap(tangentX);
+                routeTangentZBySegment_.swap(tangentZ);
+                routeTangentConfidenceBySegment_.swap(confidence);
+                routeDirectionMapReady_ = true;
+            }
+        }
+    }
+
     if (Game::PhysicsFeatureFlags::kEnableFaceSurfaceMapRuntime)
     {
         for (size_t i = 0u; i < sizeof(faceMapCandidates) / sizeof(faceMapCandidates[0]); ++i)
@@ -14579,10 +14688,11 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         }
     }
 
-    SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u fm:%u",
+    SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u fm:%u td:%u",
                       SurfaceFamilyMapReady() ? 1u : 0u,
                       SegmentCollisionMapReady() ? 1u : 0u,
-                      faceSurfaceMapCartPtr_ ? 1u : 0u);
+                      faceSurfaceMapCartPtr_ ? 1u : 0u,
+                      routeDirectionMapReady_ ? 1u : 0u);
 }
 
 void TrackSystem::LogInitialSegmentDiagnostics() const

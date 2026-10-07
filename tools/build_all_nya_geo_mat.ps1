@@ -322,12 +322,17 @@ $SourceObjDir = Resolve-DefaultSourceObjDir -RequestedSourceObjDir $SourceObjDir
 if (-not (Test-Path -LiteralPath $SourceObjDir)) { throw "SourceObjDir nao encontrado: $SourceObjDir" }
 $publishPackageDir = [System.IO.Path]::GetFullPath($PackageDir)
 $publishCdDataDir = [System.IO.Path]::GetFullPath($CdDataDir)
+$pathNyaSourcePath = Join-Path $publishCdDataDir "PATH.NYA"
+if (-not (Test-Path -LiteralPath $pathNyaSourcePath)) {
+    throw "PATH.NYA obrigatorio para construir o mapa de direcao: $pathNyaSourcePath"
+}
 $buildRunId = Get-Date -Format "yyyyMMdd_HHmmss_fff"
 $stagingRoot = Join-Path (Split-Path -Parent $publishPackageDir) (".interlagos_build_{0}" -f $buildRunId)
 $PackageDir = Join-Path $stagingRoot "package"
 $CdDataDir = Join-Path $stagingRoot "cd_data"
 New-Item -Path $PackageDir -ItemType Directory -Force | Out-Null
 New-Item -Path $CdDataDir -ItemType Directory -Force | Out-Null
+Copy-Item -LiteralPath $pathNyaSourcePath -Destination (Join-Path $CdDataDir "PATH.NYA") -Force
 if ($AuditWallsStrict) { $AuditWalls = $true }
 if ($AuditWalls -and [string]::IsNullOrWhiteSpace($AuditWallsReportDir)) {
     $AuditWallsReportDir = Join-Path $PackageDir "wall_audit"
@@ -377,6 +382,7 @@ $script:lod0AsphaltWeldScript = Join-Path $scriptDir "weld_lod0_asphalt_edges.py
 $script:trackLightingScript = Join-Path $scriptDir "generate_track_baked_lighting.py"
 $script:validateTrackLightingScript = Join-Path $scriptDir "validate_track_baked_lighting.py"
 $script:validateRuntimeSurfaceContractScript = Join-Path $scriptDir "validate_runtime_surface_contract.py"
+$script:buildTrackDirectionMapScript = Join-Path $scriptDir "build_track_direction_map.py"
 
 if (-not (Test-Path -LiteralPath $script:exportScript)) { throw "Script nao encontrado: $script:exportScript" }
 if (-not (Test-Path -LiteralPath $script:componentScript)) { throw "Script nao encontrado: $script:componentScript" }
@@ -396,6 +402,7 @@ if (-not (Test-Path -LiteralPath $script:minifyJsonScript)) { throw "Script nao 
 if (-not (Test-Path -LiteralPath $script:trackLightingScript)) { throw "Script nao encontrado: $script:trackLightingScript" }
 if (-not (Test-Path -LiteralPath $script:validateTrackLightingScript)) { throw "Script nao encontrado: $script:validateTrackLightingScript" }
 if (-not (Test-Path -LiteralPath $script:validateRuntimeSurfaceContractScript)) { throw "Script nao encontrado: $script:validateRuntimeSurfaceContractScript" }
+if (-not (Test-Path -LiteralPath $script:buildTrackDirectionMapScript)) { throw "Script nao encontrado: $script:buildTrackDirectionMapScript" }
 if (-not (Test-Path -LiteralPath $TrackLightingProfilePath)) { throw "Perfil de iluminacao nao encontrado: $TrackLightingProfilePath" }
 if ($EnableLod0AsphaltEdgeWeld -and -not (Test-Path -LiteralPath $script:lod0AsphaltWeldScript)) {
     throw "Script de solda LOD0 nao encontrado: $script:lod0AsphaltWeldScript"
@@ -1401,6 +1408,18 @@ if ($LASTEXITCODE -ne 0) {
     throw "Contrato de solo runtime inconsistente (exit=$LASTEXITCODE)."
 }
 
+Write-Host "=== Etapa 3.66/7: Gerar mapa de direcao da pista TDIR.BIN ==="
+$trackDirectionMapPath = Join-Path $CdDataDir "TDIR.BIN"
+$directionSegmentCount = @($segmentsDone | Sort-Object -Unique).Count
+& python $script:buildTrackDirectionMapScript `
+    --path (Join-Path $CdDataDir "PATH.NYA") `
+    --rdr-dir $PackageDir `
+    --segment-count $directionSegmentCount `
+    --out $trackDirectionMapPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Falha ao gerar TDIR.BIN (exit=$LASTEXITCODE)."
+}
+
 Write-Host "=== Etapa 3.7/7: Gerar batches draw-ready BDR1 ==="
 & $script:bdrScript `
     -DataDir $PackageDir `
@@ -1580,6 +1599,7 @@ $trackLightingLowCount = @(Get-ChildItem -LiteralPath $PackageDir -File -Filter 
 $hasSurfaceFamilyMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SFMAP.BIN")
 $hasSegmentCollisionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SCMAP.BIN")
 $hasFaceSurfaceMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "FSMAP.BIN")
+$hasTrackDirectionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TDIR.BIN")
 $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
@@ -1623,6 +1643,7 @@ Write-Host ("HAS LIGHT REPORT  : {0}" -f $hasTrackLightingReport)
 Write-Host ("HAS SFMAP.BIN     : {0}" -f $hasSurfaceFamilyMapBin)
 Write-Host ("HAS SCMAP.BIN     : {0}" -f $hasSegmentCollisionMapBin)
 Write-Host ("HAS FSMAP.BIN     : {0}" -f $hasFaceSurfaceMapBin)
+Write-Host ("HAS TDIR.BIN      : {0}" -f $hasTrackDirectionMapBin)
 Write-Host ("HAS MAT32.BIN     : {0}" -f $hasMat32Bin)
 Write-Host ("HAS MAT64.BIN     : {0}" -f $hasMat64Bin)
 Write-Host ("HAS packs manifest: {0}" -f $hasPacksManifest)
@@ -1654,6 +1675,7 @@ if ($lowGeoSample.Count -gt 0 -and $trackLightingLowCount -lt $expectedCount) {
 if ($ExportSurfaceFamilyMap -and -not $hasSurfaceFamilyMapBin) { $validationErrors.Add("SFMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportSurfaceFamilyMap -and -not $hasSegmentCollisionMapBin) { $validationErrors.Add("SCMAP.BIN ausente em cd\\data") | Out-Null }
 if ($ExportFaceSurfaceMap -and -not $hasFaceSurfaceMapBin) { $validationErrors.Add("FSMAP.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasTrackDirectionMapBin) { $validationErrors.Add("TDIR.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat64Bin) { $validationErrors.Add("MAT64.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasPacksManifest) { $validationErrors.Add("packs_manifest.json ausente em pacote_rancing") | Out-Null }

@@ -89,6 +89,24 @@ constexpr bool ShouldConfirmOppositeDirectionProgress(int32_t oppositeProgress,
     return planarUnitsPerFrame <= maxSingleStepUnitsPerFrame;
 }
 
+// The track direction map describes increasing logical segment ids.  Comparing
+// the camera with that local tangent distinguishes a genuine U-turn from a
+// hairpin: both the car and the tangent rotate together through a hairpin,
+// while only the car reverses during a turnaround at the same location.
+constexpr int8_t ResolveRouteRelativeDirection(int8_t currentDirection,
+                                                bool routeTangentValid,
+                                                int32_t cameraDotIncreasingRouteRaw,
+                                                int32_t reverseEnterDotRaw) noexcept
+{
+    currentDirection = (currentDirection < 0) ? -1 : 1;
+    if (!routeTangentValid || reverseEnterDotRaw <= 0) return currentDirection;
+    const bool facesIncreasingRoute = cameraDotIncreasingRouteRaw >= reverseEnterDotRaw;
+    const bool facesDecreasingRoute = cameraDotIncreasingRouteRaw <= -reverseEnterDotRaw;
+    if (currentDirection > 0 && facesDecreasingRoute) return -1;
+    if (currentDirection < 0 && facesIncreasingRoute) return 1;
+    return currentDirection;
+}
+
 constexpr int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentCount) noexcept
 {
     if (totalSegmentCount == 0u) return -1;
