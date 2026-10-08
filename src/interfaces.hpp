@@ -78,9 +78,11 @@ struct GameplayFrameState
     int16_t debugCorrX = 0;
     int16_t debugCorrZ = 0;
     uint8_t debugWallHit = 0u;
+    uint8_t debugGroundSupport = 0u;
     int16_t debugWallPushX = 0;
     int16_t debugWallPushZ = 0;
     int32_t debugWallSegmentId = -1;
+    int16_t debugWallDist = -1; // Chebyshev units to hit; -1 = miss
     int16_t groundFaceIndex = -1;
     uint16_t groundFamilyId = 0u;
     uint8_t groundSurfaceType = 0u;
@@ -270,22 +272,40 @@ struct ITrackCollisionQuery
         return true;
     }
     // Returns a planar push vector to keep the car out of side walls.
+    // commitPrevPosition: multiprobe hull should pass false for side probes.
+    // motionPrevPosition: optional per-sample previous pose for swept tests
+    // (overrides the stored car prev for this query only).
     virtual bool ResolvePlanarWallPush(const Vector3D& worldPosition,
                                        const Vector3D& forwardDirection,
                                        SRL::Math::Types::Fxp collisionRadius,
                                        Vector3D& outPush,
                                        int32_t* outSegmentId = nullptr,
-                                       int32_t seedSegmentId = -1) const
+                                       int32_t seedSegmentId = -1,
+                                       bool commitPrevPosition = true,
+                                       const Vector3D* motionPrevPosition = nullptr,
+                                       const Vector3D* hullLateralOtherEnd = nullptr) const
     {
         (void)worldPosition;
         (void)forwardDirection;
         (void)collisionRadius;
         (void)seedSegmentId;
+        (void)commitPrevPosition;
+        (void)motionPrevPosition;
+        (void)hullLateralOtherEnd;
         if (outSegmentId) *outSegmentId = -1;
         outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
                            SRL::Math::Types::Fxp::BuildRaw(0),
                            SRL::Math::Types::Fxp::BuildRaw(0));
         return false;
+    }
+
+    virtual void CommitWallQueryPrevPosition(const Vector3D& worldPosition) const
+    {
+        (void)worldPosition;
+    }
+
+    virtual void InvalidateWallQueryPrevPosition() const
+    {
     }
 
     // Rich contact sample for physics/gameplay behavior by face/surface.

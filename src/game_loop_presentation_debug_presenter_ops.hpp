@@ -9,6 +9,8 @@ namespace GameLoopRuntime
 
 inline void PresentDrivingHudShiftTextPacket(const DrivingHudTextPacket& packet)
 {
+    // Avoid a blank Debug::Print every idle frame — that alone feeds the ~4 FPS NBG3 tax.
+    static uint16_t s_lastShiftFrames = 0u;
     if (packet.shiftFrames > 0u)
     {
         SRL::Debug::Print(
@@ -19,10 +21,11 @@ inline void PresentDrivingHudShiftTextPacket(const DrivingHudTextPacket& packet)
             static_cast<int>(packet.shiftRpmAfter),
             static_cast<unsigned>(packet.shiftFrames));
     }
-    else
+    else if (s_lastShiftFrames > 0u)
     {
         SRL::Debug::Print(0, 11, "                         ");
     }
+    s_lastShiftFrames = packet.shiftFrames;
 }
 
 } // namespace GameLoopRuntime

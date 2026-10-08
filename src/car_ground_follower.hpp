@@ -464,12 +464,14 @@ public:
         ioState.surfaceYInitialized = false;
         ioState.surfaceYFilterInitialized = false;
         ioState.surfaceContactFrames = 0u;
+        ioState.bothAxleMissFrames = 0u;
         ioState.lastWallQueryFrameId = -1;
         ioState.lastWallApplyFrameId = -1;
         ioState.lastWallQueryHit = false;
         ioState.lastWallQuerySegmentId = -1;
         ioState.lastWallPushX = Fxp::BuildRaw(0);
         ioState.lastWallPushZ = Fxp::BuildRaw(0);
+        ioState.lastWallHitDistUnits = -1;
         ioState.lastSlopeAbsY = 0;
         ioState.gradeTanRaw = 0;
         ioState.gradeValid = false;
@@ -663,30 +665,73 @@ private:
         bool anyHit = false;
         Vector3D workingBase = basePosition;
 
+        // Saturn: one pass, left/right laterals only (+ center below).
+        // Extra corners × passes exploded SH2 cost (FPS~4) without fixing misses.
         constexpr uint8_t kMaxResolvePasses =
             Tunables::kEnableSaturnLowCostPhysics ? 1u : 3u;
         const Fxp probeHalfLength = Tunables::kWallHullHalfLength;
         const Fxp probeHalfWidth = Tunables::kWallHullHalfWidth;
         const Fxp negHalfLength = Fxp::BuildRaw(-probeHalfLength.RawValue());
         const Fxp negHalfWidth = Fxp::BuildRaw(-probeHalfWidth.RawValue());
-        const Fxp probeRadius = Tunables::kEnableSaturnLowCostPhysics
-            ? Tunables::kWallHullProbeRadius
-            : wallRadius;
-        const Fxp frontProbeLength = Tunables::kEnableSaturnLowCostPhysics
-            ? (probeHalfLength + probeRadius)
-            : probeHalfLength;
-        const std::pair<Fxp, Fxp> probeOffsets[6] = {
-            { frontProbeLength, negHalfWidth },
-            { frontProbeLength, probeHalfWidth },
-            { negHalfLength, negHalfWidth },
-            { negHalfLength, probeHalfWidth },
+        const Fxp probeRadius = Tunables::kWallHullProbeRadius;
+        // Low-cost: lateral mid-body only. Full: contact-box corners.
+        const std::pair<Fxp, Fxp> probeOffsetsLow[2] = {
             { Fxp::BuildRaw(0), negHalfWidth },
             { Fxp::BuildRaw(0), probeHalfWidth }
         };
-        // Cost cut micro-step: front L/R only (+ center fallback below).
-        // Rollback: restore 4u if wall clips under throttle/curve.
+        const std::pair<Fxp, Fxp> probeOffsetsFull[4] = {
+            { probeHalfLength, negHalfWidth },
+            { probeHalfLength, probeHalfWidth },
+            { negHalfLength, negHalfWidth },
+            { negHalfLength, probeHalfWidth }
+        };
+        const std::pair<Fxp, Fxp>* probeOffsets =
+            Tunables::kEnableSaturnLowCostPhysics
+                ? static_cast<const std::pair<Fxp, Fxp>*>(probeOffsetsLow)
+                : static_cast<const std::pair<Fxp, Fxp>*>(probeOffsetsFull);
         const uint8_t probeCount =
-            Tunables::kEnableSaturnLowCostPhysics ? 2u : 6u;
+            Tunables::kEnableSaturnLowCostPhysics ? 2u : 4u;
+        // Per-sample previous pose for swept segment tests (not shared car prev).
+        static Vector3D s_prevProbe[4]{};
+        static uint8_t s_prevProbeValidMask = 0u;
+        static Vector3D s_prevCenter{};
+        static bool s_prevCenterValid = false;
+        static int32_t s_prevSeedSegmentId = -1;
+        // Drop probe prev only on a teleport. 16u discarded a normal fast frame
+        // (~100 km/h), so the swept edge never met the wall (video 153915).
+        // Keep in step with kWallPrevInvalidateChebRaw in track_system.cxx.
+        constexpr int32_t kProbePrevMaxChebRaw = 80 << 16; // 80u
+        bool invalidateWallPrev = false;
+        if (s_prevSeedSegmentId > 0 && localSeedSegmentId > 0)
+        {
+            int32_t seedDelta = localSeedSegmentId - s_prevSeedSegmentId;
+            if (seedDelta < 0) seedDelta = -seedDelta;
+            if (seedDelta > 2)
+            {
+                s_prevProbeValidMask = 0u;
+                s_prevCenterValid = false;
+                invalidateWallPrev = true;
+            }
+        }
+        s_prevSeedSegmentId = localSeedSegmentId;
+        if (s_prevCenterValid)
+        {
+            const int32_t cdx = (workingBase.X - s_prevCenter.X).RawValue();
+            const int32_t cdz = (workingBase.Z - s_prevCenter.Z).RawValue();
+            const int32_t adx = (cdx < 0) ? -cdx : cdx;
+            const int32_t adz = (cdz < 0) ? -cdz : cdz;
+            const int32_t cheb = (adx > adz) ? adx : adz;
+            if (cheb > kProbePrevMaxChebRaw)
+            {
+                s_prevProbeValidMask = 0u;
+                s_prevCenterValid = false;
+                invalidateWallPrev = true;
+            }
+        }
+        if (invalidateWallPrev)
+        {
+            trackQuery->InvalidateWallQueryPrevPosition();
+        }
 
         for (uint8_t pass = 0; pass < kMaxResolvePasses; ++pass)
         {
@@ -695,61 +740,126 @@ private:
             int32_t bestSegmentId = -1;
             int64_t bestMagRaw = -1;
 
-            for (uint8_t probeIndex = 0; probeIndex < probeCount; ++probeIndex)
+            if (Tunables::kEnableSaturnLowCostPhysics)
             {
-                const auto& probeOffset = probeOffsets[probeIndex];
-                Vector3D probePosition = workingBase;
-                probePosition.X +=
-                    (forwardDirection.X * probeOffset.first) +
-                    (wallRightX * probeOffset.second);
-                probePosition.Z +=
-                    (forwardDirection.Z * probeOffset.first) +
-                    (wallRightZ * probeOffset.second);
-
-                Vector3D probePush{};
-                int32_t probeSegmentId = -1;
-                const bool hit = trackQuery->ResolvePlanarWallPush(
-                    probePosition,
+                // One lateral hull segment (left↔right mid-body) vs TCOL edge.
+                // Discrete ±halfWidth points left a dead zone at runoff (130219).
+                Vector3D hullLeft = workingBase;
+                Vector3D hullRight = workingBase;
+                hullLeft.X += wallRightX * negHalfWidth;
+                hullLeft.Z += wallRightZ * negHalfWidth;
+                hullRight.X += wallRightX * probeHalfWidth;
+                hullRight.Z += wallRightZ * probeHalfWidth;
+                const Vector3D* hullPrev =
+                    ((s_prevProbeValidMask & 0x1u) != 0u) ? &s_prevProbe[0] : nullptr;
+                Vector3D hullPush{};
+                int32_t hullSegmentId = -1;
+                const bool hullHit = trackQuery->ResolvePlanarWallPush(
+                    hullLeft,
                     forwardDirection,
                     probeRadius,
-                    probePush,
-                    &probeSegmentId,
-                    localSeedSegmentId);
-                if (!hit)
+                    hullPush,
+                    &hullSegmentId,
+                    localSeedSegmentId,
+                    /*commitPrevPosition=*/false,
+                    hullPrev,
+                    &hullRight);
+                s_prevProbe[0] = hullLeft;
+                s_prevProbe[1] = hullRight;
+                s_prevProbeValidMask = static_cast<uint8_t>(
+                    s_prevProbeValidMask | 0x3u);
+                if (hullHit)
                 {
-                    continue;
+                    passHit = true;
+                    anyHit = true;
+                    const int64_t magRaw =
+                        static_cast<int64_t>(hullPush.X.Abs().RawValue()) +
+                        static_cast<int64_t>(hullPush.Z.Abs().RawValue());
+                    if (magRaw > bestMagRaw)
+                    {
+                        bestMagRaw = magRaw;
+                        bestPush = hullPush;
+                        bestSegmentId = hullSegmentId;
+                    }
                 }
-
-                passHit = true;
-                anyHit = true;
-                const int64_t magRaw =
-                    static_cast<int64_t>(probePush.X.Abs().RawValue()) +
-                    static_cast<int64_t>(probePush.Z.Abs().RawValue());
-                if (magRaw > bestMagRaw)
+            }
+            else
+            {
+                for (uint8_t probeIndex = 0; probeIndex < probeCount; ++probeIndex)
                 {
-                    bestMagRaw = magRaw;
-                    bestPush = probePush;
-                    bestSegmentId = probeSegmentId;
+                    const auto& probeOffset = probeOffsets[probeIndex];
+                    Vector3D probePosition = workingBase;
+                    probePosition.X +=
+                        (forwardDirection.X * probeOffset.first) +
+                        (wallRightX * probeOffset.second);
+                    probePosition.Z +=
+                        (forwardDirection.Z * probeOffset.first) +
+                        (wallRightZ * probeOffset.second);
+
+                    const Vector3D* probePrev =
+                        ((s_prevProbeValidMask & static_cast<uint8_t>(1u << probeIndex)) != 0u)
+                            ? &s_prevProbe[probeIndex]
+                            : nullptr;
+
+                    Vector3D probePush{};
+                    int32_t probeSegmentId = -1;
+                    const bool hit = trackQuery->ResolvePlanarWallPush(
+                        probePosition,
+                        forwardDirection,
+                        probeRadius,
+                        probePush,
+                        &probeSegmentId,
+                        localSeedSegmentId,
+                        /*commitPrevPosition=*/false,
+                        probePrev);
+                    s_prevProbe[probeIndex] = probePosition;
+                    s_prevProbeValidMask =
+                        static_cast<uint8_t>(s_prevProbeValidMask | (1u << probeIndex));
+                    if (!hit)
+                    {
+                        continue;
+                    }
+
+                    passHit = true;
+                    anyHit = true;
+                    const int64_t magRaw =
+                        static_cast<int64_t>(probePush.X.Abs().RawValue()) +
+                        static_cast<int64_t>(probePush.Z.Abs().RawValue());
+                    if (magRaw > bestMagRaw)
+                    {
+                        bestMagRaw = magRaw;
+                        bestPush = probePush;
+                        bestSegmentId = probeSegmentId;
+                    }
                 }
             }
 
-            if constexpr (Tunables::kEnableSaturnLowCostPhysics)
+            // Center sample with dynamic radius (speed lookahead from caller).
             {
-                if (!passHit)
+                const Vector3D* centerPrev = s_prevCenterValid ? &s_prevCenter : nullptr;
+                Vector3D centerPush{};
+                int32_t centerSegmentId = -1;
+                const bool centerHit = trackQuery->ResolvePlanarWallPush(
+                    workingBase,
+                    forwardDirection,
+                    wallRadius,
+                    centerPush,
+                    &centerSegmentId,
+                    localSeedSegmentId,
+                    /*commitPrevPosition=*/false,
+                    centerPrev);
+                s_prevCenter = workingBase;
+                s_prevCenterValid = true;
+                if (centerHit)
                 {
-                    Vector3D centerPush{};
-                    int32_t centerSegmentId = -1;
-                    const bool centerHit = trackQuery->ResolvePlanarWallPush(
-                        workingBase,
-                        forwardDirection,
-                        wallRadius,
-                        centerPush,
-                        &centerSegmentId,
-                        localSeedSegmentId);
-                    if (centerHit)
+                    passHit = true;
+                    anyHit = true;
+                    const int64_t magRaw =
+                        static_cast<int64_t>(centerPush.X.Abs().RawValue()) +
+                        static_cast<int64_t>(centerPush.Z.Abs().RawValue());
+                    if (magRaw > bestMagRaw)
                     {
-                        passHit = true;
-                        anyHit = true;
+                        bestMagRaw = magRaw;
                         bestPush = centerPush;
                         bestSegmentId = centerSegmentId;
                     }
@@ -771,6 +881,9 @@ private:
                 lastHitSegmentId = bestSegmentId;
             }
         }
+
+        // Telemetry / legacy consumers: car-center pose after resolve.
+        trackQuery->CommitWallQueryPrevPosition(workingBase);
 
         if (outSegmentId)
         {
@@ -1022,8 +1135,31 @@ private:
         publishWheel(rr, ioFrameState.debugWheelSurfYRr, ioFrameState.debugWheelDistRr);
 
         // Incomplete F+R: keep last heave/grade (anti-float / anti-escada).
+        // Both axles miss: sticky only for kBothAxleMissHoldFrames, then clear
+        // support so g:1 does not latch forever while floating (video 115458).
         if (!frontValid || !rearValid)
         {
+            if (!frontValid && !rearValid)
+            {
+                if (ioState.bothAxleMissFrames < 255u)
+                {
+                    ++ioState.bothAxleMissFrames;
+                }
+                if (ioState.bothAxleMissFrames > Tunables::kBothAxleMissHoldFrames)
+                {
+                    ioState.hasGroundSupport = false;
+                    ioState.surfaceYFilterInitialized = false;
+                    ioFrameState.debugGroundYTarget =
+                        FxpToDebugInt(ioState.surfaceYTarget);
+                    ioFrameState.debugGroundYBody =
+                        FxpToDebugInt(ioState.surfaceYFiltered);
+                    return;
+                }
+            }
+            else
+            {
+                ioState.bothAxleMissFrames = 0u;
+            }
             int32_t stickyPlaneY = 0;
             if (ArcadeSuspensionFilter::AverageTargetYRaw(
                     ioState.suspension, stickyPlaneY))
@@ -1056,6 +1192,7 @@ private:
             ioFrameState.debugGroundYBody = FxpToDebugInt(ioState.surfaceYFiltered);
             return;
         }
+        ioState.bothAxleMissFrames = 0u;
         ioState.hasGroundSupport = true;
 
         // Do NOT fall back to body Y for a missing corner — that equalizes
@@ -2313,6 +2450,21 @@ private:
                 ioState.lastWallQueryFrameId = frameId;
                 ioState.lastWallPushX = ioState.lastWallQueryHit ? wallPush.X : Fxp::BuildRaw(0);
                 ioState.lastWallPushZ = ioState.lastWallQueryHit ? wallPush.Z : Fxp::BuildRaw(0);
+                if (ioState.lastWallQueryHit)
+                {
+                    // pen ≈ |push| for unit normal; dist ≈ radius − pen (units).
+                    const int32_t pushCheb =
+                        std::max(ioState.lastWallPushX.Abs().RawValue(),
+                                 ioState.lastWallPushZ.Abs().RawValue()) >> 16;
+                    const int32_t radU = wallRadius.RawValue() >> 16;
+                    ioState.lastWallHitDistUnits = static_cast<int16_t>(
+                        std::clamp<int32_t>(radU - pushCheb, -32768, 32767));
+                    ioState.wallHitNoSupportCooldown = 12u;
+                }
+                else
+                {
+                    ioState.lastWallHitDistUnits = -1;
+                }
             }
 
             if (ioState.lastWallQueryHit)
@@ -2321,6 +2473,7 @@ private:
                 ioFrameState.debugWallSegmentId = ioState.lastWallQuerySegmentId;
                 ioFrameState.debugWallPushX = FxpToDebugInt(ioState.lastWallPushX);
                 ioFrameState.debugWallPushZ = FxpToDebugInt(ioState.lastWallPushZ);
+                ioFrameState.debugWallDist = ioState.lastWallHitDistUnits;
                 if (ioState.lastWallApplyFrameId != frameId)
                 {
                     ioState.correctionX += ioState.lastWallPushX;
@@ -2330,14 +2483,17 @@ private:
             }
         }
 
-        // Clamp planar correction so adhesion/collision does not cancel steering
-        // and produce orbit-like camera behavior around an almost static car.
+        // Clamp planar correction. Wall hits allow a higher ceiling so a single
+        // frame can finish separating after a high-speed swept contact.
+        const Fxp maxCorr = ioState.lastWallQueryHit
+            ? Tunables::kMaxWallPlanarCorrectionPerFrame
+            : Tunables::kMaxPlanarCorrectionPerFrame;
         ioState.correctionX = Clamp(ioState.correctionX,
-                                    Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
-                                    Tunables::kMaxPlanarCorrectionPerFrame);
+                                    Fxp::BuildRaw(-maxCorr.RawValue()),
+                                    maxCorr);
         ioState.correctionZ = Clamp(ioState.correctionZ,
-                                    Fxp::BuildRaw(-Tunables::kMaxPlanarCorrectionPerFrame.RawValue()),
-                                    Tunables::kMaxPlanarCorrectionPerFrame);
+                                    Fxp::BuildRaw(-maxCorr.RawValue()),
+                                    maxCorr);
         ioFrameState.debugCorrX = FxpToDebugInt(ioState.correctionX);
         ioFrameState.debugCorrZ = FxpToDebugInt(ioState.correctionZ);
 

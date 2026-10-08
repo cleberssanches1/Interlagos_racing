@@ -155,6 +155,10 @@ private:
 
         // Row 17 is independent from optional verbose HUD telemetry. It is
         // refreshed by real VBlank time every ten seconds.
+#ifndef PHYS_ENABLE_MEM10_OVERLAY
+#define PHYS_ENABLE_MEM10_OVERLAY 1
+#endif
+#if PHYS_ENABLE_MEM10_OVERLAY
         SRL::Debug::Print(0, 17, "POLY10 T:%u C:%u A:%u P:%u M:%d",
                           static_cast<unsigned>(averageTrackFaces),
                           static_cast<unsigned>(averageCarFaces),
@@ -163,6 +167,12 @@ private:
                           static_cast<int>(peakMargin));
 
         PresentMemoryBudgetOverlay();
+#else
+        (void)averageTrackFaces;
+        (void)averageCarFaces;
+        (void)averageFaces;
+        (void)peakMargin;
+#endif
 
         polygonSampleStartVblank_ = vblankCounter;
         polygonTrackFacesAccum_ = 0u;

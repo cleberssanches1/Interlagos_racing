@@ -262,6 +262,9 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     runtimeDebug_.groundFaceIndex = frameState.groundFaceIndex;
     runtimeDebug_.wallPushX = frameState.debugWallPushX;
     runtimeDebug_.wallPushZ = frameState.debugWallPushZ;
+    runtimeDebug_.wallSegmentId =
+        static_cast<int16_t>(std::clamp<int32_t>(frameState.debugWallSegmentId, -32768, 32767));
+    runtimeDebug_.wallDist = frameState.debugWallDist;
     runtimeDebug_.yawRateDeg = frameState.debugYawRateDeg;
     runtimeDebug_.yawStepDeg = frameState.debugYawStepDeg;
     runtimeDebug_.planarDx = frameState.debugPlanarDx;
@@ -280,6 +283,7 @@ void CarSystem::SetRuntimeFrameState(const GameplayFrameState& frameState)
     runtimeDebug_.groundFamilyId = frameState.groundFamilyId;
     runtimeDebug_.SetBraking(frameState.braking);
     runtimeDebug_.SetWallHit(frameState.debugWallHit != 0u);
+    runtimeDebug_.SetGroundSupport(frameState.debugGroundSupport != 0u);
 
     // Prefer km/h for pitch hold gate (speedProxy is internal units — was
     // flattening pitch while the car was still rolling on grades).

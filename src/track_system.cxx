@@ -1,5 +1,6 @@
 #include "track_system.hpp"
 #include "face_surface_map.hpp"
+#include "track_collision_map.hpp"
 #include "physics_feature_flags.hpp"
 #include "interfaces.hpp"
 #include "surface_classify.hpp"
@@ -290,8 +291,9 @@ static constexpr size_t kWorkRamTrackOwnedBypassBytes = 32u * 1024u;
 // Stabilized runtime policy: keep a fixed pre-reserved floor for per-segment
 // face/vertex vectors so long laps do not keep growing capacities as the car
 // reaches heavier segments later in the track.
-static constexpr size_t kStabilizedFaceCapacityFloorCap = 384u;
-static constexpr size_t kStabilizedVertexCapacityFloorCap = 384u;
+// Stabilization A/B: 384×19 slots helped exhaust LWR (MEM10 L:1024/0).
+static constexpr size_t kStabilizedFaceCapacityFloorCap = 256u;
+static constexpr size_t kStabilizedVertexCapacityFloorCap = 256u;
 static constexpr size_t kLodMandatoryBandSegmentCount =
     kLodBand64Count + kLodBand32Count;
 static constexpr uint16_t kTrackRuntimeMemRev = 7u;
@@ -401,8 +403,10 @@ static constexpr bool kEnableLeakABSkipTrackRenderSubmit = false;
 static constexpr bool kEnableTrackWindowOverlayTelemetry = false;
 static constexpr bool kEnableLegacyFamilyOverlayTelemetry = false;
 static constexpr bool kEnableLegacyTrackOverlayTelemetry = false;
-// Fase A (belt stability plan): compact HUD for soft-admit / ownership / upload misses.
-static constexpr bool kEnableBeltTelemetryOverlay = true;
+// Fase 1 FPS A/B: BLT/BL2/BL3 every frame crush NBG3 to ~4 FPS. Keep off for play.
+static constexpr bool kEnableBeltTelemetryOverlay = false;
+// Boot RAM/PK/SCM sticky rows — enable only while diagnosing Cart/LWR boot.
+static constexpr bool kEnableBootRamTelemetry = false;
 // SH2 overlays disabled to keep screen focused on FPS + WorkRAM tracking.
 static constexpr bool kEnableSh2UsageOverlay = false;
 static constexpr bool kEnableLegacyTrackOverlaySh2Telemetry = false;
@@ -920,7 +924,22 @@ static bool ReadCdFileFully(SRL::Cd::File& file, uint32_t totalBytes, uint8_t* d
 static bool ParseRenTextureCopyMap(const char* json, RenTextureMap& out);
 static bool ParseFaceFamilyArrayForSegment1(const char* json, Segment1TextureJson& out);
 static bool ParseSegment1TextureJson(const char* json, Segment1TextureJson& out);
-static bool LoadTrackRuntimePackToCart(const char* const* candidates, size_t count, TrackRuntimePackCache& cache);
+// Fail tags for sticky PK diagnostics (miss/open/malloc/read/parse).
+enum class TrackPackLoadFail : uint8_t
+{
+    None = 0,
+    Miss,
+    Open,
+    Malloc,
+    Read,
+    Parse
+};
+static bool LoadTrackRuntimePackToCart(const char* const* candidates,
+                                       size_t count,
+                                       TrackRuntimePackCache& cache,
+                                       TrackPackLoadFail* outFail = nullptr);
+static TrackRuntimePackCache& GetHighTrackRuntimePackCache();
+static TrackRuntimePackCache& GetLowTrackRuntimePackCache();
 static bool LoadPackedAssetIndexToCart(const char* const* candidates, size_t count, PackedAssetCache& cache);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentComponent::Blob& out);
 static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entryName, SegmentDrawReady::Blob& out);
@@ -3998,20 +4017,21 @@ static uint8_t ResolveDesignGeoTierByRank(size_t rank)
     return (rank < kDesignLod0RankCount) ? kDesignGeoHigh : kDesignGeoLow;
 }
 
-static bool LoadRdrMappedForSegment(int segmentId,
-                                    SegmentRuntimeDraw::MappedBlob& outBlob,
-                                    SegmentRuntimeDraw::Loader::View& outView,
-                                    SegmentRuntimeDraw::Blob* fallbackBlob = nullptr,
-                                    bool quietMissLog = false,
-                                    uint8_t designGeoTier = kDesignGeoHigh)
+static TrackRuntimePackCache& GetHighTrackRuntimePackCache()
 {
     static TrackRuntimePackCache sTrackRdrPackCacheHigh{};
-    static TrackRuntimePackCache sTrackRdrPackCacheLow{};
-    TrackRuntimePackCache& sTrackRdrPackCache =
-        (designGeoTier != kDesignGeoHigh) ? sTrackRdrPackCacheLow : sTrackRdrPackCacheHigh;
+    return sTrackRdrPackCacheHigh;
+}
 
-    // High: TRKRDR.BIN (S###.RDR). Low: TRKRDRL.BIN (S###L.RDR). Fallback to high pack.
-    const char* packCandidatesHigh[] = {
+static TrackRuntimePackCache& GetLowTrackRuntimePackCache()
+{
+    static TrackRuntimePackCache sTrackRdrPackCacheLow{};
+    return sTrackRdrPackCacheLow;
+}
+
+static const char* const* GetHighTrackRuntimePackCandidates(size_t& outCount)
+{
+    static const char* packCandidatesHigh[] = {
         "/CD/DATA/TRKRDR.BIN",
         "/CD/DATA/TRKRDR.BIN;1",
         "/DATA/TRKRDR.BIN",
@@ -4033,7 +4053,13 @@ static bool LoadRdrMappedForSegment(int segmentId,
         "trkrdr.bin",
         "trkrdr.bin;1"
     };
-    const char* packCandidatesLow[] = {
+    outCount = sizeof(packCandidatesHigh) / sizeof(packCandidatesHigh[0]);
+    return packCandidatesHigh;
+}
+
+static const char* const* GetLowTrackRuntimePackCandidates(size_t& outCount)
+{
+    static const char* packCandidatesLow[] = {
         "/CD/DATA/TRKRDRL.BIN",
         "/CD/DATA/TRKRDRL.BIN;1",
         "/DATA/TRKRDRL.BIN",
@@ -4053,14 +4079,25 @@ static bool LoadRdrMappedForSegment(int segmentId,
         "trkrdrl.bin",
         "trkrdrl.bin;1"
     };
+    outCount = sizeof(packCandidatesLow) / sizeof(packCandidatesLow[0]);
+    return packCandidatesLow;
+}
 
-    const char* const* packCandidates = packCandidatesHigh;
-    size_t packCandidateCount = sizeof(packCandidatesHigh) / sizeof(packCandidatesHigh[0]);
-    if (designGeoTier != kDesignGeoHigh)
-    {
-        packCandidates = packCandidatesLow;
-        packCandidateCount = sizeof(packCandidatesLow) / sizeof(packCandidatesLow[0]);
-    }
+static bool LoadRdrMappedForSegment(int segmentId,
+                                    SegmentRuntimeDraw::MappedBlob& outBlob,
+                                    SegmentRuntimeDraw::Loader::View& outView,
+                                    SegmentRuntimeDraw::Blob* fallbackBlob = nullptr,
+                                    bool quietMissLog = false,
+                                    uint8_t designGeoTier = kDesignGeoHigh)
+{
+    TrackRuntimePackCache& sTrackRdrPackCache =
+        (designGeoTier != kDesignGeoHigh) ? GetLowTrackRuntimePackCache()
+                                          : GetHighTrackRuntimePackCache();
+
+    size_t packCandidateCount = 0;
+    const char* const* packCandidates =
+        (designGeoTier != kDesignGeoHigh) ? GetLowTrackRuntimePackCandidates(packCandidateCount)
+                                          : GetHighTrackRuntimePackCandidates(packCandidateCount);
 
     outBlob = {};
     outView = {};
@@ -5623,10 +5660,17 @@ static bool ReadCdFileFully(SRL::Cd::File& file, uint32_t totalBytes, uint8_t* d
     outReadBytes = 0;
     if (!dst || totalBytes == 0) return false;
 
+    // GFS/CD drivers often reject or stall on multi-hundred-KiB single reads.
+    // Cap each request so TRKRDR/TCOL (~0.4–1.2 MiB) can fill Cart reliably;
+    // a failed full-pack read leaves the visual belt empty (RAM belt lf unchanged).
+    constexpr int32_t kMaxCdReadChunkBytes = 32 * 1024;
+
     while (outReadBytes < totalBytes)
     {
-        const int32_t toRead = static_cast<int32_t>(totalBytes - outReadBytes);
-        if (toRead <= 0) break;
+        const int32_t remaining = static_cast<int32_t>(totalBytes - outReadBytes);
+        if (remaining <= 0) break;
+        const int32_t toRead =
+            (remaining > kMaxCdReadChunkBytes) ? kMaxCdReadChunkBytes : remaining;
         int32_t got = file.Read(toRead, dst + outReadBytes);
         if (got <= 0) break;
         outReadBytes += static_cast<uint32_t>(got);
@@ -5635,8 +5679,13 @@ static bool ReadCdFileFully(SRL::Cd::File& file, uint32_t totalBytes, uint8_t* d
     return outReadBytes == totalBytes;
 }
 
-static bool LoadTrackRuntimePackToCart(const char* const* candidates, size_t count, TrackRuntimePackCache& cache)
+static bool LoadTrackRuntimePackToCart(const char* const* candidates,
+                                       size_t count,
+                                       TrackRuntimePackCache& cache,
+                                       TrackPackLoadFail* outFail)
 {
+    if (outFail) *outFail = TrackPackLoadFail::None;
+
     char rememberedPath[96]{};
     if (cache.sourcePath[0] != '\0')
     {
@@ -5671,20 +5720,37 @@ static bool LoadTrackRuntimePackToCart(const char* const* candidates, size_t cou
             foundPath = candidates[i];
         }
     }
-    if (!foundPath) return false;
+    if (!foundPath)
+    {
+        if (outFail) *outFail = TrackPackLoadFail::Miss;
+        return false;
+    }
 
     SRL::Cd::File file(foundPath);
-    if (file.Size.Bytes <= 0) return false;
-    if (!file.Open()) return false;
+    if (file.Size.Bytes <= 0)
+    {
+        if (outFail) *outFail = TrackPackLoadFail::Miss;
+        return false;
+    }
+    if (!file.Open())
+    {
+        if (outFail) *outFail = TrackPackLoadFail::Open;
+        return false;
+    }
 
     const uint32_t bytes = static_cast<uint32_t>(file.Size.Bytes);
     void* mem = SRL::Memory::CartRam::Malloc(bytes);
-    if (!mem) return false;
+    if (!mem)
+    {
+        if (outFail) *outFail = TrackPackLoadFail::Malloc;
+        return false;
+    }
 
     uint32_t readBytes = 0;
     if (!ReadCdFileFully(file, bytes, static_cast<uint8_t*>(mem), readBytes))
     {
         SRL::Memory::CartRam::Free(mem);
+        if (outFail) *outFail = TrackPackLoadFail::Read;
         return false;
     }
 
@@ -5693,6 +5759,7 @@ static bool LoadTrackRuntimePackToCart(const char* const* candidates, size_t cou
     if (!TrackRuntimePack::Loader::Parse(cache.cartPtr, cache.size, cache.view))
     {
         InvalidateTrackRuntimePackCache(cache);
+        if (outFail) *outFail = TrackPackLoadFail::Parse;
         return false;
     }
 
@@ -10734,10 +10801,13 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     const size_t maxFaces = std::max<size_t>(1u, static_cast<size_t>(packHeader.maxFaceCount));
     const size_t maxVerts = std::max<size_t>(1u, static_cast<size_t>(packHeader.maxVertexCount));
     const size_t maxFamilies = std::max<size_t>(1u, static_cast<size_t>(packHeader.maxFamilyCount));
-    SRL::Debug::Print(1, 31, "TRK prm mxF:%u mxV:%u mxFam:%u",
-                      static_cast<unsigned>(maxFaces),
-                      static_cast<unsigned>(maxVerts),
-                      static_cast<unsigned>(maxFamilies));
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        SRL::Debug::Print(1, 31, "TRK prm mxF:%u mxV:%u mxFam:%u",
+                          static_cast<unsigned>(maxFaces),
+                          static_cast<unsigned>(maxVerts),
+                          static_cast<unsigned>(maxFamilies));
+    }
     // In fixed64 test mode the pack contains only 64x64 geometry; the hard floor
     // cap can be set lower than the full-production 768 ceiling.  Outlier segments
     // that exceed this cap are handled by the RecycleRuntimeState compact (capacity >
@@ -10768,10 +10838,13 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
         kEnableTrackRuntimeStabilization
             ? std::min<size_t>(maxVerts, effectiveVertCap)
             : maxVerts;
-    SRL::Debug::Print(1, 31, "TRK prm fF:%u vF:%u famF:%u",
-                      static_cast<unsigned>(faceReserveFloor),
-                      static_cast<unsigned>(vertReserveFloor),
-                      static_cast<unsigned>(familyFloor));
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        SRL::Debug::Print(1, 31, "TRK prm fF:%u vF:%u famF:%u",
+                          static_cast<unsigned>(faceReserveFloor),
+                          static_cast<unsigned>(vertReserveFloor),
+                          static_cast<unsigned>(familyFloor));
+    }
     if (kEnableTrackRuntimeStabilization)
     {
         // Keep fixed floors in stabilized mode to avoid progressive growth and
@@ -10824,18 +10897,24 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
     {
         stabilizedSortedHandlesScratch_.reserve(segmentCap);
     }
+
+    // Empty fixed-window slots after a failed Rebuild must not receive capacity
+    // floors — flooring ~19 empty lodState vectors exhausts LWR (black scene).
+    if (!SegmentsReady())
+    {
+        return;
+    }
+
     for (auto& entry : segmentRenderers_)
     {
+        if (!entry.lodState.Ready() || !entry.renderer) continue;
         EnsureVectorCapacityFloor(entry.lodState.faceFamilyIds, faceReserveFloor);
         EnsureVectorCapacityFloor(entry.lodState.faceRankOffsets, faceReserveFloor);
         EnsureVectorCapacityFloor(entry.lodState.currentFaceSlots, faceReserveFloor);
         EnsureVectorCapacityFloor(entry.lodState.workingSetFamilies, faceReserveFloor);
         EnsureVectorCapacityFloor(entry.lodState.workingSetLodIndices, faceReserveFloor);
         EnsureVectorCapacityFloor(entry.lodState.workingSetSlots, faceReserveFloor);
-        if (entry.renderer)
-        {
-            ApplyActiveRendererCapacityFloor(*entry.renderer);
-        }
+        ApplyActiveRendererCapacityFloor(*entry.renderer);
     }
     if (slideScratchRenderer_)
     {
@@ -10846,21 +10925,21 @@ void TrackSystem::PrimeRuntimeScratchCapacities()
         ApplyActiveRendererCapacityFloor(*slidePrefetchRenderer_);
     }
     // Prime scratch vectors not covered by the segmentRenderers_ loop:
-    // runtimeRenderFaceSlotsScratch_ grows lazily on first render per entry â€”
+    // runtimeRenderFaceSlotsScratch_ grows lazily on first render per entry —
     // pre-floor it to avoid one-time alloc during the first rendered frame.
     if (runtimeRenderFaceSlotsScratch_.capacity() < faceReserveFloor)
         runtimeRenderFaceSlotsScratch_.reserve(faceReserveFloor);
     if (slideRollbackFaceSlotsScratch_.capacity() < faceReserveFloor)
         slideRollbackFaceSlotsScratch_.reserve(faceReserveFloor);
-    // slideScratchEntry_ is a persistent entry used as staging â€” give it the
-    // same floor as all segmentRenderers_ entries.
+    // slideScratchEntry_ is a persistent entry used as staging — give it the
+    // same floor as ready segmentRenderers_ entries.
     EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceFamilyIds, faceReserveFloor);
     EnsureVectorCapacityFloor(slideScratchEntry_.lodState.faceRankOffsets, faceReserveFloor);
     EnsureVectorCapacityFloor(slideScratchEntry_.lodState.currentFaceSlots, faceReserveFloor);
     EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetFamilies, faceReserveFloor);
     EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetLodIndices, faceReserveFloor);
     EnsureVectorCapacityFloor(slideScratchEntry_.lodState.workingSetSlots, faceReserveFloor);
-    // slideScratchBoundarySlots_ entries grow on first boundary prepare â€” floor them.
+    // slideScratchBoundarySlots_ entries grow on first boundary prepare — floor them.
     for (auto& s : slideScratchBoundarySlots_)
     {
         if (s.capacity() < faceReserveFloor) s.reserve(faceReserveFloor);
@@ -13883,16 +13962,19 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
         cameraDirectionReferenceZRaw_ = cameraForward.Z.RawValue();
         cameraDirectionReferenceSegmentId_ = static_cast<int16_t>(anchorId);
     }
-    else if (TrackStreamingPolicy::ShouldConfirmOppositeDirectionProgress(
+    else if (TrackStreamingPolicy::ShouldApplyOppositeProgressFlip(
+                 routeTangentValid,
+                 routeDesiredDirection,
+                 currentDirection,
                  oppositeProgress,
                  PrefetchSpeedProxyValid(),
                  prefetchSpeedProxyRaw_,
                  kHeadingOnlyDirectionMaxUnitsPerFrame))
     {
-        // The face-confirmed segment moved against the current belt direction.
-        // At speed, require two logical steps: a one-step regression is common
-        // where both sides of a hairpin are spatially close and wheel probes
-        // alternate between neighboring faces.
+        // Opposite segment progress alone used to flip the belt on reverse gear
+        // while the camera still faced the route (134618: scenery ahead culled).
+        // ShouldApplyOppositeProgressFlip refuses that when TDIR still agrees;
+        // a real U-turn changes routeDesiredDirection via the tangent dot first.
         rawDesiredDirection = static_cast<int8_t>(-currentDirection);
     }
     else if (oppositeProgress > 0 && oppositeProgress <= 2)
@@ -14204,6 +14286,12 @@ void TrackSystem::ResetInitializationState()
         faceSurfaceMapCartPtr_ = nullptr;
         faceSurfaceMapCartBytes_ = 0u;
     }
+    if (trackCollisionMapCartPtr_)
+    {
+        SRL::Memory::CartRam::Free(trackCollisionMapCartPtr_);
+        trackCollisionMapCartPtr_ = nullptr;
+        trackCollisionMapCartBytes_ = 0u;
+    }
     SetReadyFlag(false);
     SetSegmentsReady(false);
     SetCoordinatorReady(false);
@@ -14371,17 +14459,18 @@ size_t TrackSystem::ResolveInitialLoadLimit(const Config& config) const
     return std::min<size_t>(config.initialSegments, kTrackSegmentLimit);
 }
 
-void TrackSystem::PrepareInitialSegmentPackages(size_t loadLimit)
+bool TrackSystem::PrepareInitialSegmentPackages(size_t loadLimit)
 {
     const uint32_t desiredCap = std::max<uint32_t>(1u, static_cast<uint32_t>(loadLimit));
     fixedVisibleSegmentCap_ =
         std::min<uint32_t>(desiredCap,
                            std::max<uint32_t>(1u, static_cast<uint32_t>(totalSegmentCount_)));
-    (void)RebuildActiveSegmentWindow(1, fixedVisibleSegmentCap_, +1);
+    const bool rebuilt = RebuildActiveSegmentWindow(1, fixedVisibleSegmentCap_, +1);
     trackedCarSegmentId_ = 1;
     SetTrackedCarSegmentValid(true);
     targetWindowStartId_ = 1;
     TryPrefetchUpcomingSegment();
+    return rebuilt && SegmentsReady();
 }
 
 void TrackSystem::ApplyTrackSlaveMode()
@@ -14507,6 +14596,12 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         SRL::Memory::CartRam::Free(faceSurfaceMapCartPtr_);
         faceSurfaceMapCartPtr_ = nullptr;
         faceSurfaceMapCartBytes_ = 0u;
+    }
+    if (trackCollisionMapCartPtr_)
+    {
+        SRL::Memory::CartRam::Free(trackCollisionMapCartPtr_);
+        trackCollisionMapCartPtr_ = nullptr;
+        trackCollisionMapCartBytes_ = 0u;
     }
 
     if (totalSegmentCount_ == 0) return;
@@ -14688,11 +14783,170 @@ void TrackSystem::LoadSurfaceCollisionMaps()
         }
     }
 
-    SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u fm:%u td:%u",
-                      SurfaceFamilyMapReady() ? 1u : 0u,
-                      SegmentCollisionMapReady() ? 1u : 0u,
-                      faceSurfaceMapCartPtr_ ? 1u : 0u,
-                      routeDirectionMapReady_ ? 1u : 0u);
+    // Boot-time TCOL is gated OFF by default (starves visual belt Cart).
+    // Prefer LoadTrackCollisionCartMaps() after the belt via AFTER_BELT.
+    if (Game::PhysicsFeatureFlags::kEnableTrackCollisionCartMapsAtBoot)
+    {
+        LoadTrackCollisionCartMaps();
+    }
+
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u fm:%u tc:%u td:%u",
+                          SurfaceFamilyMapReady() ? 1u : 0u,
+                          SegmentCollisionMapReady() ? 1u : 0u,
+                          faceSurfaceMapCartPtr_ ? 1u : 0u,
+                          trackCollisionMapCartPtr_ ? 1u : 0u,
+                          routeDirectionMapReady_ ? 1u : 0u);
+    }
+}
+
+void TrackSystem::LoadTrackCollisionCartMaps()
+{
+    if (trackCollisionMapCartPtr_)
+    {
+        // Sticky: confirm residency even when boot RAM telemetry is off (124003).
+        SRL::Debug::Print(1, 12, "TCOL ok tc:1 wc:%u cf:%u",
+                          static_cast<unsigned>(TrackCollisionWallCount()),
+                          static_cast<unsigned>(SRL::Memory::CartRam::GetReport().FreeSize));
+        return;
+    }
+
+    const char* trackCollisionCandidates[] = {
+        "/CD/DATA/TCOL.BIN", "/CD/DATA/TCOL.BIN;1",
+        "/DATA/TCOL.BIN", "/DATA/TCOL.BIN;1",
+        "CD/DATA/TCOL.BIN", "CD/DATA/TCOL.BIN;1",
+        "DATA/TCOL.BIN", "DATA/TCOL.BIN;1",
+        "cd/data/TCOL.BIN", "cd/data/TCOL.BIN;1",
+        "TCOL.BIN", "TCOL.BIN;1"
+    };
+
+    // Video 124003: TC 0/0 — soft reserve 512 KiB + FSMAP still resident made
+    // need+reserve ≈ 1.45 MiB unreachable after the visual belt. TCOL is the
+    // LOD0 collider (not VDP1); prioritize it over FSMAP and keep a small
+    // post-load slack only.
+    constexpr uint32_t kCartReserveAfterTcolBytes = 128u * 1024u;
+    uint32_t tcolNeedBytes = 0u;
+    SRL::Cd::ChangeDir((const char*)0);
+    for (size_t i = 0u; i < sizeof(trackCollisionCandidates) / sizeof(trackCollisionCandidates[0]); ++i)
+    {
+        SRL::Cd::File probe(trackCollisionCandidates[i]);
+        if (probe.Exists() && probe.Size.Bytes > 0)
+        {
+            tcolNeedBytes = static_cast<uint32_t>(probe.Size.Bytes);
+            break;
+        }
+    }
+
+    // Free FSMAP first so Cart free reflects what physics will actually use.
+    // TCOL supersedes FSMAP for ground/walls; GEO remains the only fallback
+    // if this load fails (LOD0 visual count is 0 — degraded but honest).
+    if (faceSurfaceMapCartPtr_)
+    {
+        SRL::Memory::CartRam::Free(faceSurfaceMapCartPtr_);
+        faceSurfaceMapCartPtr_ = nullptr;
+        faceSurfaceMapCartBytes_ = 0u;
+    }
+
+    const auto cartBefore = SRL::Memory::CartRam::GetReport();
+    if (tcolNeedBytes == 0u)
+    {
+        SRL::Debug::Print(1, 12, "TCOL skip miss cf:%u",
+                          static_cast<unsigned>(cartBefore.FreeSize));
+        return;
+    }
+
+    const uint32_t needWithReserve = tcolNeedBytes + kCartReserveAfterTcolBytes;
+    bool tightFit = false;
+    if (cartBefore.FreeSize < needWithReserve)
+    {
+        // Last resort: fit blob alone (no slack). Physics > spare texture headroom.
+        if (cartBefore.FreeSize < tcolNeedBytes)
+        {
+            SRL::Debug::Print(1, 12, "TCOL skip low cf:%u need:%u",
+                              static_cast<unsigned>(cartBefore.FreeSize),
+                              static_cast<unsigned>(needWithReserve));
+            return;
+        }
+        tightFit = true;
+        SRL::Debug::Print(1, 12, "TCOL tight cf:%u need:%u",
+                          static_cast<unsigned>(cartBefore.FreeSize),
+                          static_cast<unsigned>(tcolNeedBytes));
+    }
+
+    for (size_t i = 0u; i < sizeof(trackCollisionCandidates) / sizeof(trackCollisionCandidates[0]); ++i)
+    {
+        void* cartPtr = nullptr;
+        uint32_t cartBytes = 0u;
+        if (!LoadCdFileToCart(trackCollisionCandidates[i], cartPtr, cartBytes)) continue;
+        const TrackCollisionMap::View view(cartPtr, cartBytes);
+        if (view.Valid())
+        {
+            trackCollisionMapCartPtr_ = cartPtr;
+            trackCollisionMapCartBytes_ = cartBytes;
+            break;
+        }
+        SRL::Memory::CartRam::Free(cartPtr);
+    }
+
+    if (trackCollisionMapCartPtr_)
+    {
+        const auto cartAfter = SRL::Memory::CartRam::GetReport();
+        SRL::Debug::Print(1, 12, "TCOL ok tc:1 wc:%u cf:%u%s",
+                          static_cast<unsigned>(TrackCollisionWallCount()),
+                          static_cast<unsigned>(cartAfter.FreeSize),
+                          tightFit ? " t" : "");
+    }
+    else
+    {
+        SRL::Debug::Print(1, 12, "TCOL skip fail cf:%u need:%u",
+                          static_cast<unsigned>(SRL::Memory::CartRam::GetReport().FreeSize),
+                          static_cast<unsigned>(tcolNeedBytes));
+    }
+
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        SRL::Debug::Print(1, 22, "SCM sf:%u sc:%u fm:%u tc:%u td:%u",
+                          SurfaceFamilyMapReady() ? 1u : 0u,
+                          SegmentCollisionMapReady() ? 1u : 0u,
+                          faceSurfaceMapCartPtr_ ? 1u : 0u,
+                          trackCollisionMapCartPtr_ ? 1u : 0u,
+                          routeDirectionMapReady_ ? 1u : 0u);
+    }
+}
+
+bool TrackSystem::PreloadHighTrackRuntimePack()
+{
+    size_t packCandidateCount = 0;
+    const char* const* packCandidates = GetHighTrackRuntimePackCandidates(packCandidateCount);
+    TrackRuntimePackCache& cache = GetHighTrackRuntimePackCache();
+    TrackPackLoadFail fail = TrackPackLoadFail::None;
+    const bool loaded = LoadTrackRuntimePackToCart(packCandidates, packCandidateCount, cache, &fail);
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        const auto cart = SRL::Memory::CartRam::GetReport();
+        // Row 4 stays sticky across later RAM pre/maps/packs/belt/tcol/post lines.
+        SRL::Debug::Print(1, 4, "PK h:%u cf:%u",
+                          loaded ? 1u : 0u,
+                          static_cast<unsigned>(cart.FreeSize));
+    }
+    if (!loaded)
+    {
+        const char* why = "miss";
+        switch (fail)
+        {
+        case TrackPackLoadFail::Open: why = "open"; break;
+        case TrackPackLoadFail::Malloc: why = "malloc"; break;
+        case TrackPackLoadFail::Read: why = "read"; break;
+        case TrackPackLoadFail::Parse: why = "parse"; break;
+        case TrackPackLoadFail::Miss:
+        case TrackPackLoadFail::None:
+        default: why = "miss"; break;
+        }
+        // Always surface pack failure — empty belt is otherwise silent.
+        SRL::Debug::Print(1, 3, "PK fail %s", why);
+    }
+    return loaded;
 }
 
 void TrackSystem::LogInitialSegmentDiagnostics() const
@@ -14810,17 +15064,21 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
     seg1FamilySlots_ = familyLodSlots;
     InvalidateFamilySlotIndex();
     RefreshFamilyWorkingSet(false);
-    SRL::Debug::Print(1, 20, "SDR ok:%u fl:%u fam:%u fu:%u",
-                      matOk,
-                      matFail,
-                      static_cast<unsigned>(familyLodSlots.size()),
-                      FullTrackFamilyCacheReady() ? 1u : 0u);
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        SRL::Debug::Print(1, 20, "SDR ok:%u fl:%u fam:%u fu:%u",
+                          matOk,
+                          matFail,
+                          static_cast<unsigned>(familyLodSlots.size()),
+                          FullTrackFamilyCacheReady() ? 1u : 0u);
+    }
 }
 
 bool TrackSystem::Initialize(const Config& config)
 {
     auto printInitRam = [](int row, const char* tag)
     {
+        if constexpr (!kEnableBootRamTelemetry) return;
         const auto hwr = SRL::Memory::HighWorkRam::GetReport();
         const auto lwr = SRL::Memory::LowWorkRam::GetReport();
         const auto crt = SRL::Memory::CartRam::GetReport();
@@ -14832,40 +15090,63 @@ bool TrackSystem::Initialize(const Config& config)
     };
 
     ResetInitializationState();
+    printInitRam(5, "RAM pre");
     if (!BuildSegmentCenterCatalog())
     {
         SRL::Debug::Print(1, 28, "TRK cat miss");
         return false;
     }
     LoadSurfaceCollisionMaps();
-    // Boot-time init RAM snapshots disabled to keep the on-screen diagnostics
-    // focused on slide/runtime behavior.
+    printInitRam(6, "RAM maps");
+
+    // Visual belt packs must win Cart before TCOL. Preload TRKRDR explicitly so
+    // RebuildActiveSegmentWindow does not start with an empty pack cache.
+    (void)PreloadHighTrackRuntimePack();
+    printInitRam(7, "RAM packs");
+
     const size_t loadLimit = ResolveInitialLoadLimit(config);
-    PrepareInitialSegmentPackages(loadLimit);
+    const bool beltReady = PrepareInitialSegmentPackages(loadLimit);
+    printInitRam(8, "RAM belt");
     if (kEnableTrackLeakIsolationFixed64Pipeline)
     {
         SRL::Debug::Print(1, 28, "TRK iso64 on n:%u slide:0 pf:0",
                           static_cast<unsigned>(loadLimit));
     }
-    // disabled
-    CaptureTrackTextureHeapBase();
-    SegmentRuntimeDraw::HeaderV1 warmRdrHeader{};
-    (void)LoadRdrHeaderForSegment(1, warmRdrHeader);
-    if (totalSegmentCount_ > 1)
+
+    if (beltReady && SegmentsReady())
     {
-        (void)LoadRdrHeaderForSegment(static_cast<int>(totalSegmentCount_), warmRdrHeader);
-    }
-    TrimRuntimeBlobScratchCaches(true);
-    PrimeRuntimeScratchCapacities();
-    if (!kEnableTrackRuntimeStabilization)
-    {
-        (void)PreloadFullTrackFamilyLodCache();
+        CaptureTrackTextureHeapBase();
+        SegmentRuntimeDraw::HeaderV1 warmRdrHeader{};
+        (void)LoadRdrHeaderForSegment(1, warmRdrHeader);
+        if (totalSegmentCount_ > 1)
+        {
+            (void)LoadRdrHeaderForSegment(static_cast<int>(totalSegmentCount_), warmRdrHeader);
+        }
+        TrimRuntimeBlobScratchCaches(true);
+        PrimeRuntimeScratchCapacities();
+        if (!kEnableTrackRuntimeStabilization)
+        {
+            (void)PreloadFullTrackFamilyLodCache();
+        }
+        else
+        {
+            SetFullTrackFamilyCacheReady(false);
+        }
     }
     else
     {
+        // Rebuild already sticky-printed the first PKG failure on row 11.
+        // Skip Prime — flooring empty fixed-window slots would exhaust LWR.
         SetFullTrackFamilyCacheReady(false);
     }
-    // disabled
+
+    if (Game::PhysicsFeatureFlags::kEnableTrackCollisionCartMapsAfterBelt &&
+        SegmentsReady())
+    {
+        LoadTrackCollisionCartMaps();
+    }
+    printInitRam(9, "RAM tcol");
+    printInitRam(10, "RAM post");
 
     ConfigureCoordinatorAndBudget(config);
     LogInitialSegmentDiagnostics();
@@ -14874,7 +15155,6 @@ bool TrackSystem::Initialize(const Config& config)
     // (track + car + background init), so reserve bytes are reacquired only
     // when runtime free HWR is comfortably above the configured floor.
     // This avoids boot-time starvation and emulator startup failures.
-    // disabled
 
     // Keep the normal multi segment render path active even when only one segment
     // is visible, so single segment tests match the production flow.
@@ -19148,7 +19428,12 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         allowedSurfaceTypes && allowedSurfaceTypeCount > 0u;
     const bool acceptAnyFamily =
         !filterBySurfaceType && (!familyIds || familyCount == 0u);
-    if (segmentRenderers_.empty()) return false;
+    // TCOL independent window can answer without visual residency.
+    if (segmentRenderers_.empty() &&
+        !(trackCollisionMapCartPtr_ && trackCollisionMapCartBytes_ > 0u))
+    {
+        return false;
+    }
 
     bool hasAnyFamily = acceptAnyFamily;
     for (size_t i = 0; i < allowedSurfaceTypeCount && filterBySurfaceType; ++i)
@@ -19209,6 +19494,19 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         for (size_t i = 0; i < familyCount; ++i)
         {
             if (familyIds[i] == familyId) return true;
+        }
+        return false;
+    };
+
+    // TCOL ground records already store the baked surface type. SFMAP can lag
+    // (F78a3 was type 0 there while the face was grass), so a driveable stored
+    // type still counts when the family map rejects the face.
+    auto storedSurfaceAllowed = [&](uint8_t surfaceType) -> bool
+    {
+        if (!filterBySurfaceType || surfaceType == 0u) return false;
+        for (size_t i = 0; i < allowedSurfaceTypeCount; ++i)
+        {
+            if (allowedSurfaceTypes[i] == surfaceType) return true;
         }
         return false;
     };
@@ -19298,6 +19596,12 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         Game::PhysicsFeatureFlags::kEnableFaceSurfaceMapRuntime &&
         faceSurfaceMap.Valid() &&
         (acceptAnyFamily || requestedSegmentSurfaceFlags != 0u);
+    const TrackCollisionMap::View trackCollisionMap(trackCollisionMapCartPtr_,
+                                                     trackCollisionMapCartBytes_);
+    const bool canUseTrackCollisionMap = trackCollisionMap.Valid();
+    const bool useIndependentCollisionWindow =
+        Game::PhysicsFeatureFlags::kEnableIndependentCollisionWindow &&
+        canUseTrackCollisionMap;
 
     auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
 
@@ -19364,6 +19668,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
     int32_t bestInsideSegmentId = -1;
     int32_t bestInsideSeedDistance = std::numeric_limits<int32_t>::max();
     uint16_t bestInsideFamilyId = 0u;
+    uint8_t bestInsideStoredSurfaceType = 0u;
     int16_t bestInsideFaceIndex = -1;
 
     bool foundFallback = false;
@@ -19389,7 +19694,11 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
 
     // Cheap ranking (original): support class + gap to probe Y + seed distance.
     // Continuity multi-key ranking + non-returning cache were too expensive on SH2.
-    auto updateInsideCandidate = [&](int64_t yRaw, int32_t segmentId, uint16_t familyId, int16_t faceIndex)
+    auto updateInsideCandidate = [&](int64_t yRaw,
+                                     int32_t segmentId,
+                                     uint16_t familyId,
+                                     int16_t faceIndex,
+                                     uint8_t storedSurfaceType = 0u)
     {
         static constexpr int64_t kSupportToleranceRaw = (1 << 14); // ~0.25 in 16.16
         static constexpr int64_t kEarlyAcceptGapRaw = (1 << 13);   // ~0.125 in 16.16
@@ -19412,6 +19721,7 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
             bestInsideYRaw = yRaw;
             bestInsideSegmentId = segmentId;
             bestInsideFamilyId = familyId;
+            bestInsideStoredSurfaceType = storedSurfaceType;
             bestInsideFaceIndex = faceIndex;
             if (bestInsideClass == 0u && bestInsideGapY <= kEarlyAcceptGapRaw)
             {
@@ -19460,7 +19770,9 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         {
             return;
         }
-        if (segmentId <= 0 || faceIndex < 0 || familyId == 0u)
+        // faceIndex may be -1 for TCOL hits (no visual face). Segment id still
+        // seeds the independent collision window sticky retest.
+        if (segmentId <= 0 || familyId == 0u)
         {
             return;
         }
@@ -19574,6 +19886,190 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         return true;
     };
 
+    auto pointInTriModel = [&](int32_t ax, int32_t az,
+                               int32_t bx, int32_t bz,
+                               int32_t cx, int32_t cz) -> bool
+    {
+        auto cross = [&](int32_t x0, int32_t z0, int32_t x1, int32_t z1) -> int64_t
+        {
+            return ((modelXRaw - x0) * (static_cast<int64_t>(z1) - z0)) -
+                   ((modelZRaw - z0) * (static_cast<int64_t>(x1) - x0));
+        };
+        const int64_t c1 = cross(ax, az, bx, bz);
+        const int64_t c2 = cross(bx, bz, cx, cz);
+        const int64_t c3 = cross(cx, cz, ax, az);
+        const bool hasNeg = (c1 < 0) || (c2 < 0) || (c3 < 0);
+        const bool hasPos = (c1 > 0) || (c2 > 0) || (c3 > 0);
+        return !(hasNeg && hasPos);
+    };
+
+    auto solvePlaneModelY = [&](int32_t ax, int32_t ay, int32_t az,
+                                int32_t bx, int32_t by, int32_t bz,
+                                int32_t cx, int32_t cy, int32_t cz,
+                                int64_t& outWorldY) -> bool
+    {
+        const int64_t ux = static_cast<int64_t>(bx) - ax;
+        const int64_t uy = static_cast<int64_t>(by) - ay;
+        const int64_t uz = static_cast<int64_t>(bz) - az;
+        const int64_t vx = static_cast<int64_t>(cx) - ax;
+        const int64_t vy = static_cast<int64_t>(cy) - ay;
+        const int64_t vz = static_cast<int64_t>(cz) - az;
+        const int64_t nx = (uy * vz) - (uz * vy);
+        const int64_t ny = (uz * vx) - (ux * vz);
+        const int64_t nz = (ux * vy) - (uy * vx);
+        if (ny == 0) return false;
+        const int64_t rhs = (nx * (modelXRaw - ax)) + (nz * (modelZRaw - az));
+        outWorldY = static_cast<int64_t>(ay) - (rhs / ny) +
+                    static_cast<int64_t>(trackOffset.Y.RawValue());
+        return true;
+    };
+
+    auto rememberTcolGround = [&](int32_t segmentId,
+                                  int16_t groundIndex,
+                                  uint16_t familyId,
+                                  uint16_t flags,
+                                  const int32_t* xs,
+                                  const int32_t* ys,
+                                  const int32_t* zs,
+                                  uint8_t count)
+    {
+        if (count < 3u || count > 4u) return;
+        tcolGroundStickySegmentId_ = static_cast<int16_t>(segmentId);
+        tcolGroundStickyIndex_ = groundIndex;
+        tcolGroundStickyFamilyId_ = familyId;
+        tcolGroundStickyFlags_ = flags;
+        tcolGroundStickyCount_ = count;
+        for (uint8_t i = 0u; i < count; ++i)
+        {
+            tcolGroundStickyX_[i] = xs[i];
+            tcolGroundStickyY_[i] = ys[i];
+            tcolGroundStickyZ_[i] = zs[i];
+        }
+    };
+
+    auto evalTcolVerts = [&](int32_t segmentId,
+                             uint16_t familyId,
+                             int16_t groundIndex,
+                             uint16_t flags,
+                             const int32_t* xs,
+                             const int32_t* ys,
+                             const int32_t* zs,
+                             uint8_t count,
+                             uint8_t storedSurfaceType) -> bool
+    {
+        if (count < 3u) return false;
+        int64_t yRaw = 0;
+        bool inside = pointInTriModel(xs[0], zs[0], xs[1], zs[1], xs[2], zs[2]);
+        bool yValid = inside && solvePlaneModelY(xs[0], ys[0], zs[0],
+                                                  xs[1], ys[1], zs[1],
+                                                  xs[2], ys[2], zs[2],
+                                                  yRaw);
+        if (!inside && count == 4u)
+        {
+            inside = pointInTriModel(xs[0], zs[0], xs[2], zs[2], xs[3], zs[3]);
+            yValid = inside && solvePlaneModelY(xs[0], ys[0], zs[0],
+                                                 xs[2], ys[2], zs[2],
+                                                 xs[3], ys[3], zs[3],
+                                                 yRaw);
+        }
+        if (!inside || !yValid) return false;
+        updateInsideCandidate(yRaw, segmentId, familyId, -1, storedSurfaceType);
+        if (bestInsideSegmentId == segmentId && bestInsideYRaw == yRaw)
+        {
+            rememberTcolGround(segmentId, groundIndex, familyId, flags, xs, ys, zs, count);
+        }
+        return true;
+    };
+
+    auto scanTcolGroundBySegmentId = [&](int32_t segmentId) -> bool
+    {
+        if (!canUseTrackCollisionMap || earlyAcceptInside) return false;
+        if (segmentId <= 0 || segmentId > 0xFFFF) return false;
+        if (requestedSegmentSurfaceFlags != 0u &&
+            static_cast<size_t>(segmentId) < segmentSurfaceFlagsById_.size())
+        {
+            const uint8_t segmentFlags = segmentSurfaceFlagsById_[segmentId];
+            if ((segmentFlags & requestedSegmentSurfaceFlags) == 0u)
+            {
+                SaturatingIncrementU16(surfaceQueryScmapSkipsThisFrame_);
+                return false;
+            }
+        }
+
+        TrackCollisionMap::SegmentView collisionSegment{};
+        if (!trackCollisionMap.FindSegment(static_cast<uint16_t>(segmentId), collisionSegment))
+        {
+            return false;
+        }
+
+        SaturatingIncrementU16(surfaceQuerySegmentsScannedThisFrame_);
+        TrackCollisionMap::CellView cell{};
+        if (!trackCollisionMap.FindGroundCell(collisionSegment, modelXRaw, modelZRaw, cell))
+        {
+            return true; // mapped but no cell hit
+        }
+
+        SaturatingAddU16(surfaceQueryFacesScannedThisFrame_, cell.count);
+        for (uint16_t ci = 0u; ci < cell.count && !earlyAcceptInside; ++ci)
+        {
+            uint16_t collisionFaceIndex = 0u;
+            TrackCollisionMap::GroundFace collisionFace{};
+            if (!trackCollisionMap.ReadCellIndex(cell, ci, collisionFaceIndex) ||
+                !trackCollisionMap.ReadGround(collisionSegment, collisionFaceIndex, collisionFace))
+            {
+                continue;
+            }
+            if (!familyAllowed(collisionFace.familyId) &&
+                !storedSurfaceAllowed(collisionFace.surfaceType))
+            {
+                continue;
+            }
+            if (requestedSegmentSurfaceFlags != 0u &&
+                (collisionFace.flags & requestedSegmentSurfaceFlags) == 0u)
+            {
+                continue;
+            }
+
+            int32_t xs[4]{};
+            int32_t ys[4]{};
+            int32_t zs[4]{};
+            bool verticesValid = true;
+            for (uint8_t vi = 0u; vi < collisionFace.vertexCount; ++vi)
+            {
+                TrackCollisionMap::Vertex vertex{};
+                if (!trackCollisionMap.ReadVertex(collisionSegment,
+                                                  collisionFace.vertices[vi],
+                                                  vertex))
+                {
+                    verticesValid = false;
+                    break;
+                }
+                xs[vi] = vertex.xRaw;
+                ys[vi] = vertex.yRaw;
+                zs[vi] = vertex.zRaw;
+            }
+            if (!verticesValid) continue;
+            evalTcolVerts(segmentId,
+                          collisionFace.familyId,
+                          static_cast<int16_t>(collisionFaceIndex),
+                          collisionFace.flags,
+                          xs,
+                          ys,
+                          zs,
+                          collisionFace.vertexCount,
+                          collisionFace.surfaceType);
+        }
+        // A support hit on this segment is enough. Do not keep walking
+        // neighbors looking for a 0.125 gap (that scanned seed±4 every probe).
+        if (foundInside &&
+            bestInsideClass == 0u &&
+            bestInsideSegmentId == segmentId)
+        {
+            earlyAcceptInside = true;
+        }
+        return true;
+    };
+
     auto scanSegment = [&](const SegmentRenderEntry& segment)
     {
         if (earlyAcceptInside) return;
@@ -19586,6 +20082,17 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
             {
                 SaturatingIncrementU16(surfaceQueryScmapSkipsThisFrame_);
                 return;
+            }
+        }
+
+        // When the independent window owns TCOL scans, skip the visual-gated
+        // TCOL path here; GEO/FSMAP below remain as fallback for unmapped segs.
+        if (canUseTrackCollisionMap && !useIndependentCollisionWindow &&
+            segment.id > 0 && segment.id <= 0xFFFF)
+        {
+            if (scanTcolGroundBySegmentId(segment.id))
+            {
+                if (earlyAcceptInside || !allowFallback) return;
             }
         }
 
@@ -19778,62 +20285,130 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         }
     }
 
-    if (seedSegmentId > 0 && totalSegmentCount_ > 0)
+    // Independent TCOL window. Sticky face, then the seed cell. The next
+    // driveable segment on each side only when the seed cell misses. Raw ±1
+    // stops inside scenery-only ids 103–106 and the car loses the floor at
+    // the 102→107 join (video 165404).
+    if (useIndependentCollisionWindow && seedSegmentId > 0 && totalSegmentCount_ > 0)
     {
-        std::array<int32_t, 12> localIds{};
-        size_t localCount = 0u;
-        // Prioritize seed and closest neighbors first to maximize early accept.
-        static constexpr std::array<int32_t, 8> kNeighborDeltaWide = { 0, 1, -1, 2, -2, 3, 4, 5 };
-        static constexpr std::array<int32_t, 5> kNeighborDeltaNarrow = { 0, 1, -1, 2, 3 };
-        const size_t deltaCount = useLocalNeighbor ? kNeighborDeltaWide.size() : kNeighborDeltaNarrow.size();
-        for (size_t di = 0; di < deltaCount; ++di)
+        if (tcolGroundStickyCount_ >= 3u &&
+            tcolGroundStickySegmentId_ > 0 &&
+            familyAllowed(tcolGroundStickyFamilyId_) &&
+            (requestedSegmentSurfaceFlags == 0u ||
+             (tcolGroundStickyFlags_ & requestedSegmentSurfaceFlags) != 0u))
         {
-            if (earlyAcceptInside) break;
-            const int32_t delta = useLocalNeighbor ? kNeighborDeltaWide[di] : kNeighborDeltaNarrow[di];
-            const int32_t candidateId =
-                WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
-            if (candidateId <= 0) continue;
-
-            bool duplicate = false;
-            for (size_t i = 0; i < localCount; ++i)
+            SaturatingIncrementU16(surfaceQueryFacesScannedThisFrame_);
+            if (evalTcolVerts(tcolGroundStickySegmentId_,
+                              tcolGroundStickyFamilyId_,
+                              tcolGroundStickyIndex_,
+                              tcolGroundStickyFlags_,
+                              tcolGroundStickyX_,
+                              tcolGroundStickyY_,
+                              tcolGroundStickyZ_,
+                              tcolGroundStickyCount_,
+                              0u) &&
+                bestInsideClass == 0u)
             {
-                if (localIds[i] == candidateId)
-                {
-                    duplicate = true;
-                    break;
-                }
+                SaturatingIncrementU16(surfaceQueryCacheHitsThisFrame_);
+                earlyAcceptInside = true;
             }
-            if (duplicate) continue;
-            if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+            else
+            {
+                SaturatingIncrementU16(surfaceQueryCacheMissesThisFrame_);
+            }
+        }
 
-            const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
-            if (!localEntry) continue;
-            scanSegment(*localEntry);
+        if (!earlyAcceptInside)
+        {
+            scanTcolGroundBySegmentId(seedSegmentId);
+        }
+        if (!earlyAcceptInside)
+        {
+            const int32_t totalIds = static_cast<int32_t>(totalSegmentCount_);
+            int32_t neighbors[2] = {
+                NextDriveableCollisionSegment(seedSegmentId, 1),
+                NextDriveableCollisionSegment(seedSegmentId, -1)
+            };
+            if (neighbors[0] <= 0)
+            {
+                neighbors[0] = WrapSegmentIdToRange(seedSegmentId + 1, totalIds);
+            }
+            if (neighbors[1] <= 0)
+            {
+                neighbors[1] = WrapSegmentIdToRange(seedSegmentId - 1, totalIds);
+            }
+            for (int32_t neighborId : neighbors)
+            {
+                if (earlyAcceptInside) break;
+                if (neighborId <= 0 || neighborId == seedSegmentId) continue;
+                scanTcolGroundBySegmentId(neighborId);
+            }
         }
     }
 
-    // Expand only after the local fast path failed to produce a result that
-    // this query is allowed to consume. In particular, strict wheel probes
-    // cannot use an outside-face planar fallback: treating one as success here
-    // made the car lose ground support across scenery-only logical segments.
-    const bool shouldRunGlobalPass =
-        TrackStreamingPolicy::ShouldRunResidentSurfaceRecovery(
-            foundInside, foundFallback, allowFallback);
-    if (shouldRunGlobalPass &&
-        useLocalNeighbor &&
-        !allowFallback &&
-        seedSegmentId > 0 &&
-        totalSegmentCount_ > 0)
+    // GEO/FSMAP is the LEGACY path. When TCOL is Cart-resident it is authoritative
+    // — running both modes per probe (TCOL ±4 then full visual GEO) tanks FPS on SH2.
+    // Only fall back to resident GEO/FSMAP when TCOL is missing/invalid.
+    if (!canUseTrackCollisionMap)
     {
-        SaturatingIncrementU16(surfaceQueryLocalOnlyMissesThisFrame_);
-    }
-    if (shouldRunGlobalPass)
-    {
-        SaturatingIncrementU16(surfaceQueryGlobalPassesThisFrame_);
-        for (const auto& segment : segmentRenderers_)
+        // GEO/FSMAP fallback via resident visual window (also used when TCOL off).
+        if (!earlyAcceptInside && seedSegmentId > 0 && totalSegmentCount_ > 0)
         {
-            if (earlyAcceptInside) break;
-            scanSegment(segment);
+            std::array<int32_t, 12> localIds{};
+            size_t localCount = 0u;
+            // Prioritize seed and closest neighbors first to maximize early accept.
+            static constexpr std::array<int32_t, 8> kNeighborDeltaWide = { 0, 1, -1, 2, -2, 3, 4, 5 };
+            static constexpr std::array<int32_t, 5> kNeighborDeltaNarrow = { 0, 1, -1, 2, 3 };
+            const size_t deltaCount = useLocalNeighbor ? kNeighborDeltaWide.size() : kNeighborDeltaNarrow.size();
+            for (size_t di = 0; di < deltaCount; ++di)
+            {
+                if (earlyAcceptInside) break;
+                const int32_t delta = useLocalNeighbor ? kNeighborDeltaWide[di] : kNeighborDeltaNarrow[di];
+                const int32_t candidateId =
+                    WrapSegmentIdToRange(seedSegmentId + delta, static_cast<int32_t>(totalSegmentCount_));
+                if (candidateId <= 0) continue;
+
+                bool duplicate = false;
+                for (size_t i = 0; i < localCount; ++i)
+                {
+                    if (localIds[i] == candidateId)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate) continue;
+                if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+
+                const SegmentRenderEntry* localEntry = FindWindowEntryByIdFast(candidateId);
+                if (!localEntry) continue;
+                scanSegment(*localEntry);
+            }
+        }
+
+        // Expand only after the local fast path failed to produce a result that
+        // this query is allowed to consume. In particular, strict wheel probes
+        // cannot use an outside-face planar fallback: treating one as success here
+        // made the car lose ground support across scenery-only logical segments.
+        const bool shouldRunGlobalPass =
+            TrackStreamingPolicy::ShouldRunResidentSurfaceRecovery(
+                foundInside, foundFallback, allowFallback);
+        if (shouldRunGlobalPass &&
+            useLocalNeighbor &&
+            !allowFallback &&
+            seedSegmentId > 0 &&
+            totalSegmentCount_ > 0)
+        {
+            SaturatingIncrementU16(surfaceQueryLocalOnlyMissesThisFrame_);
+        }
+        if (shouldRunGlobalPass)
+        {
+            SaturatingIncrementU16(surfaceQueryGlobalPassesThisFrame_);
+            for (const auto& segment : segmentRenderers_)
+            {
+                if (earlyAcceptInside) break;
+                scanSegment(segment);
+            }
         }
     }
 
@@ -19843,10 +20418,19 @@ bool TrackSystem::FindSurfaceYByFamilySet(const Vector3D& worldPosition,
         if (outSegmentId) *outSegmentId = bestInsideSegmentId;
         if (outFamilyId) *outFamilyId = bestInsideFamilyId;
         if (outFaceIndex) *outFaceIndex = bestInsideFaceIndex;
-        if (outSurfaceType &&
-            bestInsideFamilyId < surfaceTypeByFamilyId_.size())
+        if (outSurfaceType)
         {
-            *outSurfaceType = surfaceTypeByFamilyId_[bestInsideFamilyId];
+            uint8_t reported = 0u;
+            if (bestInsideFamilyId < surfaceTypeByFamilyId_.size())
+            {
+                reported = surfaceTypeByFamilyId_[bestInsideFamilyId];
+            }
+            if (!storedSurfaceAllowed(reported) &&
+                storedSurfaceAllowed(bestInsideStoredSurfaceType))
+            {
+                reported = bestInsideStoredSurfaceType;
+            }
+            *outSurfaceType = reported;
         }
         updateInsideCache(bestInsideSegmentId, bestInsideFaceIndex, bestInsideFamilyId);
         return true;
@@ -19982,7 +20566,10 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                                      Vector3D& outPush,
                                      int32_t* outSegmentId,
                                      int32_t seedSegmentId,
-                                     bool allowGlobalFallback) const
+                                     bool allowGlobalFallback,
+                                     bool commitPrevPosition,
+                                     const Vector3D* motionPrevPosition,
+                                     const Vector3D* hullLateralOtherEnd) const
 {
     if (!Game::PhysicsFeatureFlags::kEnableWallCollisionRuntime)
     {
@@ -19994,12 +20581,23 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     }
 
     (void)forwardDirection;
+    // Optional mid-body lateral hull: worldPosition ↔ hullLateralOtherEnd.
+    // Closes the dead zone between discrete ±halfWidth point probes (130219).
+    const bool hullSegValid = (hullLateralOtherEnd != nullptr);
+    const int32_t hullOtherXR = hullSegValid
+        ? hullLateralOtherEnd->X.RawValue() : worldPosition.X.RawValue();
+    const int32_t hullOtherZR = hullSegValid
+        ? hullLateralOtherEnd->Z.RawValue() : worldPosition.Z.RawValue();
     SaturatingIncrementU16(wallQueryCallsThisFrame_);
     outPush = Vector3D(SRL::Math::Types::Fxp::BuildRaw(0),
                        SRL::Math::Types::Fxp::BuildRaw(0),
                        SRL::Math::Types::Fxp::BuildRaw(0));
     if (outSegmentId) *outSegmentId = -1;
-    if (segmentRenderers_.empty()) return false;
+    if (segmentRenderers_.empty() &&
+        !(trackCollisionMapCartPtr_ && trackCollisionMapCartBytes_ > 0u))
+    {
+        return false;
+    }
 
     const int64_t radiusRaw = static_cast<int64_t>(collisionRadius.RawValue());
     if (radiusRaw <= 0) return false;
@@ -20007,23 +20605,40 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     const int64_t pxRaw = static_cast<int64_t>(worldPosition.X.RawValue());
     const int64_t pyRaw = static_cast<int64_t>(worldPosition.Y.RawValue());
     const int64_t pzRaw = static_cast<int64_t>(worldPosition.Z.RawValue());
-    const bool prevValid = WallQueryPrevWorldPositionValid();
-    const int64_t prevPxRaw = prevValid ? static_cast<int64_t>(wallQueryPrevWorldPosition_.X.RawValue()) : pxRaw;
-    const int64_t prevPyRaw = prevValid ? static_cast<int64_t>(wallQueryPrevWorldPosition_.Y.RawValue()) : pyRaw;
-    const int64_t prevPzRaw = prevValid ? static_cast<int64_t>(wallQueryPrevWorldPosition_.Z.RawValue()) : pzRaw;
+    // Per-sample motion prev (multiprobe) wins over the stored car prev.
+    const bool prevValid = (motionPrevPosition != nullptr) || WallQueryPrevWorldPositionValid();
+    const int64_t prevPxRaw = (motionPrevPosition != nullptr)
+        ? static_cast<int64_t>(motionPrevPosition->X.RawValue())
+        : (WallQueryPrevWorldPositionValid()
+               ? static_cast<int64_t>(wallQueryPrevWorldPosition_.X.RawValue())
+               : pxRaw);
+    const int64_t prevPyRaw = (motionPrevPosition != nullptr)
+        ? static_cast<int64_t>(motionPrevPosition->Y.RawValue())
+        : (WallQueryPrevWorldPositionValid()
+               ? static_cast<int64_t>(wallQueryPrevWorldPosition_.Y.RawValue())
+               : pyRaw);
+    const int64_t prevPzRaw = (motionPrevPosition != nullptr)
+        ? static_cast<int64_t>(motionPrevPosition->Z.RawValue())
+        : (WallQueryPrevWorldPositionValid()
+               ? static_cast<int64_t>(wallQueryPrevWorldPosition_.Z.RawValue())
+               : pzRaw);
     const int64_t yMarginRaw = static_cast<int64_t>(12 << 16);
 
+    // Only the authoritative car sample should advance prevPos. Multiprobe hull
+    // calls pass commitPrevPosition=false so probe-to-probe sweeps do not invent
+    // crossedPlane hits against distant walls.
     struct WallQueryPrevPosCommit
     {
         const TrackSystem* self = nullptr;
         Vector3D pos{};
+        bool enabled = false;
         ~WallQueryPrevPosCommit()
         {
-            if (!self) return;
+            if (!self || !enabled) return;
             self->wallQueryPrevWorldPosition_ = pos;
             self->SetWallQueryPrevWorldPositionValid(true);
         }
-    } prevPosCommit{ this, worldPosition };
+    } prevPosCommit{ this, worldPosition, commitPrevPosition };
 
     auto abs64 = [](int64_t v) -> int64_t { return (v < 0) ? -v : v; };
     auto clamp64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t
@@ -20037,6 +20652,11 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
     int64_t bestPushXRaw = 0;
     int64_t bestPushZRaw = 0;
     int32_t bestSegmentId = -1;
+    const TrackCollisionMap::View trackCollisionMap(trackCollisionMapCartPtr_,
+                                                     trackCollisionMapCartBytes_);
+    const bool useIndependentCollisionWindow =
+        Game::PhysicsFeatureFlags::kEnableIndependentCollisionWindow &&
+        trackCollisionMap.Valid();
     static constexpr uint8_t kSegmentFlagHasWallLikeFaces = 0x08u;
 
     auto segmentHasWallCandidates = [&](int32_t segmentId) -> bool
@@ -20220,10 +20840,542 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         }
     };
 
+    auto scanTrackCollisionWalls = [&](int32_t segmentId) -> bool
+    {
+        if (!trackCollisionMap.Valid() || segmentId <= 0 || segmentId > 0xFFFF) return false;
+        TrackCollisionMap::SegmentView collisionSegment{};
+        if (!trackCollisionMap.FindSegment(static_cast<uint16_t>(segmentId), collisionSegment)) return false;
+
+        int32_t seamTravelX = 0;
+        int32_t seamTravelZ = 0;
+        if (totalSegmentCount_ > 0u &&
+            static_cast<size_t>(segmentId) <= segmentCenterCatalog_.size())
+        {
+            const Vector3D& here = segmentCenterCatalog_[static_cast<size_t>(segmentId - 1)];
+            int32_t nextId = NextDriveableCollisionSegment(segmentId, 1);
+            if (nextId <= 0)
+            {
+                nextId = segmentId + 1;
+                if (nextId > static_cast<int32_t>(totalSegmentCount_)) nextId = 1;
+            }
+            if (static_cast<size_t>(nextId) <= segmentCenterCatalog_.size())
+            {
+                const Vector3D& next = segmentCenterCatalog_[static_cast<size_t>(nextId - 1)];
+                seamTravelX = next.X.RawValue() - here.X.RawValue();
+                seamTravelZ = next.Z.RawValue() - here.Z.RawValue();
+            }
+        }
+
+        SaturatingIncrementU16(wallQuerySegmentsScannedThisFrame_);
+        const int32_t pXR = static_cast<int32_t>(pxRaw);
+        const int32_t pZR = static_cast<int32_t>(pzRaw);
+        const int32_t pYR = static_cast<int32_t>(pyRaw);
+        int32_t pPrevXR = static_cast<int32_t>(prevPxRaw);
+        int32_t pPrevZR = static_cast<int32_t>(prevPzRaw);
+        int32_t pPrevYR = static_cast<int32_t>(prevPyRaw);
+        const int32_t radI = static_cast<int32_t>(radiusRaw);
+        const int32_t oXR = trackOffset.X.RawValue();
+        const int32_t oZR = trackOffset.Z.RawValue();
+        const int32_t oYR = trackOffset.Y.RawValue();
+        const int32_t yMgn = 12 << 16;
+        const int32_t rad3 = radI * 3;
+        // Keep the whole frame step so a thin wall between prev and now is tested.
+        // 16u/12u dropped that step at speed and the car crossed the barrier
+        // (video 153915). Above 80u is a teleport: discard, do not clamp a
+        // garbage chord into a false hit (video 104523). Must match
+        // kProbePrevMaxChebRaw in car_ground_follower.hpp.
+        constexpr int32_t kWallSweepMaxRaw = 80 << 16; // 80u
+        constexpr int32_t kWallPrevInvalidateChebRaw = 80 << 16; // 80u
+        bool sweepPrevValid = prevValid;
+        if (sweepPrevValid)
+        {
+            const int32_t mdx = pXR - pPrevXR;
+            const int32_t mdz = pZR - pPrevZR;
+            const int32_t adx = (mdx < 0) ? -mdx : mdx;
+            const int32_t adz = (mdz < 0) ? -mdz : mdz;
+            const int32_t motionCheb = (adx > adz) ? adx : adz;
+            if (motionCheb > kWallPrevInvalidateChebRaw)
+            {
+                // Stale/teleport prev: discard sweep entirely (do not clamp a
+                // garbage chord — that still fed false topology before).
+                sweepPrevValid = false;
+                pPrevXR = pXR;
+                pPrevZR = pZR;
+                pPrevYR = pYR;
+                if (motionPrevPosition == nullptr)
+                {
+                    SetWallQueryPrevWorldPositionValid(false);
+                }
+            }
+            else if (motionCheb > kWallSweepMaxRaw)
+            {
+                // Keep only the tail near `now`.
+                pPrevXR = pXR - static_cast<int32_t>(
+                    (static_cast<int64_t>(mdx) * kWallSweepMaxRaw) / motionCheb);
+                pPrevZR = pZR - static_cast<int32_t>(
+                    (static_cast<int64_t>(mdz) * kWallSweepMaxRaw) / motionCheb);
+                pPrevYR = pYR - static_cast<int32_t>(
+                    (static_cast<int64_t>(pYR - pPrevYR) * kWallSweepMaxRaw) / motionCheb);
+            }
+        }
+        // Plan: wall query uses the same 4x4 XZ cells as ground (not full segment wall list).
+        const int64_t modelXNow = pxRaw - static_cast<int64_t>(oXR);
+        const int64_t modelZNow = pzRaw - static_cast<int64_t>(oZR);
+        const int64_t modelXPrev = static_cast<int64_t>(pPrevXR) - static_cast<int64_t>(oXR);
+        const int64_t modelZPrev = static_cast<int64_t>(pPrevZR) - static_cast<int64_t>(oZR);
+
+        auto testWallIndex = [&](uint16_t wi)
+        {
+            TrackCollisionMap::Wall wall{};
+            if (!trackCollisionMap.ReadWall(collisionSegment, wi, wall)) return;
+            // Stem faces that close the segment cut face along the lane. They
+            // must not stop the car. Lateral stems stay, including at the join.
+            const int32_t wallMidX = wall.axRaw + ((wall.bxRaw - wall.axRaw) / 2);
+            const int32_t wallMidZ = wall.azRaw + ((wall.bzRaw - wall.azRaw) / 2);
+            if (TrackStreamingPolicy::ShouldRejectSeamTravelWall(
+                    wall.nxRaw,
+                    wall.nzRaw,
+                    wallMidX,
+                    wallMidZ,
+                    collisionSegment.minXRaw,
+                    collisionSegment.maxXRaw,
+                    collisionSegment.minZRaw,
+                    collisionSegment.maxZRaw,
+                    seamTravelX,
+                    seamTravelZ))
+            {
+                return;
+            }
+            const int32_t sweepMinY = sweepPrevValid ? std::min(pYR, pPrevYR) : pYR;
+            const int32_t sweepMaxY = sweepPrevValid ? std::max(pYR, pPrevYR) : pYR;
+            if (sweepMinY < (wall.minYRaw + oYR - yMgn) &&
+                sweepMaxY < (wall.minYRaw + oYR - yMgn)) return;
+            if (sweepMinY > (wall.maxYRaw + oYR + yMgn) &&
+                sweepMaxY > (wall.maxYRaw + oYR + yMgn)) return;
+
+            int32_t sweepMinX = sweepPrevValid ? std::min(pXR, pPrevXR) : pXR;
+            int32_t sweepMaxX = sweepPrevValid ? std::max(pXR, pPrevXR) : pXR;
+            int32_t sweepMinZ = sweepPrevValid ? std::min(pZR, pPrevZR) : pZR;
+            int32_t sweepMaxZ = sweepPrevValid ? std::max(pZR, pPrevZR) : pZR;
+            if (hullSegValid)
+            {
+                sweepMinX = std::min(sweepMinX, std::min(pXR, hullOtherXR));
+                sweepMaxX = std::max(sweepMaxX, std::max(pXR, hullOtherXR));
+                sweepMinZ = std::min(sweepMinZ, std::min(pZR, hullOtherZR));
+                sweepMaxZ = std::max(sweepMaxZ, std::max(pZR, hullOtherZR));
+            }
+            const int32_t minX = std::min(wall.axRaw, wall.bxRaw) + oXR;
+            const int32_t maxX = std::max(wall.axRaw, wall.bxRaw) + oXR;
+            const int32_t minZ = std::min(wall.azRaw, wall.bzRaw) + oZR;
+            const int32_t maxZ = std::max(wall.azRaw, wall.bzRaw) + oZR;
+            if (sweepMaxX < minX - rad3 || sweepMinX > maxX + rad3 ||
+                sweepMaxZ < minZ - rad3 || sweepMinZ > maxZ + rad3)
+            {
+                return;
+            }
+
+            // Finite wall segment vs sample motion segment (no infinite plane).
+            const int64_t wallAX = static_cast<int64_t>(wall.axRaw) + oXR;
+            const int64_t wallAZ = static_cast<int64_t>(wall.azRaw) + oZR;
+            const int64_t wallBX = static_cast<int64_t>(wall.bxRaw) + oXR;
+            const int64_t wallBZ = static_cast<int64_t>(wall.bzRaw) + oZR;
+            const int64_t wvx = wallBX - wallAX;
+            const int64_t wvz = wallBZ - wallAZ;
+            const int64_t wallLenSq = (wvx * wvx) + (wvz * wvz);
+            if (wallLenSq <= 0) return;
+
+            auto closestPointOnWall = [&](int64_t qx, int64_t qz, int64_t& outCx, int64_t& outCz) -> int64_t
+            {
+                const int64_t wx = qx - wallAX;
+                const int64_t wz = qz - wallAZ;
+                int64_t tNum = (wx * wvx) + (wz * wvz);
+                if (tNum < 0) tNum = 0;
+                else if (tNum > wallLenSq) tNum = wallLenSq;
+                outCx = wallAX + ((wvx * tNum) / wallLenSq);
+                outCz = wallAZ + ((wvz * tNum) / wallLenSq);
+                const int64_t dx = qx - outCx;
+                const int64_t dz = qz - outCz;
+                const int64_t adx = abs64(dx);
+                const int64_t adz = abs64(dz);
+                return (adx > adz) ? adx : adz;
+            };
+
+            auto closestPointOnMotion = [&](int64_t qx, int64_t qz, int64_t& outCx, int64_t& outCz) -> int64_t
+            {
+                const int64_t mvx = static_cast<int64_t>(pXR) - pPrevXR;
+                const int64_t mvz = static_cast<int64_t>(pZR) - pPrevZR;
+                const int64_t motionLenSq = (mvx * mvx) + (mvz * mvz);
+                if (motionLenSq <= 0)
+                {
+                    outCx = pXR;
+                    outCz = pZR;
+                    const int64_t dx = qx - outCx;
+                    const int64_t dz = qz - outCz;
+                    const int64_t adx = abs64(dx);
+                    const int64_t adz = abs64(dz);
+                    return (adx > adz) ? adx : adz;
+                }
+                const int64_t wx = qx - pPrevXR;
+                const int64_t wz = qz - pPrevZR;
+                int64_t tNum = (wx * mvx) + (wz * mvz);
+                if (tNum < 0) tNum = 0;
+                else if (tNum > motionLenSq) tNum = motionLenSq;
+                outCx = pPrevXR + ((mvx * tNum) / motionLenSq);
+                outCz = pPrevZR + ((mvz * tNum) / motionLenSq);
+                const int64_t dx = qx - outCx;
+                const int64_t dz = qz - outCz;
+                const int64_t adx = abs64(dx);
+                const int64_t adz = abs64(dz);
+                return (adx > adz) ? adx : adz;
+            };
+
+            // Proximity + short sweep. Restricted segmentsCross only when the
+            // sample is already near the wall — catches tunnels without mid-lane
+            // ghosts from distant chords (104523 / 112009). Hull-lateral mode
+            // uses halfWidth-scale gate so runoff approaches still qualify.
+            auto orient2 = [](int64_t ax, int64_t az, int64_t bx, int64_t bz,
+                              int64_t cx, int64_t cz) -> int64_t
+            {
+                return (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+            };
+
+            auto closestPointOnHull = [&](int64_t qx, int64_t qz, int64_t& outCx, int64_t& outCz) -> int64_t
+            {
+                if (!hullSegValid)
+                {
+                    outCx = pXR;
+                    outCz = pZR;
+                    const int64_t dx = qx - outCx;
+                    const int64_t dz = qz - outCz;
+                    const int64_t adx = abs64(dx);
+                    const int64_t adz = abs64(dz);
+                    return (adx > adz) ? adx : adz;
+                }
+                const int64_t hvx = static_cast<int64_t>(hullOtherXR) - pXR;
+                const int64_t hvz = static_cast<int64_t>(hullOtherZR) - pZR;
+                const int64_t hullLenSq = (hvx * hvx) + (hvz * hvz);
+                if (hullLenSq <= 0)
+                {
+                    outCx = pXR;
+                    outCz = pZR;
+                    const int64_t dx = qx - outCx;
+                    const int64_t dz = qz - outCz;
+                    const int64_t adx = abs64(dx);
+                    const int64_t adz = abs64(dz);
+                    return (adx > adz) ? adx : adz;
+                }
+                const int64_t wx = qx - pXR;
+                const int64_t wz = qz - pZR;
+                int64_t tNum = (wx * hvx) + (wz * hvz);
+                if (tNum < 0) tNum = 0;
+                else if (tNum > hullLenSq) tNum = hullLenSq;
+                outCx = pXR + ((hvx * tNum) / hullLenSq);
+                outCz = pZR + ((hvz * tNum) / hullLenSq);
+                const int64_t dx = qx - outCx;
+                const int64_t dz = qz - outCz;
+                const int64_t adx = abs64(dx);
+                const int64_t adz = abs64(dz);
+                return (adx > adz) ? adx : adz;
+            };
+
+            bool motionSegmentsCross = false;
+            if (sweepPrevValid && (pXR != pPrevXR || pZR != pPrevZR))
+            {
+                const int64_t o1 = orient2(pPrevXR, pPrevZR, pXR, pZR, wallAX, wallAZ);
+                const int64_t o2 = orient2(pPrevXR, pPrevZR, pXR, pZR, wallBX, wallBZ);
+                const int64_t o3 = orient2(wallAX, wallAZ, wallBX, wallBZ, pPrevXR, pPrevZR);
+                const int64_t o4 = orient2(wallAX, wallAZ, wallBX, wallBZ, pXR, pZR);
+                motionSegmentsCross =
+                    ((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) &&
+                    ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0));
+            }
+            bool hullSegmentsCross = false;
+            if (hullSegValid && (pXR != hullOtherXR || pZR != hullOtherZR))
+            {
+                const int64_t o1 = orient2(pXR, pZR, hullOtherXR, hullOtherZR, wallAX, wallAZ);
+                const int64_t o2 = orient2(pXR, pZR, hullOtherXR, hullOtherZR, wallBX, wallBZ);
+                const int64_t o3 = orient2(wallAX, wallAZ, wallBX, wallBZ, pXR, pZR);
+                const int64_t o4 = orient2(wallAX, wallAZ, wallBX, wallBZ, hullOtherXR, hullOtherZR);
+                hullSegmentsCross =
+                    ((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) &&
+                    ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0));
+            }
+            // Distance to the infinite line in coarse units. Multiplication only.
+            // Closest-point divisions run only for a crossing or a near line.
+            auto lineIsNear = [&](int64_t qx, int64_t qz) -> bool
+            {
+                const int64_t ex = wvx >> 10;
+                const int64_t ez = wvz >> 10;
+                const int64_t dx = (qx - wallAX) >> 10;
+                const int64_t dz = (qz - wallAZ) >> 10;
+                const int64_t cross = (dx * ez) - (dz * ex);
+                const int64_t lenSqCoarse = (ex * ex) + (ez * ez);
+                if (lenSqCoarse <= 0) return true;
+                const int64_t radQ = (static_cast<int64_t>(radI) + (4 << 16)) >> 10;
+                const int64_t limit = radQ * radQ * lenSqCoarse;
+                return (cross * cross) <= limit;
+            };
+            const bool nearLine =
+                lineIsNear(pXR, pZR) ||
+                (sweepPrevValid && lineIsNear(pPrevXR, pPrevZR)) ||
+                (hullSegValid && lineIsNear(hullOtherXR, hullOtherZR));
+            if (!motionSegmentsCross && !hullSegmentsCross && !nearLine)
+            {
+                return;
+            }
+
+            int64_t c0x = 0, c0z = 0, c1x = 0, c1z = 0;
+            const int64_t dNow = closestPointOnWall(pXR, pZR, c1x, c1z);
+            const int64_t dPrev = sweepPrevValid ? closestPointOnWall(pPrevXR, pPrevZR, c0x, c0z) : dNow;
+            int64_t minEndDist = (dNow < dPrev) ? dNow : dPrev;
+            if (hullSegValid)
+            {
+                int64_t hx = 0, hz = 0;
+                const int64_t dHullOther = closestPointOnWall(hullOtherXR, hullOtherZR, hx, hz);
+                if (dHullOther < minEndDist) minEndDist = dHullOther;
+                // Wall endpoints vs hull span (fills discrete-probe dead zone).
+                int64_t mx = 0, mz = 0;
+                const int64_t dWA = closestPointOnHull(wallAX, wallAZ, mx, mz);
+                if (dWA < minEndDist) minEndDist = dWA;
+                const int64_t dWB = closestPointOnHull(wallBX, wallBZ, mx, mz);
+                if (dWB < minEndDist) minEndDist = dWB;
+            }
+
+            // Orient tests already ran before the closest-point divisions.
+            const bool segmentsCross = motionSegmentsCross || hullSegmentsCross;
+
+            int64_t bestCx = wallAX;
+            int64_t bestCz = wallAZ;
+            int64_t distAxis = 0;
+            if (segmentsCross)
+            {
+                distAxis = 0;
+                bestCx = (wallAX + wallBX) / 2;
+                bestCz = (wallAZ + wallBZ) / 2;
+            }
+            else
+            {
+                distAxis = minEndDist;
+                bestCx = (dNow < dPrev) ? c1x : c0x;
+                bestCz = (dNow < dPrev) ? c1z : c0z;
+
+                // Also consider wall endpoints against the motion segment (catches
+                // grazing along the wall length while the sample slides past).
+                if (sweepPrevValid)
+                {
+                    int64_t mx = 0, mz = 0;
+                    const int64_t dA = closestPointOnMotion(wallAX, wallAZ, mx, mz);
+                    if (dA < distAxis)
+                    {
+                        distAxis = dA;
+                        bestCx = wallAX;
+                        bestCz = wallAZ;
+                    }
+                    const int64_t dB = closestPointOnMotion(wallBX, wallBZ, mx, mz);
+                    if (dB < distAxis)
+                    {
+                        distAxis = dB;
+                        bestCx = wallBX;
+                        bestCz = wallBZ;
+                    }
+                }
+            }
+
+            int64_t pen64 = static_cast<int64_t>(radI) - distAxis;
+            if (motionSegmentsCross)
+            {
+                // Signed distance of `now` toward the previous side. A sample
+                // that finished many units past the edge needs that depth, not
+                // only the probe radius, or the car stays through the wall.
+                const int64_t sideNow =
+                    (static_cast<int64_t>(pXR) - wallAX) * wall.nxRaw +
+                    (static_cast<int64_t>(pZR) - wallAZ) * wall.nzRaw;
+                const int64_t sidePrev =
+                    (static_cast<int64_t>(pPrevXR) - wallAX) * wall.nxRaw +
+                    (static_cast<int64_t>(pPrevZR) - wallAZ) * wall.nzRaw;
+                int64_t outside = sideNow;
+                if (sidePrev < 0) outside = -outside;
+                outside >>= 16;
+                if (outside < static_cast<int64_t>(radI))
+                {
+                    const int64_t tunnelPen = static_cast<int64_t>(radI) - outside;
+                    if (tunnelPen > pen64) pen64 = tunnelPen;
+                }
+            }
+            constexpr int64_t kMaxTunnelPenRaw = 80 << 16;
+            if (pen64 > kMaxTunnelPenRaw) pen64 = kMaxTunnelPenRaw;
+            if (pen64 <= 0) return;
+            const int32_t pen = static_cast<int32_t>(pen64);
+
+            // Push along wall perpendicular, oriented toward the outside (prev side
+            // when available, else away from current sample relative to wall).
+            int32_t perpX = wall.bzRaw - wall.azRaw;
+            int32_t perpZ = -(wall.bxRaw - wall.axRaw);
+            const int32_t refX = sweepPrevValid ? pPrevXR : pXR;
+            const int32_t refZ = sweepPrevValid ? pPrevZR : pZR;
+            const int64_t orientation = static_cast<int64_t>(perpX) *
+                                            (static_cast<int64_t>(refX) - wallAX) +
+                                        static_cast<int64_t>(perpZ) *
+                                            (static_cast<int64_t>(refZ) - wallAZ);
+            if (orientation < 0) { perpX = -perpX; perpZ = -perpZ; }
+            // If still degenerate, push from wall closest point toward the sample.
+            const int32_t absPerpX = (perpX < 0) ? -perpX : perpX;
+            const int32_t absPerpZ = (perpZ < 0) ? -perpZ : perpZ;
+            int32_t maxPerp = std::max(absPerpX, absPerpZ);
+            if (maxPerp <= 0)
+            {
+                perpX = static_cast<int32_t>(pXR - bestCx);
+                perpZ = static_cast<int32_t>(pZR - bestCz);
+                maxPerp = std::max(abs64(perpX), abs64(perpZ)) > 0
+                    ? static_cast<int32_t>(std::max(abs64(perpX), abs64(perpZ)))
+                    : 0;
+                if (maxPerp <= 0) return;
+            }
+            const int32_t pushX = static_cast<int32_t>(
+                ((static_cast<int64_t>(perpX) << 16) / maxPerp * pen) >> 16);
+            const int32_t pushZ = static_cast<int32_t>(
+                ((static_cast<int64_t>(perpZ) << 16) / maxPerp * pen) >> 16);
+            if (pen > bestPenRaw)
+            {
+                bestPenRaw = pen;
+                bestPushXRaw = pushX;
+                bestPushZRaw = pushZ;
+                bestSegmentId = segmentId;
+            }
+        };
+
+        auto scanWallCellView = [&](const TrackCollisionMap::CellView& cell)
+        {
+            SaturatingAddU16(wallQueryFacesScannedThisFrame_, cell.count);
+            for (uint16_t ci = 0u; ci < cell.count; ++ci)
+            {
+                uint16_t wallIndex = 0u;
+                if (!trackCollisionMap.ReadCellIndex(cell, ci, wallIndex)) continue;
+                testWallIndex(wallIndex);
+            }
+        };
+
+        // 3x3 neighborhood around the clamped cell (and prev cell) so radius and
+        // motion do not miss walls on cell borders — still TCOL-only.
+        auto scanWallNeighborhood = [&](int64_t modelX, int64_t modelZ)
+        {
+            size_t cellX = 0u;
+            size_t cellZ = 0u;
+            if (!trackCollisionMap.ResolveWallCellCoords(collisionSegment, modelX, modelZ, cellX, cellZ))
+            {
+                return;
+            }
+            for (int32_t dz = -1; dz <= 1; ++dz)
+            {
+                for (int32_t dx = -1; dx <= 1; ++dx)
+                {
+                    const int32_t nx = static_cast<int32_t>(cellX) + dx;
+                    const int32_t nz = static_cast<int32_t>(cellZ) + dz;
+                    if (nx < 0 || nz < 0 ||
+                        nx >= static_cast<int32_t>(TrackCollisionMap::kGridDim) ||
+                        nz >= static_cast<int32_t>(TrackCollisionMap::kGridDim))
+                    {
+                        continue;
+                    }
+                    TrackCollisionMap::CellView cell{};
+                    if (!trackCollisionMap.FindWallCellAt(
+                            collisionSegment,
+                            static_cast<size_t>(nx),
+                            static_cast<size_t>(nz),
+                            cell))
+                    {
+                        continue;
+                    }
+                    scanWallCellView(cell);
+                }
+            }
+        };
+
+        // Endpoints + midpoint only (¼/¾ removed — SH2 cost; coverage comes
+        // from correct TCOL laterals, not denser cell spam).
+        uint8_t wallVisited[256];
+        for (uint16_t i = 0; i < 256u; ++i) wallVisited[i] = 0u;
+        auto testWallIndexDedup = [&](uint16_t wi)
+        {
+            if (wi < 256u)
+            {
+                if (wallVisited[wi] != 0u) return;
+                wallVisited[wi] = 1u;
+            }
+            testWallIndex(wi);
+        };
+        auto scanWallCellViewDedup = [&](const TrackCollisionMap::CellView& cell)
+        {
+            for (uint16_t ci = 0; ci < cell.count; ++ci)
+            {
+                uint16_t wallIndex = 0u;
+                if (!trackCollisionMap.ReadCellIndex(cell, ci, wallIndex)) continue;
+                testWallIndexDedup(wallIndex);
+            }
+        };
+        auto scanWallNeighborhoodDedup = [&](int64_t modelX, int64_t modelZ)
+        {
+            size_t cellX = 0u;
+            size_t cellZ = 0u;
+            if (!trackCollisionMap.ResolveWallCellCoords(collisionSegment, modelX, modelZ, cellX, cellZ))
+            {
+                return;
+            }
+            for (int32_t dz = -1; dz <= 1; ++dz)
+            {
+                for (int32_t dx = -1; dx <= 1; ++dx)
+                {
+                    const int32_t nx = static_cast<int32_t>(cellX) + dx;
+                    const int32_t nz = static_cast<int32_t>(cellZ) + dz;
+                    if (nx < 0 || nz < 0 ||
+                        nx >= static_cast<int32_t>(TrackCollisionMap::kGridDim) ||
+                        nz >= static_cast<int32_t>(TrackCollisionMap::kGridDim))
+                    {
+                        continue;
+                    }
+                    TrackCollisionMap::CellView cell{};
+                    if (!trackCollisionMap.FindWallCellAt(
+                            collisionSegment,
+                            static_cast<size_t>(nx),
+                            static_cast<size_t>(nz),
+                            cell))
+                    {
+                        continue;
+                    }
+                    scanWallCellViewDedup(cell);
+                }
+            }
+        };
+
+        scanWallNeighborhoodDedup(modelXNow, modelZNow);
+        if (sweepPrevValid &&
+            (modelXPrev != modelXNow || modelZPrev != modelZNow))
+        {
+            scanWallNeighborhoodDedup(modelXPrev, modelZPrev);
+        }
+        // Far shoulder. The 3×3 around `now` covers one cell; the hull end can
+        // sit in the next cell on a short segment.
+        if (hullSegValid)
+        {
+            const int64_t modelXHull =
+                static_cast<int64_t>(hullOtherXR) - static_cast<int64_t>(oXR);
+            const int64_t modelZHull =
+                static_cast<int64_t>(hullOtherZR) - static_cast<int64_t>(oZR);
+            if (modelXHull != modelXNow || modelZHull != modelZNow)
+            {
+                scanWallNeighborhoodDedup(modelXHull, modelZHull);
+            }
+        }
+        return true;
+    };
+
     auto scanSegment = [&](const SegmentRenderEntry& segment,
                            bool onlyNonDriveableBySurface,
                            bool respectScmapHint)
     {
+        // A mapped TCOL segment is authoritative when not already covered by
+        // the independent collision window pass.
+        if (!useIndependentCollisionWindow && scanTrackCollisionWalls(segment.id)) return;
         if (respectScmapHint && !segmentHasWallCandidates(segment.id)) return;
 
         {
@@ -20271,9 +21423,32 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                     if (sweepMaxX < (wall.minXRaw + oXR - rad3) || sweepMinX > (wall.maxXRaw + oXR + rad3)) continue;
                     if (sweepMaxZ < (wall.minZRaw + oZR - rad3) || sweepMinZ > (wall.maxZRaw + oZR + rad3)) continue;
 
-                    // Signed distance from car to wall plane using stored outward normal.
-                    // >>8 on both sides keeps products in int32 (safe for coords ≤ ±5000u).
-                    // Positive = car on correct side, negative = car tunneled through.
+                    // Finite segment distance (not infinite plane) — same policy as TCOL walls.
+                    const int64_t wax = static_cast<int64_t>(wall.axRaw) + oXR;
+                    const int64_t waz = static_cast<int64_t>(wall.azRaw) + oZR;
+                    const int64_t wEdgeX = static_cast<int64_t>(wall.bxRaw) - wall.axRaw;
+                    const int64_t wEdgeZ = static_cast<int64_t>(wall.bzRaw) - wall.azRaw;
+                    const int64_t lenSq = (wEdgeX * wEdgeX) + (wEdgeZ * wEdgeZ);
+                    if (lenSq <= 0) continue;
+
+                    auto closestAxisDist = [&](int64_t qx, int64_t qz) -> int64_t
+                    {
+                        const int64_t wx = qx - wax;
+                        const int64_t wz = qz - waz;
+                        int64_t tNum = (wx * wEdgeX) + (wz * wEdgeZ);
+                        if (tNum < 0) tNum = 0;
+                        else if (tNum > lenSq) tNum = lenSq;
+                        const int64_t cx = wax + ((wEdgeX * tNum) / lenSq);
+                        const int64_t cz = waz + ((wEdgeZ * tNum) / lenSq);
+                        const int64_t dx = qx - cx;
+                        const int64_t dz = qz - cz;
+                        const int64_t adx = abs64(dx);
+                        const int64_t adz = abs64(dz);
+                        return (adx > adz) ? adx : adz;
+                    };
+
+                    const int64_t distNow = closestAxisDist(pXR, pZR);
+                    const int64_t distPrev = prevValid ? closestAxisDist(pPrevXR, pPrevZR) : distNow;
                     const int32_t dxR = (pXR - wall.axRaw - oXR) >> 8;
                     const int32_t dzR = (pZR - wall.azRaw - oZR) >> 8;
                     const int32_t signedDist = (dxR * (wall.nxRaw >> 8)) + (dzR * (wall.nzRaw >> 8));
@@ -20281,29 +21456,26 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                     const int32_t dzPrevR = (pPrevZR - wall.azRaw - oZR) >> 8;
                     const int32_t signedDistPrev = (dxPrevR * (wall.nxRaw >> 8)) + (dzPrevR * (wall.nzRaw >> 8));
 
-                    const int32_t absDist = (signedDist < 0) ? -signedDist : signedDist;
-                    const bool overlapNow = (absDist < radI);
+                    const bool overlapNow = (distNow < radI);
                     const bool crossedPlane =
                         prevValid &&
                         ((signedDist > 0 && signedDistPrev < 0) ||
                          (signedDist < 0 && signedDistPrev > 0));
+                    const int64_t nearSegLimit = static_cast<int64_t>(radI) * 2;
+                    const bool nearFiniteSegment =
+                        (distNow <= nearSegLimit) || (distPrev <= nearSegLimit);
+                    if (!overlapNow && !(crossedPlane && nearFiniteSegment)) continue;
 
-                    if (!overlapNow && !crossedPlane) continue;
-
-                    // Penetration depth: approach uses (radius - dist), tunnel uses (dist + radius).
+                    const int32_t absDist = static_cast<int32_t>(
+                        overlapNow ? distNow : ((distNow < distPrev) ? distNow : distPrev));
                     const int32_t pen = overlapNow
                         ? (radI - absDist)
                         : (absDist + radI);
 
                     // Push direction: derived geometrically from segment [A,B] perpendicular,
                     // oriented toward the side where the car was (prevPos when valid, else curPos).
-                    // This is correct regardless of stored normal sign (inward vs outward).
-                    const int32_t wax = wall.axRaw + oXR;
-                    const int32_t waz = wall.azRaw + oZR;
-                    const int32_t wEdgeX = wall.bxRaw - wall.axRaw;
-                    const int32_t wEdgeZ = wall.bzRaw - wall.azRaw;
-                    int32_t perpX = wEdgeZ;
-                    int32_t perpZ = -wEdgeX;
+                    int32_t perpX = static_cast<int32_t>(wEdgeZ);
+                    int32_t perpZ = static_cast<int32_t>(-wEdgeX);
                     const int32_t refX = prevValid ? pPrevXR : pXR;
                     const int32_t refZ = prevValid ? pPrevZR : pZR;
                     const int64_t oriDot = (int64_t)perpX * (refX - wax)
@@ -20473,7 +21645,47 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                            bool respectScmapHint) -> bool
     {
         bool scannedLocal = false;
-        if (seedSegmentId > 0 && totalSegmentCount_ > 0)
+        if (useIndependentCollisionWindow && seedSegmentId > 0 && totalSegmentCount_ > 0)
+        {
+            // Reach this frame is the 80u sweep plus the lateral hull (~45u).
+            // seed±4 walked about a thousand units on every miss (video 162913).
+            // Neighbors skip scenery-only ids so the 102→107 join still sees
+            // the real fence (video 165404).
+            const int32_t totalIds = static_cast<int32_t>(totalSegmentCount_);
+            int32_t forwardId = NextDriveableCollisionSegment(seedSegmentId, 1);
+            int32_t backId = NextDriveableCollisionSegment(seedSegmentId, -1);
+            if (forwardId <= 0) forwardId = WrapSegmentIdToRange(seedSegmentId + 1, totalIds);
+            if (backId <= 0) backId = WrapSegmentIdToRange(seedSegmentId - 1, totalIds);
+            const int32_t candidateIds[3] = { seedSegmentId, forwardId, backId };
+            std::array<int32_t, 16> localIds{};
+            size_t localCount = 0u;
+            for (int32_t candidateId : candidateIds)
+            {
+                if (candidateId <= 0) continue;
+                bool duplicate = false;
+                for (size_t i = 0; i < localCount; ++i)
+                {
+                    if (localIds[i] == candidateId)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate) continue;
+                if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+                if (scanTrackCollisionWalls(candidateId)) scannedLocal = true;
+                if (bestPenRaw > 0)
+                {
+                    return true;
+                }
+            }
+            if (bestPenRaw > 0) return true;
+            // TCOL-resident + independent window: do not also walk visual GEO walls.
+            if (useIndependentCollisionWindow) return bestPenRaw > 0;
+        }
+
+        // Legacy GEO wall path — only when TCOL is absent/invalid.
+        if (!trackCollisionMap.Valid() && seedSegmentId > 0 && totalSegmentCount_ > 0)
         {
             std::array<int32_t, 12> localIds{};
             size_t localCount = 0u;
@@ -20505,7 +21717,8 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         // Global fallback: when local seed misses, scan loaded window segments.
         // On Saturn low-cost mode this still stays affordable because the hot path
         // uses cached 2D wall segments (int32), and this branch only runs on cadence/miss.
-        if (allowGlobalFallback && (!scannedLocal || bestPenRaw <= 0))
+        if (!trackCollisionMap.Valid() &&
+            allowGlobalFallback && (!scannedLocal || bestPenRaw <= 0))
         {
             for (const auto& segment : segmentRenderers_)
             {

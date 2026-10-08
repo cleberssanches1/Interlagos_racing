@@ -102,7 +102,8 @@ public:
         enum : uint8_t
         {
             kBrakingBit = 1u << 0,
-            kWallHitBit = 1u << 1
+            kWallHitBit = 1u << 1,
+            kGroundSupportBit = 1u << 2
         };
 
         int16_t speedProxy = 0;
@@ -122,6 +123,8 @@ public:
         uint8_t topoDrop = 0;
         int16_t wallPushX = 0;
         int16_t wallPushZ = 0;
+        int16_t wallSegmentId = -1;
+        int16_t wallDist = -1;
         int16_t yawRateDeg = 0;
         int16_t yawStepDeg = 0;
         int16_t planarDx = 0;
@@ -143,8 +146,10 @@ public:
 
         bool Braking() const { return (flags & kBrakingBit) != 0u; }
         bool WallHit() const { return (flags & kWallHitBit) != 0u; }
+        bool GroundSupport() const { return (flags & kGroundSupportBit) != 0u; }
         void SetBraking(bool enabled) { SetFlag(kBrakingBit, enabled); }
         void SetWallHit(bool enabled) { SetFlag(kWallHitBit, enabled); }
+        void SetGroundSupport(bool enabled) { SetFlag(kGroundSupportBit, enabled); }
 
     private:
         void SetFlag(uint8_t bit, bool enabled)

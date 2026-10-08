@@ -473,6 +473,114 @@ void TestRouteRelativeDirectionDetectsTurnaroundWithoutProgress(TestContext& ctx
                        +1, false, -65536, reverseEnterDot)), +1);
 }
 
+void TestOppositeProgressFlipIgnoresReverseWhenRouteAgrees(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    constexpr uint16_t maxSingleStepMotion = 1u;
+
+    // Video 134618: two segments of reverse while the camera still faces the
+    // increasing-route tangent must NOT flip belt construction.
+    EXPECT_TRUE(ctx, !ShouldApplyOppositeProgressFlip(
+                          true, +1, +1, 2, true, 19u, maxSingleStepMotion));
+    EXPECT_TRUE(ctx, !ShouldApplyOppositeProgressFlip(
+                          true, -1, -1, 2, true, 19u, maxSingleStepMotion));
+
+    // When TDIR already wants the other direction, opposite progress may still
+    // confirm (UpdateCameraDrivenWindowDirection usually flips via route first).
+    EXPECT_TRUE(ctx, ShouldApplyOppositeProgressFlip(
+                         true, -1, +1, 2, true, 19u, maxSingleStepMotion));
+
+    // Without TDIR, legacy opposite-progress rules remain.
+    EXPECT_TRUE(ctx, ShouldApplyOppositeProgressFlip(
+                         false, +1, +1, 2, true, 19u, maxSingleStepMotion));
+    EXPECT_TRUE(ctx, !ShouldApplyOppositeProgressFlip(
+                          false, +1, +1, 1, true, 19u, maxSingleStepMotion));
+}
+
+void TestSeamTravelWallRejectsJoinCapsOnly(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    // Segment advances on Z. Bounds are a 200 x 100 slab.
+    constexpr int32_t minX = 0;
+    constexpr int32_t maxX = 200 << 16;
+    constexpr int32_t minZ = 0;
+    constexpr int32_t maxZ = 100 << 16;
+    constexpr int32_t travelX = 0;
+    constexpr int32_t travelZ = 80 << 16;
+
+    // Lateral stem at the join (normal across the lane) still blocks.
+    EXPECT_TRUE(ctx, !ShouldRejectSeamTravelWall(
+                          65536, 0,
+                          190 << 16, 2 << 16,
+                          minX, maxX, minZ, maxZ,
+                          travelX, travelZ));
+
+    // Along-track normal inside the end band is a seam cap.
+    EXPECT_TRUE(ctx, ShouldRejectSeamTravelWall(
+                          0, 65536,
+                          100 << 16, 2 << 16,
+                          minX, maxX, minZ, maxZ,
+                          travelX, travelZ));
+
+    // Same normal in the middle of the segment is a real barrier.
+    EXPECT_TRUE(ctx, !ShouldRejectSeamTravelWall(
+                           0, 65536,
+                           100 << 16, 50 << 16,
+                           minX, maxX, minZ, maxZ,
+                           travelX, travelZ));
+
+    // ~45° at the join still faces travel enough to reject.
+    EXPECT_TRUE(ctx, ShouldRejectSeamTravelWall(
+                          1000, 1000,
+                          100 << 16, 1 << 16,
+                          minX, maxX, minZ, maxZ,
+                          0, 1000));
+
+    // ~30° off pure lateral (cos ≈ 0.5) at the join stays.
+    EXPECT_TRUE(ctx, !ShouldRejectSeamTravelWall(
+                           1000, 0,
+                           10 << 16, 1 << 16,
+                           minX, maxX, minZ, maxZ,
+                           500, 866));
+
+    EXPECT_TRUE(ctx, !ShouldRejectSeamTravelWall(
+                           0, 0,
+                           0, 0,
+                           minX, maxX, minZ, maxZ,
+                           travelX, travelZ));
+}
+
+void TestDriveableSegmentBridgeSkipsSceneryHole(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+    // Ids 1..7. Ground on 1, 2 and 7. 3–6 are the 103–106 style hole.
+    constexpr int32_t kTotal = 7;
+    bool hasGround[kTotal + 1] = {};
+    hasGround[1] = true;
+    hasGround[2] = true;
+    hasGround[7] = true;
+    const auto predicate = [&](int32_t id) -> bool
+    {
+        return id > 0 && id <= kTotal && hasGround[id];
+    };
+
+    EXPECT_TRUE(ctx, NextDriveableSegmentId(2, 1, kTotal, predicate) == 7);
+    EXPECT_TRUE(ctx, NextDriveableSegmentId(7, -1, kTotal, predicate) == 2);
+    EXPECT_TRUE(ctx, NextDriveableSegmentId(2, -1, kTotal, predicate) == 1);
+    EXPECT_TRUE(ctx, NextDriveableSegmentId(1, 1, kTotal, predicate) == 2);
+    // No ground within the bridge.
+    bool none[kTotal + 1] = {};
+    none[1] = true;
+    const auto empty = [&](int32_t id) -> bool
+    {
+        return id > 0 && id <= kTotal && none[id];
+    };
+    EXPECT_TRUE(ctx, NextDriveableSegmentId(1, 1, kTotal, empty) == -1);
+    EXPECT_TRUE(ctx, NextDriveableSegmentId(0, 1, kTotal, predicate) == -1);
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -487,6 +595,9 @@ int main()
         {"WindowSlidesForwardKeepingSameBandShape", &TestWindowSlidesForwardKeepingSameBandShape},
         {"WindowSlidesBackwardKeepingSameBandShape", &TestWindowSlidesBackwardKeepingSameBandShape},
         {"RingReorientationKeepsResidentWindowAndReverseSlides", &TestRingReorientationKeepsResidentWindowAndReverseSlides},
+        {"OppositeProgressFlipIgnoresReverseWhenRouteAgrees", &TestOppositeProgressFlipIgnoresReverseWhenRouteAgrees},
+        {"SeamTravelWallRejectsJoinCapsOnly", &TestSeamTravelWallRejectsJoinCapsOnly},
+        {"DriveableSegmentBridgeSkipsSceneryHole", &TestDriveableSegmentBridgeSkipsSceneryHole},
         {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},
         {"CollectRetiredSlotsForRemovedFamilies", &TestCollectRetiredSlotsForRemovedFamilies},

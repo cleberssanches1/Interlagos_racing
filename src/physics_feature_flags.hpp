@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Central feature flags for gradual rollout of physics/ground-query changes.
 // Keep defaults conservative and enable incrementally.
 
@@ -61,6 +63,24 @@
 #define PHYS_SATURN_LOW_COST 1
 #endif
 
+// Cart-resident TCOL at boot. Default OFF — TCOL is ~773 KiB and competes with
+// visual belt/TBK Cart residency. Enable only for A/B ground-detection tests.
+#ifndef PHYS_TRACK_COLLISION_CART_MAPS_AT_BOOT
+#define PHYS_TRACK_COLLISION_CART_MAPS_AT_BOOT 0
+#endif
+
+// Load TCOL into Cart AFTER the visual belt is Ready. Default ON — belt packs
+// win Cart first; ground mesh follows when free Cart still covers TCOL+reserve.
+#ifndef PHYS_TRACK_COLLISION_CART_MAPS_AFTER_BELT
+#define PHYS_TRACK_COLLISION_CART_MAPS_AFTER_BELT 1
+#endif
+
+// Query TCOL by segmentId over seed±N with wrap; does not require visual
+// segmentRenderers_ residency (FindWindowEntryByIdFast).
+#ifndef PHYS_INDEPENDENT_COLLISION_WINDOW
+#define PHYS_INDEPENDENT_COLLISION_WINDOW 1
+#endif
+
 namespace Game::PhysicsFeatureFlags
 {
 static constexpr bool kEnableSurfaceTypeQuery = (PHYS_SURFACE_TYPE_QUERY != 0);
@@ -75,4 +95,11 @@ static constexpr bool kEnableCameraSurfaceGuard = (PHYS_CAMERA_SURFACE_GUARD != 
 static constexpr bool kEnableWallCollisionRuntime = (PHYS_WALL_COLLISION_RUNTIME != 0);
 static constexpr bool kEnablePhysicsV2 = (PHYSICS_V2_ENABLED != 0);
 static constexpr bool kEnableSaturnLowCostPhysics = (PHYS_SATURN_LOW_COST != 0);
+static constexpr bool kEnableTrackCollisionCartMapsAtBoot =
+    (PHYS_TRACK_COLLISION_CART_MAPS_AT_BOOT != 0);
+static constexpr bool kEnableTrackCollisionCartMapsAfterBelt =
+    (PHYS_TRACK_COLLISION_CART_MAPS_AFTER_BELT != 0);
+static constexpr bool kEnableIndependentCollisionWindow =
+    (PHYS_INDEPENDENT_COLLISION_WINDOW != 0);
+static constexpr uint16_t kCollisionHalfWindowSegments = 4u;
 } // namespace Game::PhysicsFeatureFlags

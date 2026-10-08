@@ -67,9 +67,17 @@ struct GroundState
     // Frames to keep last Y after a probe miss (anti-stuck / anti-pop).
     uint8_t surfaceContactFrames = 0u;
     bool surfaceYFilterInitialized = false;
+    // Consecutive frames with both front and rear axle probes missing.
+    // Clears support latch after kBothAxleMissHoldFrames (video 115458 float+g:1).
+    uint8_t bothAxleMissFrames = 0u;
     bool lastWallQueryHit = false;
     Fxp lastWallPushX = Fxp::BuildRaw(0);
     Fxp lastWallPushZ = Fxp::BuildRaw(0);
+    // After a wall hit (real or ghost), skip no-support kill for N frames so the
+    // car can re-plant / re-engage gear (video 104523: wh then dead in N).
+    uint8_t wallHitNoSupportCooldown = 0u;
+    // Approx Chebyshev dist to wall on hit (units); -1 if no hit this frame.
+    int16_t lastWallHitDistUnits = -1;
     // Previous-frame |front-rear| grade (world Y) — debug / telemetry.
     int16_t lastSlopeAbsY = 0;
     // Signed road grade tanθ ≈ (frontY − rearY) / wheelbase (16.16).
@@ -441,6 +449,8 @@ struct Tunables
     // Continuous slide: keep heave grade when F−R collapses on a flat slab.
     static constexpr bool kEnableContinuousGradeSlide = true;
     static constexpr uint8_t kGradeHoldMaxFrames = 64u;                       // heave only
+    // Both-axle miss: keep sticky Y briefly, then drop support (115458).
+    static constexpr uint8_t kBothAxleMissHoldFrames = 8u;
     // Attitude/cam grade hold — keep nose on face when F−R collapses mid-slab.
     static constexpr uint8_t kGradeAttitudeHoldMaxFrames = 32u;
     // Continuous pitch chord — room for real Senna faces (tan~0.39 → ~29 u).
@@ -522,13 +532,24 @@ struct Tunables
     static constexpr bool kBodyClipQuerySurface = !kEnableSaturnLowCostPhysics;
     // Minimum wall push magnitude to trigger velocity cancellation (avoids noise on graze).
     static constexpr Fxp kWallPushVelocityCancelThreshold = Fxp::BuildRaw(0x00001999); // ~0.10
-    static constexpr Fxp kWallImpactForwardDamping = Fxp::BuildRaw(0x0000A000); // 0.625
+    // Soft damping so the car slides/repels instead of dying speed and sticking.
+    static constexpr Fxp kWallImpactForwardDamping = Fxp::BuildRaw(0x00004000); // 0.25
     static constexpr Fxp kWallImpactYawDamping = Fxp::BuildRaw(0x0000D000);     // 0.8125
-    static constexpr Fxp kWallImpactStopCutoff = Fxp::BuildRaw(0x00026666);     // ~2.40
-    static constexpr Fxp kWallSeparationSkin = Fxp::BuildRaw(0x00001000);       // 0.0625
-    static constexpr Fxp kWallHullHalfLength = Fxp::BuildRaw(40 << 16);         // 40.0 (~2.03 m)
-    static constexpr Fxp kWallHullHalfWidth = Fxp::BuildRaw(20 << 16);          // 20.0 (~1.02 m)
-    static constexpr Fxp kWallHullProbeRadius = Fxp::BuildRaw(6 << 16);         // 6.0  (~0.31 m)
+    static constexpr Fxp kWallImpactStopCutoff = Fxp::BuildRaw(0x00008000);     // 0.5
+    // Minimum outward separation on every wall hit (was 0.0625 — felt like "block, no repel").
+    static constexpr Fxp kWallSeparationSkin = Fxp::BuildRaw(0x00018000);       // 1.5
+    static constexpr Fxp kWallMinRepelSeparation = Fxp::BuildRaw(0x00020000);   // 2.0
+    // Arcade bounce: after canceling inward vel, ensure a minimum outward kick
+    // so head-on hits feel like a repel instead of a sticky block.
+    static constexpr Fxp kWallMinOutwardBounce = Fxp::BuildRaw(0x00028000);     // 2.5
+    // Match contact box (half-WB / half-track) so laterals hit before the center
+    // tunnels through. Swept finite tests keep cost acceptable with 4 corners.
+    static constexpr Fxp kWallHullHalfLength = kProbeHalfWheelBase;             // 37.5
+    static constexpr Fxp kWallHullHalfWidth = kProbeHalfTrack;                  // ~22.4
+    static constexpr Fxp kWallHullProbeRadius = Fxp::BuildRaw(0x00020000);      // 2.0 (hull laterals)
+    // One fast frame can finish on the far side of a thin wall. The swept hit
+    // has to be able to place the sample back outside (video 153915).
+    static constexpr Fxp kMaxWallPlanarCorrectionPerFrame = Fxp::BuildRaw(0x00500000); // 80.0
     static constexpr Fxp kBodyClipPenetrationBias = Fxp::BuildRaw(0x00000800);  // 0.03125
     static constexpr Fxp kBodyClipMaxDepth = Fxp::BuildRaw(0x00018000);         // 1.5
     static constexpr Fxp kBodyClipMinPlanarNormalAbs = Fxp::BuildRaw(0x00002000); // 0.125
@@ -733,9 +754,11 @@ inline void ResetGroundDebug(GameplayFrameState& ioFrameState)
     ioFrameState.debugCorrX = 0;
     ioFrameState.debugCorrZ = 0;
     ioFrameState.debugWallHit = 0u;
+    ioFrameState.debugGroundSupport = 0u;
     ioFrameState.debugWallPushX = 0;
     ioFrameState.debugWallPushZ = 0;
     ioFrameState.debugWallSegmentId = -1;
+    ioFrameState.debugWallDist = -1;
     ioFrameState.groundFaceIndex = -1;
     ioFrameState.groundFamilyId = 0u;
     ioFrameState.groundSurfaceType = 0u;

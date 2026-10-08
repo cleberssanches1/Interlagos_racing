@@ -89,6 +89,102 @@ constexpr bool ShouldConfirmOppositeDirectionProgress(int32_t oppositeProgress,
     return planarUnitsPerFrame <= maxSingleStepUnitsPerFrame;
 }
 
+// Reverse gear walks segment ids against the belt while the chase camera still
+// looks along the nose / increasing-route tangent (video 134618). Opposite
+// progress must NOT flip construction when TDIR still agrees with the current
+// belt — only a real heading turnaround (routeDesired != current) may.
+constexpr bool ShouldApplyOppositeProgressFlip(bool routeTangentValid,
+                                                int8_t routeDesiredDirection,
+                                                int8_t currentDirection,
+                                                int32_t oppositeProgress,
+                                                bool speedProxyValid,
+                                                uint16_t planarUnitsPerFrame,
+                                                uint16_t maxSingleStepUnitsPerFrame) noexcept
+{
+    currentDirection = (currentDirection < 0) ? -1 : 1;
+    routeDesiredDirection = (routeDesiredDirection < 0) ? -1 : 1;
+    if (routeTangentValid && routeDesiredDirection == currentDirection)
+    {
+        return false;
+    }
+    return ShouldConfirmOppositeDirectionProgress(
+        oppositeProgress,
+        speedProxyValid,
+        planarUnitsPerFrame,
+        maxSingleStepUnitsPerFrame);
+}
+
+constexpr int64_t SeamAbs64(int64_t value) noexcept
+{
+    return value < 0 ? -value : value;
+}
+
+// Shrink a 2D vector so later |n·t| products fit in int64.
+constexpr void SeamScale15(int64_t& x, int64_t& z) noexcept
+{
+    int64_t magnitude = SeamAbs64(x);
+    const int64_t az = SeamAbs64(z);
+    if (az > magnitude) magnitude = az;
+    if (magnitude <= 32767) return;
+    x = (x * 32767) / magnitude;
+    z = (z * 32767) / magnitude;
+}
+
+// Ignore a wall hit that blocks travel across a segment join.
+// Ground faces never reach this test. A lateral stem (normal across the lane)
+// stays active even when an endpoint touches the join. A stem whose normal
+// faces along the lane is dropped only inside the end band (15% of the
+// along-track AABB), matching WALL_SEAM_END_FRAC in the TCOL bake.
+// travelX/Z is the neighbor-centroid delta in the same space as the contact
+// and the AABB. A zero travel vector falls back to the shorter AABB axis.
+constexpr bool ShouldRejectSeamTravelWall(int32_t wallNx,
+                                           int32_t wallNz,
+                                           int32_t contactX,
+                                           int32_t contactZ,
+                                           int32_t minX,
+                                           int32_t maxX,
+                                           int32_t minZ,
+                                           int32_t maxZ,
+                                           int32_t travelX,
+                                           int32_t travelZ) noexcept
+{
+    int64_t tx = travelX;
+    int64_t tz = travelZ;
+    if (tx == 0 && tz == 0)
+    {
+        const int64_t xSpan = static_cast<int64_t>(maxX) - minX;
+        const int64_t zSpan = static_cast<int64_t>(maxZ) - minZ;
+        if (SeamAbs64(zSpan) <= SeamAbs64(xSpan)) tz = 1;
+        else tx = 1;
+    }
+    int64_t nx = wallNx;
+    int64_t nz = wallNz;
+    SeamScale15(nx, nz);
+    SeamScale15(tx, tz);
+    const int64_t dot = (nx * tx) + (nz * tz);
+    const int64_t n2 = (nx * nx) + (nz * nz);
+    const int64_t t2 = (tx * tx) + (tz * tz);
+    if (n2 <= 0 || t2 <= 0) return false;
+    // |n·t| / (|n||t|) >= 0.70  <=>  dot^2 / 49 >= n2 * t2 / 100.
+    const int64_t left = (dot * dot) / 49;
+    const int64_t right = (n2 / 10) * (t2 / 10);
+    if (left < right) return false;
+
+    const bool travelIsZ = SeamAbs64(tz) >= SeamAbs64(tx);
+    const int64_t span = travelIsZ
+        ? (static_cast<int64_t>(maxZ) - minZ)
+        : (static_cast<int64_t>(maxX) - minX);
+    const int64_t useSpan = span > 1 ? span : 1;
+    const int64_t band = (useSpan * 15) / 100;
+    const int64_t coord = travelIsZ ? contactZ : contactX;
+    const int64_t lo = travelIsZ ? minZ : minX;
+    const int64_t hi = travelIsZ ? maxZ : maxX;
+    const int64_t distLo = SeamAbs64(coord - lo);
+    const int64_t distHi = SeamAbs64(coord - hi);
+    const int64_t distEnd = distLo < distHi ? distLo : distHi;
+    return distEnd <= band;
+}
+
 // The track direction map describes increasing logical segment ids.  Comparing
 // the camera with that local tangent distinguishes a genuine U-turn from a
 // hairpin: both the car and the tangent rotate together through a hairpin,
@@ -114,6 +210,33 @@ constexpr int32_t WrapSegmentIdToRange(int32_t segmentId, uint16_t totalSegmentC
     int32_t normalized = (segmentId - 1) % total;
     if (normalized < 0) normalized += total;
     return normalized + 1;
+}
+
+// Scenery-only logical ids sit in the lap order with no driveable ground.
+// Interlagos 103–106 is that hole between asphalt 102 and 107. A raw ±1
+// walk never reaches the far side. Bridge at most this many ids.
+constexpr int32_t kDriveableSegmentBridge = 8;
+
+// Next id in `step` (+1 or -1) whose predicate is true, skipping holes.
+// `hasGround` receives a wrapped segment id and returns true when that
+// segment has driveable collision ground.
+template <typename HasGroundFn>
+int32_t NextDriveableSegmentId(int32_t startId,
+                               int32_t step,
+                               int32_t total,
+                               HasGroundFn hasGround)
+{
+    if (startId <= 0 || total <= 0 || step == 0) return -1;
+    const int32_t direction = (step < 0) ? -1 : 1;
+    for (int32_t hop = 1; hop <= kDriveableSegmentBridge; ++hop)
+    {
+        const int32_t candidate = WrapSegmentIdToRange(
+            startId + direction * hop,
+            static_cast<uint16_t>(total));
+        if (candidate <= 0 || candidate == startId) return -1;
+        if (hasGround(candidate)) return candidate;
+    }
+    return -1;
 }
 
 constexpr size_t LogicalToPhysicalWindowIndex(size_t headIndex,

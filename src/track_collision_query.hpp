@@ -289,12 +289,26 @@ public:
         return true;
     }
 
+    void CommitWallQueryPrevPosition(const SRL::Math::Types::Vector3D& worldPosition) const override
+    {
+        if (!trackSystem_) return;
+        trackSystem_->CommitWallQueryPrevPosition(worldPosition);
+    }
+    void InvalidateWallQueryPrevPosition() const override
+    {
+        if (!trackSystem_) return;
+        trackSystem_->InvalidateWallQueryPrevPosition();
+    }
+
     bool ResolvePlanarWallPush(const SRL::Math::Types::Vector3D& worldPosition,
                                const SRL::Math::Types::Vector3D& forwardDirection,
                                SRL::Math::Types::Fxp collisionRadius,
                                SRL::Math::Types::Vector3D& outPush,
                                int32_t* outSegmentId = nullptr,
-                               int32_t seedSegmentId = -1) const override
+                               int32_t seedSegmentId = -1,
+                               bool commitPrevPosition = true,
+                               const SRL::Math::Types::Vector3D* motionPrevPosition = nullptr,
+                               const SRL::Math::Types::Vector3D* hullLateralOtherEnd = nullptr) const override
     {
         outPush = SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
         if (!trackSystem_ || !trackSystem_->Ready())
@@ -333,7 +347,10 @@ public:
                                                             outPush,
                                                             outSegmentId,
                                                             resolvedSeedSegmentId,
-                                                            allowGlobalFallback);
+                                                            allowGlobalFallback,
+                                                            commitPrevPosition,
+                                                            motionPrevPosition,
+                                                            hullLateralOtherEnd);
         if (found)
         {
             if (outSegmentId && *outSegmentId > 0)
@@ -435,12 +452,27 @@ private:
         // hairpin, even though it has not crossed the corresponding road faces.
         // Global reacquisition remains available before the first lock; after
         // that, surface probes provide the authoritative segment id.
-        constexpr int32_t kBackSearch = 1;
-        constexpr int32_t kForwardSearch = 1;
-        for (int32_t delta = -kBackSearch; delta <= kForwardSearch; ++delta)
+        // ±1 in lap order, but skip scenery-only ids (103–106) or the lock
+        // stays on 102 while the car is already on 107.
+        int32_t candidateIds[3] = { seedSegmentId, -1, -1 };
+        candidateIds[1] = trackSystem_->NextDriveableCollisionSegment(seedSegmentId, 1);
+        candidateIds[2] = trackSystem_->NextDriveableCollisionSegment(seedSegmentId, -1);
+        if (candidateIds[1] <= 0) candidateIds[1] = WrapSegmentId(seedSegmentId + 1, total);
+        if (candidateIds[2] <= 0) candidateIds[2] = WrapSegmentId(seedSegmentId - 1, total);
+        for (int32_t candidateSlot = 0; candidateSlot < 3; ++candidateSlot)
         {
-            const int32_t candidateId = WrapSegmentId(seedSegmentId + delta, total);
+            const int32_t candidateId = candidateIds[candidateSlot];
             if (candidateId <= 0) continue;
+            bool duplicate = false;
+            for (int32_t earlier = 0; earlier < candidateSlot; ++earlier)
+            {
+                if (candidateIds[earlier] == candidateId)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate) continue;
 
             SRL::Math::Types::Vector3D candidateCenter{};
             if (!trackSystem_->FindSegmentCenterById(candidateId, offset, candidateCenter)) continue;

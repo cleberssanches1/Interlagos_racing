@@ -1629,8 +1629,21 @@ private:
             GameLoopOverlayDomain::BuildExtendedDrivetrainOverlaySnapshot(
                 (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr);
         const auto drivingHud = GameLoopRuntime::BuildDrivingHudTextPacket(drivetrain);
-        GameLoopRuntime::PresentPresenterBoundaryHudStatusTextPacket(
-            GameLoopRuntime::BuildPresenterBoundaryStatusTextPacket(drivingHud));
+        // Stabilization A/B: one compact DRV line (~4 Hz) replaces KM/H + SHIFT spam.
+        // th=throttle, g=gear, m=groundMask, km=speed — diagnoses GEAR:N vs plant miss.
+        static uint8_t s_drvCadence = 0u;
+        if (++s_drvCadence >= 15u)
+        {
+            s_drvCadence = 0u;
+            const Game::CarSystem* car =
+                (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr;
+            const uint8_t groundMask = car ? car->RuntimeDebug().groundMask : 0u;
+            SRL::Debug::Print(0, 12, "DRV th:%d g:%c m:%02X km:%d   ",
+                              static_cast<int>(drivetrain.throttle),
+                              drivetrain.gearChar,
+                              static_cast<unsigned>(groundMask),
+                              static_cast<int>(drivetrain.speedKmh));
+        }
         GameLoopRuntime::PresentDrivingHudShiftTextPacket(drivingHud);
 
         if (context_.EnableRuntimeStatsLogs() || context_.EnableMinimalFpsOverlay())
@@ -1738,6 +1751,20 @@ private:
             segment,
             kEnablePhysicsSafeTelemetry);
         overlayEventState_.Update(segment);
+        // Query cost, same row as the old TC line, every 15 frames.
+        // g = ground faces scanned, w = wall faces, s = wall segments (last frame).
+        if (context_.trackSystem)
+        {
+            static uint8_t s_queryCadence = 0u;
+            if (++s_queryCadence >= 15u)
+            {
+                s_queryCadence = 0u;
+                SRL::Debug::Print(0, 11, "Q g:%u w:%u s:%u",
+                                  context_.trackSystem->SurfaceQueryFacesScannedThisFrame(),
+                                  context_.trackSystem->WallQueryFacesScannedThisFrame(),
+                                  context_.trackSystem->WallQuerySegmentsScannedThisFrame());
+            }
+        }
         // Wheel ground distances last: must not be painted over by input/event rows.
         GameLoopRuntime::PresentGroundProbeOverlay(overlaySnapshot);
     }
@@ -1821,19 +1848,19 @@ private:
                                    static_cast<uint64_t>(fpsState_.sampleFrames))
             : 0u;
 
-        SRL::Debug::Print(0, 16, "FPS:%u.%u ms:%u.%u vb:%u.%02u d30:%u%% d60:%u%%",
-                          static_cast<unsigned>(metrics.fpsX10 / 10u),
-                          static_cast<unsigned>(metrics.fpsX10 % 10u),
-                          static_cast<unsigned>(metrics.frameMsX10 / 10u),
-                          static_cast<unsigned>(metrics.frameMsX10 % 10u),
-                          static_cast<unsigned>(metrics.vbX100 / 100u),
-                          static_cast<unsigned>(metrics.vbX100 % 100u),
-                          static_cast<unsigned>(metrics.drop30Pct),
-                          static_cast<unsigned>(metrics.drop60Pct));
-
+        // Fase 1 FPS: print once per sample window (~1 Hz at 60 fps), not every frame.
         constexpr uint32_t kSampleWindowFrames = 60u;
         if (fpsState_.sampleFrames >= kSampleWindowFrames)
         {
+            SRL::Debug::Print(0, 16, "FPS:%u.%u ms:%u.%u vb:%u.%02u d30:%u%% d60:%u%%",
+                              static_cast<unsigned>(metrics.fpsX10 / 10u),
+                              static_cast<unsigned>(metrics.fpsX10 % 10u),
+                              static_cast<unsigned>(metrics.frameMsX10 / 10u),
+                              static_cast<unsigned>(metrics.frameMsX10 % 10u),
+                              static_cast<unsigned>(metrics.vbX100 / 100u),
+                              static_cast<unsigned>(metrics.vbX100 % 100u),
+                              static_cast<unsigned>(metrics.drop30Pct),
+                              static_cast<unsigned>(metrics.drop60Pct));
             fpsState_.sampleFrames = 0u;
             fpsState_.sampleVblanks = 0u;
             fpsState_.framesOver30Budget = 0u;

@@ -131,10 +131,13 @@ inline void PresentGroundProbeOverlay(const OverlayDiagnosticsSnapshot& overlay)
                       static_cast<int>(overlay.carDebug.wheelSurfYFr),
                       static_cast<int>(overlay.carDebug.wheelSurfYRl),
                       static_cast<int>(overlay.carDebug.wheelSurfYRr));
-    SRL::Debug::Print(0, 12, "GP wh:%u wx:%d wz:%d        ",
+    // Short GP (SRL_DEBUG_MAX_PRINT_LENGTH=45). wh=hit g=support st=surface.
+    // wx/wz/wd live on OVR w:hits/calls + WH when needed.
+    SRL::Debug::Print(0, 12, "GP wh:%u g:%u st:%u wd:%d",
                       static_cast<unsigned>(overlay.carDebug.WallHit() ? 1u : 0u),
-                      static_cast<int>(overlay.carDebug.wallPushX),
-                      static_cast<int>(overlay.carDebug.wallPushZ));
+                      static_cast<unsigned>(overlay.carDebug.GroundSupport() ? 1u : 0u),
+                      static_cast<unsigned>(overlay.carDebug.groundSurfaceType),
+                      static_cast<int>(overlay.carDebug.wallDist));
 }
 
 inline void PresentPhysicsQueryOverlay(const OverlayDiagnosticsSnapshot& overlay)

@@ -1,4 +1,4 @@
-# Configuration
+﻿# Configuration
 SRL_MAX_TEXTURES = 512          # Number of VDP1 texture slots (memory-optimized for Saturn)
 SRL_MODE = NTSC                 # Valid options are PAL or NTSC
 SRL_HIGH_RES = 0                # 480i mode
@@ -30,17 +30,22 @@ AUDIO_PROFILE ?= 1
 # make TRACK_LOD0_SEGMENTS=3 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
 # lod_0: detailed GEO + 64x64; lod_1: lighter GEO + 64x64;
 # lod_2: lighter GEO + 32x32. Their sum is the visible window size.
-TRACK_LOD0_SEGMENTS ?= 0
-TRACK_LOD1_SEGMENTS ?= 10
-TRACK_LOD2_SEGMENTS ?= 10
+# A/B 2026-10-07 stabilization: 5/6/8 left LWR+VDP1 at 0 free and flickered.
+# Keep 3/4/5 (12 segs) while BG/walls stabilize; restore 5/6/8 later.
+# := prevents stale shell env from forcing 0/10/10.
+TRACK_LOD0_SEGMENTS := 0
+TRACK_LOD1_SEGMENTS := 10
+TRACK_LOD2_SEGMENTS := 10
 
-# Extra compile flags — two profiles:
-#   make                      → debug (default): LWR stage tracing enabled
-#   make BUILD_PROFILE=perf   → perf: tracing disabled, cleanest LWR baseline
+# Extra compile flags ??? two profiles:
+#   make                      ??? debug (default): LWR stage tracing enabled
+#   make BUILD_PROFILE=perf   ??? perf: tracing disabled, cleanest LWR baseline
+# Walls ON again via TCOL-only ??4 (GEO wall path stays gated off when TCOL valid).
+# Soft wheel plant + MEM10 off kept from stabilization A/B.
 ifeq ($(BUILD_PROFILE),perf)
-SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DPHYS_WHEEL_STRICT_SURFACE=0 -DPHYS_ENABLE_MEM10_OVERLAY=0
 else
-SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1
+SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DPHYS_WHEEL_STRICT_SURFACE=0 -DPHYS_ENABLE_MEM10_OVERLAY=0
 endif
 SRL_CUSTOM_CCFLAGS += -DTRACK_LOD0_SEGMENTS=$(TRACK_LOD0_SEGMENTS) -DTRACK_LOD1_SEGMENTS=$(TRACK_LOD1_SEGMENTS) -DTRACK_LOD2_SEGMENTS=$(TRACK_LOD2_SEGMENTS)
 
@@ -49,7 +54,6 @@ CD_NAME = Interlagos_racing
 
 # Directory build will be placed into (use alternate drop to avoid stale locks)
 BUILD_DROP = ./BuildDrop
-
 # Find all .c and .cxx files
 SOURCES = $(patsubst ./%,%,$(shell find src/ -name '*.c'))
 SOURCES += $(patsubst ./%,%,$(shell find src/ -name '*.cxx'))

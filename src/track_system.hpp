@@ -17,6 +17,7 @@
 #include "resource_loader.hpp"
 #include "segment_component_loader.hpp"
 #include "soak_monitor.hpp"
+#include "track_collision_map.hpp"
 #include "track_draw_producer.hpp"
 #include "track_lod_config.hpp"
 #include "track_render_coordinator.hpp"
@@ -171,7 +172,19 @@ public:
                             SRL::Math::Types::Vector3D& outPush,
                             int32_t* outSegmentId = nullptr,
                             int32_t seedSegmentId = -1,
-                            bool allowGlobalFallback = true) const;
+                            bool allowGlobalFallback = true,
+                            bool commitPrevPosition = true,
+                            const SRL::Math::Types::Vector3D* motionPrevPosition = nullptr,
+                            const SRL::Math::Types::Vector3D* hullLateralOtherEnd = nullptr) const;
+    void CommitWallQueryPrevPosition(const SRL::Math::Types::Vector3D& worldPosition) const
+    {
+        wallQueryPrevWorldPosition_ = worldPosition;
+        SetWallQueryPrevWorldPositionValid(true);
+    }
+    void InvalidateWallQueryPrevPosition() const
+    {
+        SetWallQueryPrevWorldPositionValid(false);
+    }
     bool FindSegmentCenterById(int32_t segmentId,
                                const SRL::Math::Types::Vector3D& trackOffset,
                                SRL::Math::Types::Vector3D& outSegmentCenter) const;
@@ -184,6 +197,40 @@ public:
     const char* LastResolvedPath() const { return lastSegmentPath_; }
     const FrameTelemetry& Telemetry() const { return coordinator_.Telemetry(); }
     uint16_t SegmentCount() const { return totalSegmentCount_; }
+    bool TrackCollisionMapReady() const
+    {
+        return trackCollisionMapCartPtr_ != nullptr && trackCollisionMapCartBytes_ > 0u;
+    }
+    uint32_t TrackCollisionWallCount() const
+    {
+        if (!TrackCollisionMapReady()) return 0u;
+        const TrackCollisionMap::View view(trackCollisionMapCartPtr_, trackCollisionMapCartBytes_);
+        return view.Valid() ? view.TotalWallCount() : 0u;
+    }
+    // Nearest lap neighbor that has TCOL ground. Skips scenery-only ids
+    // (103–106) so a ±1 query still reaches the asphalt on the far side.
+    // Returns -1 when the map is not resident or no ground exists within
+    // kDriveableSegmentBridge.
+    int32_t NextDriveableCollisionSegment(int32_t segmentId, int32_t step) const
+    {
+        if (segmentId <= 0 || step == 0 || totalSegmentCount_ == 0u || !TrackCollisionMapReady())
+        {
+            return -1;
+        }
+        const TrackCollisionMap::View view(trackCollisionMapCartPtr_, trackCollisionMapCartBytes_);
+        if (!view.Valid()) return -1;
+        return TrackStreamingPolicy::NextDriveableSegmentId(
+            segmentId,
+            step,
+            static_cast<int32_t>(totalSegmentCount_),
+            [&](int32_t candidateId) -> bool
+            {
+                if (candidateId <= 0 || candidateId > 0xFFFF) return false;
+                TrackCollisionMap::SegmentView segment{};
+                if (!view.FindSegment(static_cast<uint16_t>(candidateId), segment)) return false;
+                return segment.groundCount > 0u;
+            });
+    }
     bool HasSmoothSegments() const;
     uint32_t MaxSegmentFaceCount() const;
     uint32_t MaxSegmentVertexCount() const;
@@ -794,9 +841,13 @@ private:
     void BuildSegmentHandleTable();
     void ResetInitializationState();
     size_t ResolveInitialLoadLimit(const Config& config) const;
-    void PrepareInitialSegmentPackages(size_t loadLimit);
+    bool PrepareInitialSegmentPackages(size_t loadLimit);
     void ConfigureCoordinatorAndBudget(const Config& config);
     void LoadSurfaceCollisionMaps();
+    // Cart-resident TCOL (+ optional FSMAP free). Call after visual belt Ready.
+    void LoadTrackCollisionCartMaps();
+    // Preload TRKRDR.BIN (high) into Cart before RebuildActiveSegmentWindow.
+    bool PreloadHighTrackRuntimePack();
     void ApplyTrackSlaveMode();
     void LogInitialSegmentDiagnostics() const;
     void ApplyInitialSdrFamilySlots();
@@ -959,6 +1010,16 @@ private:
     mutable int16_t surfaceQueryLastInsideFaceIndex_ = -1;
     mutable uint16_t surfaceQueryLastInsideFamilyId_ = 0u;
     mutable uint8_t surfaceQueryLastInsideType_ = 0u;
+    // Last TCOL ground face that contained the probe. Visual face cache cannot
+    // see LOD0 when TRACK_LOD0_SEGMENTS is 0 (that path stores face index -1).
+    mutable int16_t tcolGroundStickySegmentId_ = -1;
+    mutable int16_t tcolGroundStickyIndex_ = -1;
+    mutable uint16_t tcolGroundStickyFamilyId_ = 0u;
+    mutable uint16_t tcolGroundStickyFlags_ = 0u;
+    mutable uint8_t tcolGroundStickyCount_ = 0u;
+    mutable int32_t tcolGroundStickyX_[4]{};
+    mutable int32_t tcolGroundStickyY_[4]{};
+    mutable int32_t tcolGroundStickyZ_[4]{};
     TrackLowWorkU8Vector surfaceTypeByFamilyId_{};
     TrackLowWorkU8Vector segmentSurfaceFlagsById_{};
     // Immutable route direction data loaded once from TDIR.BIN.  Each entry is
@@ -971,6 +1032,10 @@ private:
     // Work RAM.  Queries parse records in place and never clone face data.
     void* faceSurfaceMapCartPtr_ = nullptr;
     uint32_t faceSurfaceMapCartBytes_ = 0u;
+    // TCOL is immutable collision geometry derived from LOD0. It lives in
+    // expansion RAM and is queried in place without per-frame allocation.
+    void* trackCollisionMapCartPtr_ = nullptr;
+    uint32_t trackCollisionMapCartBytes_ = 0u;
     mutable uint32_t stateFlags_ =
         (kTrackSlaveModeRequestedBit |
          kTrackSlaveProducerRequestedBit |

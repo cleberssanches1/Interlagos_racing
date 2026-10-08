@@ -93,7 +93,9 @@ private:
         const CarPhysics::Fxp absX = groundState.lastWallPushX.Abs();
         const CarPhysics::Fxp absZ = groundState.lastWallPushZ.Abs();
         outMaxAxis = (absX >= absZ) ? absX : absZ;
-        if (outMaxAxis <= CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+        // Any non-zero push yields a normal so inward velocity can be cancelled.
+        // Arcade damping still gates on kWallPushVelocityCancelThreshold.
+        if (outMaxAxis.RawValue() <= 0)
         {
             outNX = CarPhysics::Fxp::BuildRaw(0);
             outNZ = CarPhysics::Fxp::BuildRaw(0);
@@ -125,6 +127,8 @@ private:
             return;
         }
 
+        // Cancel inward velocity, then ensure a minimum outward bounce so
+        // head-on hits repel instead of sticking flush against the barrier.
         const CarPhysics::Fxp worldVelX =
             (stepOutput.sinYaw * ioDynamicsState.forwardSpeed) +
             (stepOutput.cosYaw * ioDynamicsState.lateralSpeed);
@@ -134,6 +138,9 @@ private:
             (stepOutput.sinYaw * ioDynamicsState.lateralSpeed);
         const CarPhysics::Fxp velDotNormal =
             (worldVelX * normalX) + (worldVelZ * normalZ);
+
+        CarPhysics::Fxp resolvedWorldVelX = worldVelX;
+        CarPhysics::Fxp resolvedWorldVelZ = worldVelZ;
         if (velDotNormal < CarPhysics::Fxp::BuildRaw(0))
         {
             CarPhysics::Fxp inwardVelX{};
@@ -144,42 +151,58 @@ private:
                                   normalZ,
                                   inwardVelX,
                                   inwardVelZ);
-            const CarPhysics::Fxp resolvedWorldVelX = worldVelX - inwardVelX;
-            const CarPhysics::Fxp resolvedWorldVelZ = worldVelZ - inwardVelZ;
-            ioDynamicsState.forwardSpeed =
-                (resolvedWorldVelX * stepOutput.sinYaw) +
-                (resolvedWorldVelZ * CarPhysics::Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()));
-            ioDynamicsState.lateralSpeed =
-                (resolvedWorldVelX * stepOutput.cosYaw) +
-                (resolvedWorldVelZ * stepOutput.sinYaw);
+            resolvedWorldVelX = worldVelX - inwardVelX;
+            resolvedWorldVelZ = worldVelZ - inwardVelZ;
         }
 
-        ioDynamicsState.forwardSpeed -=
-            ioDynamicsState.forwardSpeed *
-            CarPhysics::Tunables::kWallImpactForwardDamping;
+        // Outward bounce kick along the wall normal (arcade repel).
+        const CarPhysics::Fxp outwardDot =
+            (resolvedWorldVelX * normalX) + (resolvedWorldVelZ * normalZ);
+        if (outwardDot < CarPhysics::Tunables::kWallMinOutwardBounce)
+        {
+            const CarPhysics::Fxp add =
+                CarPhysics::Tunables::kWallMinOutwardBounce - outwardDot;
+            resolvedWorldVelX = resolvedWorldVelX + (normalX * add);
+            resolvedWorldVelZ = resolvedWorldVelZ + (normalZ * add);
+        }
 
-        ioDynamicsState.yawRateDegPerFrame = CarPhysics::Fxp::BuildRaw(0);
+        ioDynamicsState.forwardSpeed =
+            (resolvedWorldVelX * stepOutput.sinYaw) +
+            (resolvedWorldVelZ * CarPhysics::Fxp::BuildRaw(-stepOutput.cosYaw.RawValue()));
+        ioDynamicsState.lateralSpeed =
+            (resolvedWorldVelX * stepOutput.cosYaw) +
+            (resolvedWorldVelZ * stepOutput.sinYaw);
 
+        // Light arcade damping above graze — keep enough speed to slide along the wall.
+        if (maxAxis > CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
+        {
+            ioDynamicsState.forwardSpeed -=
+                ioDynamicsState.forwardSpeed *
+                CarPhysics::Tunables::kWallImpactForwardDamping;
+        }
+
+        // Push was already applied via correction. Here: undo inward step and
+        // top-up to a minimum outward separation so the hit feels like a repel.
         const CarPhysics::Fxp deltaX = ioCarWorldPosition.X - preStepPosition.X;
         const CarPhysics::Fxp deltaZ = ioCarWorldPosition.Z - preStepPosition.Z;
         const CarPhysics::Fxp deltaDotNormal = (deltaX * normalX) + (deltaZ * normalZ);
         if (deltaDotNormal < CarPhysics::Fxp::BuildRaw(0))
         {
-            ioCarWorldPosition.X =
-                ioCarWorldPosition.X - (normalX * deltaDotNormal) +
-                (normalX * CarPhysics::Tunables::kWallSeparationSkin);
-            ioCarWorldPosition.Z =
-                ioCarWorldPosition.Z - (normalZ * deltaDotNormal) +
-                (normalZ * CarPhysics::Tunables::kWallSeparationSkin);
+            ioCarWorldPosition.X = ioCarWorldPosition.X - (normalX * deltaDotNormal);
+            ioCarWorldPosition.Z = ioCarWorldPosition.Z - (normalZ * deltaDotNormal);
         }
-
-        if (ioDynamicsState.forwardSpeed.Abs() <
-            CarPhysics::Tunables::kWallImpactStopCutoff)
+        CarPhysics::Fxp extra = CarPhysics::Tunables::kWallSeparationSkin;
+        if (maxAxis < CarPhysics::Tunables::kWallMinRepelSeparation)
         {
-            ioDynamicsState.forwardSpeed = CarPhysics::Fxp::BuildRaw(0);
+            extra = extra +
+                (CarPhysics::Tunables::kWallMinRepelSeparation - maxAxis);
         }
+        ioCarWorldPosition.X = ioCarWorldPosition.X + (normalX * extra);
+        ioCarWorldPosition.Z = ioCarWorldPosition.Z + (normalZ * extra);
+
+        // Do not zero forward after a bounce — that undoes the repel kick.
         if (ioDynamicsState.lateralSpeed.Abs() <
-            CarPhysics::Tunables::kWallSeparationSkin)
+            CarPhysics::Tunables::kWallPushVelocityCancelThreshold)
         {
             ioDynamicsState.lateralSpeed = CarPhysics::Fxp::BuildRaw(0);
         }
@@ -584,11 +607,38 @@ private:
         physicsFrame.debugNetDz =
             static_cast<int16_t>(std::clamp<int32_t>(netDzRaw >> 16, -32768, 32767));
 
+        if (groundState_.wallHitNoSupportCooldown > 0u)
+        {
+            --groundState_.wallHitNoSupportCooldown;
+        }
+
         if (!groundState_.hasGroundSupport)
         {
-            // Damp speed but keep XZ free so the car can re-acquire asphalt
-            // (freezing XZ made the first corner "never find ground").
-            CarPhysics::DynamicsModel::ApplyNoSupportRecovery(dynamicsState_);
+            // Skip no-support kill for a cooldown after wall hits: stacking wall
+            // response + no-support left the car dead in N at SEG27 (video 104523).
+            // Also skip when throttle is open and speed is already ~0 so the car
+            // can re-plant / re-engage without being held at zero.
+            const bool wallCooldownActive = groundState_.wallHitNoSupportCooldown > 0u;
+            const bool throttleReplant =
+                physicsFrame.throttle > 0 &&
+                !physicsFrame.braking &&
+                dynamicsState_.forwardSpeed.Abs().RawValue() < (2 << 16);
+            if (!groundState_.lastWallQueryHit && !wallCooldownActive && !throttleReplant)
+            {
+                // Damp speed but keep XZ free so the car can re-acquire asphalt
+                // (freezing XZ made the first corner "never find ground").
+                CarPhysics::DynamicsModel::ApplyNoSupportRecovery(dynamicsState_);
+            }
+        }
+        else if (physicsFrame.throttle > 0 &&
+                 !physicsFrame.braking &&
+                 dynamicsState_.gear == CarPhysics::Tunables::kNeutralGear &&
+                 dynamicsState_.forwardSpeed.Abs().RawValue() < (4 << 16))
+        {
+            // Stuck in N with support under the wheels (post ghost-wall): clear
+            // manual-neutral latch and force 1st so throttle can move again.
+            dynamicsState_.neutralHeldManually = false;
+            dynamicsState_.gear = 1;
         }
         else if (groundState_.edgeLeftLost || groundState_.edgeRightLost)
         {
@@ -662,9 +712,12 @@ private:
         ioFrameState.debugCorrX = physicsFrame.debugCorrX;
         ioFrameState.debugCorrZ = physicsFrame.debugCorrZ;
         ioFrameState.debugWallHit = physicsFrame.debugWallHit;
+        ioFrameState.debugGroundSupport =
+            groundState_.hasGroundSupport ? 1u : 0u;
         ioFrameState.debugWallPushX = physicsFrame.debugWallPushX;
         ioFrameState.debugWallPushZ = physicsFrame.debugWallPushZ;
         ioFrameState.debugWallSegmentId = physicsFrame.debugWallSegmentId;
+        ioFrameState.debugWallDist = physicsFrame.debugWallDist;
         ioFrameState.groundFaceIndex = physicsFrame.groundFaceIndex;
         ioFrameState.groundFamilyId = physicsFrame.groundFamilyId;
         ioFrameState.groundSurfaceType = physicsFrame.groundSurfaceType;

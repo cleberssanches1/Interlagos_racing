@@ -38,16 +38,16 @@ using namespace SRL::Types;
 
 using namespace SRL::Math::Types;
 
-// Logs essenciais na tela (reduzido)
-constexpr bool kLog = true;
-constexpr bool kCarLogs = false;
-constexpr bool kVerboseFrameLogs = false;
 // Perfil de benchmark:
 // - telemetria pesada desligada
-// - manter apenas o overlay minimo de FPS
+// - overlay minimo de FPS (cadence ~1 Hz inside UpdateRealtimeFpsOverlay)
 constexpr bool kEnableBenchmarkProfile = true;
 constexpr bool kEnableRuntimeStatsLogs = !kEnableBenchmarkProfile;
 constexpr bool kEnableMinimalFpsOverlay = true;
+// Fase 1 FPS A/B: sticky POC MLOG rows also tax NBG3 — keep off under benchmark.
+constexpr bool kLog = !kEnableBenchmarkProfile;
+constexpr bool kCarLogs = false;
+constexpr bool kVerboseFrameLogs = false;
 #ifndef PHYSICS_POC_MODE
 #define PHYSICS_POC_MODE 0
 #endif
@@ -1132,7 +1132,10 @@ static int RunPhysicsPocMode()
     const bool renderTrack = true;
     const bool renderCar = true;
     const bool renderAxes = false;
-    const bool enableBg = true;
+    // BG is deferred until AFTER the visual belt is Ready, then gated on LWR
+    // free/largest-block (same thresholds as BackgroundManager::Update retry).
+    // Never Init sky before trackSystem.Initialize — that starved the belt.
+    bool enableBg = false;
     const bool logCar = kCarLogs;
     const bool logTrack = kEnableRuntimeStatsLogs;
     const char* scenarioName = "trk+car";
@@ -1191,8 +1194,7 @@ static int RunPhysicsPocMode()
         "/CD/DATA/CEUP.TGA"
     };
     const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
-    // Load the VDP2 panorama before the track consumes/fragments LWR.
-    // Car remains first so its established VDP1 allocation order is preserved.
+    // Car first (VDP1 order), then track Initialize, then optional deferred BG.
 
     CameraSystem cameraSystem;
     cameraSystem.SetDebugLogsEnabled(false);
@@ -1226,13 +1228,8 @@ static int RunPhysicsPocMode()
     SRL::Scene3D::SetDirectionalLight(lightDirection);
     SRL::Scene3D::LightSetColor(lightColor);
 
-    if (enableBg)
-    {
-        AppState::Set(AppState::Stage::BackgroundInit, 0);
-        SRL::Cd::ChangeDir((const char*)0);
-        bgReady = bgManager.Init(skyPaths, skyPathCount);
-    }
-    LogPocRam(9, bgReady ? "RAM bg+" : "RAM bg-");
+    // BG intentionally skipped here — wait for belt Ready + LWR headroom below.
+    LogPocRam(9, "RAM bg-");
 
     static TrackSystem trackSystem;
     // POC dual-SH2 split (stable after async-sim freeze on throttle):
@@ -1263,6 +1260,26 @@ static int RunPhysicsPocMode()
     MLOG(1, 5, "POC TRK rd:%u sg:%u",
          trackSystemReady ? 1u : 0u,
          static_cast<unsigned>(trackSystem.SegmentCount()));
+
+    // Deferred BG: after belt+TCOL, only if LWR can host panorama staging.
+    if (trackSystemReady)
+    {
+        const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+        const size_t largestLwrBlock = SRL::Memory::LowWorkRam::GetLargestFreeBlockSize();
+        constexpr size_t kMinBgLwrBytes = 96u * 1024u;
+        constexpr size_t kMinBgLwrBlockBytes = 48u * 1024u;
+        if (lwr.FreeSize >= kMinBgLwrBytes && largestLwrBlock >= kMinBgLwrBlockBytes)
+        {
+            AppState::Set(AppState::Stage::BackgroundInit, 0);
+            SRL::Cd::ChangeDir((const char*)0);
+            bgReady = bgManager.Init(skyPaths, skyPathCount);
+            enableBg = bgReady;
+        }
+        SRL::Debug::Print(1, 5, "BG def ok:%u lf:%u lb:%u",
+                          bgReady ? 1u : 0u,
+                          static_cast<unsigned>(lwr.FreeSize),
+                          static_cast<unsigned>(largestLwrBlock));
+    }
 
     if (renderCar && !carValid)
     {
