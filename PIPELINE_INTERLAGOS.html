@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Atlas técnico do pipeline offline e runtime do projeto Interlagos Racing para Sega Saturn.">
+  <title>Interlagos Racing — Atlas do Pipeline</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: oklch(0.145 0.025 252);
+      --surface: oklch(0.19 0.029 252);
+      --surface-raised: oklch(0.235 0.034 252);
+      --surface-soft: oklch(0.175 0.022 252);
+      --ink: oklch(0.96 0.012 245);
+      --muted: oklch(0.76 0.032 248);
+      --faint: oklch(0.61 0.03 248);
+      --line: oklch(0.36 0.045 250);
+      --line-soft: oklch(0.28 0.033 252);
+      --cyan: oklch(0.79 0.145 220);
+      --green: oklch(0.82 0.16 154);
+      --amber: oklch(0.84 0.16 84);
+      --red: oklch(0.72 0.19 25);
+      --violet: oklch(0.76 0.13 295);
+      --blue: oklch(0.72 0.14 252);
+      --master: var(--cyan);
+      --slave: var(--green);
+      --memory: var(--amber);
+      --physics: var(--violet);
+      --danger: var(--red);
+      --radius-sm: 8px;
+      --radius: 14px;
+      --content: 1480px;
+      --sans: "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+      --display: Bahnschrift, "Arial Narrow", var(--sans);
+      --mono: "Cascadia Code", Consolas, "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      max-width: 100%;
+      overflow-x: clip;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.6;
+      text-rendering: optimizeLegibility;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0 0 auto;
+      height: 3px;
+      background: linear-gradient(90deg, var(--cyan), var(--green) 42%, var(--amber) 72%, var(--red));
+      z-index: 40;
+    }
+    a { color: var(--cyan); text-underline-offset: 0.18em; }
+    a:hover { color: var(--green); }
+    code, kbd {
+      font-family: var(--mono);
+      font-size: 0.9em;
+    }
+    code {
+      color: oklch(0.91 0.08 220);
+      background: oklch(0.25 0.04 248);
+      border-radius: 5px;
+      padding: 0.12rem 0.36rem;
+    }
+    :focus-visible {
+      outline: 3px solid var(--amber);
+      outline-offset: 3px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background: color-mix(in oklch, var(--bg) 92%, transparent);
+      border-bottom: 1px solid var(--line-soft);
+      backdrop-filter: blur(12px);
+    }
+    .topbar-inner {
+      max-width: var(--content);
+      margin: 0 auto;
+      min-height: 56px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      color: var(--ink);
+      text-decoration: none;
+      font-family: var(--display);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .brand-mark {
+      width: 27px;
+      height: 27px;
+      border-radius: 50%;
+      border: 5px solid var(--cyan);
+      box-shadow: inset 0 0 0 3px var(--bg);
+      background: var(--green);
+    }
+    .top-status {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+    .pulse {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 4px color-mix(in oklch, var(--green) 20%, transparent);
+    }
+
+    .shell {
+      max-width: var(--content);
+      margin: 0 auto;
+      padding: clamp(28px, 4vw, 64px) 24px 72px;
+      display: grid;
+      grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+      gap: clamp(28px, 4vw, 64px);
+      align-items: start;
+    }
+    .toc {
+      position: sticky;
+      top: 84px;
+      font-size: 0.89rem;
+    }
+    .toc h2 {
+      margin: 0 0 12px;
+      color: var(--ink);
+      font-size: 0.95rem;
+    }
+    .toc ol {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      border-top: 1px solid var(--line-soft);
+    }
+    .toc a {
+      display: block;
+      padding: 9px 6px;
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .toc a:hover, .toc a[aria-current="true"] {
+      color: var(--ink);
+      background: var(--surface-soft);
+    }
+    .toc-note {
+      margin: 18px 0 0;
+      color: var(--faint);
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+
+    main, .section, .hero, .hero > *, .toc { min-width: 0; }
+    .hero {
+      min-height: 470px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+      gap: clamp(24px, 5vw, 72px);
+      align-items: end;
+      padding: clamp(28px, 5vw, 64px);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "VDP1  •  SH-2  •  SGL";
+      position: absolute;
+      top: 24px;
+      right: 28px;
+      color: var(--faint);
+      font: 600 0.76rem/1 var(--mono);
+      letter-spacing: 0.08em;
+    }
+    .hero h1 {
+      margin: 0;
+      max-width: 12ch;
+      font-family: var(--display);
+      font-size: clamp(3.2rem, 7.7vw, 6rem);
+      line-height: 0.92;
+      letter-spacing: -0.035em;
+      text-wrap: balance;
+    }
+    .hero h1 span { color: var(--cyan); }
+    .hero-lead {
+      max-width: 67ch;
+      margin: 28px 0 0;
+      color: var(--muted);
+      font-size: clamp(1rem, 1.4vw, 1.18rem);
+      text-wrap: pretty;
+    }
+    .hero-status {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 18px;
+      padding-top: 70px;
+    }
+    .status-line {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: baseline;
+      padding-bottom: 11px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .status-line span { color: var(--muted); font-size: 0.9rem; }
+    .status-line strong { font-family: var(--mono); font-size: 0.94rem; }
+    .status-ok { color: var(--green); }
+
+    .section {
+      scroll-margin-top: 82px;
+      padding: clamp(56px, 8vw, 104px) 0 0;
+    }
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.42fr) minmax(0, 0.58fr);
+      gap: 32px;
+      align-items: start;
+      padding-bottom: 26px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+    }
+    .section h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: clamp(2rem, 4vw, 3.45rem);
+      line-height: 1;
+      letter-spacing: -0.025em;
+      text-wrap: balance;
+    }
+    .section-head p {
+      margin: 0;
+      max-width: 68ch;
+      color: var(--muted);
+      font-size: 1.02rem;
+      text-wrap: pretty;
+    }
+    .prose {
+      max-width: 74ch;
+      color: var(--muted);
+    }
+    .prose strong { color: var(--ink); }
+
+    .callout {
+      margin: 28px 0;
+      padding: 20px 22px;
+      background: color-mix(in oklch, var(--green) 9%, var(--surface));
+      border: 1px solid color-mix(in oklch, var(--green) 38%, var(--line));
+      border-radius: var(--radius-sm);
+      color: var(--muted);
+    }
+    .callout strong { color: var(--green); }
+    .callout.warning {
+      background: color-mix(in oklch, var(--amber) 8%, var(--surface));
+      border-color: color-mix(in oklch, var(--amber) 35%, var(--line));
+    }
+    .callout.warning strong { color: var(--amber); }
+
+    .flow {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(180px, 1fr);
+      gap: 30px;
+      overflow-x: auto;
+      padding: 6px 2px 18px;
+      scrollbar-color: var(--line) var(--surface-soft);
+    }
+    .flow-node {
+      position: relative;
+      min-height: 158px;
+      padding: 18px;
+      background: var(--surface);
+      border-top: 4px solid var(--node-color, var(--cyan));
+      border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    }
+    .flow-node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -24px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--faint);
+      font: 700 1.35rem/1 var(--mono);
+    }
+    .flow-node small {
+      display: block;
+      color: var(--node-color, var(--cyan));
+      font: 700 0.72rem/1.2 var(--mono);
+      margin-bottom: 13px;
+    }
+    .flow-node h3 { margin: 0 0 8px; font-size: 1.02rem; }
+    .flow-node p { margin: 0; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+    .flow-node.cyan { --node-color: var(--cyan); }
+    .flow-node.green { --node-color: var(--green); }
+    .flow-node.amber { --node-color: var(--amber); }
+    .flow-node.violet { --node-color: var(--violet); }
+    .flow-node.red { --node-color: var(--red); }
+
+    .artifact-table, .telemetry-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .artifact-table th, .artifact-table td,
+    .telemetry-table th, .telemetry-table td {
+      padding: 11px 12px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .artifact-table th, .telemetry-table th {
+      color: var(--faint);
+      font: 600 0.76rem/1.3 var(--mono);
+    }
+    .artifact-table tbody tr:hover, .telemetry-table tbody tr:hover {
+      background: var(--surface-soft);
+    }
+    .num { text-align: right !important; font-family: var(--mono); white-space: nowrap; }
+
+    .lane-map {
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .lane-header {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .lane-header > div { padding: 12px 16px; }
+    .lane-header .lane-label { color: var(--faint); font: 600 0.75rem/1.3 var(--mono); }
+    .lane {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .lane:last-child { border-bottom: 0; }
+    .lane-label {
+      padding: 14px 16px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .lane-track {
+      display: flex;
+      align-items: stretch;
+      min-width: 640px;
+      padding: 8px 14px;
+      gap: 4px;
+      overflow: hidden;
+    }
+    .frame-block {
+      flex: 1 1 0;
+      min-width: 26px;
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border-radius: 5px;
+      background: var(--surface-raised);
+      color: var(--ink);
+      font: 700 0.72rem/1.1 var(--mono);
+    }
+    .frame-block.master { background: color-mix(in oklch, var(--master) 22%, var(--surface)); color: var(--master); }
+    .frame-block.slave { background: color-mix(in oklch, var(--slave) 20%, var(--surface)); color: var(--slave); }
+    .frame-block.memory { background: color-mix(in oklch, var(--memory) 18%, var(--surface)); color: var(--memory); }
+    .frame-block.physics { background: color-mix(in oklch, var(--physics) 20%, var(--surface)); color: var(--physics); }
+    .frame-block.wide { flex-grow: 2.4; }
+    .frame-block.xwide { flex-grow: 4; }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 22px;
+    }
+    .panel {
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+    }
+    .panel h3 { margin: 0 0 10px; font-size: 1.1rem; }
+    .panel p { margin: 0; color: var(--muted); }
+    .panel ul { margin: 14px 0 0; padding-left: 20px; color: var(--muted); }
+    .panel li + li { margin-top: 7px; }
+
+    .lod-window {
+      padding: 22px;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow-x: auto;
+    }
+    .lod-ruler {
+      min-width: 760px;
+      display: grid;
+      grid-template-columns: repeat(20, 1fr);
+      gap: 4px;
+    }
+    .segment {
+      height: 82px;
+      border-radius: 5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 3px;
+      font: 700 0.68rem/1 var(--mono);
+      background: color-mix(in oklch, var(--blue) 17%, var(--surface));
+      color: var(--blue);
+    }
+    .segment.lod2 {
+      background: color-mix(in oklch, var(--violet) 18%, var(--surface));
+      color: var(--violet);
+    }
+    .segment .rank { color: var(--ink); font-size: 0.74rem; }
+    .segment .res { font-size: 0.62rem; }
+    .car-anchor {
+      min-width: 760px;
+      display: grid;
+      grid-template-columns: repeat(20, 1fr);
+      margin-top: 9px;
+    }
+    .car-anchor span {
+      grid-column: 1 / span 3;
+      color: var(--green);
+      font: 700 0.76rem/1.3 var(--mono);
+    }
+    .window-caption {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      gap: 14px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .timeline-step {
+      min-height: 210px;
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-sm);
+    }
+    .timeline-step .frame-id {
+      display: inline-grid;
+      place-items: center;
+      min-width: 38px;
+      height: 30px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: color-mix(in oklch, var(--step-color) 18%, var(--surface));
+      color: var(--step-color);
+      font: 700 0.78rem/1 var(--mono);
+    }
+    .timeline-step h3 { margin: 18px 0 9px; font-size: 1rem; }
+    .timeline-step p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+    .timeline-step.prefetch { --step-color: var(--cyan); }
+    .timeline-step.prepare { --step-color: var(--amber); }
+    .timeline-step.commit { --step-color: var(--green); }
+    .timeline-step.settle { --step-color: var(--violet); }
+    .telemetry-token {
+      display: block;
+      margin-top: 15px;
+      color: var(--step-color);
+      font: 700 0.79rem/1.3 var(--mono);
+    }
+
+    .state-machine {
+      display: flex;
+      gap: 24px;
+      align-items: stretch;
+      overflow-x: auto;
+      padding: 4px 0 12px;
+    }
+    .state {
+      min-width: 190px;
+      flex: 1 0 190px;
+      padding: 19px;
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-sm);
+      position: relative;
+    }
+    .state:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -19px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--faint);
+      font-family: var(--mono);
+    }
+    .state strong { display: block; margin-bottom: 8px; }
+    .state span { color: var(--muted); font-size: 0.86rem; }
+    .state.pin { border-color: color-mix(in oklch, var(--green) 55%, var(--line)); }
+    .state.pin strong { color: var(--green); }
+
+    .memory-map {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(145px, 1fr));
+      gap: 14px;
+      overflow-x: auto;
+    }
+    .memory-zone {
+      min-width: 145px;
+      padding: 17px;
+      min-height: 150px;
+      background: var(--surface);
+      border-top: 4px solid var(--zone-color);
+    }
+    .memory-zone h3 { margin: 0 0 8px; font-size: 0.95rem; color: var(--zone-color); }
+    .memory-zone p { margin: 0; color: var(--muted); font-size: 0.82rem; }
+
+    .invariants {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .invariants li {
+      min-height: 105px;
+      padding: 17px 17px 17px 48px;
+      position: relative;
+      background: var(--surface-soft);
+      border-bottom: 2px solid var(--line);
+      color: var(--muted);
+    }
+    .invariants li::before {
+      content: "✓";
+      position: absolute;
+      left: 17px;
+      top: 17px;
+      color: var(--green);
+      font-weight: 800;
+    }
+    .invariants strong { color: var(--ink); }
+
+    .source-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px 22px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .source-list li {
+      padding: 11px 0;
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+    .source-list strong { display: block; color: var(--ink); font-size: 0.88rem; }
+
+    .footer {
+      margin-top: 96px;
+      padding: 30px 0 12px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 22px;
+      color: var(--faint);
+      font-size: 0.82rem;
+    }
+
+    @media (max-width: 1040px) {
+      .shell { grid-template-columns: 1fr; }
+      .toc { position: static; }
+      .toc ol { display: flex; overflow-x: auto; }
+      .toc a { white-space: nowrap; padding: 10px 14px; border-right: 1px solid var(--line-soft); }
+      .toc-note { display: none; }
+      .hero { grid-template-columns: 1fr; min-height: auto; }
+      .hero-status { padding-top: 16px; }
+      .section-head { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .top-status { display: none; }
+      .topbar-inner, .shell { width: 100%; padding-left: 16px; padding-right: 16px; }
+      .toc ol { max-width: calc(100vw - 32px); }
+      .hero { width: 100%; padding: 26px 20px; overflow: hidden; }
+      .hero::after { position: static; grid-column: 1; margin-bottom: -12px; }
+      .hero h1 { font-size: clamp(2.8rem, 15vw, 4.6rem); }
+      .hero-lead { max-width: 100%; overflow-wrap: anywhere; }
+      .status-line { grid-template-columns: minmax(0, 1fr) auto; }
+      .status-line strong { text-align: right; }
+      .split { grid-template-columns: 1fr; }
+      .section { padding-top: 64px; }
+      .lane-map { overflow-x: auto; }
+      .footer { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: white; --surface: #f2f5f8; --surface-raised: #e9eef4; --surface-soft: #f7f8fa; --ink: #111820; --muted: #3f4e5d; --faint: #536678; --line: #8293a4; --line-soft: #c5ced7; }
+      body::before, .topbar, .toc { display: none; }
+      .shell { display: block; max-width: none; padding: 0; }
+      .hero { min-height: auto; break-after: page; }
+      .section { break-before: auto; }
+      .panel, .flow-node, .timeline-step { break-inside: avoid; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"></span>Interlagos / Pipeline Atlas</a>
+      <div class="top-status"><span class="pulse" aria-hidden="true"></span>runtime estabilizado · 09 out 2026</div>
+    </div>
+  </header>
+
+  <div class="shell" id="top">
+    <nav class="toc" aria-label="Índice do documento">
+      <h2>Neste atlas</h2>
+      <ol>
+        <li><a href="#visao">Visão geral</a></li>
+        <li><a href="#offline">Build offline</a></li>
+        <li><a href="#boot">Boot e memória</a></li>
+        <li><a href="#frame">Frame runtime</a></li>
+        <li><a href="#esteira">Esteira e LOD</a></li>
+        <li><a href="#texturas">Texturas VDP1</a></li>
+        <li><a href="#fisica">Solo e paredes</a></li>
+        <li><a href="#telemetria">Telemetria</a></li>
+        <li><a href="#invariantes">Invariantes</a></li>
+      </ol>
+      <p class="toc-note">Documento autocontido. Abra diretamente no navegador; nenhuma biblioteca ou conexão externa é necessária.</p>
+    </nav>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <h1 id="hero-title">Do asset ao <span>pixel.</span></h1>
+          <p class="hero-lead">Uma leitura operacional do pipeline atual: como modelos, famílias, colisão, iluminação e texturas viram uma janela circular de 20 segmentos; como Master e Slave SH-2 dividem o frame; e como o slide em três fases mantém o FPS estável sem publicar slots de textura inválidos.</p>
+        </div>
+        <div class="hero-status" aria-label="Configuração atual">
+          <div class="status-line"><span>Janela visual</span><strong>20 segmentos</strong></div>
+          <div class="status-line"><span>Perfil LOD</span><strong>0 / 10 / 10</strong></div>
+          <div class="status-line"><span>SGL</span><strong>2200 V · 1700 P</strong></div>
+          <div class="status-line"><span>Slide</span><strong class="status-ok">P → B → X</strong></div>
+          <div class="status-line"><span>Resultado observado</span><strong class="status-ok">estável</strong></div>
+        </div>
+      </section>
+
+      <section class="section" id="visao">
+        <div class="section-head">
+          <h2>Visão geral</h2>
+          <p>O pipeline tem três tempos muito diferentes. Trabalho caro e determinístico acontece offline; o boot transfere catálogos e pacotes para as memórias corretas; o runtime mantém apenas uma janela móvel, preparando mudanças sem interromper o frame.</p>
+        </div>
+        <div class="flow" aria-label="Fluxo geral do asset ao pixel">
+          <article class="flow-node cyan"><small>OFFLINE</small><h3>Fontes LOD</h3><p>OBJ/MTL/NYA, texturas TGA e manifestos de superfície.</p></article>
+          <article class="flow-node violet"><small>BUILD_ALL</small><h3>Catálogo canônico</h3><p>Segmentos, famílias, solo, paredes, direção, iluminação e packs runtime.</p></article>
+          <article class="flow-node amber"><small>BOOT</small><h3>Residência</h3><p>CD → Cart RAM / Work RAM; catálogos de textura prontos para upload.</p></article>
+          <article class="flow-node green"><small>RUNTIME</small><h3>Janela circular</h3><p>20 slots persistentes acompanham o carro em qualquer direção.</p></article>
+          <article class="flow-node red"><small>FRAME</small><h3>SGL / VDP</h3><p>Master publica comandos; VDP1 desenha objetos e VDP2 compõe o fundo.</p></article>
+        </div>
+        <div class="callout"><strong>Ideia central:</strong> o circuito inteiro não é mantido como uma grande esteira renderizada. O runtime conserva uma janela lógica perto do carro e recicla slots físicos. IDs de segmento mudam; buffers e capacidades permanecem.</div>
+      </section>
+
+      <section class="section" id="offline">
+        <div class="section-head">
+          <h2>Build offline</h2>
+          <p><code>tools/build_all_nya_geo_mat.ps1</code> transforma as fontes dos três LODs em formatos compactos. O processo sempre recria o mapa de segmentos; referências antigas não sobrevivem apenas porque existiam numa execução anterior.</p>
+        </div>
+        <div class="flow" aria-label="Pipeline offline">
+          <article class="flow-node cyan"><small>1 · INVENTÁRIO</small><h3>OBJ / MTL / TGA</h3><p>Lê os modelos e as texturas realmente referenciadas em <code>lod_0</code>, <code>lod_1</code> e <code>lod_2</code>.</p></article>
+          <article class="flow-node green"><small>2 · MAPA</small><h3>segments_map</h3><p>Reconstrói IDs, famílias e relações face → material. Depois valida cobertura e referências.</p></article>
+          <article class="flow-node violet"><small>3 · SEMÂNTICA</small><h3>Solo e paredes</h3><p>Anota tipos de superfície, gera <code>SCMAP</code>, <code>FSMAP</code> e a malha independente <code>TCOL</code>.</p></article>
+          <article class="flow-node amber"><small>4 · RENDER</small><h3>Geometry packs</h3><p>Solda arestas, gera GEO/MAT, SDR/RDR/BDR, Gouraud offline, <code>TLIT</code> e <code>TDIR</code>.</p></article>
+          <article class="flow-node red"><small>5 · ENTREGA</small><h3>Bancos e ISO</h3><p>Gera <code>TBKLOD*</code>, packs <code>TRKRDR*</code>, aliases 8.3, auditorias e conteúdo de <code>cd/data</code>.</p></article>
+        </div>
+
+        <div class="split" style="margin-top:24px">
+          <article class="panel">
+            <h3>O que é decidido offline</h3>
+            <ul>
+              <li>Qual face pertence a qual família de textura.</li>
+              <li>Quais faces são solo dirigível ou parede.</li>
+              <li>A direção tangente do circuito por segmento.</li>
+              <li>A iluminação Gouraud base e a tabela de iluminação.</li>
+              <li>Qual geometria entra nos packs high e low.</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>O que continua dinâmico</h3>
+            <ul>
+              <li>Quais 20 segmentos estão residentes.</li>
+              <li>Quais slots VDP1 estão ativos ou recicláveis.</li>
+              <li>A ordem de draw e o culling conservador.</li>
+              <li>A direção da esteira e o próximo segmento.</li>
+              <li>O modo de iluminação selecionado pelo usuário.</li>
+            </ul>
+          </article>
+        </div>
+
+        <h3 style="margin:36px 0 12px">Artefatos atuais em <code>cd/data</code></h3>
+        <div style="overflow-x:auto">
+          <table class="artifact-table">
+            <thead><tr><th>Artefato</th><th>Função</th><th class="num">Tamanho atual</th></tr></thead>
+            <tbody>
+              <tr><td><code>TRKRDR.BIN</code></td><td>Pack de geometria runtime high.</td><td class="num">1.202,9 KiB</td></tr>
+              <tr><td><code>TRKRDRL.BIN</code></td><td>Pack de geometria runtime low, usado por LOD1/LOD2.</td><td class="num">375,1 KiB</td></tr>
+              <tr><td><code>TBKLOD0.BIN</code></td><td>Banco base compartilhado de texturas próximas.</td><td class="num">285,7 KiB</td></tr>
+              <tr><td><code>TBKLOD1.BIN</code></td><td>Overrides do LOD1; hoje contém apenas o cabeçalho, portanto aliasa a base.</td><td class="num">20 B</td></tr>
+              <tr><td><code>TBKLOD2.BIN</code></td><td>Banco distante, resolução 32×32.</td><td class="num">75,6 KiB</td></tr>
+              <tr><td><code>TCOL.BIN</code></td><td>Malha de colisão sem textura, derivada do LOD0.</td><td class="num">910,0 KiB</td></tr>
+              <tr><td><code>FSMAP.BIN</code></td><td>Índice espacial/semântico de superfícies por face.</td><td class="num">201,6 KiB</td></tr>
+              <tr><td><code>SCMAP.BIN</code></td><td>Mapa compacto de colisão/superfície por segmento.</td><td class="num">10,3 KiB</td></tr>
+              <tr><td><code>TDIR.BIN</code></td><td>Tangente e confiança da direção da pista.</td><td class="num">2,3 KiB</td></tr>
+              <tr><td><code>TLIT.BIN</code></td><td>Configuração compacta da iluminação do circuito.</td><td class="num">80 B</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="boot">
+        <div class="section-head">
+          <h2>Boot e memória</h2>
+          <p>No Saturn, “carregado” não significa uma única coisa. O projeto separa dados imutáveis, buffers de trabalho, texturas do VDP1 e composição do VDP2. Essa separação impede que uma telemetria estável de VRAM seja confundida com pressão de Work RAM.</p>
+        </div>
+        <div class="memory-map" aria-label="Mapa de memórias e responsabilidades">
+          <article class="memory-zone" style="--zone-color:var(--blue)"><h3>CD / ISO</h3><p>Fonte persistente dos packs e bancos gerados pelo build_all.</p></article>
+          <article class="memory-zone" style="--zone-color:var(--violet)"><h3>Cart RAM</h3><p>Grandes blobs imutáveis: packs visuais, mapas e colisão consultados sem clonagem integral.</p></article>
+          <article class="memory-zone" style="--zone-color:var(--green)"><h3>HWR / LWR</h3><p>Estado do jogo, janela, renderers persistentes, scratch e packets de coordenação.</p></article>
+          <article class="memory-zone" style="--zone-color:var(--amber)"><h3>VDP1</h3><p>Slots de textura e comandos para pista, carro e objetos poligonais.</p></article>
+          <article class="memory-zone" style="--zone-color:var(--cyan)"><h3>VDP2 / CRAM</h3><p>Plano de fundo, composição e bancos de paleta associados às texturas.</p></article>
+        </div>
+        <div class="callout warning"><strong>Regra de ownership:</strong> uploads de textura, submissão final SGL/VDP e sincronização permanecem no Master SH-2. O Slave prepara simulação, listas ou ordenação quando isso não toca os drivers finais.</div>
+      </section>
+
+      <section class="section" id="frame">
+        <div class="section-head">
+          <h2>Um frame runtime</h2>
+          <p><code>GameLoopSystem::RunForever()</code> mantém a ordem do frame explícita. Jobs concluídos são consumidos sem bloqueio; a câmera usa a pose mais recente disponível; pista e carro são preparados antes do <code>Synchronize</code>.</p>
+        </div>
+        <div class="lane-map" role="img" aria-label="Linha do tempo simplificada do Master e Slave SH-2">
+          <div class="lane-header"><div class="lane-label">CPU</div><div>tempo →</div></div>
+          <div class="lane">
+            <div class="lane-label">Master SH-2</div>
+            <div class="lane-track">
+              <div class="frame-block master">input</div>
+              <div class="frame-block master wide">gameplay</div>
+              <div class="frame-block master">camera</div>
+              <div class="frame-block master">HUD</div>
+              <div class="frame-block master xwide">track prepare + submit</div>
+              <div class="frame-block master wide">car</div>
+              <div class="frame-block memory">sync</div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-label">Slave SH-2</div>
+            <div class="lane-track">
+              <div class="frame-block slave wide">simulação / pose</div>
+              <div class="frame-block slave">consume</div>
+              <div class="frame-block slave xwide">producer / depth sort</div>
+              <div class="frame-block">livre</div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-label">Vídeo</div>
+            <div class="lane-track">
+              <div class="frame-block">frame N−1</div>
+              <div class="frame-block memory xwide">VDP1 lista N</div>
+              <div class="frame-block physics wide">VDP2 fundo</div>
+              <div class="frame-block memory">display</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="split" style="margin-top:24px">
+          <article class="panel"><h3>TrackSystem::BeginFrame</h3><p>Reseta contadores, calcula backlog entre início atual e alvo, e executa no máximo uma transição pesada da esteira: prefetch, prepare ou commit.</p></article>
+          <article class="panel"><h3>TrackSystem::RenderFrame</h3><p>Atualiza direção, manutenção, janela, prefetch, frame plan, recuperação de LOD, working set, ordenação e draw.</p></article>
+          <article class="panel"><h3>TrackSystem::EndFrame</h3><p>Reconstrói liveness pelos slots realmente usados, protege prefetch/back-buffer, apresenta telemetria e só então recicla recursos não referenciados.</p></article>
+          <article class="panel"><h3>FinishFrame / Synchronize</h3><p>Conclui a lista e sincroniza o pipeline SGL. A telemetria separa esse custo do trabalho medido dentro da pista.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="esteira">
+        <div class="section-head">
+          <h2>Esteira, direção e LOD</h2>
+          <p>A janela é um ring buffer. “Avançar” não move todos os objetos: troca-se o segmento que sai pelo que entra, atualizam-se início e cabeça física, e os demais slots continuam residentes.</p>
+        </div>
+
+        <div class="lod-window" aria-label="Janela atual de vinte segmentos">
+          <div class="lod-ruler">
+            <div class="segment"><span class="rank">0</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">1</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">2</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">3</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">4</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">5</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">6</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">7</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">8</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment"><span class="rank">9</span><span>LOD1</span><span class="res">64</span></div>
+            <div class="segment lod2"><span class="rank">10</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">11</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">12</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">13</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">14</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">15</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">16</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">17</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">18</span><span>LOD2</span><span class="res">32</span></div>
+            <div class="segment lod2"><span class="rank">19</span><span>LOD2</span><span class="res">32</span></div>
+          </div>
+          <div class="car-anchor"><span>▲ carro / ranks próximos</span></div>
+          <p class="window-caption">Snapshot do makefile: <code>TRACK_LOD0_SEGMENTS=0</code>, <code>TRACK_LOD1_SEGMENTS=10</code>, <code>TRACK_LOD2_SEGMENTS=10</code>. Toda geometria visual usa hoje o pack low; a precisão física não depende disso.</p>
+        </div>
+
+        <h3 style="margin:36px 0 14px">Slide em três fases</h3>
+        <div class="timeline" aria-label="Slide da janela distribuído em quadros">
+          <article class="timeline-step prefetch"><span class="frame-id">N</span><h3>PreparePrefetch</h3><p>Localiza o próximo ID, lê ou reutiliza o blob low e deixa renderer, famílias e slots candidatos prontos. A janela visível não muda.</p><span class="telemetry-token">p=1 · b=0 · x=0</span></article>
+          <article class="timeline-step prepare"><span class="frame-id">N+1</span><h3>PrepareSlide</h3><p>Monta o <code>SlideBackBuffer</code>, prepara slots da cauda e transições compatíveis de LOD. O conteúdo fica pinado e ainda não é desenhado.</p><span class="telemetry-token">p=0 · b=1 · x=0</span></article>
+          <article class="timeline-step commit"><span class="frame-id">N+2</span><h3>CommitSlide</h3><p>Faz swaps persistentes, atualiza start/head, aplica slots preparados e publica handles. Não reconstrói o segmento nesse quadro.</p><span class="telemetry-token">p=0 · b=0 · x=1</span></article>
+          <article class="timeline-step settle"><span class="frame-id">N+3</span><h3>Trabalho adiado</h3><p>Consolidação de famílias, working set ou recuperação de LOD acontecem fora do commit e respeitam os gates de carga.</p><span class="telemetry-token">janela já está válida</span></article>
+        </div>
+
+        <div class="split" style="margin-top:24px">
+          <article class="panel"><h3>Sentido normal</h3><p>O início lógico cresce, a cabeça física avança e a cauda recebe IDs crescentes com wrap no fim da volta.</p></article>
+          <article class="panel"><h3>Sentido contrário</h3><p>A janela é reorientada sem ser destruída. O início lógico decresce, a seleção de drop/incoming inverte e o mesmo pipeline P → B → X continua válido.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="texturas">
+        <div class="section-head">
+          <h2>Texturas e slots VDP1</h2>
+          <p>Faces armazenam IDs de família; o runtime resolve família + LOD para um slot VDP1. Separar identidade da textura e endereço físico permite reutilizar memória sem alterar a malha.</p>
+        </div>
+        <div class="state-machine" aria-label="Ciclo de vida de um slot de textura">
+          <article class="state"><strong>Banco em Cart RAM</strong><span>Família e variante LOD existem no catálogo, sem ocupar ainda um slot ativo.</span></article>
+          <article class="state"><strong>Upload / ownership</strong><span>O slot recebe conteúdo e owner: família + LOD ou par compartilhado LOD0/LOD1.</span></article>
+          <article class="state pin"><strong>Pin temporário</strong><span>Prefetch e back-buffer contam como referências mesmo antes de entrarem na janela viva.</span></article>
+          <article class="state"><strong>Uso por faces</strong><span>O working set e as faces residentes mantêm o slot ativo durante o draw.</span></article>
+          <article class="state"><strong>Retire + cooldown</strong><span>Depois do fim do frame, slots sem referência passam por fila e atraso antes do reuso.</span></article>
+        </div>
+        <div class="callout"><strong>Por que o LOD2 parou de corromper:</strong> entre <code>b=1</code> e <code>x=1</code>, os IDs estavam apenas no back-buffer. Agora <code>ProtectStagedStreamingTextureSlots()</code> os inclui na liveness do frame e <code>IsTextureSlotPinnedByStagedStreaming()</code> bloqueia liberação emergencial. O commit nunca publica um slot já regravado.</div>
+        <div class="split">
+          <article class="panel"><h3>LOD0 + LOD1</h3><p>Usam a banda próxima de 64×64. O LOD1 consulta primeiro seus overrides; quando não existe override, aliasa a entrada do banco base LOD0.</p></article>
+          <article class="panel"><h3>LOD2</h3><p>Usa o banco de 32×32 para reduzir VDP1. A família é a mesma identidade lógica; somente a variante de apresentação muda.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="fisica">
+        <div class="section-head">
+          <h2>Solo e paredes</h2>
+          <p>A física foi desacoplada da geometria visual. Isso permite reduzir faces e até configurar zero segmentos visuais de LOD0 sem perder a precisão de contato que originalmente vinha desse modelo.</p>
+        </div>
+        <div class="flow" aria-label="Pipeline de colisão e contato com o solo">
+          <article class="flow-node violet"><small>FONTE</small><h3>Faces LOD0</h3><p>Build_all filtra famílias conhecidas de solo e paredes e preserva curvas, elevações e mudanças de inclinação.</p></article>
+          <article class="flow-node amber"><small>OFFLINE</small><h3>TCOL + mapas</h3><p>Geometria sem texturas, iluminação ou cenário; <code>FSMAP</code>/<code>SCMAP</code> aceleram a classificação.</p></article>
+          <article class="flow-node green"><small>RUNTIME</small><h3>Consulta local</h3><p>Cache e segmento observado tentam primeiro a região próxima; recuperação residente ocorre apenas na falha local.</p></article>
+          <article class="flow-node cyan"><small>RESULTADO</small><h3>Contato das rodas</h3><p>Altura, normal, tipo de solo e paredes alimentam suspensão, aderência e progressão da esteira.</p></article>
+        </div>
+        <div class="callout warning"><strong>Não há textura em <code>TCOL.BIN</code>.</strong> Os nomes de textura servem no build para classificar as faces. No jogo, a colisão usa posições, índices, flags e family/type IDs compactos; o VDP1 não participa da consulta.</div>
+      </section>
+
+      <section class="section" id="telemetria">
+        <div class="section-head">
+          <h2>Como ler a telemetria</h2>
+          <p>As linhas na tela respondem perguntas diferentes: saúde do frame, custo por fase, pressão de textura e contexto do último stall. Nenhum contador isolado prova falta de memória.</p>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="telemetry-table">
+            <thead><tr><th>Linha</th><th>Campos importantes</th><th>Interpretação</th></tr></thead>
+            <tbody>
+              <tr><td><code>FPS</code></td><td><code>FPS</code>, <code>ms</code>, <code>vb</code>, <code>d30</code>, <code>d60</code></td><td>Tempo percebido e percentual de frames acima de 33/60 ms.</td></tr>
+              <tr><td><code>M</code></td><td>picos agregados do Master</td><td>Quanto input, gameplay, pista, carro, sync e overlay contribuíram na janela de amostragem.</td></tr>
+              <tr><td><code>P</code></td><td><code>ca</code>, <code>ts</code>, <code>td</code>, <code>te</code>, <code>tr</code></td><td>Subfases: carro, stream da pista, draw, end-frame e intervalo total da renderização de pista.</td></tr>
+              <tr><td><code>V</code></td><td><code>f</code>, <code>r</code>, <code>n</code>, <code>q</code>, <code>k</code></td><td>Uploads novos, reusos, ausência de slot reutilizável, tamanho do pool e memória VDP1 livre.</td></tr>
+              <tr><td><code>L</code></td><td><code>Lxx v e s x b p r</code></td><td>Última fase longa, VBlanks, contagem, segmento e contexto de commit/prepare/prefetch/reuso do mesmo frame.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin:34px 0 12px">Códigos de fase da linha L</h3>
+        <div class="flow" aria-label="Códigos de fase da telemetria">
+          <article class="flow-node cyan"><small>IN · GP · BG</small><h3>Jogo</h3><p>Input, gameplay e atualização de background.</p></article>
+          <article class="flow-node violet"><small>CA · HD</small><h3>Apresentação</h3><p>Câmera e HUD antes da renderização.</p></article>
+          <article class="flow-node green"><small>TR · TE</small><h3>Pista</h3><p>RenderFrame da pista e manutenção de fim de frame.</p></article>
+          <article class="flow-node amber"><small>CR · SY</small><h3>Fechamento</h3><p>Carro e Synchronize/SGL.</p></article>
+          <article class="flow-node red"><small>OV · FR</small><h3>Diagnóstico</h3><p>Overlay ou frame total quando nenhuma fase menor explica sozinha o stall.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="invariantes">
+        <div class="section-head">
+          <h2>Invariantes do sistema</h2>
+          <p>Estes contratos preservam o comportamento que aparece no vídeo de 165 segundos: texturas estáveis, ausência de engasgos perceptíveis e FPS consistente durante a volta.</p>
+        </div>
+        <ul class="invariants">
+          <li><strong>Janela nunca é apagada antes da substituição.</strong><br>O segmento vivo só muda no commit de um back-buffer válido.</li>
+          <li><strong>Uma etapa pesada por frame.</strong><br>Prefetch, prepare e commit não são empilhados no mesmo quadro.</li>
+          <li><strong>Slots preparados ficam pinados.</strong><br>Prefetch e back-buffer não entram no pool reciclável.</li>
+          <li><strong>LOD não troca apenas textura quando a face table muda.</strong><br>A transição de geometry tier é encaminhada para recuperação apropriada.</li>
+          <li><strong>Direção é lógica, não apenas world heading.</strong><br>TDIR, progresso e histerese evitam interpretar uma curva fechada como retorno.</li>
+          <li><strong>Colisão independe da janela visual.</strong><br>TCOL preserva o detalhe do LOD0 mesmo com <code>TRACK_LOD0_SEGMENTS=0</code>.</li>
+          <li><strong>Master mantém ownership dos drivers.</strong><br>Slave produz dados; Master conclui SGL, VDP e áudio.</li>
+          <li><strong>Memórias são medidas separadamente.</strong><br>Cart RAM, HWR/LWR, VDP1 e CRAM não são tratados como um único heap.</li>
+        </ul>
+
+        <h3 style="margin:42px 0 10px">Pontos de entrada no código</h3>
+        <ul class="source-list">
+          <li><strong>Build offline</strong><code>tools/build_all_nya_geo_mat.ps1</code></li>
+          <li><strong>Configuração dos LODs</strong><code>makefile</code> e <code>src/track_lod_config.hpp</code></li>
+          <li><strong>Política P/B/X</strong><code>src/track_streaming_policy.hpp</code></li>
+          <li><strong>Esteira e texturas</strong><code>src/track_system.cxx</code></li>
+          <li><strong>Orquestração do frame</strong><code>src/game_loop_system.hpp</code></li>
+          <li><strong>Estágios passivos</strong><code>src/track_pipeline_stages.cxx</code></li>
+          <li><strong>Telemetria por fase</strong><code>src/frame_phase_telemetry.hpp</code></li>
+          <li><strong>Testes da política</strong><code>tests/track_streaming_policy_tests.cpp</code></li>
+        </ul>
+      </section>
+
+      <footer class="footer">
+        <span>Interlagos Racing · arquitetura observada no código em 09/10/2026</span>
+        <span>Documento estático · sem dependências externas · pronto para impressão</span>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const links = [...document.querySelectorAll('.toc a')];
+      const sections = links.map(link => document.querySelector(link.hash)).filter(Boolean);
+      if (!('IntersectionObserver' in window)) return;
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries
+          .filter(entry => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        links.forEach(link => link.removeAttribute('aria-current'));
+        const active = links.find(link => link.hash === `#${visible.target.id}`);
+        if (active) active.setAttribute('aria-current', 'true');
+      }, { rootMargin: '-15% 0px -70% 0px', threshold: [0, 0.2, 0.5] });
+      sections.forEach(section => observer.observe(section));
+    })();
+  </script>
+</body>
+</html>

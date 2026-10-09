@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "description": "Texturas ativas usadas pela deteccao de solo da pista.",
+  "surfaceTextures": [
+    {
+      "surfaceType": "asphalt",
+      "label": "asfalto",
+      "sourceStems": [
+        "F002a4",
+        "F07564",
+        "F07764",
+        "F075a1",
+        "F075b1",
+        "F075c1",
+        "F075d1"
+      ]
+    },
+    {
+      "surfaceType": "asphalt",
+      "label": "zebra",
+      "sourceStems": [
+        "F05464"
+      ]
+    },
+    {
+      "surfaceType": "escape_area",
+      "label": "area_escape",
+      "sourceStems": [
+        "F010a1",
+        "F010b1",
+        "F010c1",
+        "F010d1"
+      ]
+    },
+    {
+      "surfaceType": "grass",
+      "label": "grama",
+      "sourceStems": [
+        "F78a4",
+        "F78a3"
+      ]
+    },
+    {
+      "surfaceType": "asphalt",
+      "label": "asfalto_box",
+      "sourceStems": [
+        "F047a1",
+        "F047a2",
+        "F047b1",
+        "F047b2",
+        "F047c1",
+        "F047d1"
+      ]
+    }
+  ]
+}

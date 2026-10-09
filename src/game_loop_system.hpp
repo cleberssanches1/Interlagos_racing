@@ -1,9 +1,16 @@
 #pragma once
 
+#ifndef MASTER_FRAME_PHASE_TELEMETRY
+#define MASTER_FRAME_PHASE_TELEMETRY 0
+#endif
+
 #include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#if MASTER_FRAME_PHASE_TELEMETRY
+#include <limits>
+#endif
 #include <memory>
 #include <utility>
 #include <vector>
@@ -24,6 +31,9 @@
 #include "car_prepare_runtime_state.hpp"
 #include "car_system.hpp"
 #include "cd_asset_transition_ops.hpp"
+#if MASTER_FRAME_PHASE_TELEMETRY
+#include "frame_phase_telemetry.hpp"
+#endif
 #include "frame_worker_tasks.hpp"
 #include "frame_reuse_observability_capture_ops.hpp"
 #include "game_loop_debug_ops.hpp"
@@ -196,8 +206,16 @@ public:
     // Run the main frame loop with fixed subsystem ordering.
     int RunForever()
     {
+#if MASTER_FRAME_PHASE_TELEMETRY
+        Sh2FrtProfiler::EnsureInitialized();
+#endif
         while (1)
         {
+#if MASTER_FRAME_PHASE_TELEMETRY
+            CommitPreviousMasterFrameTiming();
+            masterFrameTiming_ = {};
+            BeginMasterFramePhaseTelemetry();
+#endif
             AppState::Set(AppState::Stage::LoopFrameBegin, frameCounter_);
             AppState::PresentOverlay(2);
             if (!ValidateFramePreconditions()) continue;
@@ -207,9 +225,25 @@ public:
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
             CaptureWorkRamStage(hwrStageTrace_.begin, lwrStageTrace_.begin, true);
 
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp inputTicksStart = CaptureMasterPhaseStamp();
+            masterFrameTiming_.beginTicks =
+                Sh2FrtProfiler::Elapsed(masterFrameStartStamp_.frt, inputTicksStart.frt);
+#endif
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp inputTicksEnd = CaptureMasterPhaseStamp();
+            masterFrameTiming_.inputTicks =
+                Sh2FrtProfiler::Elapsed(inputTicksStart.frt, inputTicksEnd.frt);
+            RecordMasterPhase(FramePhaseTelemetry::Phase::Input,
+                              inputTicksStart,
+                              inputTicksEnd);
+#endif
 
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp gameplayTicksStart = CaptureMasterPhaseStamp();
+#endif
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Gameplay);
             Game::GameplayFrameState frameState = BuildGameplayFrameState(input);
             ExecuteGameplayFrame(frameState);
@@ -224,18 +258,71 @@ public:
                 SyncCameraHeadingFromCar();
             }
             CaptureWorkRamStage(hwrStageTrace_.autoLap, lwrStageTrace_.autoLap);
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp gameplayTicksEnd = CaptureMasterPhaseStamp();
+            masterFrameTiming_.gameplayTicks =
+                Sh2FrtProfiler::Elapsed(gameplayTicksStart.frt, gameplayTicksEnd.frt);
+            RecordMasterPhase(FramePhaseTelemetry::Phase::Gameplay,
+                              gameplayTicksStart,
+                              gameplayTicksEnd);
+#endif
 
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp backgroundTicksStart = CaptureMasterPhaseStamp();
+#endif
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Background);
             ScheduleCarPrepareIfEnabled();
             UpdateBackground();
+            // A Slave result may become ready while background work runs.  A
+            // second non-blocking consume lets this frame's camera/render use
+            // the freshest pose without turning async simulation into lockstep.
+            ConsumeCompletedJobs();
+            SyncCameraHeadingFromCar();
             CaptureWorkRamStage(hwrStageTrace_.background, lwrStageTrace_.background);
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp backgroundTicksEnd = CaptureMasterPhaseStamp();
+            masterFrameTiming_.backgroundTicks =
+                Sh2FrtProfiler::Elapsed(backgroundTicksStart.frt, backgroundTicksEnd.frt);
+            RecordMasterPhase(FramePhaseTelemetry::Phase::Background,
+                              backgroundTicksStart,
+                              backgroundTicksEnd);
+#endif
 
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp cameraTicksStart = CaptureMasterPhaseStamp();
+#endif
             const CameraFrameState camera = ResolveCameraFrameState();
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp cameraTicksEnd = CaptureMasterPhaseStamp();
+            masterFrameTiming_.cameraTicks =
+                Sh2FrtProfiler::Elapsed(cameraTicksStart.frt, cameraTicksEnd.frt);
+            RecordMasterPhase(FramePhaseTelemetry::Phase::Camera,
+                              cameraTicksStart,
+                              cameraTicksEnd);
+            CaptureCurrentPoseAge();
+            const FramePhaseTelemetry::Stamp hudTicksStart = CaptureMasterPhaseStamp();
+#endif
             SetWorkRamDebugTag(SRL::Memory::DebugTag::Hud);
             UpdateHud(camera);
             CaptureWorkRamStage(hwrStageTrace_.hud, lwrStageTrace_.hud);
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp hudTicksEnd = CaptureMasterPhaseStamp();
+            masterFrameTiming_.hudTicks =
+                Sh2FrtProfiler::Elapsed(hudTicksStart.frt, hudTicksEnd.frt);
+            RecordMasterPhase(FramePhaseTelemetry::Phase::Hud,
+                              hudTicksStart,
+                              hudTicksEnd);
+#endif
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp renderTicksStart = CaptureMasterPhaseStamp();
+#endif
             RenderFrame(camera);
             RenderAxes();
+#if MASTER_FRAME_PHASE_TELEMETRY
+            const FramePhaseTelemetry::Stamp renderTicksEnd = CaptureMasterPhaseStamp();
+            masterFrameTiming_.renderTicks =
+                Sh2FrtProfiler::Elapsed(renderTicksStart.frt, renderTicksEnd.frt);
+#endif
 
             FinishFrame();
         }
@@ -342,6 +429,218 @@ private:
         trackProducerHintCached_ = false;
         trackProducerJobInFlightHint_ = false;
     }
+
+#if MASTER_FRAME_PHASE_TELEMETRY
+    struct MasterFrameTiming
+    {
+        uint16_t beginTicks = 0u;
+        uint16_t inputTicks = 0u;
+        uint16_t gameplayTicks = 0u;
+        uint16_t backgroundTicks = 0u;
+        uint16_t cameraTicks = 0u;
+        uint16_t hudTicks = 0u;
+        uint16_t trackStreamTicks = 0u;
+        uint16_t trackDrawTicks = 0u;
+        uint16_t trackFrameTicks = 0u;
+        uint16_t trackRenderTicks = 0u;
+        uint16_t trackEndTicks = 0u;
+        uint16_t carTicks = 0u;
+        uint16_t renderTicks = 0u;
+        uint16_t finishPrepTicks = 0u;
+        uint16_t syncTicks = 0u;
+        uint16_t overlayTicks = 0u;
+        uint16_t frameTicks = 0u;
+        uint16_t unaccountedTicks = 0u;
+        uint16_t frameVblanks = 0u;
+        uint8_t poseAgeFrames = 0u;
+        uint8_t culledSegments = 0u;
+        bool valid = false;
+    };
+
+    struct MasterFrameTimingPeaks
+    {
+        uint16_t beginTicks = 0u;
+        uint16_t inputTicks = 0u;
+        uint16_t gameplayTicks = 0u;
+        uint16_t backgroundTicks = 0u;
+        uint16_t cameraTicks = 0u;
+        uint16_t hudTicks = 0u;
+        uint16_t trackStreamTicks = 0u;
+        uint16_t trackDrawTicks = 0u;
+        uint16_t trackRenderTicks = 0u;
+        uint16_t trackEndTicks = 0u;
+        uint16_t carTicks = 0u;
+        uint16_t renderTicks = 0u;
+        uint16_t finishPrepTicks = 0u;
+        uint16_t syncTicks = 0u;
+        uint16_t overlayTicks = 0u;
+        uint16_t unaccountedTicks = 0u;
+        uint8_t poseAgeFrames = 0u;
+        uint8_t culledSegments = 0u;
+    };
+
+    struct LongFrameContext
+    {
+        int16_t segmentId = -1;
+        uint8_t slides = 0u;
+        uint8_t slidePrepares = 0u;
+        uint8_t prefetchBuilds = 0u;
+        uint8_t textureReuses = 0u;
+        FramePhaseTelemetry::StallEvent stall{};
+        bool valid = false;
+    };
+
+#ifdef SRL_MODE_NTSC
+    static constexpr uint32_t kTelemetryRefreshHz = 60u;
+#else
+    static constexpr uint32_t kTelemetryRefreshHz = 50u;
+#endif
+
+    static constexpr uint16_t kLongStallThresholdVblanks =
+        static_cast<uint16_t>((kTelemetryRefreshHz + 9u) / 10u);
+    static constexpr uint16_t kFrtWrapRiskVblanks =
+        FramePhaseTelemetry::FrtWrapRiskVblanks(kTelemetryRefreshHz);
+
+    static FramePhaseTelemetry::Stamp CaptureMasterPhaseStamp()
+    {
+        FramePhaseTelemetry::Stamp stamp{};
+        stamp.vblank = SRL_AppGetVblankCounter();
+        stamp.frt = Sh2FrtProfiler::Now();
+        return stamp;
+    }
+
+    void BeginMasterFramePhaseTelemetry()
+    {
+        FramePhaseTelemetry::BeginFrame(framePhaseTelemetry_, frameCounter_);
+        masterFrameStartStamp_ = CaptureMasterPhaseStamp();
+    }
+
+    void RecordMasterPhase(FramePhaseTelemetry::Phase phase,
+                           const FramePhaseTelemetry::Stamp& start,
+                           const FramePhaseTelemetry::Stamp& end)
+    {
+        FramePhaseTelemetry::RecordSpan(framePhaseTelemetry_,
+                                        phase,
+                                        start,
+                                        end,
+                                        kLongStallThresholdVblanks);
+    }
+
+    static uint16_t SaturatingAddTicks(uint16_t lhs, uint16_t rhs)
+    {
+        const uint32_t sum = static_cast<uint32_t>(lhs) + rhs;
+        return static_cast<uint16_t>(
+            sum > static_cast<uint32_t>(std::numeric_limits<uint16_t>::max())
+                ? std::numeric_limits<uint16_t>::max()
+                : sum);
+    }
+
+    void CommitPreviousMasterFrameTiming()
+    {
+        if (!masterFrameTiming_.valid) return;
+        masterFrameTimingPeaks_.beginTicks = std::max(
+            masterFrameTimingPeaks_.beginTicks, masterFrameTiming_.beginTicks);
+        masterFrameTimingPeaks_.inputTicks = std::max(
+            masterFrameTimingPeaks_.inputTicks, masterFrameTiming_.inputTicks);
+        masterFrameTimingPeaks_.gameplayTicks = std::max(
+            masterFrameTimingPeaks_.gameplayTicks, masterFrameTiming_.gameplayTicks);
+        masterFrameTimingPeaks_.backgroundTicks = std::max(
+            masterFrameTimingPeaks_.backgroundTicks, masterFrameTiming_.backgroundTicks);
+        masterFrameTimingPeaks_.cameraTicks = std::max(
+            masterFrameTimingPeaks_.cameraTicks, masterFrameTiming_.cameraTicks);
+        masterFrameTimingPeaks_.hudTicks = std::max(
+            masterFrameTimingPeaks_.hudTicks, masterFrameTiming_.hudTicks);
+        masterFrameTimingPeaks_.trackStreamTicks = std::max(
+            masterFrameTimingPeaks_.trackStreamTicks, masterFrameTiming_.trackStreamTicks);
+        masterFrameTimingPeaks_.trackDrawTicks = std::max(
+            masterFrameTimingPeaks_.trackDrawTicks, masterFrameTiming_.trackDrawTicks);
+        masterFrameTimingPeaks_.trackRenderTicks = std::max(
+            masterFrameTimingPeaks_.trackRenderTicks, masterFrameTiming_.trackRenderTicks);
+        masterFrameTimingPeaks_.trackEndTicks = std::max(
+            masterFrameTimingPeaks_.trackEndTicks, masterFrameTiming_.trackEndTicks);
+        masterFrameTimingPeaks_.carTicks = std::max(
+            masterFrameTimingPeaks_.carTicks, masterFrameTiming_.carTicks);
+        masterFrameTimingPeaks_.renderTicks = std::max(
+            masterFrameTimingPeaks_.renderTicks, masterFrameTiming_.renderTicks);
+        masterFrameTimingPeaks_.finishPrepTicks = std::max(
+            masterFrameTimingPeaks_.finishPrepTicks, masterFrameTiming_.finishPrepTicks);
+        masterFrameTimingPeaks_.syncTicks = std::max(
+            masterFrameTimingPeaks_.syncTicks, masterFrameTiming_.syncTicks);
+        masterFrameTimingPeaks_.overlayTicks = std::max(
+            masterFrameTimingPeaks_.overlayTicks, masterFrameTiming_.overlayTicks);
+        masterFrameTimingPeaks_.unaccountedTicks = std::max(
+            masterFrameTimingPeaks_.unaccountedTicks, masterFrameTiming_.unaccountedTicks);
+        masterFrameTimingPeaks_.poseAgeFrames = std::max(
+            masterFrameTimingPeaks_.poseAgeFrames, masterFrameTiming_.poseAgeFrames);
+        masterFrameTimingPeaks_.culledSegments = std::max(
+            masterFrameTimingPeaks_.culledSegments, masterFrameTiming_.culledSegments);
+    }
+
+    void FinalizeMasterFramePhaseTelemetry(const FramePhaseTelemetry::Stamp& frameEnd)
+    {
+        RecordMasterPhase(FramePhaseTelemetry::Phase::Frame,
+                          masterFrameStartStamp_,
+                          frameEnd);
+        masterFrameTiming_.frameTicks =
+            Sh2FrtProfiler::Elapsed(masterFrameStartStamp_.frt, frameEnd.frt);
+        masterFrameTiming_.frameVblanks =
+            FramePhaseTelemetry::ElapsedVblanks(masterFrameStartStamp_, frameEnd);
+
+        if (masterFrameTiming_.frameVblanks >= kLongStallThresholdVblanks)
+        {
+            lastLongFrameContext_.segmentId = latestActiveSegmentId_;
+            lastLongFrameContext_.slides = 0u;
+            lastLongFrameContext_.slidePrepares = 0u;
+            lastLongFrameContext_.prefetchBuilds = 0u;
+            lastLongFrameContext_.textureReuses = 0u;
+            if (context_.trackSystem)
+            {
+                lastLongFrameContext_.slides = context_.trackSystem->SlidesThisFrame();
+                lastLongFrameContext_.slidePrepares =
+                    context_.trackSystem->SlidePreparesThisFrame();
+                lastLongFrameContext_.prefetchBuilds =
+                    context_.trackSystem->PrefetchBuildAttemptsThisFrame();
+                const TrackSystem::TextureRecycleHudSample recycle =
+                    context_.trackSystem->TextureRecycleHudSampleThisFrame();
+                const uint16_t reuses = static_cast<uint16_t>(recycle.reuse32 + recycle.reuse64);
+                lastLongFrameContext_.textureReuses = static_cast<uint8_t>(
+                    reuses > 99u ? 99u : reuses);
+            }
+            lastLongFrameContext_.stall = framePhaseTelemetry_.last;
+            lastLongFrameContext_.valid = true;
+        }
+
+        const uint32_t knownTicks =
+            static_cast<uint32_t>(masterFrameTiming_.beginTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.inputTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.gameplayTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.backgroundTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.cameraTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.hudTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.renderTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.finishPrepTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.syncTicks) +
+            static_cast<uint32_t>(masterFrameTiming_.overlayTicks);
+        masterFrameTiming_.unaccountedTicks =
+            FramePhaseTelemetry::ComputeUnaccountedTicks(
+                masterFrameTiming_.frameTicks,
+                knownTicks,
+                masterFrameTiming_.frameVblanks,
+                kFrtWrapRiskVblanks);
+        masterFrameTiming_.valid = true;
+    }
+
+    void CaptureCurrentPoseAge()
+    {
+        if (!lastCommittedSimulationFrameValid_ || frameCounter_ < lastCommittedSimulationFrameId_)
+        {
+            masterFrameTiming_.poseAgeFrames = 0u;
+            return;
+        }
+        const uint32_t age = frameCounter_ - lastCommittedSimulationFrameId_;
+        masterFrameTiming_.poseAgeFrames = static_cast<uint8_t>(age > 99u ? 99u : age);
+    }
+#endif
 
     template <bool tEnabled = kEnableLowWorkFreeOverlay,
               typename TOverlay = LowWorkOverlayStorage>
@@ -583,7 +882,9 @@ private:
         }
         if (input.yHeld && !YHeldPrev())
         {
-            const bool toggleTrackSlave = zHeld && context_.trackSystem;
+            // Simulation owns the single slSlaveFunc. A track producer job would replace it.
+            const bool toggleTrackSlave =
+                zHeld && context_.trackSystem && !context_.EnableSlaveForSimulation();
             if (toggleTrackSlave)
             {
                 const bool nextSlaveMode = !context_.trackSystem->TrackSlaveModeRequested();
@@ -626,6 +927,10 @@ private:
                                  const SRL::Math::Types::Vector3D& worldPosition,
                                  int32_t yawDeg)
     {
+#if MASTER_FRAME_PHASE_TELEMETRY
+        lastCommittedSimulationFrameId_ = frameState.frameId;
+        lastCommittedSimulationFrameValid_ = true;
+#endif
         context_.carWorldPosition = worldPosition;
         carYawDeg_ = yawDeg;
         SyncCameraHeadingFromCar();
@@ -715,6 +1020,12 @@ private:
         }
 
         SimulationSchedulerDomain::MarkSimulationCompleted(simState_, simState_.inFlightIdx);
+        // Slave wrote the payload through the uncached mirror. Refresh the
+        // cached copy before the Master reads the pose, pitch and yaw.
+        {
+            Game::SimulationPayload* const slot = &simState_.output[simState_.inFlightIdx];
+            *slot = *Game::Sh2CacheThrough(slot);
+        }
         simState_.slaveLastJobTicksThisFrame = simulationTask_.LastTicks();
         const SimulationPayload& authoritativeOutput =
             GameLoopRuntime::CommitCompletedSimulationReuseAuthoritativeOutput(
@@ -874,6 +1185,16 @@ private:
         const bool useSlaveSim =
             context_.EnableSlaveForSimulation() &&
             (context_.gameplayTick || context_.carPhysics);
+        // Overlap only once TCOL is the query source. Before that, Sample walks
+        // the meshes the Master is streaming, and the two CPUs would share the heap.
+        const bool slaveQueryIsolated =
+            context_.trackSystem && context_.trackSystem->TrackCollisionMapReady();
+
+        if (useSlaveSim && !slaveQueryIsolated)
+        {
+            RunGameplayFrameSynchronously(frameState);
+            return;
+        }
 
         if (useSlaveSim)
         {
@@ -1043,7 +1364,10 @@ private:
             return desiredCameraLocation;
         }
 
-        if (CameraSurfaceGuard::ShouldQuery(cameraSurfaceGuardState_))
+        // The ground query keeps its sticky face on TrackSystem. Skip it while
+        // the Slave is inside the same query for the car.
+        if (CameraSurfaceGuard::ShouldQuery(cameraSurfaceGuardState_) &&
+            !simState_.JobInFlight())
         {
             Fxp surfaceY = desiredCameraLocation.Y;
             int32_t segmentId = -1;
@@ -1329,12 +1653,9 @@ private:
         // Car is drawn unlit/flat (DrawAsFlat). Still rebind light so any residual
         // SGL global light state from track does not linger into other systems.
         car->SetLightDirection(context_.lightDirection);
-        if (ModelObject* carModel = car->Model())
-        {
-            // Streaming/debug must never re-enable gouraud on the live car mesh.
-            carModel->ForceUnlitKeepTextures();
-            carModel->ForceSortMode(SRL::Types::Attribute::SortMode::Minimum);
-        }
+        // Flat lighting and SORT_MIN are immutable runtime attributes configured
+        // once during car bootstrap (main.cxx).  Re-walking every face here was
+        // pure Master-side work on every frame.
         GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, renderInputs.gameplayYawDeg);
         const auto telemetry =
             GameLoopRuntime::SubmitCarRenderRuntime(*context_.renderPipeline, *car);
@@ -1436,7 +1757,18 @@ private:
         ConfigureScene3dView(camera);
         RestoreDirectionalLight();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Car);
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp carTicksStart = CaptureMasterPhaseStamp();
+#endif
         RenderCar(camera);
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp carTicksEnd = CaptureMasterPhaseStamp();
+        masterFrameTiming_.carTicks =
+            Sh2FrtProfiler::Elapsed(carTicksStart.frt, carTicksEnd.frt);
+        RecordMasterPhase(FramePhaseTelemetry::Phase::Car,
+                          carTicksStart,
+                          carTicksEnd);
+#endif
         CaptureWorkRamStage(hwrStageTrace_.car, lwrStageTrace_.car);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Unknown);
     }
@@ -1462,6 +1794,9 @@ private:
             return;
         }
 
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp trackRenderTicksStart = CaptureMasterPhaseStamp();
+#endif
         const auto trackFrameContext = TrackRenderDomain::BuildTrackFrameContext(
             frameCounter_,
             latestActiveSegmentId_,
@@ -1491,13 +1826,35 @@ private:
                                           trackFrameContext.cameraLocation,
                                           trackFrameContext.cameraLookTarget,
                                           trackFrameContext.carWorldPosition);
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp trackRenderTicksEnd = CaptureMasterPhaseStamp();
+        masterFrameTiming_.trackStreamTicks = context_.trackSystem->StreamTicksThisFrame();
+        masterFrameTiming_.trackDrawTicks = context_.trackSystem->DrawTicksThisFrame();
+        masterFrameTiming_.trackFrameTicks = context_.trackSystem->FrameTicksThisFrame();
+        masterFrameTiming_.trackRenderTicks =
+            Sh2FrtProfiler::Elapsed(trackRenderTicksStart.frt, trackRenderTicksEnd.frt);
+        RecordMasterPhase(FramePhaseTelemetry::Phase::TrackRender,
+                          trackRenderTicksStart,
+                          trackRenderTicksEnd);
+#endif
         // BuildTrackRenderPacket carries the preceding coordinator snapshot. Read
         // again after RenderFrame so the HUD records polygons sent this frame.
         lastSubmittedTrackFacesThisFrame_ = GameLoopRuntime::ClampToU16(
             context_.trackSystem->Telemetry().submittedTrackFaces);
         CaptureWorkRamStage(hwrStageTrace_.trackDraw, lwrStageTrace_.trackDraw);
         SetWorkRamDebugTag(SRL::Memory::DebugTag::TrackCore);
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp trackEndTicksStart = CaptureMasterPhaseStamp();
+#endif
         context_.trackSystem->EndFrame();
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp trackEndTicksEnd = CaptureMasterPhaseStamp();
+        masterFrameTiming_.trackEndTicks =
+            Sh2FrtProfiler::Elapsed(trackEndTicksStart.frt, trackEndTicksEnd.frt);
+        RecordMasterPhase(FramePhaseTelemetry::Phase::TrackEnd,
+                          trackEndTicksStart,
+                          trackEndTicksEnd);
+#endif
         GameLoopRuntime::CommitTrackReuseRuntimeFrame(frameCounter_,
                                                       latestActiveSegmentId_,
                                                       trackRenderPacket.valid,
@@ -1527,6 +1884,9 @@ private:
 
     void FinishFrame()
     {
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp finishPrepTicksStart = CaptureMasterPhaseStamp();
+#endif
         // Async sim mode: do not block frame completion on Slave sim.
         (void)DrainSimulationJobIfInFlight(false);
 
@@ -1539,9 +1899,40 @@ private:
         const FramePresentationSnapshot framePresentation =
             BuildFramePresentationSnapshot(trackTelemetryView);
 
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp finishHudTicksStart = CaptureMasterPhaseStamp();
+        masterFrameTiming_.finishPrepTicks =
+            Sh2FrtProfiler::Elapsed(finishPrepTicksStart.frt, finishHudTicksStart.frt);
+#endif
         PresentFrameHudAndTelemetry(framePresentation, trackTelemetryView);
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp finishHudTicksEnd = CaptureMasterPhaseStamp();
+        masterFrameTiming_.hudTicks = SaturatingAddTicks(
+            masterFrameTiming_.hudTicks,
+            Sh2FrtProfiler::Elapsed(finishHudTicksStart.frt, finishHudTicksEnd.frt));
+        RecordMasterPhase(FramePhaseTelemetry::Phase::Hud,
+                          finishHudTicksStart,
+                          finishHudTicksEnd);
+#endif
         SynchronizeFrameCore();
+#if MASTER_FRAME_PHASE_TELEMETRY
+        if (context_.trackSystem)
+        {
+            masterFrameTiming_.culledSegments =
+                context_.trackSystem->TextureRecycleHudSampleThisFrame().culledSegments;
+        }
+        const FramePhaseTelemetry::Stamp overlayTicksStart = CaptureMasterPhaseStamp();
+#endif
         UpdateFrameEndOverlays();
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp overlayTicksEnd = CaptureMasterPhaseStamp();
+        masterFrameTiming_.overlayTicks =
+            Sh2FrtProfiler::Elapsed(overlayTicksStart.frt, overlayTicksEnd.frt);
+        RecordMasterPhase(FramePhaseTelemetry::Phase::Overlay,
+                          overlayTicksStart,
+                          overlayTicksEnd);
+        FinalizeMasterFramePhaseTelemetry(overlayTicksEnd);
+#endif
     }
 
     FramePresentationSnapshot BuildFramePresentationSnapshot(
@@ -1615,7 +2006,18 @@ private:
             GameLoopRuntime::MaybeCaptureLowWorkRamSnapshot<kEnableDetailedWorkRamTelemetry>();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Sync);
         AppState::Set(AppState::Stage::LoopSync, frameCounter_);
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp syncTicksStart = CaptureMasterPhaseStamp();
+#endif
         SRL::Core::Synchronize();
+#if MASTER_FRAME_PHASE_TELEMETRY
+        const FramePhaseTelemetry::Stamp syncTicksEnd = CaptureMasterPhaseStamp();
+        masterFrameTiming_.syncTicks =
+            Sh2FrtProfiler::Elapsed(syncTicksStart.frt, syncTicksEnd.frt);
+        RecordMasterPhase(FramePhaseTelemetry::Phase::Synchronize,
+                          syncTicksStart,
+                          syncTicksEnd);
+#endif
         hwrStageTrace_.postSync =
             GameLoopRuntime::MaybeCaptureHighWorkRamSnapshot<kEnableDetailedWorkRamTelemetry>();
         lwrStageTrace_.postSync =
@@ -1800,6 +2202,33 @@ private:
 
         ++fpsState_.sampleFrames;
         fpsState_.sampleVblanks += static_cast<uint16_t>(vblankDelta);
+        // Texture recycle, same 60-frame window as FPS. Not the per-frame BLT rows.
+        if (context_.trackSystem)
+        {
+            const TrackSystem::TextureRecycleHudSample recycle =
+                context_.trackSystem->TextureRecycleHudSampleThisFrame();
+            auto satAdd = [](uint16_t& slot, uint16_t add)
+            {
+                const uint32_t sum = static_cast<uint32_t>(slot) + static_cast<uint32_t>(add);
+                slot = static_cast<uint16_t>(sum > 99u ? 99u : sum);
+            };
+            satAdd(recycleHud_.fresh32, recycle.fresh32);
+            satAdd(recycleHud_.fresh64, recycle.fresh64);
+            satAdd(recycleHud_.reuse32, recycle.reuse32);
+            satAdd(recycleHud_.reuse64, recycle.reuse64);
+            satAdd(recycleHud_.noReuse32, recycle.noReuse32);
+            satAdd(recycleHud_.noReuse64, recycle.noReuse64);
+            recycleHud_.reusableSlots = recycle.reusableSlots;
+            recycleHud_.vdp1FreeKiB = recycle.vdp1FreeKiB;
+            if (simState_.slaveLastJobTicksThisFrame > recycleHud_.slaveTicks)
+            {
+                recycleHud_.slaveTicks = simState_.slaveLastJobTicksThisFrame;
+            }
+            if (recycle.masterDrawTicks > recycleHud_.masterTicks)
+            {
+                recycleHud_.masterTicks = recycle.masterDrawTicks;
+            }
+        }
         const uint32_t frameTimeX100 = static_cast<uint32_t>(
             (static_cast<uint64_t>(vblankDelta) * 100000u + (kDisplayRefreshHz / 2u)) /
             static_cast<uint64_t>(kDisplayRefreshHz));
@@ -1861,6 +2290,85 @@ private:
                               static_cast<unsigned>(metrics.vbX100 % 100u),
                               static_cast<unsigned>(metrics.drop30Pct),
                               static_cast<unsigned>(metrics.drop60Pct));
+            // Row 15, once per FPS window. Width stays inside the 45-column print.
+            // f/r/n are 32/64 sums capped at 99. q is the reusable pool. k is VDP1
+            // free KiB. s/m are peak slave-physics and master-draw milliseconds.
+            auto cap99 = [](uint16_t value) -> unsigned
+            {
+                return static_cast<unsigned>(value > 99u ? 99u : value);
+            };
+            auto frtTicksToMs = [](uint16_t ticks) -> unsigned
+            {
+                // TIM_CKS_128 at 28.636 MHz is about 224 ticks per millisecond.
+                constexpr uint32_t kTicksPerMs = 224u;
+                const uint32_t ms =
+                    (static_cast<uint32_t>(ticks) + (kTicksPerMs / 2u)) / kTicksPerMs;
+                return static_cast<unsigned>(ms > 99u ? 99u : ms);
+            };
+            const unsigned reusableSlots = recycleHud_.reusableSlots > 999u
+                ? 999u
+                : static_cast<unsigned>(recycleHud_.reusableSlots);
+            const unsigned vdp1FreeKiB = recycleHud_.vdp1FreeKiB > 999u
+                ? 999u
+                : static_cast<unsigned>(recycleHud_.vdp1FreeKiB);
+            SRL::Debug::Print(0, 15, "V f%2u/%2u r%2u/%2u n%2u/%2u q%3u k%3u s%2u m%2u",
+                              cap99(recycleHud_.fresh32),
+                              cap99(recycleHud_.fresh64),
+                              cap99(recycleHud_.reuse32),
+                              cap99(recycleHud_.reuse64),
+                              cap99(recycleHud_.noReuse32),
+                              cap99(recycleHud_.noReuse64),
+                              reusableSlots,
+                              vdp1FreeKiB,
+                              frtTicksToMs(recycleHud_.slaveTicks),
+                              frtTicksToMs(recycleHud_.masterTicks));
+#if MASTER_FRAME_PHASE_TELEMETRY
+            // Missing-time split over the same 60-frame window:
+            // i=input/job consume, b=frame begin, r=full render envelope,
+            // f=finish preparation, y=Synchronize, u=residual, a=pose age, z=cull.
+            SRL::Debug::Print(0, 14, "M i%2u b%2u r%2u f%2u y%2u u%2u a%u z%u",
+                              frtTicksToMs(masterFrameTimingPeaks_.inputTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.beginTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.renderTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.finishPrepTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.syncTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.unaccountedTicks),
+                              static_cast<unsigned>(masterFrameTimingPeaks_.poseAgeFrames),
+                              static_cast<unsigned>(masterFrameTimingPeaks_.culledSegments));
+            // Previously hidden Master-side work. ca=camera, ts=track stream,
+            // td=track draw, te=TrackSystem::EndFrame, tr=outer track envelope.
+            SRL::Debug::Print(0, 17, "P ca%2u ts%2u td%2u te%2u tr%2u",
+                              frtTicksToMs(masterFrameTimingPeaks_.cameraTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.trackStreamTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.trackDrawTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.trackEndTicks),
+                              frtTicksToMs(masterFrameTimingPeaks_.trackRenderTicks));
+            // Most recent long stall plus its track context. This directly
+            // reveals whether a stall coincided with a belt slide/recycle.
+            const FramePhaseTelemetry::StallEvent& stall = lastLongFrameContext_.stall;
+            const unsigned stallVblanks = stall.vblanks > 999u
+                ? 999u
+                : static_cast<unsigned>(stall.vblanks);
+            const unsigned stallEvents = framePhaseTelemetry_.eventCount > 999u
+                ? 999u
+                : static_cast<unsigned>(framePhaseTelemetry_.eventCount);
+            SRL::Debug::Print(0, 18, "L%s v%u e%u s%d x%u b%u p%u r%u",
+                              stall.valid ? FramePhaseTelemetry::PhaseCode(stall.phase) : "--",
+                              stallVblanks,
+                              stallEvents,
+                              lastLongFrameContext_.valid
+                                  ? static_cast<int>(lastLongFrameContext_.segmentId)
+                                  : -1,
+                              static_cast<unsigned>(lastLongFrameContext_.slides),
+                              static_cast<unsigned>(lastLongFrameContext_.slidePrepares),
+                              static_cast<unsigned>(lastLongFrameContext_.prefetchBuilds),
+                              static_cast<unsigned>(lastLongFrameContext_.textureReuses));
+            recycleHud_ = {};
+            masterFrameTimingPeaks_ = {};
+            FramePhaseTelemetry::ResetWindowPeaks(framePhaseTelemetry_);
+#else
+            recycleHud_ = {};
+#endif
             fpsState_.sampleFrames = 0u;
             fpsState_.sampleVblanks = 0u;
             fpsState_.framesOver30Budget = 0u;
@@ -2607,6 +3115,29 @@ private:
     int32_t carYawDeg_ = 0;
     uint32_t frameCounter_ = 0;
     RealtimeFpsState fpsState_{};
+#if MASTER_FRAME_PHASE_TELEMETRY
+    MasterFrameTiming masterFrameTiming_{};
+    MasterFrameTimingPeaks masterFrameTimingPeaks_{};
+    FramePhaseTelemetry::State framePhaseTelemetry_{};
+    FramePhaseTelemetry::Stamp masterFrameStartStamp_{};
+    LongFrameContext lastLongFrameContext_{};
+    uint32_t lastCommittedSimulationFrameId_ = 0u;
+    bool lastCommittedSimulationFrameValid_ = false;
+#endif
+    struct TextureRecycleHudAccum
+    {
+        uint16_t fresh32 = 0;
+        uint16_t fresh64 = 0;
+        uint16_t reuse32 = 0;
+        uint16_t reuse64 = 0;
+        uint16_t noReuse32 = 0;
+        uint16_t noReuse64 = 0;
+        uint16_t reusableSlots = 0;
+        uint16_t vdp1FreeKiB = 0;
+        uint16_t slaveTicks = 0;
+        uint16_t masterTicks = 0;
+    };
+    TextureRecycleHudAccum recycleHud_{};
     SimulationTask simulationTask_{};
     SimulationRuntimeState simState_{};
     CarRenderPrepareTask carPrepareTask_{};

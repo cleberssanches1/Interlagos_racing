@@ -1194,7 +1194,9 @@ static int RunPhysicsPocMode()
         "/CD/DATA/CEUP.TGA"
     };
     const size_t skyPathCount = sizeof(skyPaths) / sizeof(skyPaths[0]);
-    // Car first (VDP1 order), then track Initialize, then optional deferred BG.
+    // Normal POC keeps the original car-first order. Detailed phase telemetry
+    // needs a little more resident HWR, so that profile reserves the track first
+    // and leaves the live car in the 4 MB Cart RAM.
 
     CameraSystem cameraSystem;
     cameraSystem.SetDebugLogsEnabled(false);
@@ -1208,15 +1210,15 @@ static int RunPhysicsPocMode()
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
     };
-    // POC: try WRAM-first before track runtime startup.
-    const bool useCartCopyPipeline = true;
+    constexpr bool kPocReserveHwrForTrack = (MASTER_FRAME_PHASE_TELEMETRY != 0);
+    constexpr bool kPocUseWramCar = !kPocReserveHwrForTrack;
     AppState::Set(AppState::Stage::CarLoad, 0);
     CarPipeline carPipe{};
-    if (renderCar)
+    if (renderCar && !kPocReserveHwrForTrack)
     {
         carPipe = LoadCarPipeline(carPaths,
                                   sizeof(carPaths) / sizeof(carPaths[0]),
-                                  useCartCopyPipeline,
+                                  kPocUseWramCar,
                                   kCarGouraudOffset);
     }
     ModelObject* carPtr = carPipe.ActiveModel();
@@ -1232,15 +1234,13 @@ static int RunPhysicsPocMode()
     LogPocRam(9, "RAM bg-");
 
     static TrackSystem trackSystem;
-    // POC dual-SH2 split (stable after async-sim freeze on throttle):
-    // - Slave: track producer/sort only (async barrier off in TrackSystem)
-    // - Master: gameplay/physics sync (no Slave contention; productive vs spin-wait)
-    // - Master: render / HUD / PCM driver
-    // Rollback: kPocEnableSlaveSimulation=true + lockstep=true if Master FPS drops.
-    constexpr bool kPocDualSh2Profile = true;
-    const bool kPocEnableTrackSlave = kPocDualSh2Profile && renderTrack;
-    constexpr bool kPocEnableSlaveSimulation = false;
-    constexpr bool kPocSlaveSimulationLockstep = true;
+    // One Slave job per frame: physics writes a pose packet while the Master
+    // draws the pose published last frame. Track producer stays on the Master
+    // (20 handles). Lockstep stays off so the Master does not spin-wait.
+    // PCM and VDP2 scroll still run on the Master when the pose is published.
+    constexpr bool kPocEnableSlaveSimulation = true;
+    constexpr bool kPocSlaveSimulationLockstep = false;
+    const bool kPocEnableTrackSlave = false;
     constexpr bool kPocEnableCarPrepareSlave = false;
     trackSystem.SetRuntimeStatsLogsEnabled(kEnableRuntimeStatsLogs);
     TrackSystem::Config trackConfig{};
@@ -1261,6 +1261,26 @@ static int RunPhysicsPocMode()
          trackSystemReady ? 1u : 0u,
          static_cast<unsigned>(trackSystem.SegmentCount()));
 
+    if (renderCar && !carValid)
+    {
+        // In the detailed telemetry profile this is the first car load: the
+        // track has already claimed its HWR and the car remains in Cart RAM.
+        // In the normal profile this is only the legacy early-load fallback.
+        carPipe = LoadCarPipeline(carPaths,
+                                  sizeof(carPaths) / sizeof(carPaths[0]),
+                                  kPocUseWramCar,
+                                  kCarGouraudOffset);
+        carPtr = carPipe.ActiveModel();
+        carValid = carPipe.Loaded();
+    }
+
+    if (trackSystemReady)
+    {
+        // The track was loaded before the Cart-resident car in the detailed
+        // profile. Protect both texture ranges from later track heap resets.
+        trackSystem.RebaseTrackTextureHeapBase();
+    }
+
     // Deferred BG: after belt+TCOL, only if LWR can host panorama staging.
     if (trackSystemReady)
     {
@@ -1279,17 +1299,6 @@ static int RunPhysicsPocMode()
                           bgReady ? 1u : 0u,
                           static_cast<unsigned>(lwr.FreeSize),
                           static_cast<unsigned>(largestLwrBlock));
-    }
-
-    if (renderCar && !carValid)
-    {
-        // Fallback: if early WRAM-first load failed, retry after track init.
-        carPipe = LoadCarPipeline(carPaths,
-                                  sizeof(carPaths) / sizeof(carPaths[0]),
-                                  useCartCopyPipeline,
-                                  kCarGouraudOffset);
-        carPtr = carPipe.ActiveModel();
-        carValid = carPipe.Loaded();
     }
 
     bool carWasSmooth = false;
@@ -1312,12 +1321,6 @@ static int RunPhysicsPocMode()
     {
         carPtr = nullptr;
         carValid = false;
-    }
-    if (trackSystemReady)
-    {
-        // Keep non-track textures (car) outside track heap reset window,
-        // matching the protection used by the main runtime flow.
-        trackSystem.RebaseTrackTextureHeapBase();
     }
     if constexpr (kLog)
     {
@@ -1508,7 +1511,7 @@ int GameApp::Run()
     const bool renderTrack = true; // pista habilitada
     const bool renderCar = true; // carro habilitado
     const bool loadCarAfterTrack = true; // mantem fluxo padrao de carga da pista
-    const bool enableTrackSlaveProducer = true; // teste: habilita Slave
+    const bool enableTrackSlaveProducer = false; // Slave slot belongs to the physics packet
     const bool forceSolidCarWhenTrack = false; // desativado: pode causar comando invalido na VDP1
     const bool renderAxes = false; // desliga eixos de debug
 
@@ -1779,10 +1782,10 @@ int GameApp::Run()
 
     Game::SimpleCarPhysics carPhysics;
     Game::SimpleGameplayTick gameplayTick;
-    // Runtime simulation on Master; Slave reserved for track prep (see POC flags).
+    // Slave writes the next pose. Master draws the published pose. No lockstep wait.
     const bool enableRuntimeSimulation = true;
-    const bool enableSlaveSimulation = false;
-    const bool slaveSimulationLockstep = true;
+    const bool enableSlaveSimulation = true;
+    const bool slaveSimulationLockstep = false;
     const bool enableSlaveForCarPrepare = false;
 
     GameLoopSystem::Context loopContext = BuildGameLoopContext(&cartOkFlag,

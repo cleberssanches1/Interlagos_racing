@@ -15,8 +15,8 @@ SRL_ENABLE_FREQ_ANALYSIS = 1    # Set to 1 if you want to enable frequency analy
 # SGL configuration
 # WorkArea is fixed at 0x060C0000; TransList at 0x060FB800 (~238 KB max).
 # Keep WorkArea below TransList at 0x060FB800 with explicit safety margin.
-SGL_MAX_VERTICES = 2000
-SGL_MAX_POLYGONS = 1500
+SGL_MAX_VERTICES = 2200
+SGL_MAX_POLYGONS = 1700
 SGL_MAX_EVENTS = 64             # Number of events that can be used
 SGL_MAX_WORKS = 64              # Number of works that can be used
 
@@ -25,6 +25,10 @@ SGL_MAX_WORKS = 64              # Number of works that can be used
 #   0 = mantem o fluxo principal do jogo.
 PHYSICS_POC_MODE ?= 1
 AUDIO_PROFILE ?= 1
+# Detailed Master-frame phase telemetry (HUD rows M/P/L and long-stall capture).
+# Current diagnostic build keeps it enabled. For a normal release, use
+# make MASTER_FRAME_PHASE_TELEMETRY=0 to recover High Work RAM headroom.
+MASTER_FRAME_PHASE_TELEMETRY ?= 0
 
 # Visible track residency. Override at build time, for example:
 # make TRACK_LOD0_SEGMENTS=3 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
@@ -34,8 +38,8 @@ AUDIO_PROFILE ?= 1
 # Keep 3/4/5 (12 segs) while BG/walls stabilize; restore 5/6/8 later.
 # := prevents stale shell env from forcing 0/10/10.
 TRACK_LOD0_SEGMENTS := 0
-TRACK_LOD1_SEGMENTS := 10
-TRACK_LOD2_SEGMENTS := 10
+TRACK_LOD1_SEGMENTS := 20
+TRACK_LOD2_SEGMENTS := 0
 
 # Extra compile flags ??? two profiles:
 #   make                      ??? debug (default): LWR stage tracing enabled
@@ -48,6 +52,7 @@ else
 SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DPHYS_WHEEL_STRICT_SURFACE=0 -DPHYS_ENABLE_MEM10_OVERLAY=0
 endif
 SRL_CUSTOM_CCFLAGS += -DTRACK_LOD0_SEGMENTS=$(TRACK_LOD0_SEGMENTS) -DTRACK_LOD1_SEGMENTS=$(TRACK_LOD1_SEGMENTS) -DTRACK_LOD2_SEGMENTS=$(TRACK_LOD2_SEGMENTS)
+SRL_CUSTOM_CCFLAGS += -DMASTER_FRAME_PHASE_TELEMETRY=$(MASTER_FRAME_PHASE_TELEMETRY)
 
 # Disk name
 CD_NAME = Interlagos_racing

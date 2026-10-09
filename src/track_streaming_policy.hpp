@@ -48,6 +48,91 @@ struct WindowRingState
     int8_t physicalStep = 1;
 };
 
+enum class StagedSlideAction : uint8_t
+{
+    None = 0u,
+    PreparePrefetch,
+    PrepareSlide,
+    CommitSlide
+};
+
+// A slide crosses three frame boundaries: renderer prefetch, immutable
+// back-buffer preparation, then publication into the resident window.
+constexpr StagedSlideAction ResolveStagedSlideAction(int32_t backlog,
+                                                     bool prefetchTargetMatches,
+                                                     bool prefetchMetadataReady,
+                                                     bool prefetchRendererReady,
+                                                     bool slideBackBufferReady) noexcept
+{
+    if (backlog <= 0) return StagedSlideAction::None;
+    if (slideBackBufferReady) return StagedSlideAction::CommitSlide;
+    if (prefetchTargetMatches && prefetchMetadataReady && prefetchRendererReady)
+    {
+        return StagedSlideAction::PrepareSlide;
+    }
+    return StagedSlideAction::PreparePrefetch;
+}
+
+// Conservative draw-only rejection.  Streaming/residency is intentionally
+// independent: a segment is rejected only when its complete XZ AABB lies
+// behind an expanded camera plane.  Using the AABB support point instead of
+// the segment center preserves long scenery and folded/hairpin segments.
+constexpr bool IsAabbEntirelyBehindCameraXZ(int32_t cameraXRaw,
+                                            int32_t cameraZRaw,
+                                            int32_t forwardXRaw,
+                                            int32_t forwardZRaw,
+                                            int32_t minXRaw,
+                                            int32_t maxXRaw,
+                                            int32_t minZRaw,
+                                            int32_t maxZRaw,
+                                            int32_t marginRaw) noexcept
+{
+    if ((forwardXRaw == 0 && forwardZRaw == 0) ||
+        minXRaw > maxXRaw || minZRaw > maxZRaw)
+    {
+        return false;
+    }
+
+    constexpr int32_t kFxpOne = 1 << 16;
+    auto toWorldUnits = [](int32_t raw) -> int32_t { return raw / kFxpOne; };
+    const int32_t minX = toWorldUnits(minXRaw);
+    const int32_t maxX = toWorldUnits(maxXRaw);
+    const int32_t minZ = toWorldUnits(minZRaw);
+    const int32_t maxZ = toWorldUnits(maxZRaw);
+    const int32_t centerX = minX + ((maxX - minX) / 2);
+    const int32_t centerZ = minZ + ((maxZ - minZ) / 2);
+    const int32_t extentX = (maxX - minX) / 2;
+    const int32_t extentZ = (maxZ - minZ) / 2;
+    int32_t forwardX = toWorldUnits(forwardXRaw);
+    int32_t forwardZ = toWorldUnits(forwardZRaw);
+    if (forwardX == 0 && forwardXRaw != 0) forwardX = (forwardXRaw < 0) ? -1 : 1;
+    if (forwardZ == 0 && forwardZRaw != 0) forwardZ = (forwardZRaw < 0) ? -1 : 1;
+
+    // Keep all products in cheap 32-bit arithmetic on SH-2. Direction scale
+    // does not affect the half-plane decision.
+    int32_t absForwardX = (forwardX < 0) ? -forwardX : forwardX;
+    int32_t absForwardZ = (forwardZ < 0) ? -forwardZ : forwardZ;
+    const int32_t maxForward = (absForwardX > absForwardZ) ? absForwardX : absForwardZ;
+    if (maxForward > 1024)
+    {
+        const int32_t divisor = (maxForward + 1023) / 1024;
+        forwardX /= divisor;
+        forwardZ /= divisor;
+        absForwardX = (forwardX < 0) ? -forwardX : forwardX;
+        absForwardZ = (forwardZ < 0) ? -forwardZ : forwardZ;
+    }
+
+    // Maximum dot product of any AABB point against the camera forward vector.
+    const int32_t maxProjected =
+        (centerX - toWorldUnits(cameraXRaw)) * forwardX +
+        (centerZ - toWorldUnits(cameraZRaw)) * forwardZ +
+        extentX * absForwardX +
+        extentZ * absForwardZ;
+    const int32_t safeMargin = (marginRaw > 0) ? toWorldUnits(marginRaw) : 0;
+    const int32_t expandedPlane = safeMargin * (absForwardX + absForwardZ);
+    return maxProjected < -expandedPlane;
+}
+
 // Decide whether a surface query must expand from its local neighborhood to
 // the already-resident streaming window. A strict wheel query cannot consume
 // an outside-face planar fallback, so that fallback must not suppress recovery.

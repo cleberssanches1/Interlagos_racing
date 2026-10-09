@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "description": "Texturas em freeTraverseStems nao barram o carro. Qualquer outra face nao-chao do LOD0 vira parede. Chao (piso) continua solo e nunca para o carro. O contorno aberto do asfalto nao e parede.",
+  "freeTraverseStems": [
+    "F02364",
+    "F07364",
+    "F01064",
+    "F00364",
+    "F00264",
+    "F05464",
+    "F04764",
+    "F07564",
+    "F01864"
+  ]
+}

@@ -360,6 +360,9 @@ static constexpr bool kEnableTrackWindowFixedStorage = true;
 static constexpr bool kEnableStabilizedEndFramePaletteRecycle = false;
 static constexpr bool kEnableTrackLodBandsInStabilization = true;
 static constexpr bool kEnableDeterministicStabilizedSlide = true;
+// Keep geometry preparation and resident-window commit in separate frames.
+// Rollback seam: false restores synchronous catch-up and post-slide prefetch.
+static constexpr bool kEnableStagedSlidePipeline = true;
 static constexpr bool kEnableStabilizedDepthSortOnSlave = true;
 static constexpr bool kEnableStabilizedProducerOnSlave = true;
 // SH2 load split micro-step 2.1 (SH2_FPS_BALANCE_ACTION_PLAN):
@@ -7420,6 +7423,64 @@ void TrackSystem::RebuildUsedTextureSlotFlagsFromCurrentFaces()
     }
 }
 
+bool TrackSystem::IsTextureSlotPinnedByStagedStreaming(uint16_t slot) const
+{
+    if (slot == No_Texture || slot == 0u || slot >= SRL_MAX_TEXTURES) return false;
+
+    auto containsSlot = [slot](const TrackLowWorkI16Vector& slots) -> bool
+    {
+        for (const int16_t candidate : slots)
+        {
+            if (candidate >= 0 && static_cast<uint16_t>(candidate) == slot) return true;
+        }
+        return false;
+    };
+
+    // Prefetch can remain resident for several frames before PrepareSlide.
+    // It is not referenced by the live window yet, but its VDP1 contents are
+    // already final and must not enter the reusable pool.
+    if (slidePrefetchSegmentId_ > 0 && containsSlot(slidePrefetchFaceSlots_))
+    {
+        return true;
+    }
+
+    // In the three-phase pipeline these slots spend one complete frame only
+    // in the back-buffer. They become live faces on the following commit.
+    if (!slideBackBuffer_.Ready()) return false;
+    if (containsSlot(slideBackBuffer_.incomingFaceSlots)) return true;
+    for (const auto& update : slideBackBuffer_.boundaryUpdates)
+    {
+        if (update.Active() && containsSlot(update.preparedFaceSlots)) return true;
+    }
+    return false;
+}
+
+void TrackSystem::ProtectStagedStreamingTextureSlots()
+{
+    auto protectSlots = [&](const TrackLowWorkI16Vector& slots)
+    {
+        for (const int16_t candidate : slots)
+        {
+            if (candidate <= 0) continue;
+            const uint16_t slot = static_cast<uint16_t>(candidate);
+            if (slot >= usedTextureSlotsThisFrame_.size()) continue;
+            if (!IsVdp1TextureSlotLive(slot)) continue;
+            usedTextureSlotsThisFrame_[slot] = 1u;
+        }
+    };
+
+    if (slidePrefetchSegmentId_ > 0)
+    {
+        protectSlots(slidePrefetchFaceSlots_);
+    }
+    if (!slideBackBuffer_.Ready()) return;
+    protectSlots(slideBackBuffer_.incomingFaceSlots);
+    for (const auto& update : slideBackBuffer_.boundaryUpdates)
+    {
+        if (update.Active()) protectSlots(update.preparedFaceSlots);
+    }
+}
+
 uint32_t TrackSystem::GetStrictPendingLodPriority(size_t logicalRank) const
 {
     // Lower score = higher priority. Near-band edge first so 32→64 is not
@@ -9476,7 +9537,7 @@ void TrackSystem::ResetSlideBackBuffer()
     }
     // In deterministic mode the backbuffer is inactive; keep it empty to avoid
     // retaining stale per-slide vectors as latent backups.
-    if (kEnableDeterministicStabilizedSlide)
+    if (kEnableDeterministicStabilizedSlide && !kEnableStagedSlidePipeline)
     {
         const size_t lwrFreeHint =
             static_cast<size_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
@@ -10253,6 +10314,14 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         const int16_t desiredBaseRank = entry->lodState.HasPerFaceRankOffsets()
             ? static_cast<int16_t>(logicalRank)
             : -1;
+        const uint8_t desiredGeoTier = ResolveDesignGeoTierByRank(logicalRank);
+        if (entry->lodState.currentDesignGeoTier != desiredGeoTier)
+        {
+            // Face tables differ across the design-geometry boundary. Let the
+            // normal LOD recovery rebuild geometry after the slide is visible.
+            QueuePendingStabilizedLodRank(logicalRank);
+            continue;
+        }
         const bool needsUpdate = entry->lodState.currentLodIndex != desiredLodIndex ||
                                  entry->lodState.currentBaseRank != desiredBaseRank ||
                                  HasMissingRequiredFaceTextureSlots(entry->lodState.currentFaceSlots,
@@ -10311,6 +10380,7 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
 
     SegmentRenderEntry& slot = segmentRenderers_[slideBackBuffer_.dropIdx];
     TrackSegmentEntry& meta = segmentEntries_[slideBackBuffer_.dropIdx];
+    DemobilizeSegmentSlotMetadata(slot);
     std::swap(slot.renderer, slideScratchRenderer_);
     if (!slot.renderer)
     {
@@ -10342,6 +10412,12 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     slot.lodState.currentBaseRank = slideBackBuffer_.incomingResidentBaseRank;
     slot.lodState.desiredLodIndex = slideBackBuffer_.incomingResidentLodIndex;
     slot.lodState.desiredBaseRank = slideBackBuffer_.incomingResidentBaseRank;
+    {
+        const size_t incomingLogicalRank = segmentRenderers_.size() - 1u;
+        const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
+        slot.lodState.currentDesignGeoTier = geoTier;
+        slot.lodState.desiredDesignGeoTier = geoTier;
+    }
     meta.id = slideBackBuffer_.incomingSegmentId;
     ApplyActiveRendererCapacityFloor(*slot.renderer);
     (void)slot.renderer->ApplyFaceTextureSlotsGlobal(slot.lodState.currentFaceSlots);
@@ -10381,13 +10457,12 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     UpdateDesiredStabilizedWindowLodTargets();
     const uint16_t lodUpdateTicks = Sh2FrtProfiler::Elapsed(lodUpdateStart, Sh2FrtProfiler::Now());
 
-    uint16_t mergeTicks = 0u;
+    // Family consolidation can scan the entire resident window. Keep it out
+    // of the publication frame; RunPrefetchStage executes it alone later.
+    const uint16_t mergeTicks = 0u;
     if (familyMergeCooldown_ == 0u)
     {
-        const uint16_t mergeStart = Sh2FrtProfiler::Now();
-        MergeCurrentWindowFamilies();
-        mergeTicks = Sh2FrtProfiler::Elapsed(mergeStart, Sh2FrtProfiler::Now());
-        familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(FullTrackFamilyCacheReady());
+        stagedFamilyMergePending_ = true;
     }
     else
     {
@@ -10680,6 +10755,7 @@ void TrackSystem::DemobilizeSegmentSlotMetadata(SegmentRenderEntry& slot)
     slot.wallSegmentsCacheSegmentId = -1;
     slot.wallSegmentsCacheLodIndex = 0xFF;
     slot.wallSegmentsCacheFlags = 0u;
+    slot.drawVisibilityHoldFrames = 0u;
 
     slot.lodState.workingSetFamilies.clear();
     slot.lodState.workingSetLodIndices.clear();
@@ -10973,7 +11049,9 @@ void TrackSystem::TryPrefetchUpcomingSegment()
 
     if (kEnableTrackRuntimeStabilization)
     {
-        if (slidePrefetchSegmentId_ == nextId && !slidePrefetchFamilyIds_.empty())
+        if (slidePrefetchSegmentId_ == nextId &&
+            !slidePrefetchFamilyIds_.empty() &&
+            SlidePrefetchRendererReady())
         {
             prefetchRetryCooldown_ = 0u;
             return;
@@ -11003,17 +11081,9 @@ void TrackSystem::TryPrefetchUpcomingSegment()
         // Cap texture prewarm for the upcoming tail (admit LOD = far/32).
         // Spreads VDP1 uploads so the slide frame does not decode everything.
         PrewarmNextSegmentLod32();
-        // Reverse traversal suffers more from late prefetch misses.
-        // Prime one extra segment in reverse direction when possible.
-        if (windowDirection_ < 0 && speedTier1)
-        {
-            const int32_t reverseExtraId =
-                WrapSegmentIdToRange(nextId - 1, totalSegmentCount_);
-            if (reverseExtraId > 0 && reverseExtraId != nextId)
-            {
-                (void)BuildSegmentIntoPrefetch(reverseExtraId, false);
-            }
-        }
+        // There is one scratch renderer. Prefetching a second reverse segment
+        // here would evict the immediate incoming tail and force a synchronous
+        // rebuild at the next slide.
         prefetchRetryCooldown_ = 0u;
         return;
     }
@@ -11895,7 +11965,7 @@ uint16_t TrackSystem::ReleaseTrackFamilyResourcesImmediate(MemoryPressureLevel l
                 ? (family.workingRefs[kTrackLod0Index] != 0u ||
                    family.workingRefs[kTrackLod1Index] != 0u)
                 : family.workingRefs[static_cast<size_t>(li)] != 0u;
-            if (referenced) continue;
+            if (referenced || IsTextureSlotPinnedByStagedStreaming(slot)) continue;
             QueuePendingRetiredTrackTextureSlot(slot);
             if (shared64)
             {
@@ -12691,8 +12761,8 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
             }
         }
 
-        bool allowImmediatePrefetch = false;
-        if (kEnableTrackRuntimeStabilization)
+        const bool allowImmediatePrefetch = !kEnableStagedSlidePipeline;
+        if (kEnableTrackRuntimeStabilization && allowImmediatePrefetch)
         {
             const int32_t upcomingAfterSlideId =
                 ResolveWindowIncomingSegmentId(windowDirection_, windowCount);
@@ -14384,6 +14454,8 @@ void TrackSystem::ResetInitializationState()
     boundaryPrewarmCooldown_ = 0;
     prefetchRetryCooldown_ = 0;
     prefetchBuildAttemptsThisFrame_ = 0;
+    runtimeSlidePreparesThisFrame_ = 0;
+    stagedFamilyMergePending_ = false;
     prefetchBuildBudgetThisFrame_ = 1u;
     prefetchBuildBudgetDropsThisFrame_ = 0;
     surfaceQueryScmapSkipsThisFrame_ = 0u;
@@ -16036,6 +16108,7 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     runtimeSdrBuildsThisFrame_ = 0;
     runtimeFaceRemapsThisFrame_ = 0;
     runtimeSlidesThisFrame_ = 0;
+    runtimeSlidePreparesThisFrame_ = 0;
     runtimeSlideStallsThisFrame_ = 0;
     runtimePrefetchHitsThisFrame_ = 0;
     runtimePrefetchMissesThisFrame_ = 0;
@@ -16044,6 +16117,7 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     runtimeSafeSkippedThisFrame_ = 0;
     runtimeSafeNoDrawThisFrame_ = 0;
     runtimeSafeReappliedThisFrame_ = 0;
+    drawCulledSegmentsThisFrame_ = 0;
     sh2MasterStreamTicksThisFrame_ = 0;
     sh2MasterDrawTicksThisFrame_ = 0;
     sh2MasterFrameTicksThisFrame_ = 0;
@@ -16165,6 +16239,11 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                     ? ((targetStartId - currentStartId) % total)
                     : ((currentStartId - targetStartId) % total);
                 if (backlog < 0) backlog += total;
+                if ((backlog <= 0 || backlog >= (total / 2)) && slideBackBuffer_.Ready())
+                {
+                    // The target was cancelled or changed before publication.
+                    ResetSlideBackBuffer();
+                }
                 if (backlog > 0 && backlog < (total / 2))
                 {
                     // Catch-up: prefer draining backlog. REDRIVER2-style streaming
@@ -16174,9 +16253,10 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                     const bool freeTight =
                         freeValidCatchup &&
                         freeCatchup <= (kWorkRamHardFloorBytes + (24u * 1024u));
-                    const uint8_t maxCatchupSlides =
-                        freeTight ? 1u :
-                        (backlog >= 3 ? 3u : (backlog >= 2 ? 2u : 1u));
+                    const uint8_t maxCatchupSlides = kEnableStagedSlidePipeline
+                        ? 1u
+                        : (freeTight ? 1u :
+                           (backlog >= 3 ? 3u : (backlog >= 2 ? 2u : 1u)));
                     const uint8_t slideBudget = static_cast<uint8_t>(
                         std::min<int32_t>(backlog, static_cast<int32_t>(maxCatchupSlides)));
                     // Before catch-up: free retired VDP1 slots for tail uploads.
@@ -16190,7 +16270,75 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                     prefetchRetryCooldown_ = 0u;
                     for (uint8_t i = 0; i < slideBudget; ++i)
                     {
-                        TryPrefetchUpcomingSegment();
+                        if (kEnableStagedSlidePipeline)
+                        {
+                            const int32_t incomingId = ResolveWindowIncomingSegmentId(
+                                slideDirection, segmentRenderers_.size());
+                            const int32_t nextStartId = WrapSegmentIdToRange(
+                                activeWindowStartId_ + static_cast<int32_t>(slideDirection),
+                                totalSegmentCount_);
+                            const bool preparedMatches =
+                                slideBackBuffer_.Ready() &&
+                                slideBackBuffer_.direction == slideDirection &&
+                                slideBackBuffer_.incomingSegmentId == incomingId &&
+                                slideBackBuffer_.nextStartId == nextStartId;
+                            if (slideBackBuffer_.Ready() && !preparedMatches)
+                            {
+                                ResetSlideBackBuffer();
+                            }
+                            const bool targetMatches =
+                                incomingId > 0 && slidePrefetchSegmentId_ == incomingId;
+                            const auto action = TrackStreamingPolicy::ResolveStagedSlideAction(
+                                backlog,
+                                targetMatches,
+                                targetMatches && !slidePrefetchFamilyIds_.empty(),
+                                targetMatches && SlidePrefetchRendererReady(),
+                                preparedMatches);
+                            if (action == TrackStreamingPolicy::StagedSlideAction::PreparePrefetch)
+                            {
+                                TryPrefetchUpcomingSegment();
+                                break;
+                            }
+                            if (action == TrackStreamingPolicy::StagedSlideAction::PrepareSlide)
+                            {
+                                size_t dropIdx = 0u;
+                                if (nextStartId <= 0 ||
+                                    !ResolveWindowDropIndexByDirection(
+                                        slideDirection, segmentRenderers_.size(), dropIdx) ||
+                                    !PrepareStabilizedSlideBackBuffer(
+                                        dropIdx, slideDirection, incomingId, nextStartId))
+                                {
+                                    ++runtimeSlideStallsThisFrame_;
+                                }
+                                else
+                                {
+                                    ++runtimeSlidePreparesThisFrame_;
+                                }
+                                break;
+                            }
+                            if (action == TrackStreamingPolicy::StagedSlideAction::CommitSlide)
+                            {
+                                if (!CommitStabilizedSlideBackBuffer())
+                                {
+                                    ResetSlideBackBuffer();
+                                    ++runtimeSlideStallsThisFrame_;
+                                }
+                                else
+                                {
+                                    SetSegmentsReady(!segmentRenderers_.empty());
+                                    InvalidateActiveWindowLookupTables();
+                                }
+                                break;
+                            }
+                            if (action != TrackStreamingPolicy::StagedSlideAction::CommitSlide)
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            TryPrefetchUpcomingSegment();
+                        }
                         if (!SlideActiveSegmentWindow(1, slideDirection))
                         {
                             bool freeValid = false;
@@ -16320,6 +16468,12 @@ bool TrackSystem::ShouldRunPostSlideMaintenance(bool slidThisFrame) const
 
 bool TrackSystem::RunPendingLodRecoveryStage(bool slidThisFrame)
 {
+    if (kEnableStagedSlidePipeline &&
+        (slidThisFrame || slideBackBuffer_.Ready() ||
+         runtimeSlidePreparesThisFrame_ != 0u || prefetchBuildAttemptsThisFrame_ != 0u))
+    {
+        return false;
+    }
     // Leak-isolation mini-recovery: both texture edges plus the lod_0
     // geometry edge. Full-window pending scan stays off to protect FPS.
     if (kEnableTrackLeakIsolationFixed64Pipeline)
@@ -17023,6 +17177,7 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
     const Vector3D& trackOffset,
     const Vector3D& lightDirection,
     const Vector3D& cameraLocation,
+    const Vector3D& cameraLookTarget,
     std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
     std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
     bool& segment01Prepared)
@@ -17315,9 +17470,80 @@ void TrackSystem::RenderVisibleSegmentOrderStabilized(
         }
     }
 
+    auto clampRaw = [](int64_t value) -> int32_t
+    {
+        if (value > std::numeric_limits<int32_t>::max()) return std::numeric_limits<int32_t>::max();
+        if (value < std::numeric_limits<int32_t>::min()) return std::numeric_limits<int32_t>::min();
+        return static_cast<int32_t>(value);
+    };
+    const int32_t cameraForwardXRaw = clampRaw(
+        static_cast<int64_t>(cameraLookTarget.X.RawValue()) - cameraLocation.X.RawValue());
+    const int32_t cameraForwardZRaw = clampRaw(
+        static_cast<int64_t>(cameraLookTarget.Z.RawValue()) - cameraLocation.Z.RawValue());
+    const int32_t protectedAnchorId = (observedCarSegmentId_ > 0)
+        ? WrapSegmentIdToRange(observedCarSegmentId_, totalSegmentCount_)
+        : (TrackedCarSegmentValid()
+            ? WrapSegmentIdToRange(trackedCarSegmentId_, totalSegmentCount_)
+            : -1);
+    constexpr int32_t kBehindCameraMarginRaw = 96 << 16;
+    constexpr uint8_t kDrawVisibilityHoldFrames = 3u;
+
+    auto shouldSubmitEntry = [&](SegmentRenderEntry& entry, const Vector3D& drawOffset) -> bool
+    {
+        bool protectedNearCar = protectedAnchorId <= 0 || entry.id <= 0;
+        if (!protectedNearCar)
+        {
+            const int32_t forwardDistance = WrapDistanceForward(
+                protectedAnchorId, entry.id, totalSegmentCount_);
+            const int32_t backwardDistance = WrapDistanceForward(
+                entry.id, protectedAnchorId, totalSegmentCount_);
+            protectedNearCar = forwardDistance <= 2 || backwardDistance <= 2;
+        }
+
+        const ModelBounds& bounds = entry.renderer->Bounds();
+        const int32_t minXRaw = clampRaw(
+            static_cast<int64_t>(bounds.min.X.RawValue()) + drawOffset.X.RawValue());
+        const int32_t maxXRaw = clampRaw(
+            static_cast<int64_t>(bounds.max.X.RawValue()) + drawOffset.X.RawValue());
+        const int32_t minZRaw = clampRaw(
+            static_cast<int64_t>(bounds.min.Z.RawValue()) + drawOffset.Z.RawValue());
+        const int32_t maxZRaw = clampRaw(
+            static_cast<int64_t>(bounds.max.Z.RawValue()) + drawOffset.Z.RawValue());
+        const bool entirelyBehind = TrackStreamingPolicy::IsAabbEntirelyBehindCameraXZ(
+            cameraLocation.X.RawValue(),
+            cameraLocation.Z.RawValue(),
+            cameraForwardXRaw,
+            cameraForwardZRaw,
+            minXRaw,
+            maxXRaw,
+            minZRaw,
+            maxZRaw,
+            kBehindCameraMarginRaw);
+
+        if (protectedNearCar || !entirelyBehind)
+        {
+            entry.drawVisibilityHoldFrames = kDrawVisibilityHoldFrames;
+            return true;
+        }
+        if (entry.drawVisibilityHoldFrames > 0u)
+        {
+            --entry.drawVisibilityHoldFrames;
+            return true;
+        }
+        return false;
+    };
+
     auto renderPreparedEntry = [&](SegmentRenderEntry* entry, const Vector3D& drawOffset)
     {
         if (!entry || !entry->renderer) return;
+        if (!shouldSubmitEntry(*entry, drawOffset))
+        {
+            if (drawCulledSegmentsThisFrame_ < std::numeric_limits<uint8_t>::max())
+            {
+                ++drawCulledSegmentsThisFrame_;
+            }
+            return;
+        }
         if (kEnableLeakABSkipTrackRenderSubmit)
         {
             ++runtimeSafeNoDrawThisFrame_;
@@ -17372,6 +17598,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
     const Vector3D& trackOffset,
     const Vector3D& lightDirection,
     const Vector3D& cameraLocation,
+    const Vector3D& cameraLookTarget,
     std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
     std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
     bool& segment01Logged,
@@ -17431,6 +17658,7 @@ void TrackSystem::RenderVisibleSegmentOrder(
         RenderVisibleSegmentOrderStabilized(trackOffset,
                                             lightDirection,
                                             cameraLocation,
+                                            cameraLookTarget,
                                             preparedCountById,
                                             renderedCountById,
                                             segment01Prepared);
@@ -18005,7 +18233,26 @@ void TrackSystem::RunPrefetchStage(bool windowSlid)
         sh2MasterPrefetchTicksThisFrame_ = 0u;
         return;
     }
+    if (kEnableStagedSlidePipeline &&
+        kEnableTrackRuntimeStabilization &&
+        (windowSlid || runtimeSlidesThisFrame_ != 0u || slideBackBuffer_.Ready() ||
+         prefetchBuildAttemptsThisFrame_ != 0u))
+    {
+        // Commit frame stays cheap. The next renderer is prepared on a later
+        // frame, never in the same frame that changed the resident window.
+        sh2MasterPrefetchTicksThisFrame_ = 0u;
+        return;
+    }
     const uint16_t prefetchTicksStart = Sh2FrtProfiler::Now();
+    if (kEnableStagedSlidePipeline && stagedFamilyMergePending_)
+    {
+        MergeCurrentWindowFamilies();
+        stagedFamilyMergePending_ = false;
+        familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(FullTrackFamilyCacheReady());
+        sh2MasterPrefetchTicksThisFrame_ =
+            Sh2FrtProfiler::Elapsed(prefetchTicksStart, Sh2FrtProfiler::Now());
+        return;
+    }
     TryPrefetchUpcomingSegment();
     if (kEnableTrackLeakIsolationFixed64Pipeline)
     {
@@ -18200,6 +18447,13 @@ bool TrackSystem::RunWorkingSetStage()
     {
         return false;
     }
+    if (kEnableStagedSlidePipeline &&
+        (runtimeSlidesThisFrame_ != 0u || runtimeSlidePreparesThisFrame_ != 0u ||
+         slideBackBuffer_.Ready() || prefetchBuildAttemptsThisFrame_ != 0u ||
+         stagedFamilyMergePending_))
+    {
+        return false;
+    }
     const uint16_t workingSetTicksStart = Sh2FrtProfiler::Now();
     RefreshFamilyWorkingSet(false);
     sh2MasterWorkingSetTicksThisFrame_ =
@@ -18212,6 +18466,7 @@ void TrackSystem::RunDrawStage(const std::vector<SegmentHandle>* orderedHandles,
                                const Vector3D& trackOffset,
                                const Vector3D& lightDirection,
                                const Vector3D& cameraLocation,
+                               const Vector3D& cameraLookTarget,
                                std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
                                std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
                                bool& segment01Logged,
@@ -18224,6 +18479,7 @@ void TrackSystem::RunDrawStage(const std::vector<SegmentHandle>* orderedHandles,
         (void)trackOffset;
         (void)lightDirection;
         (void)cameraLocation;
+        (void)cameraLookTarget;
         (void)preparedCountById;
         (void)renderedCountById;
         (void)segment01Logged;
@@ -18237,6 +18493,7 @@ void TrackSystem::RunDrawStage(const std::vector<SegmentHandle>* orderedHandles,
                               trackOffset,
                               lightDirection,
                               cameraLocation,
+                              cameraLookTarget,
                               preparedCountById,
                               renderedCountById,
                               segment01Logged,
@@ -18518,6 +18775,7 @@ void TrackSystem::RenderFrame(bool renderTrack,
                      trackOffset,
                      lightDirection,
                      cameraLocation,
+                     cameraLookTarget,
                      preparedCountById,
                      renderedCountById,
                      segment01Logged,
@@ -19299,12 +19557,33 @@ void TrackSystem::UpdateAdaptiveBudgetAfterFrame()
     coordinator_.SetBudget(nextBudget);
 }
 
+TrackSystem::TextureRecycleHudSample TrackSystem::TextureRecycleHudSampleThisFrame() const
+{
+    TextureRecycleHudSample sample{};
+    sample.fresh32 = g_trackUploadsFreshBySizeThisFrame[0];
+    sample.fresh64 = g_trackUploadsFreshBySizeThisFrame[1];
+    sample.reuse32 = g_trackUploadsReusedBySizeThisFrame[0];
+    sample.reuse64 = g_trackUploadsReusedBySizeThisFrame[1];
+    sample.noReuse32 = g_trackUploadsNoReusableBySizeThisFrame[0];
+    sample.noReuse64 = g_trackUploadsNoReusableBySizeThisFrame[1];
+    sample.reusableSlots = CountReusableTrackTextureSlots();
+    const size_t freeKiB = SRL::VDP1::GetAvailableMemory() / 1024u;
+    sample.vdp1FreeKiB = static_cast<uint16_t>(
+        freeKiB > static_cast<size_t>(std::numeric_limits<uint16_t>::max())
+            ? std::numeric_limits<uint16_t>::max()
+            : freeKiB);
+    sample.masterDrawTicks = sh2MasterFrameTicksThisFrame_;
+    sample.culledSegments = drawCulledSegmentsThisFrame_;
+    return sample;
+}
+
 void TrackSystem::EndFrame()
 {
     // Keep slot liveness tied to what the renderer actually references in the
     // current frame. This avoids stale working-set references pinning old slots
     // and causing long-run TrackTexture growth.
     RebuildUsedTextureSlotFlagsFromCurrentFaces();
+    ProtectStagedStreamingTextureSlots();
 
     PresentCoordinatorTelemetryAndSoak();
     PresentSh2UsageOverlay();

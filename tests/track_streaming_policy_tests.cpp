@@ -581,6 +581,67 @@ void TestDriveableSegmentBridgeSkipsSceneryHole(TestContext& ctx)
     EXPECT_TRUE(ctx, NextDriveableSegmentId(0, 1, kTotal, predicate) == -1);
 }
 
+void TestConservativeAabbCameraRejection(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+    constexpr int32_t one = 1 << 16;
+
+    // Camera at origin looking +Z: a compact box well behind the expanded
+    // plane can be omitted from drawing.
+    EXPECT_TRUE(ctx, IsAabbEntirelyBehindCameraXZ(
+                         0, 0, 0, one,
+                         -10 * one, 10 * one,
+                         -300 * one, -250 * one,
+                         64 * one));
+
+    // A segment touching/in front of the plane stays visible.
+    EXPECT_TRUE(ctx, !IsAabbEntirelyBehindCameraXZ(
+                          0, 0, 0, one,
+                          -10 * one, 10 * one,
+                          -80 * one, 40 * one,
+                          64 * one));
+
+    // Hairpin/scenery bounds spanning both sides are never rejected merely
+    // because their center happens to be behind the camera.
+    EXPECT_TRUE(ctx, !IsAabbEntirelyBehindCameraXZ(
+                          0, 0, 0, one,
+                          -100 * one, 100 * one,
+                          -500 * one, 100 * one,
+                          64 * one));
+
+    // The same support-point rule works for a diagonal camera direction.
+    EXPECT_TRUE(ctx, IsAabbEntirelyBehindCameraXZ(
+                         0, 0, one, one,
+                         -300 * one, -250 * one,
+                         -300 * one, -250 * one,
+                         32 * one));
+
+    // Invalid/zero camera direction must fail open.
+    EXPECT_TRUE(ctx, !IsAabbEntirelyBehindCameraXZ(
+                          0, 0, 0, 0,
+                          -10 * one, 10 * one,
+                          -300 * one, -250 * one,
+                          64 * one));
+}
+
+void TestStagedSlideSeparatesPreparationFromCommit(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    EXPECT_TRUE(ctx, ResolveStagedSlideAction(0, false, false, false, false) ==
+                         StagedSlideAction::None);
+    EXPECT_TRUE(ctx, ResolveStagedSlideAction(1, false, false, false, false) ==
+                         StagedSlideAction::PreparePrefetch);
+    EXPECT_TRUE(ctx, ResolveStagedSlideAction(1, true, true, false, false) ==
+                         StagedSlideAction::PreparePrefetch);
+    EXPECT_TRUE(ctx, ResolveStagedSlideAction(3, true, false, true, false) ==
+                         StagedSlideAction::PreparePrefetch);
+    EXPECT_TRUE(ctx, ResolveStagedSlideAction(3, true, true, true, false) ==
+                         StagedSlideAction::PrepareSlide);
+    EXPECT_TRUE(ctx, ResolveStagedSlideAction(3, false, false, false, true) ==
+                         StagedSlideAction::CommitSlide);
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -598,6 +659,8 @@ int main()
         {"OppositeProgressFlipIgnoresReverseWhenRouteAgrees", &TestOppositeProgressFlipIgnoresReverseWhenRouteAgrees},
         {"SeamTravelWallRejectsJoinCapsOnly", &TestSeamTravelWallRejectsJoinCapsOnly},
         {"DriveableSegmentBridgeSkipsSceneryHole", &TestDriveableSegmentBridgeSkipsSceneryHole},
+        {"ConservativeAabbCameraRejection", &TestConservativeAabbCameraRejection},
+        {"StagedSlideSeparatesPreparationFromCommit", &TestStagedSlideSeparatesPreparationFromCommit},
         {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},
         {"CollectRetiredSlotsForRemovedFamilies", &TestCollectRetiredSlotsForRemovedFamilies},

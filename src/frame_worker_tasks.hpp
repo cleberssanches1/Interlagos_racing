@@ -9,6 +9,15 @@
 namespace Game
 {
 
+// SH-2 cache is not coherent. Slave writes and Master reads of the sim packet
+// go through the uncached mirror, or the Master keeps a stale "not done".
+template <typename T>
+inline T* Sh2CacheThrough(T* ptr)
+{
+    constexpr uintptr_t kCacheThroughMask = 0x20000000u;
+    return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) | kCacheThroughMask);
+}
+
 class SimulationTask final : public SRL::Types::ITask
 {
 public:
@@ -25,25 +34,51 @@ public:
         trackCollision_ = trackCollision;
     }
 
-    uint16_t LastTicks() const { return lastTicks_; }
+    uint16_t LastTicks() const
+    {
+        return *Sh2CacheThrough(const_cast<uint16_t*>(&lastTicks_));
+    }
+
+    void ResetTask() override
+    {
+        *Sh2CacheThrough(&doneFlag_) = 0u;
+        SRL::Types::ITask::ResetTask();
+    }
+
+    bool IsDone() override
+    {
+        return *Sh2CacheThrough(&doneFlag_) != 0u;
+    }
 
 private:
     void Do() override
     {
-        if (!input_ || !output_) return;
+        const SimulationPayload* const input = *Sh2CacheThrough(&input_);
+        SimulationPayload* const output = *Sh2CacheThrough(&output_);
+        if (!input || !output)
+        {
+            *Sh2CacheThrough(&doneFlag_) = 1u;
+            return;
+        }
+
+        const SimulationPayload* const inputView = Sh2CacheThrough(const_cast<SimulationPayload*>(input));
+        SimulationPayload* const outputView = Sh2CacheThrough(output);
         Sh2FrtProfiler::EnsureInitialized();
         const uint16_t startTicks = Sh2FrtProfiler::Now();
-        auto state = input_->frameState;
-        if (gameplayTick_)
+        auto state = inputView->frameState;
+        Game::IGameplayTick* const gameplayTick = *Sh2CacheThrough(&gameplayTick_);
+        Game::ICarPhysics* const carPhysics = *Sh2CacheThrough(&carPhysics_);
+        Game::ITrackCollisionQuery* const trackCollision = *Sh2CacheThrough(&trackCollision_);
+        if (gameplayTick)
         {
-            gameplayTick_->Tick(state, trackCollision_);
+            gameplayTick->Tick(state, trackCollision);
         }
-        if (carPhysics_)
+        if (carPhysics)
         {
-            carPhysics_->Step(state,
-                              trackCollision_,
-                              state.carWorldPosition,
-                              state.carYawDeg);
+            carPhysics->Step(state,
+                             trackCollision,
+                             state.carWorldPosition,
+                             state.carYawDeg);
         }
         if (state.resetRequested)
         {
@@ -51,8 +86,9 @@ private:
             state.carYawDeg = state.respawnYawDeg;
             state.resetRequested = false;
         }
-        output_->frameState = state;
-        lastTicks_ = Sh2FrtProfiler::Elapsed(startTicks, Sh2FrtProfiler::Now());
+        outputView->frameState = state;
+        *Sh2CacheThrough(&lastTicks_) = Sh2FrtProfiler::Elapsed(startTicks, Sh2FrtProfiler::Now());
+        *Sh2CacheThrough(&doneFlag_) = 1u;
     }
 
     const SimulationPayload* input_ = nullptr;
@@ -61,6 +97,7 @@ private:
     Game::ICarPhysics* carPhysics_ = nullptr;
     Game::ITrackCollisionQuery* trackCollision_ = nullptr;
     volatile uint16_t lastTicks_ = 0;
+    volatile uint8_t doneFlag_ = 0;
 };
 
 class CarRenderPrepareTask final : public SRL::Types::ITask

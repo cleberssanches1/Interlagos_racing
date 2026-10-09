@@ -240,12 +240,30 @@ public:
     int32_t LowWorkDrawFrameDeltaThisFrame() const { return frameMemoryTelemetry_.drawFrameDeltaThisFrame; }
     uint32_t LowWorkEndFreeBytesThisFrame() const { return frameMemoryTelemetry_.phaseLwrEnd; }
     uint8_t SlidesThisFrame() const { return runtimeSlidesThisFrame_; }
+    uint8_t SlidePreparesThisFrame() const { return runtimeSlidePreparesThisFrame_; }
     int32_t SlideSegmentIdThisFrame() const { return slideHwrTrace_.segmentId; }
     LowWorkCategoryBreakdown LowWorkBreakdownThisFrame() const { return frameMemoryTelemetry_.lowWorkBreakdownEnd; }
     uint16_t StreamTicksThisFrame() const { return sh2MasterStreamTicksThisFrame_; }
     uint16_t MaintenanceTicksThisFrame() const { return sh2MasterMaintenanceTicksThisFrame_; }
     uint16_t DrawTicksThisFrame() const { return sh2MasterDrawTicksThisFrame_; }
     uint16_t FrameTicksThisFrame() const { return sh2MasterFrameTicksThisFrame_; }
+    // One-frame texture recycle counters. Sums belong to the caller.
+    // fresh/reuse/noReuse are uploads this frame, split <64 and >=64.
+    // reusableSlots is the cooled pool after the end-of-frame flush.
+    struct TextureRecycleHudSample
+    {
+        uint16_t fresh32 = 0;
+        uint16_t fresh64 = 0;
+        uint16_t reuse32 = 0;
+        uint16_t reuse64 = 0;
+        uint16_t noReuse32 = 0;
+        uint16_t noReuse64 = 0;
+        uint16_t reusableSlots = 0;
+        uint16_t vdp1FreeKiB = 0;
+        uint16_t masterDrawTicks = 0;
+        uint8_t culledSegments = 0;
+    };
+    TextureRecycleHudSample TextureRecycleHudSampleThisFrame() const;
     uint16_t WindowTicksThisFrame() const { return sh2MasterWindowTicksThisFrame_; }
     uint16_t PrefetchTicksThisFrame() const { return sh2MasterPrefetchTicksThisFrame_; }
     uint16_t LodTicksThisFrame() const { return sh2MasterLodTicksThisFrame_; }
@@ -464,6 +482,7 @@ private:
         mutable int16_t wallSegmentsCacheSegmentId = -1;
         mutable uint8_t wallSegmentsCacheLodIndex = 0xFF;
         mutable uint8_t wallSegmentsCacheFlags = 0u;
+        uint8_t drawVisibilityHoldFrames = 0u;
 
         bool WallSegmentsCacheReady() const { return (wallSegmentsCacheFlags & 1u) != 0u; }
         void SetWallSegmentsCacheReady(bool enabled) const
@@ -666,6 +685,8 @@ private:
     bool RebuildEntryWorkingSetCache(SegmentRenderEntry& entry);
     void RebuildUsedTextureSlotFlagsFromWorkingRefs();
     void RebuildUsedTextureSlotFlagsFromCurrentFaces();
+    bool IsTextureSlotPinnedByStagedStreaming(uint16_t slot) const;
+    void ProtectStagedStreamingTextureSlots();
     uint32_t GetStrictPendingLodPriority(size_t logicalRank) const;
     bool HasPendingStabilizedWindowLodChanges() const;
     void ResetPendingStabilizedLodRanks();
@@ -775,6 +796,7 @@ private:
                       const SRL::Math::Types::Vector3D& trackOffset,
                       const SRL::Math::Types::Vector3D& lightDirection,
                       const SRL::Math::Types::Vector3D& cameraLocation,
+                      const SRL::Math::Types::Vector3D& cameraLookTarget,
                       std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
                       std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
                       bool& segment01Logged,
@@ -794,6 +816,7 @@ private:
         const SRL::Math::Types::Vector3D& trackOffset,
         const SRL::Math::Types::Vector3D& lightDirection,
         const SRL::Math::Types::Vector3D& cameraLocation,
+        const SRL::Math::Types::Vector3D& cameraLookTarget,
         std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
         std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
         bool& segment01Prepared);
@@ -814,6 +837,7 @@ private:
                                    const SRL::Math::Types::Vector3D& trackOffset,
                                    const SRL::Math::Types::Vector3D& lightDirection,
                                    const SRL::Math::Types::Vector3D& cameraLocation,
+                                   const SRL::Math::Types::Vector3D& cameraLookTarget,
                                    std::array<uint8_t, kTrackSegmentLimit + 1>& preparedCountById,
                                    std::array<uint8_t, kTrackSegmentLimit + 1>* renderedCountById,
                                    bool& segment01Logged,
@@ -971,7 +995,9 @@ private:
     uint8_t runtimeSdrBuildsThisFrame_ = 0;
     uint8_t runtimeFaceRemapsThisFrame_ = 0;
     uint8_t runtimeSlidesThisFrame_ = 0;
+    uint8_t runtimeSlidePreparesThisFrame_ = 0;
     uint8_t runtimeSlideStallsThisFrame_ = 0;
+    bool stagedFamilyMergePending_ = false;
     uint8_t runtimePrefetchHitsThisFrame_ = 0;
     uint8_t runtimePrefetchMissesThisFrame_ = 0;
     uint8_t runtimeLodSegmentUpdatesThisFrame_ = 0;
@@ -979,6 +1005,7 @@ private:
     uint8_t runtimeSafeSkippedThisFrame_ = 0;
     uint8_t runtimeSafeNoDrawThisFrame_ = 0;
     uint8_t runtimeSafeReappliedThisFrame_ = 0;
+    uint8_t drawCulledSegmentsThisFrame_ = 0;
     mutable uint16_t surfaceQueryCallsThisFrame_ = 0;
     mutable uint16_t surfaceQueryFallbackHitsThisFrame_ = 0;
     mutable uint16_t surfaceQueryGlobalPassesThisFrame_ = 0;
