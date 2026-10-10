@@ -8,6 +8,7 @@
 #include "car_physics_v2_fixed_step.hpp"
 #include "car_physics_v2_lateral_yaw.hpp"
 #include "car_physics_v2_longitudinal.hpp"
+#include "car_wall_response.hpp"
 
 namespace Game
 {
@@ -155,13 +156,23 @@ private:
             resolvedWorldVelZ = worldVelZ - inwardVelZ;
         }
 
-        // Outward bounce kick along the wall normal (arcade repel).
+        // Outward bounce follows the inward impact speed. A small floor makes
+        // low-speed contact visible; the ceiling prevents an arcade hit from
+        // launching the car across the track.
+        const int32_t inwardImpactRaw = (velDotNormal.RawValue() < 0)
+            ? -velDotNormal.RawValue()
+            : 0;
+        const CarPhysics::Fxp bounceTarget = CarPhysics::Fxp::BuildRaw(
+            CarPhysics::WallResponsePolicy::ResolveOutwardBounceRaw(
+                inwardImpactRaw,
+                CarPhysics::Tunables::kWallImpactRestitution.RawValue(),
+                CarPhysics::Tunables::kWallMinOutwardBounce.RawValue(),
+                CarPhysics::Tunables::kWallMaxOutwardBounce.RawValue()));
         const CarPhysics::Fxp outwardDot =
             (resolvedWorldVelX * normalX) + (resolvedWorldVelZ * normalZ);
-        if (outwardDot < CarPhysics::Tunables::kWallMinOutwardBounce)
+        if (bounceTarget.RawValue() > 0 && outwardDot < bounceTarget)
         {
-            const CarPhysics::Fxp add =
-                CarPhysics::Tunables::kWallMinOutwardBounce - outwardDot;
+            const CarPhysics::Fxp add = bounceTarget - outwardDot;
             resolvedWorldVelX = resolvedWorldVelX + (normalX * add);
             resolvedWorldVelZ = resolvedWorldVelZ + (normalZ * add);
         }

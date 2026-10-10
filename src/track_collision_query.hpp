@@ -4,6 +4,7 @@
 
 #include "interfaces.hpp"
 #include "track_system.hpp"
+#include "track_wall_query_policy.hpp"
 
 // Collision query adapter backed by loaded track segments.
 class TrackCollisionQueryFromSystem final : public Game::ITrackCollisionQuery
@@ -320,25 +321,20 @@ public:
             trackOffset_ ? *trackOffset_ : SRL::Math::Types::Vector3D(0.0, 0.0, 0.0);
         const int32_t resolvedSeedSegmentId =
             (seedSegmentId > 0) ? seedSegmentId : static_cast<int32_t>(lastSegmentId_);
-        constexpr uint8_t kWallGlobalFallbackCadenceFrames = 8u;
-        constexpr uint8_t kWallMissStreakForceFallback = 2u;
-        bool allowGlobalFallback = false;
-        if (resolvedSeedSegmentId <= 0)
-        {
-            allowGlobalFallback = true;
-        }
-        else if (wallMissStreak_ >= kWallMissStreakForceFallback)
-        {
-            allowGlobalFallback = true;
-        }
-        else if (wallGlobalFallbackCountdown_ == 0u)
-        {
-            allowGlobalFallback = true;
-        }
-        if (wallGlobalFallbackCountdown_ > 0u)
-        {
-            --wallGlobalFallbackCountdown_;
-        }
+        constexpr uint8_t kWallBoundedFallbackCadenceFrames = 8u;
+        // A no-hit result is expected on almost every free-driving frame. Do
+        // not use it to force the wider TCOL search forever; cadence keeps the
+        // recovery path bounded while TrackSystem can still request it
+        // immediately when the local segment span no longer covers the hull.
+        const bool allowGlobalFallback =
+            TrackWallQueryPolicy::IsCadencedRecoveryDue(
+                resolvedSeedSegmentId > 0,
+                wallGlobalFallbackCountdown_);
+        wallGlobalFallbackCountdown_ =
+            TrackWallQueryPolicy::AdvanceRecoveryCooldown(
+                wallGlobalFallbackCountdown_,
+                allowGlobalFallback,
+                kWallBoundedFallbackCadenceFrames);
 
         const bool found = trackSystem_->FindPlanarWallPush(worldPosition,
                                                             offset,
@@ -357,12 +353,6 @@ public:
             {
                 lastSegmentId_ = static_cast<int16_t>(*outSegmentId);
             }
-            wallMissStreak_ = 0u;
-            wallGlobalFallbackCountdown_ = kWallGlobalFallbackCadenceFrames;
-        }
-        else
-        {
-            if (wallMissStreak_ < 0xFFu) ++wallMissStreak_;
         }
         return found;
     }
@@ -500,5 +490,4 @@ private:
     mutable uint8_t contactGlobalFallbackCountdown_ = 0u;
     mutable uint8_t contactMissStreak_ = 0u;
     mutable uint8_t wallGlobalFallbackCountdown_ = 0u;
-    mutable uint8_t wallMissStreak_ = 0u;
 };

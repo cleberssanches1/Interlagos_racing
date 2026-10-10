@@ -541,7 +541,9 @@ struct Tunables
     static constexpr Fxp kWallMinRepelSeparation = Fxp::BuildRaw(0x00020000);   // 2.0
     // Arcade bounce: after canceling inward vel, ensure a minimum outward kick
     // so head-on hits feel like a repel instead of a sticky block.
-    static constexpr Fxp kWallMinOutwardBounce = Fxp::BuildRaw(0x00028000);     // 2.5
+    static constexpr Fxp kWallImpactRestitution = Fxp::BuildRaw(0x00004000);    // 0.25
+    static constexpr Fxp kWallMinOutwardBounce = Fxp::BuildRaw(0x00010000);     // 1.0
+    static constexpr Fxp kWallMaxOutwardBounce = Fxp::BuildRaw(0x00080000);     // 8.0
     // Match contact box (half-WB / half-track) so laterals hit before the center
     // tunnels through. Swept finite tests keep cost acceptable with 4 corners.
     static constexpr Fxp kWallHullHalfLength = kProbeHalfWheelBase;             // 37.5

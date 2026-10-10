@@ -2,6 +2,7 @@
 #include "face_surface_map.hpp"
 #include "track_collision_map.hpp"
 #include "physics_feature_flags.hpp"
+#include "track_wall_query_policy.hpp"
 #include "interfaces.hpp"
 #include "surface_classify.hpp"
 
@@ -21265,47 +21266,14 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
 
             auto closestPointOnWall = [&](int64_t qx, int64_t qz, int64_t& outCx, int64_t& outCz) -> int64_t
             {
-                const int64_t wx = qx - wallAX;
-                const int64_t wz = qz - wallAZ;
-                int64_t tNum = (wx * wvx) + (wz * wvz);
-                if (tNum < 0) tNum = 0;
-                else if (tNum > wallLenSq) tNum = wallLenSq;
-                outCx = wallAX + ((wvx * tNum) / wallLenSq);
-                outCz = wallAZ + ((wvz * tNum) / wallLenSq);
-                const int64_t dx = qx - outCx;
-                const int64_t dz = qz - outCz;
-                const int64_t adx = abs64(dx);
-                const int64_t adz = abs64(dz);
-                return (adx > adz) ? adx : adz;
+                return TrackWallQueryPolicy::ClosestPointOnSegmentXZRaw(
+                    qx, qz, wallAX, wallAZ, wallBX, wallBZ, outCx, outCz);
             };
 
             auto closestPointOnMotion = [&](int64_t qx, int64_t qz, int64_t& outCx, int64_t& outCz) -> int64_t
             {
-                const int64_t mvx = static_cast<int64_t>(pXR) - pPrevXR;
-                const int64_t mvz = static_cast<int64_t>(pZR) - pPrevZR;
-                const int64_t motionLenSq = (mvx * mvx) + (mvz * mvz);
-                if (motionLenSq <= 0)
-                {
-                    outCx = pXR;
-                    outCz = pZR;
-                    const int64_t dx = qx - outCx;
-                    const int64_t dz = qz - outCz;
-                    const int64_t adx = abs64(dx);
-                    const int64_t adz = abs64(dz);
-                    return (adx > adz) ? adx : adz;
-                }
-                const int64_t wx = qx - pPrevXR;
-                const int64_t wz = qz - pPrevZR;
-                int64_t tNum = (wx * mvx) + (wz * mvz);
-                if (tNum < 0) tNum = 0;
-                else if (tNum > motionLenSq) tNum = motionLenSq;
-                outCx = pPrevXR + ((mvx * tNum) / motionLenSq);
-                outCz = pPrevZR + ((mvz * tNum) / motionLenSq);
-                const int64_t dx = qx - outCx;
-                const int64_t dz = qz - outCz;
-                const int64_t adx = abs64(dx);
-                const int64_t adz = abs64(dz);
-                return (adx > adz) ? adx : adz;
+                return TrackWallQueryPolicy::ClosestPointOnSegmentXZRaw(
+                    qx, qz, pPrevXR, pPrevZR, pXR, pZR, outCx, outCz);
             };
 
             // Proximity + short sweep. Restricted segmentsCross only when the
@@ -21320,41 +21288,8 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
 
             auto closestPointOnHull = [&](int64_t qx, int64_t qz, int64_t& outCx, int64_t& outCz) -> int64_t
             {
-                if (!hullSegValid)
-                {
-                    outCx = pXR;
-                    outCz = pZR;
-                    const int64_t dx = qx - outCx;
-                    const int64_t dz = qz - outCz;
-                    const int64_t adx = abs64(dx);
-                    const int64_t adz = abs64(dz);
-                    return (adx > adz) ? adx : adz;
-                }
-                const int64_t hvx = static_cast<int64_t>(hullOtherXR) - pXR;
-                const int64_t hvz = static_cast<int64_t>(hullOtherZR) - pZR;
-                const int64_t hullLenSq = (hvx * hvx) + (hvz * hvz);
-                if (hullLenSq <= 0)
-                {
-                    outCx = pXR;
-                    outCz = pZR;
-                    const int64_t dx = qx - outCx;
-                    const int64_t dz = qz - outCz;
-                    const int64_t adx = abs64(dx);
-                    const int64_t adz = abs64(dz);
-                    return (adx > adz) ? adx : adz;
-                }
-                const int64_t wx = qx - pXR;
-                const int64_t wz = qz - pZR;
-                int64_t tNum = (wx * hvx) + (wz * hvz);
-                if (tNum < 0) tNum = 0;
-                else if (tNum > hullLenSq) tNum = hullLenSq;
-                outCx = pXR + ((hvx * tNum) / hullLenSq);
-                outCz = pZR + ((hvz * tNum) / hullLenSq);
-                const int64_t dx = qx - outCx;
-                const int64_t dz = qz - outCz;
-                const int64_t adx = abs64(dx);
-                const int64_t adz = abs64(dz);
-                return (adx > adz) ? adx : adz;
+                return TrackWallQueryPolicy::ClosestPointOnSegmentXZRaw(
+                    qx, qz, pXR, pZR, hullOtherXR, hullOtherZR, outCx, outCz);
             };
 
             bool motionSegmentsCross = false;
@@ -21481,17 +21416,21 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                     if (tunnelPen > pen64) pen64 = tunnelPen;
                 }
             }
-            constexpr int64_t kMaxTunnelPenRaw = 80 << 16;
-            if (pen64 > kMaxTunnelPenRaw) pen64 = kMaxTunnelPenRaw;
-            if (pen64 <= 0) return;
-            const int32_t pen = static_cast<int32_t>(pen64);
-
             // Push along wall perpendicular, oriented toward the outside (prev side
             // when available, else away from current sample relative to wall).
             int32_t perpX = wall.bzRaw - wall.azRaw;
             int32_t perpZ = -(wall.bxRaw - wall.axRaw);
-            const int32_t refX = sweepPrevValid ? pPrevXR : pXR;
-            const int32_t refZ = sweepPrevValid ? pPrevZR : pZR;
+            // For a lateral hull crossing, its previous *left endpoint* can be
+            // on the wrong side during a turn. The previous car centre is the
+            // stable side of the barrier before the current frame's movement.
+            const bool priorCenterValid =
+                hullSegmentsCross && WallQueryPrevWorldPositionValid();
+            const int32_t refX = priorCenterValid
+                ? wallQueryPrevWorldPosition_.X.RawValue()
+                : (sweepPrevValid ? pPrevXR : pXR);
+            const int32_t refZ = priorCenterValid
+                ? wallQueryPrevWorldPosition_.Z.RawValue()
+                : (sweepPrevValid ? pPrevZR : pZR);
             const int64_t orientation = static_cast<int64_t>(perpX) *
                                             (static_cast<int64_t>(refX) - wallAX) +
                                         static_cast<int64_t>(perpZ) *
@@ -21510,6 +21449,28 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                     : 0;
                 if (maxPerp <= 0) return;
             }
+            if (hullSegmentsCross)
+            {
+                // A hull crossing is not a point overlap. Its opposite end may
+                // already be ~45 units through a fence; a 2-unit probe push
+                // cannot separate it and the car drives through on the next
+                // frame. Compute the displacement needed to put BOTH ends on
+                // the safe side, preserving the current 80-unit correction cap.
+                const int64_t firstDistanceRaw =
+                    (((static_cast<int64_t>(pXR) - wallAX) * perpX) +
+                     ((static_cast<int64_t>(pZR) - wallAZ) * perpZ)) / maxPerp;
+                const int64_t otherDistanceRaw =
+                    (((static_cast<int64_t>(hullOtherXR) - wallAX) * perpX) +
+                     ((static_cast<int64_t>(hullOtherZR) - wallAZ) * perpZ)) / maxPerp;
+                const int64_t hullPenRaw =
+                    TrackWallQueryPolicy::HullCrossPenetrationRaw(
+                        firstDistanceRaw, otherDistanceRaw, 1, radiusRaw);
+                if (hullPenRaw > pen64) pen64 = hullPenRaw;
+            }
+            constexpr int64_t kMaxTunnelPenRaw = 80 << 16;
+            if (pen64 > kMaxTunnelPenRaw) pen64 = kMaxTunnelPenRaw;
+            if (pen64 <= 0) return;
+            const int32_t pen = static_cast<int32_t>(pen64);
             const int32_t pushX = static_cast<int32_t>(
                 ((static_cast<int64_t>(perpX) << 16) / maxPerp * pen) >> 16);
             const int32_t pushZ = static_cast<int32_t>(
@@ -21643,6 +21604,34 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             if (modelXHull != modelXNow || modelZHull != modelZNow)
             {
                 scanWallNeighborhoodDedup(modelXHull, modelZHull);
+            }
+        }
+
+        // A fast hit can finish beyond the segment perimeter. The cell resolver
+        // deliberately clamps such a sample to an edge cell, but that remains a
+        // broad-phase hint: long/diagonal walls can be registered in another
+        // cell. At this exact transition inspect only this segment's immutable
+        // wall list. Normal on-track frames keep the 3x3 cell path above.
+        const auto sampleOutsideSegmentBounds = [&](int64_t modelX, int64_t modelZ) -> bool
+        {
+            return modelX < static_cast<int64_t>(collisionSegment.minXRaw) ||
+                   modelX > static_cast<int64_t>(collisionSegment.maxXRaw) ||
+                   modelZ < static_cast<int64_t>(collisionSegment.minZRaw) ||
+                   modelZ > static_cast<int64_t>(collisionSegment.maxZRaw);
+        };
+        const bool anySampleOutsideSegmentBounds =
+            sampleOutsideSegmentBounds(modelXNow, modelZNow) ||
+            (sweepPrevValid && sampleOutsideSegmentBounds(modelXPrev, modelZPrev)) ||
+            (hullSegValid && sampleOutsideSegmentBounds(
+                static_cast<int64_t>(hullOtherXR) - static_cast<int64_t>(oXR),
+                static_cast<int64_t>(hullOtherZR) - static_cast<int64_t>(oZR)));
+        if (TrackWallQueryPolicy::ShouldScanPerimeterWalls(
+                bestPenRaw > 0, anySampleOutsideSegmentBounds))
+        {
+            SaturatingAddU16(wallQueryFacesScannedThisFrame_, collisionSegment.wallCount);
+            for (uint16_t wallIndex = 0u; wallIndex < collisionSegment.wallCount; ++wallIndex)
+            {
+                testWallIndexDedup(wallIndex);
             }
         }
         return true;
@@ -21920,6 +21909,38 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         }
     };
 
+    // The seed normally tracks the driveable surface under the car. At joins,
+    // hairpins and after a corrected movement it may briefly be one or more
+    // logical TCOL segments behind the car. Keep the normal 3-segment query
+    // cheap, but detect when its bounds no longer contain either end of the
+    // current lateral hull. That case needs immediate bounded recovery; an
+    // ordinary no-wall result does not (most frames have no wall contact).
+    auto segmentCoversCurrentWallQuery = [&](int32_t segmentId) -> bool
+    {
+        if (!trackCollisionMap.Valid() || segmentId <= 0 || segmentId > 0xFFFF) return false;
+        TrackCollisionMap::SegmentView collisionSegment{};
+        if (!trackCollisionMap.FindSegment(static_cast<uint16_t>(segmentId), collisionSegment)) return false;
+
+        // Covers the collision radius, short sweep tail and quantisation at a
+        // segment seam without making two distant logical segments overlap.
+        static constexpr int64_t kBoundsPadRaw = 48ll << 16;
+        const int64_t offsetXRaw = static_cast<int64_t>(trackOffset.X.RawValue());
+        const int64_t offsetZRaw = static_cast<int64_t>(trackOffset.Z.RawValue());
+        const auto contains = [&](int64_t worldXRaw, int64_t worldZRaw) -> bool
+        {
+            const int64_t modelXRaw = worldXRaw - offsetXRaw;
+            const int64_t modelZRaw = worldZRaw - offsetZRaw;
+            return modelXRaw >= static_cast<int64_t>(collisionSegment.minXRaw) - kBoundsPadRaw &&
+                   modelXRaw <= static_cast<int64_t>(collisionSegment.maxXRaw) + kBoundsPadRaw &&
+                   modelZRaw >= static_cast<int64_t>(collisionSegment.minZRaw) - kBoundsPadRaw &&
+                   modelZRaw <= static_cast<int64_t>(collisionSegment.maxZRaw) + kBoundsPadRaw;
+        };
+
+        return contains(pxRaw, pzRaw) ||
+               (hullSegValid && contains(static_cast<int64_t>(hullOtherXR),
+                                         static_cast<int64_t>(hullOtherZR)));
+    };
+
     auto runWallScan = [&](bool onlyNonDriveableBySurface,
                            bool respectScmapHint) -> bool
     {
@@ -21938,20 +21959,23 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
             const int32_t candidateIds[3] = { seedSegmentId, forwardId, backId };
             std::array<int32_t, 16> localIds{};
             size_t localCount = 0u;
-            for (int32_t candidateId : candidateIds)
+            bool localWindowCoversQuery = false;
+            const auto rememberCandidate = [&](int32_t candidateId) -> bool
             {
-                if (candidateId <= 0) continue;
-                bool duplicate = false;
+                if (candidateId <= 0) return false;
                 for (size_t i = 0; i < localCount; ++i)
                 {
-                    if (localIds[i] == candidateId)
-                    {
-                        duplicate = true;
-                        break;
-                    }
+                    if (localIds[i] == candidateId) return false;
                 }
-                if (duplicate) continue;
-                if (localCount < localIds.size()) localIds[localCount++] = candidateId;
+                if (localCount >= localIds.size()) return false;
+                localIds[localCount++] = candidateId;
+                return true;
+            };
+            for (int32_t candidateId : candidateIds)
+            {
+                if (!rememberCandidate(candidateId)) continue;
+                localWindowCoversQuery = localWindowCoversQuery ||
+                    segmentCoversCurrentWallQuery(candidateId);
                 if (scanTrackCollisionWalls(candidateId)) scannedLocal = true;
                 if (bestPenRaw > 0)
                 {
@@ -21959,8 +21983,33 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
                 }
             }
             if (bestPenRaw > 0) return true;
+
+            // The recovery remains TCOL-only and bounded (seed +/- 4), so it
+            // includes scenery-only logical ids without walking the renderer's
+            // resident GEO window. It runs on a low cadence, or immediately if
+            // the compact seed/neighbor window no longer covers the car hull.
+            if (TrackWallQueryPolicy::ShouldRunBoundedRecovery(
+                    false, allowGlobalFallback, localWindowCoversQuery))
+            {
+                constexpr int32_t kRecoveryRadius =
+                    static_cast<int32_t>(Game::PhysicsFeatureFlags::kCollisionHalfWindowSegments);
+                for (int32_t distance = 2; distance <= kRecoveryRadius; ++distance)
+                {
+                    const int32_t recoveryIds[2] = {
+                        WrapSegmentIdToRange(seedSegmentId + distance, totalIds),
+                        WrapSegmentIdToRange(seedSegmentId - distance, totalIds)
+                    };
+                    for (int32_t recoveryId : recoveryIds)
+                    {
+                        if (!rememberCandidate(recoveryId)) continue;
+                        if (scanTrackCollisionWalls(recoveryId)) scannedLocal = true;
+                        if (bestPenRaw > 0) return true;
+                    }
+                }
+            }
+
             // TCOL-resident + independent window: do not also walk visual GEO walls.
-            if (useIndependentCollisionWindow) return bestPenRaw > 0;
+            return bestPenRaw > 0;
         }
 
         // Legacy GEO wall path — only when TCOL is absent/invalid.

@@ -1321,7 +1321,9 @@ private:
                                                           push,
                                                           nullptr,
                                                           seedSegmentId,
-                                                          false))
+                                                          false,
+                                                          /*commitPrevPosition=*/false,
+                                                          &samplePos))
             {
                 continue;
             }
@@ -2027,6 +2029,24 @@ private:
 
     void UpdateFrameEndOverlays()
     {
+        // A failed initial belt load otherwise becomes a silent black scene:
+        // the sky is deliberately deferred until the track is ready and boot
+        // messages are replaced by the per-frame HUD. Keep this one line alive
+        // only on failure so the next screenshot identifies catalog vs package
+        // failure and whether a Work RAM pool was exhausted.
+        if (context_.RenderTrack() && !context_.TrackSystemReady())
+        {
+            const auto hwr = SRL::Memory::HighWorkRam::GetReport();
+            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+            const auto cart = SRL::Memory::CartRam::GetReport();
+            SRL::Debug::Print(0, 4, "TRK FAIL cat:%u H:%u L:%u C:%u",
+                              context_.trackSystem
+                                  ? static_cast<unsigned>(context_.trackSystem->SegmentCount())
+                                  : 0u,
+                              static_cast<unsigned>(hwr.FreeSize / 1024u),
+                              static_cast<unsigned>(lwr.FreeSize / 1024u),
+                              static_cast<unsigned>(cart.FreeSize / 1024u));
+        }
         const Game::CarSystem::DrivetrainDebugSnapshot drivetrain =
             GameLoopOverlayDomain::BuildExtendedDrivetrainOverlaySnapshot(
                 (context_.carSystem && context_.carSystem->get()) ? context_.carSystem->get() : nullptr);
@@ -2154,21 +2174,38 @@ private:
             kEnablePhysicsSafeTelemetry);
         overlayEventState_.Update(segment);
         // Query cost, same row as the old TC line, every 15 frames.
-        // g = ground faces scanned, w = wall faces, s = wall segments (last frame).
+        // g = ground faces, wf = wall faces, ws = wall segments,
+        // wh = wall hits/calls (all values are from the last frame).
         if (context_.trackSystem)
         {
             static uint8_t s_queryCadence = 0u;
             if (++s_queryCadence >= 15u)
             {
                 s_queryCadence = 0u;
-                SRL::Debug::Print(0, 11, "Q g:%u w:%u s:%u",
+                SRL::Debug::Print(0, 11, "Q g:%u wf:%u ws:%u wh:%u/%u",
                                   context_.trackSystem->SurfaceQueryFacesScannedThisFrame(),
                                   context_.trackSystem->WallQueryFacesScannedThisFrame(),
-                                  context_.trackSystem->WallQuerySegmentsScannedThisFrame());
+                                  context_.trackSystem->WallQuerySegmentsScannedThisFrame(),
+                                  context_.trackSystem->WallQueryHitsThisFrame(),
+                                  context_.trackSystem->WallQueryCallsThisFrame());
             }
         }
         // Wheel ground distances last: must not be painted over by input/event rows.
         GameLoopRuntime::PresentGroundProbeOverlay(overlaySnapshot);
+        // This row is deliberately written after the generic HUD presenters:
+        // it replaces the static wheel-id banner while runtime statistics are
+        // enabled, so a wall miss/hit remains visible in captured videos.
+        if (context_.trackSystem)
+        {
+            SRL::Debug::Print(1, 20, "W%u h%u s%d p%d,%d q%u/%u",
+                              static_cast<unsigned>(context_.trackSystem->TrackCollisionMapReady() ? 1u : 0u),
+                              static_cast<unsigned>(overlaySnapshot.carDebug.WallHit() ? 1u : 0u),
+                              static_cast<int>(overlaySnapshot.carDebug.wallSegmentId),
+                              static_cast<int>(overlaySnapshot.carDebug.wallPushX),
+                              static_cast<int>(overlaySnapshot.carDebug.wallPushZ),
+                              static_cast<unsigned>(context_.trackSystem->WallQueryHitsThisFrame()),
+                              static_cast<unsigned>(context_.trackSystem->WallQueryCallsThisFrame()));
+        }
     }
 
     void UpdateRealtimeFpsOverlay()

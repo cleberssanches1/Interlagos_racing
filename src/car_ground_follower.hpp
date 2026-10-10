@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "car_physics_shared.hpp"
+#include "car_wall_response.hpp"
 
 namespace Game::CarPhysics
 {
@@ -641,6 +642,7 @@ private:
                                           const Vector3D& basePosition,
                                           const Fxp& sinYaw,
                                           const Fxp& cosYaw,
+                                          int32_t forwardSpeedRaw,
                                           Fxp wallRadius,
                                           int32_t seedSegmentId,
                                           Vector3D& outPush,
@@ -674,10 +676,15 @@ private:
         const Fxp negHalfLength = Fxp::BuildRaw(-probeHalfLength.RawValue());
         const Fxp negHalfWidth = Fxp::BuildRaw(-probeHalfWidth.RawValue());
         const Fxp probeRadius = Tunables::kWallHullProbeRadius;
-        // Low-cost: lateral mid-body only. Full: contact-box corners.
+        // Low-cost: one lateral hull at the leading axle. Keeping it at the
+        // mid-body let the nose cross a wall before any sample touched it.
+        const Fxp leadingHullOffset = Fxp::BuildRaw(
+            WallResponsePolicy::ResolveLeadingHullOffsetRaw(
+                forwardSpeedRaw,
+                probeHalfLength.RawValue()));
         const std::pair<Fxp, Fxp> probeOffsetsLow[2] = {
-            { Fxp::BuildRaw(0), negHalfWidth },
-            { Fxp::BuildRaw(0), probeHalfWidth }
+            { leadingHullOffset, negHalfWidth },
+            { leadingHullOffset, probeHalfWidth }
         };
         const std::pair<Fxp, Fxp> probeOffsetsFull[4] = {
             { probeHalfLength, negHalfWidth },
@@ -746,10 +753,14 @@ private:
                 // Discrete ±halfWidth points left a dead zone at runoff (130219).
                 Vector3D hullLeft = workingBase;
                 Vector3D hullRight = workingBase;
-                hullLeft.X += wallRightX * negHalfWidth;
-                hullLeft.Z += wallRightZ * negHalfWidth;
-                hullRight.X += wallRightX * probeHalfWidth;
-                hullRight.Z += wallRightZ * probeHalfWidth;
+                hullLeft.X += (forwardDirection.X * leadingHullOffset) +
+                              (wallRightX * negHalfWidth);
+                hullLeft.Z += (forwardDirection.Z * leadingHullOffset) +
+                              (wallRightZ * negHalfWidth);
+                hullRight.X += (forwardDirection.X * leadingHullOffset) +
+                               (wallRightX * probeHalfWidth);
+                hullRight.Z += (forwardDirection.Z * leadingHullOffset) +
+                               (wallRightZ * probeHalfWidth);
                 const Vector3D* hullPrev =
                     ((s_prevProbeValidMask & 0x1u) != 0u) ? &s_prevProbe[0] : nullptr;
                 Vector3D hullPush{};
@@ -879,6 +890,25 @@ private:
             {
                 localSeedSegmentId = bestSegmentId;
                 lastHitSegmentId = bestSegmentId;
+            }
+        }
+
+        // The sweep origin for the next frame must match the corrected pose.
+        // Keeping the pre-correction hull here invents another crossing of the
+        // same wall after a substantial rebound and can flip its safe side.
+        if (anyHit)
+        {
+            for (uint8_t probeIndex = 0; probeIndex < probeCount; ++probeIndex)
+            {
+                if ((s_prevProbeValidMask & static_cast<uint8_t>(1u << probeIndex)) == 0u)
+                    continue;
+                s_prevProbe[probeIndex].X += outPush.X;
+                s_prevProbe[probeIndex].Z += outPush.Z;
+            }
+            if (s_prevCenterValid)
+            {
+                s_prevCenter.X += outPush.X;
+                s_prevCenter.Z += outPush.Z;
             }
         }
 
@@ -2443,6 +2473,7 @@ private:
                                                                      worldPosition,
                                                                      sinYaw,
                                                                      cosYaw,
+                                                                     ioState.lastForwardSpeedRaw,
                                                                      wallRadius,
                                                                      targetSegmentId,
                                                                      wallPush,
