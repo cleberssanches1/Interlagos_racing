@@ -21546,6 +21546,11 @@ bool TrackSystem::FindPlanarWallPush(const Vector3D& worldPosition,
         };
         auto scanWallCellViewDedup = [&](const TrackCollisionMap::CellView& cell)
         {
+            // This is the active TCOL cell path. Count candidate indices here,
+            // before de-duplication, so HUD telemetry reflects broad-phase
+            // pressure instead of staying at zero (the other cell-scanning
+            // lambda is unused while the independent collision map is active).
+            SaturatingAddU16(wallQueryFacesScannedThisFrame_, cell.count);
             for (uint16_t ci = 0; ci < cell.count; ++ci)
             {
                 uint16_t wallIndex = 0u;

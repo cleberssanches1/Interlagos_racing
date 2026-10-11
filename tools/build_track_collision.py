@@ -35,10 +35,12 @@ WALL_MID_LANE_CLEAR_RAW = 48 << 16
 # this threshold. Across = axis perpendicular to travel (infer_travel_is_z).
 # ~30u keeps lateral fences at ~42u while clearing the racing mid-corridor.
 WALL_MID_CORRIDOR_RAW = 30 << 16
-# Body half-width. An edge this close to the asphalt centroid is in the car,
-# whether it crosses the lane or runs along it. Real side fences on this
-# circuit sit at about 26u and further (SEG287 ~25.6u is kept).
+# Conservative clear zone for unverified wall edges near the asphalt centroid.
+# A real longitudinal barrier can also be this close: SEG003 F03664 is 16u
+# from the asphalt centroid, but about 56u from the initial car spawn.
 WALL_RACING_LINE_CLEAR_RAW = 22 << 16
+WALL_PROTECTED_MIN_ALONG_RAW = 64 << 16
+WALL_PROTECTED_MAX_ACROSS_RAW = 8 << 16
 # Fraction of the cross-track asphalt span treated as the "lateral rim"
 # (used only when AABB interior cull is enabled).
 WALL_LATERAL_RIM_FRAC = 0.30
@@ -129,6 +131,7 @@ class Segment:
     driveable_walls_skipped: int = 0
     vertical_faces_emitted: int = 0
     free_faces_skipped: int = 0
+    protected_longitudinal_walls: int = 0
 
 
 def read_geo(path: Path, segment_id: int) -> list[tuple[tuple[int, int, int], ...]]:
@@ -751,6 +754,36 @@ def wall_crosses_racing_line(
     return dist < float(corridor_raw)
 
 
+def wall_is_protected_longitudinal(
+    wall: WallRecord,
+    centroid_xz: tuple[float, float],
+    travel: tuple[float, float],
+    physical_wall_families: set[int],
+) -> bool:
+    """Keep a long, same-side wall from an explicitly physical texture.
+
+    Only overrides the centroid clear-zone rejection; true lane-crossing
+    chords and short transverse seam caps remain excluded.
+    """
+    if wall.family_id not in physical_wall_families:
+        return False
+    tx, tz = travel
+    length = math.hypot(tx, tz)
+    if length <= 0.0:
+        return False
+    tx /= length
+    tz /= length
+    cx, cz = centroid_xz
+    across_a = (wall.ax - cx) * (-tz) + (wall.az - cz) * tx
+    across_b = (wall.bx - cx) * (-tz) + (wall.bz - cz) * tx
+    along = abs((wall.bx - wall.ax) * tx + (wall.bz - wall.az) * tz)
+    return (
+        across_a * across_b > 0.0
+        and abs(across_a - across_b) <= WALL_PROTECTED_MAX_ACROSS_RAW
+        and along >= WALL_PROTECTED_MIN_ALONG_RAW
+    )
+
+
 def wall_is_seam_transverse_cap(
     wall: WallRecord,
     min_x: int,
@@ -893,7 +926,10 @@ def build_segment(
     surface_by_family: dict[int, int],
     free_families: set[int],
     neighbor_delta: tuple[float, float] | None = None,
+    physical_wall_families: set[int] | None = None,
 ) -> Segment:
+    if physical_wall_families is None:
+        physical_wall_families = set()
     geo_path = geometry_dir / f"S{segment_id:03d}.GEO"
     mat_path = geometry_dir / f"S{segment_id:03d}M64.MAT"
     if not mat_path.exists():
@@ -954,8 +990,8 @@ def build_segment(
     duplicate_walls_removed = max(0, len(candidate_walls) - len(unique_walls))
 
     # Driveable asphalt must stay free at the mid-corridor and segment seams.
-    # Cull by across-track corridor (not radial centroid dist): radial 48u
-    # deleted LOD0 fences at ~42u (115458). Do NOT use wide AABB interior culls.
+    # The centroid alone is not a safe racing-line proxy: physical longitudinal
+    # walls at SEG001-004 sit 16u from it, while the actual road is farther away.
     lane_walls_removed = 0
     mid_lane_walls_removed = 0
     mid_corridor_walls_removed = 0
@@ -964,6 +1000,7 @@ def build_segment(
     y_dead_walls_removed = 0
     inner_driveable_walls_removed = 0
     crossing_walls_removed = 0
+    protected_longitudinal_walls = 0
     asphalt_bounds = asphalt_aabb_xz(ground_faces)
     asphalt_center = asphalt_centroid_xz(ground_faces)
     asphalt_y = asphalt_y_range(ground_faces)
@@ -989,8 +1026,13 @@ def build_segment(
                 else:
                     travel = (1.0, 0.0)
                 if wall_crosses_racing_line(wall, asphalt_center, travel):
-                    crossing_walls_removed += 1
-                    continue
+                    if wall_is_protected_longitudinal(
+                        wall, asphalt_center, travel, physical_wall_families
+                    ):
+                        protected_longitudinal_walls += 1
+                    else:
+                        crossing_walls_removed += 1
+                        continue
             # Across-track mid-corridor ONLY for type=1 contour walls (family_id==0).
             # Video 130219: corridor=30u deleted real LOD0 fences at ~25.6u on
             # SEG287 (f03664). Vertical faces are visual barriers — never corridor-cull.
@@ -1082,7 +1124,7 @@ def build_segment(
                    y_dead_walls_removed, inner_driveable_walls_removed,
                    crossing_walls_removed,
                    driveable_walls_skipped, vertical_faces_emitted,
-                   free_faces_skipped)
+                   free_faces_skipped, protected_longitudinal_walls)
 
 
 def append_cells(blob: bytearray, cells: list[list[int]]) -> tuple[int, int]:
@@ -1315,6 +1357,23 @@ def main() -> int:
     if missing:
         raise ValueError("texturas livres ausentes no catalogo de familias: " + ", ".join(missing))
     free_families = {family_id for stem in requested_free for family_id in families_by_stem[stem]}
+    protected_stems = [
+        texture_stem(item) for item in manifest.get("protectedLongitudinalWallStems", [])
+    ]
+    if len(protected_stems) != len(set(protected_stems)):
+        raise ValueError("protectedLongitudinalWallStems tem entradas repetidas")
+    overlap = sorted(set(protected_stems) & set(requested_free))
+    if overlap:
+        raise ValueError("texturas livres tambem marcadas como paredes: " + ", ".join(overlap))
+    # Unlike freeTraverseStems, protected walls are optional: an artist may
+    # remove or replace one of these textures in the next complete rebuild.
+    obsolete_protected_stems = [
+        stem for stem in protected_stems if stem not in families_by_stem
+    ]
+    physical_wall_families = {
+        family_id for stem in protected_stems
+        for family_id in families_by_stem.get(stem, [])
+    }
     segment_ids = sorted({int(match.group(1)) for path in args.geometry_dir.glob("S???.GEO")
                           if (match := re.fullmatch(r"S(\d{3})\.GEO", path.name, re.IGNORECASE))})
     if not segment_ids:
@@ -1362,6 +1421,7 @@ def main() -> int:
             surface_by_family,
             free_families,
             neighbor_deltas.get(segment_id),
+            physical_wall_families,
         )
         for segment_id in segment_ids
     ]
@@ -1394,6 +1454,7 @@ def main() -> int:
         "yDeadWallsRemoved": sum(s.y_dead_walls_removed for s in segments),
         "innerDriveableWallsRemoved": sum(s.inner_driveable_walls_removed for s in segments),
         "crossingWallsRemoved": sum(s.crossing_walls_removed for s in segments),
+        "protectedLongitudinalWalls": sum(s.protected_longitudinal_walls for s in segments),
         "driveableWallsSkipped": sum(s.driveable_walls_skipped for s in segments),
         "verticalFacesEmitted": sum(s.vertical_faces_emitted for s in segments),
         "freeFacesSkipped": sum(s.free_faces_skipped for s in segments),
@@ -1411,11 +1472,14 @@ def main() -> int:
         "wallInnerCullRimKeepFrac": WALL_INNER_CULL_RIM_KEEP_FRAC,
         "wallInnerCullMaxDistRaw": WALL_INNER_CULL_MAX_DIST_RAW,
         "freeTraverseStems": requested_free,
+        "protectedLongitudinalWallStems": protected_stems,
+        "obsoleteProtectedLongitudinalWallStems": obsolete_protected_stems,
         "freeFamilyIds": sorted(free_families),
         "groundSelection": "LOD0 floor-like faces whose family surfaceTypeId is 1, 2 or 3",
         "wallSelection": (
             "every non-floor LOD0 face except freeTraverseStems; floors never block; "
-            "driveable contour stays off; drop edges that cross the racing line, "
+            "driveable contour stays off; preserve verified longitudinal physical "
+            "walls near the asphalt centroid; drop true racing-line chords, "
             "Y-dead walls, and transverse seam caps"
         ),
         "joinAudit": join_audit,
@@ -1433,6 +1497,7 @@ def main() -> int:
                       "yDeadWallsRemoved": s.y_dead_walls_removed,
                       "innerDriveableWallsRemoved": s.inner_driveable_walls_removed,
                       "crossingWallsRemoved": s.crossing_walls_removed,
+                      "protectedLongitudinalWalls": s.protected_longitudinal_walls,
                       "driveableWallsSkipped": s.driveable_walls_skipped,
                       "verticalFacesEmitted": s.vertical_faces_emitted} for s in segments],
     }

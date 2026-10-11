@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "description": "Texturas em freeTraverseStems nao barram o carro. Qualquer outra face nao-chao do LOD0 vira parede. Chao (piso) continua solo e nunca para o carro. O contorno aberto do asfalto nao e parede.",
+  "description": "Texturas em freeTraverseStems nao barram o carro. Faces nao-chao do LOD0 viram paredes, exceto filtros de linha e juncoes. protectedLongitudinalWallStems preserva barreiras longitudinais reais proximas ao centro do asfalto. Chao continua solo; contorno aberto do asfalto nao e parede.",
   "freeTraverseStems": [
     "F02364",
     "F07364",
@@ -11,5 +11,9 @@
     "F04764",
     "F07564",
     "F01864"
+  ],
+  "protectedLongitudinalWallStems": [
+    "F02664", "F03664", "F01764", "F03464", "F04064", "F03764",
+    "F01664", "F03064", "F01564", "F01164", "F02064"
   ]
 }

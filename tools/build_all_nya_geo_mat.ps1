@@ -1578,6 +1578,9 @@ if ($lowRdrSample.Count -gt 0) {
 
 Write-Host "=== Limpeza: Remover auxiliares de cd/data ==="
 Remove-CdDataAuxFiles -TargetDirs $targetDirs
+# The cleanup above removes generic JSON helpers. Keep this report paired with
+# the exact TCOL.BIN that will be published for collision diagnostics.
+Copy-Item -LiteralPath $trackCollisionReportPath -Destination (Join-Path $CdDataDir "track_collision_report.json") -Force
 
 Write-Host "=== Validacao final ==="
 $expectedSegmentIds = @($segmentsDone | Sort-Object -Unique)
@@ -1619,7 +1622,8 @@ $hasSegmentCollisionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "SCMAP
 $hasFaceSurfaceMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "FSMAP.BIN")
 $hasTrackDirectionMapBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TDIR.BIN")
 $hasTrackCollisionBin = Test-Path -LiteralPath (Join-Path $CdDataDir "TCOL.BIN")
-$hasTrackCollisionReport = Test-Path -LiteralPath (Join-Path $PackageDir "track_collision_report.json")
+$hasTrackCollisionReport = (Test-Path -LiteralPath $trackCollisionReportPath) -and
+    (Test-Path -LiteralPath (Join-Path $CdDataDir "track_collision_report.json"))
 $hasMat8Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT8.BIN")
 $hasMat16Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT16.BIN")
 $hasMat32Bin = Test-Path -LiteralPath (Join-Path $CdDataDir "MAT32.BIN")
@@ -1699,6 +1703,7 @@ if ($ExportSurfaceFamilyMap -and -not $hasSegmentCollisionMapBin) { $validationE
 if ($ExportFaceSurfaceMap -and -not $hasFaceSurfaceMapBin) { $validationErrors.Add("FSMAP.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasTrackDirectionMapBin) { $validationErrors.Add("TDIR.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasTrackCollisionBin) { $validationErrors.Add("TCOL.BIN ausente em cd\\data") | Out-Null }
+if (-not $hasTrackCollisionReport) { $validationErrors.Add("track_collision_report.json ausente em package ou cd\\data") | Out-Null }
 if (-not $hasMat32Bin) { $validationErrors.Add("MAT32.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasMat64Bin) { $validationErrors.Add("MAT64.BIN ausente em cd\\data") | Out-Null }
 if (-not $hasPacksManifest) { $validationErrors.Add("packs_manifest.json ausente em pacote_rancing") | Out-Null }
