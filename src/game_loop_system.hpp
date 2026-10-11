@@ -1420,6 +1420,10 @@ private:
         {
             const Game::CarSystem::RuntimeDebugSnapshot carDbg = CarRuntimeDebugSnapshot();
             context_.cameraSystem->SetRoadAttitude(carDbg.gradeTanX100, carDbg.bodyPitchDeg);
+            context_.cameraSystem->ObserveWallContact(carDbg.WallHit(),
+                                                      carDbg.wallPushX,
+                                                      carDbg.wallPushZ,
+                                                      context_.carWorldPosition);
         }
         SRL::Math::Types::Vector3D rawCameraLocation =
             context_.cameraSystem->CameraLocation(context_.carWorldPosition);

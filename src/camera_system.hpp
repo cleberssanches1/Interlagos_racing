@@ -6,6 +6,7 @@
 #include "camera_rig.hpp"
 #include "camera_orbit_controller.hpp"
 #include "camera_safety.hpp"
+#include "camera_wall_impact.hpp"
 
 using SRL::Math::Types::Angle;
 using SRL::Math::Types::Fxp;
@@ -78,8 +79,19 @@ public:
     Vector3D ViewDirection() const;
     // Return camera look target used by the scene look-at call.
     Vector3D LookTarget(const Vector3D& carWorldPosition, const Vector3D& modelOffset) const;
+    // Wall contact comes from the already-computed car physics frame; no camera wall query.
+    void ObserveWallContact(bool hit, int16_t pushX, int16_t pushZ,
+                            const Vector3D& carWorldPosition);
     // Runtime mode selection for future cinematic camera tracks.
-    void SetMode(Mode mode) { mode_ = mode; }
+    void SetMode(Mode mode)
+    {
+        if (mode_ != mode)
+        {
+            CameraWallImpact::Reset(wallImpactState_);
+            lookTargetInitialized_ = false;
+        }
+        mode_ = mode;
+    }
     Mode GetMode() const { return mode_; }
     // Set explicit cinematic frame.
     void SetCinematicFrame(const Vector3D& location, const Vector3D& target);
@@ -183,6 +195,8 @@ private:
     mutable Vector3D lastResolvedCameraLocation_{};
     mutable bool cameraLocationInitialized_ = false;
     mutable Vector3D lastResolvedLookTarget_{};
+    mutable bool lookTargetInitialized_ = false;
+    mutable CameraWallImpact::State wallImpactState_{};
     Vector3D cinematicLocation_{};
     Vector3D cinematicTarget_{};
     Mode mode_ = Mode::Chase;

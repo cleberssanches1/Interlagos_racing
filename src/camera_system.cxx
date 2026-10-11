@@ -88,6 +88,8 @@ void CameraSystem::InitializeManualOffset()
 
 void CameraSystem::ResetToDefaultView()
 {
+    CameraWallImpact::Reset(wallImpactState_);
+    lookTargetInitialized_ = false;
     state_.yawDeg = 180;
     state_.pitchDeg = -21;
     state_.viewYawDeg = 0;
@@ -116,6 +118,19 @@ void CameraSystem::ResetToDefaultView()
     cameraLocationInitialized_ = false;
     orbitConfig_.yawStepDeg = tuning_.yawStepDeg;
     if (mode_ != Mode::Cinematic) mode_ = Mode::Chase;
+}
+
+void CameraSystem::ObserveWallContact(bool hit, int16_t pushX, int16_t pushZ,
+                                      const Vector3D& carWorldPosition)
+{
+    if (mode_ != Mode::Chase || chasePreset_ == ChasePreset::FirstPerson)
+    {
+        CameraWallImpact::Reset(wallImpactState_);
+        return;
+    }
+    CameraWallImpact::Observe(wallImpactState_, hit, pushX, pushZ,
+                              carWorldPosition.X.RawValue(),
+                              carWorldPosition.Z.RawValue());
 }
 
 void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
@@ -269,7 +284,8 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
         }
         else
         {
-            const int32_t planarBlendRaw = CameraFollowBlendRaw();
+            const int32_t planarBlendRaw = CameraWallImpact::PositionBlendRaw(
+                wallImpactState_, CameraFollowBlendRaw());
             // Classic Y follow; slightly faster on slope only.
             int32_t verticalBlendRaw = 16384; // 0.25
             if (std::abs(static_cast<int>(roadBodyPitchDeg_)) > 2 ||
@@ -296,6 +312,16 @@ Vector3D CameraSystem::CameraLocation(const Vector3D& carWorldPosition) const
                 lastResolvedCameraLocation_, carWorldPosition,
                 BoomSafetyConfig(smoothedBoomPitchDeg_));
         }
+    }
+    if (mode_ == Mode::Chase && chasePreset_ != ChasePreset::FirstPerson)
+    {
+        int32_t cameraXRaw = lastResolvedCameraLocation_.X.RawValue();
+        int32_t cameraZRaw = lastResolvedCameraLocation_.Z.RawValue();
+        CameraWallImpact::KeepCameraOnTrackSide(
+            wallImpactState_, carWorldPosition.X.RawValue(),
+            carWorldPosition.Z.RawValue(), cameraXRaw, cameraZRaw);
+        lastResolvedCameraLocation_.X = Fxp::BuildRaw(cameraXRaw);
+        lastResolvedCameraLocation_.Z = Fxp::BuildRaw(cameraZRaw);
     }
     if (debugLogsEnabled_ && chasePreset_ == ChasePreset::ChaseNear)
     {
@@ -395,10 +421,22 @@ Vector3D CameraSystem::LookTarget(const Vector3D& carWorldPosition, const Vector
     }
 
     const Vector3D forward = chaseForward;
-    lastResolvedLookTarget_ = Vector3D(
+    const Vector3D desiredLookTarget(
         carWorldPosition.X + (forward.X * lookZ),
         carWorldPosition.Y + lookY,
         carWorldPosition.Z + (forward.Z * lookZ));
+    if (!lookTargetInitialized_ || wallImpactState_.responseFrames == 0)
+    {
+        lastResolvedLookTarget_ = desiredLookTarget;
+        lookTargetInitialized_ = true;
+    }
+    else
+    {
+        lastResolvedLookTarget_ = LerpVectorRaw(lastResolvedLookTarget_,
+                                                 desiredLookTarget,
+                                                 CameraWallImpact::LookBlendRaw(wallImpactState_));
+    }
+    CameraWallImpact::Advance(wallImpactState_);
     return lastResolvedLookTarget_;
 }
 
@@ -427,6 +465,8 @@ CameraSystem::Snapshot CameraSystem::CreateSnapshot() const
 
 void CameraSystem::ApplyChasePreset(ChasePreset preset, bool logPreset)
 {
+    CameraWallImpact::Reset(wallImpactState_);
+    lookTargetInitialized_ = false;
     chasePreset_ = preset;
     const auto cfg = PresetConfig(preset);
     state_.viewYawDeg = 0;
@@ -535,9 +575,9 @@ void CameraSystem::UpdateHeadingFromCarMotion(const Vector3D& carWorldPosition) 
     }
 
     constexpr int32_t kHeadingSmoothBlendRaw = 18350; // 0.28
-    const Vector3D blendedHeading = LerpVectorRaw(smoothedHeadingForwardWorld_,
-                                                  headingForwardWorld_,
-                                                  kHeadingSmoothBlendRaw);
+    const Vector3D blendedHeading = LerpVectorRaw(
+        smoothedHeadingForwardWorld_, headingForwardWorld_,
+        CameraWallImpact::HeadingBlendRaw(wallImpactState_, kHeadingSmoothBlendRaw));
     smoothedHeadingForwardWorld_ = NormalizeFlatDirectionRaw(
         blendedHeading.X.RawValue(),
         blendedHeading.Z.RawValue(),
