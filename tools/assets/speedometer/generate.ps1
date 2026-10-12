@@ -36,8 +36,7 @@ try {
         @{ Name = "SPD_PANEL.TGA"; X = 0; Y = 0 },
         @{ Name = "SPD_GEARS.TGA"; X = 0; Y = 96 },
         @{ Name = "SPD_DIGITS.TGA"; X = 128; Y = 96 },
-        @{ Name = "SPD_UNITS.TGA"; X = 128; Y = 160 },
-        @{ Name = "SPD_RPM_SEGMENTS.TGA"; X = 0; Y = 192 }
+        @{ Name = "SPD_UNITS.TGA"; X = 128; Y = 160 }
     )
 
     foreach ($layer in $layers) {
@@ -53,7 +52,7 @@ try {
 
     # The Saturn NBG2 accepts indexed color, not the review atlas's RGB555.
     # Bake each live tile over the exact panel cell that it replaces: transparent
-    # glyph pixels must reveal the dark instrument plate, not the 3D scene.
+    # glyph pixels must preserve the static dial underneath when applicable.
     New-Item -ItemType Directory -Path $runtimeParts | Out-Null
     $panel = Join-Path $outputDirectory "SPD_PANEL.TGA"
     $gear = Join-Path $outputDirectory "SPD_GEARS.TGA"
@@ -71,28 +70,47 @@ try {
         $art = Join-Path $runtimeParts "art.png"
         $tile = Join-Path $runtimeParts "tile.png"
         $next = Join-Path $runtimeParts "next.png"
-        & $magick.Source -background none $panel -crop ("{0}x{1}+{2}+{3}" -f $Width,$Height,$PanelX,$PanelY) +repage $base
+        & $magick.Source -background none $panel -crop ("{0}x{1}+{2}+{3}" -f $Width,$Height,$PanelX,$PanelY) +repage -define png:color-type=6 $base
         if ($LASTEXITCODE -ne 0) { throw "Falha recortando painel." }
-        & $magick.Source -background none $Source -crop ("{0}x{1}+{2}+{3}" -f $Width,$Height,$SourceX,$SourceY) +repage $art
+        & $magick.Source -background none $Source -crop ("{0}x{1}+{2}+{3}" -f $Width,$Height,$SourceX,$SourceY) +repage -define png:color-type=6 $art
         if ($LASTEXITCODE -ne 0) { throw "Falha recortando sprite." }
-        & $magick.Source -background none $base $art -compose Over -composite $tile
+        & $magick.Source -background none $base $art -compose Over -composite -define png:color-type=6 $tile
         if ($LASTEXITCODE -ne 0) { throw "Falha compondo sprite." }
-        & $magick.Source -background none $runtimeAtlas $tile -geometry ("+{0}+{1}" -f $AtlasX,$AtlasY) -compose Over -composite $next
+        & $magick.Source -background none $runtimeAtlas $tile -geometry ("+{0}+{1}" -f $AtlasX,$AtlasY) -compose Over -composite -define png:color-type=6 $next
         if ($LASTEXITCODE -ne 0) { throw "Falha atualizando atlas runtime." }
         Move-Item -LiteralPath $next -Destination $runtimeAtlas -Force
     }
 
     for ($i = 0; $i -lt 12; $i++) {
         $col = $i % 6; $row = [int][Math]::Floor($i / 6)
-        Add-ComposedTile $gear ($col * 16) ($row * 32) 96 48 16 32 ($col * 16) (96 + $row * 32)
+        Add-ComposedTile $gear ($col * 16) ($row * 16) 64 0 16 16 ($i * 16) 80
     }
     for ($i = 0; $i -lt 10; $i++) {
         $col = $i % 5; $row = [int][Math]::Floor($i / 5)
-        Add-ComposedTile $digits ($col * 16) ($row * 32) 16 48 16 32 (128 + $col * 16) (96 + $row * 32)
+        Add-ComposedTile $digits ($col * 16) ($row * 16) 16 64 16 16 ($i * 16) 96
     }
-    for ($i = 0; $i -lt 12; $i++) {
-        $cellX = 1 + ($i % 6); $cellY = 1 + [int][Math]::Floor($i / 6)
-        Add-ComposedTile $rpm ($i * 16) 0 ($cellX * 16) ($cellY * 16) 16 16 ($i * 16) 192
+    # Ten arc cells x twelve precomposed states fit in atlas rows 7..14.
+    # Clipping the lit curve at each threshold preserves intermediate RPM
+    # steps even when several thresholds lie inside one 16px map cell.
+    $rpmCells = @(
+        @(0,4), @(0,3), @(0,2), @(1,3), @(1,2),
+        @(2,2), @(2,1), @(3,1), @(3,2), @(4,2)
+    )
+    $stageCutoffs = @(7,13,19,25,31,37,43,49,55,61,67,80)
+    for ($stageIndex = 0; $stageIndex -lt 12; $stageIndex++) {
+        $partial = Join-Path $runtimeParts 'rpm-partial.png'
+        $stage = Join-Path $runtimeParts 'rpm-stage.png'
+        & $magick.Source -background none $rpm -crop ("{0}x80+0+0" -f $stageCutoffs[$stageIndex]) +repage -define png:color-type=6 $partial
+        if ($LASTEXITCODE -ne 0) { throw 'Falha recortando nivel de RPM.' }
+        & $magick.Source -size 80x80 xc:none $partial -geometry +0+0 -compose Over -composite -define png:color-type=6 $stage
+        if ($LASTEXITCODE -ne 0) { throw 'Falha compondo nivel de RPM.' }
+        for ($cellIndex = 0; $cellIndex -lt $rpmCells.Count; $cellIndex++) {
+            $cellX = $rpmCells[$cellIndex][0]; $cellY = $rpmCells[$cellIndex][1]
+            $variant = $stageIndex * $rpmCells.Count + $cellIndex
+            $atlasX = ($variant % 16) * 16
+            $atlasY = (7 + [int][Math]::Floor($variant / 16)) * 16
+            Add-ComposedTile $stage ($cellX * 16) ($cellY * 16) ($cellX * 16) ($cellY * 16) 16 16 $atlasX $atlasY
+        }
     }
 
     & $magick.Source -background none $runtimeAtlas -alpha on -colors 16 -type PaletteAlpha -depth 8 -compress none $runtimeAtlasPath

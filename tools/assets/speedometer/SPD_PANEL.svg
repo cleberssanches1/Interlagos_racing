@@ -1,18 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="80" viewBox="0 0 128 80" shape-rendering="crispEdges">
-  <rect x="2" y="2" width="124" height="76" rx="6" fill="#0b1720" stroke="#9bb5bd" stroke-width="2"/>
-  <rect x="5" y="5" width="118" height="70" rx="3" fill="#172832" stroke="#344d57"/>
-  <path d="M8 7h34" stroke="#e4c24a" stroke-width="2"/>
-  <text x="10" y="16" font-family="DejaVu Sans,Arial,sans-serif" font-size="8" font-weight="bold" fill="#e8f2e9">RPM</text>
-  <text x="88" y="16" font-family="DejaVu Sans,Arial,sans-serif" font-size="7" font-weight="bold" fill="#9bb5bd">x1000</text>
-  <g fill="#384d53" stroke="#0b1720" stroke-width="1">
-    <rect x="18" y="20" width="12" height="10"/><rect x="34" y="20" width="12" height="10"/>
-    <rect x="50" y="20" width="12" height="10"/><rect x="66" y="20" width="12" height="10"/>
-    <rect x="82" y="20" width="12" height="10"/><rect x="98" y="20" width="12" height="10"/>
-    <rect x="18" y="36" width="12" height="10"/><rect x="34" y="36" width="12" height="10"/>
-    <rect x="50" y="36" width="12" height="10"/><rect x="66" y="36" width="12" height="10"/>
-    <rect x="82" y="36" width="12" height="10"/><rect x="98" y="36" width="12" height="10"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" shape-rendering="crispEdges">
+  <defs>
+    <pattern id="redline" width="3" height="3" patternUnits="userSpaceOnUse">
+      <rect width="3" height="3" fill="#391e22"/>
+      <path d="M0 3L3 0" stroke="#753035" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <!-- The whole dial is transparent; the track stays visible behind it. -->
+  <path d="M4 70 C10 49 21 39 37 34 C48 30 57 32 64 35 C70 36 75 36 79 36"
+        fill="none" stroke="#161013" stroke-width="10"/>
+  <path d="M4 70 C10 49 21 39 37 34 C48 30 57 32 64 35 C70 36 75 36 79 36"
+        fill="none" stroke="#4a2927" stroke-width="8"/>
+  <path d="M62 35 C69 36 75 36 79 36" fill="none" stroke="url(#redline)" stroke-width="8"/>
+  <g font-family="DejaVu Sans,Arial,sans-serif" font-size="5" font-weight="bold" fill="#e8c947">
+    <text x="0" y="79">4</text><text x="1" y="58">6</text><text x="9" y="44">8</text>
+    <text x="20" y="33">9</text><text x="28" y="27">10</text><text x="40" y="24">11</text>
+    <text x="51" y="25">12</text><text x="64" y="27">13</text><text x="73" y="28">14</text>
   </g>
-  <path d="M16 48h48v27H16z" fill="#0a141b" stroke="#607b80"/>
-  <path d="M96 48h16v27H96z" fill="#0a141b" stroke="#607b80"/>
-  <text x="66" y="66" font-family="DejaVu Sans,Arial,sans-serif" font-size="8" font-weight="bold" fill="#f2d257">KM/H</text>
+  <!-- Reference-style MT label beside the compact outlined gear numeral. -->
+  <text x="52" y="15" font-family="DejaVu Sans,Arial,sans-serif" font-size="7" font-weight="bold" fill="#f7f7f3">MT</text>
+  <path d="M64 1H79V16H64Z" fill="#07080b" stroke="#f7f7f3" stroke-width="1"/>
+  <text x="44" y="58" font-family="DejaVu Sans,Arial,sans-serif" font-size="8" font-weight="bold" font-style="italic" fill="#f7f7f3">SPEED</text>
+  <text x="65" y="78" font-family="DejaVu Sans,Arial,sans-serif" font-size="7" font-weight="bold" font-style="italic" fill="#e9d04a">km/h</text>
 </svg>

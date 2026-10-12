@@ -1,10 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="16" viewBox="0 0 192 16" shape-rendering="crispEdges">
-  <g stroke="#0b1720" stroke-width="1">
-    <rect x="2" y="4" width="12" height="10" fill="#62c6a4"/><rect x="18" y="4" width="12" height="10" fill="#62c6a4"/>
-    <rect x="34" y="4" width="12" height="10" fill="#62c6a4"/><rect x="50" y="4" width="12" height="10" fill="#78cf88"/>
-    <rect x="66" y="4" width="12" height="10" fill="#78cf88"/><rect x="82" y="4" width="12" height="10" fill="#b6d365"/>
-    <rect x="98" y="4" width="12" height="10" fill="#b6d365"/><rect x="114" y="4" width="12" height="10" fill="#e6c85a"/>
-    <rect x="130" y="4" width="12" height="10" fill="#e6c85a"/><rect x="146" y="4" width="12" height="10" fill="#ee994e"/>
-    <rect x="162" y="4" width="12" height="10" fill="#e86555"/><rect x="178" y="4" width="12" height="10" fill="#e86555"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" shape-rendering="crispEdges">
+  <path d="M4 70 C10 49 21 39 37 34 C48 30 57 32 64 35 C70 36 75 36 79 36"
+        fill="none" stroke="#f6cf35" stroke-width="8"/>
+  <path d="M62 35 C69 36 75 36 79 36" fill="none" stroke="#f18b20" stroke-width="8"/>
 </svg>

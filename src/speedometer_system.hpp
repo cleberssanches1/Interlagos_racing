@@ -42,11 +42,11 @@ public:
 private:
     static constexpr uint8_t kMapWidth = 32;
     static constexpr uint8_t kAtlasWidth = 16;
-    static constexpr uint8_t kPanelX = 11; // 128x80 at (176,144), 16px margins
-    static constexpr uint8_t kPanelY = 9;
-    static constexpr uint8_t kRpmCells[12][2] = {
-        {1,1}, {2,1}, {3,1}, {4,1}, {5,1}, {6,1},
-        {1,2}, {2,2}, {3,2}, {4,2}, {5,2}, {6,2}
+    static constexpr uint8_t kPanelX = 15; // 80x80 at (240,160)
+    static constexpr uint8_t kPanelY = 10;
+    static constexpr uint8_t kRpmCells[10][2] = {
+        {0,4}, {0,3}, {0,2}, {1,3}, {1,2},
+        {2,2}, {2,1}, {3,1}, {3,2}, {4,2}
     };
 
     struct CartIndexedBitmap final : SRL::Bitmap::IBitmap
@@ -250,7 +250,7 @@ private:
         const uint16_t blank = Source(15, 14);
         for (uint16_t i = 0; i < 32u * 32u; ++i) map_[i] = blank;
         for (uint8_t y = 0; y < 5; ++y)
-            for (uint8_t x = 0; x < 8; ++x)
+            for (uint8_t x = 0; x < 5; ++x)
                 Put(kPanelX + x, kPanelY + y, Source(x, y));
 
         // The Cart RAM tilemap is released on return; VRAM owns its copy.
@@ -276,11 +276,7 @@ private:
     void DrawGear(char gear)
     {
         uint8_t index = (gear == 'N') ? 8u : ((gear == 'R') ? 9u : static_cast<uint8_t>(gear - '1'));
-        const uint8_t sourceX = static_cast<uint8_t>(index % 6u);
-        const uint8_t sourceY = static_cast<uint8_t>(6u + (index / 6u) * 2u);
-        for (uint8_t y = 0; y < 2; ++y)
-            Put(kPanelX + 6u, kPanelY + 3u + y,
-                Source(sourceX, sourceY + y));
+        Put(kPanelX + 4u, kPanelY, Source(index, 5u));
     }
 
     void DrawSpeed(uint16_t speed)
@@ -292,25 +288,22 @@ private:
         };
         for (uint8_t column = 0; column < 3; ++column)
         {
-            const bool leadingBlank = (column == 0 && speed < 100u) ||
-                                      (column == 1 && speed < 10u);
-            const uint8_t sourceX = static_cast<uint8_t>(8u + numbers[column] % 5u);
-            const uint8_t sourceY = static_cast<uint8_t>(6u + (numbers[column] / 5u) * 2u);
-            for (uint8_t y = 0; y < 2; ++y)
-                Put(kPanelX + 1u + column, kPanelY + 3u + y,
-                    leadingBlank ? Source(1u + column, 3u + y)
-                                 : Source(sourceX, sourceY + y));
+            Put(kPanelX + 1u + column, kPanelY + 4u,
+                Source(numbers[column], 6u));
         }
     }
 
     void DrawRpm(uint8_t lit)
     {
-        for (uint8_t i = 0; i < 12; ++i)
+        for (uint8_t i = 0; i < 10; ++i)
         {
             const uint8_t x = kRpmCells[i][0];
             const uint8_t y = kRpmCells[i][1];
+            const uint8_t variant = static_cast<uint8_t>((lit ? lit - 1u : 0u) * 10u + i);
             Put(kPanelX + x, kPanelY + y,
-                (i < lit) ? Source(i, 12) : Source(x, y));
+                lit ? Source(static_cast<uint8_t>(variant % 16u),
+                             static_cast<uint8_t>(7u + variant / 16u))
+                    : Source(x, y));
         }
     }
 
