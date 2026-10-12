@@ -1210,11 +1210,12 @@ static int RunPhysicsPocMode()
         "CAR1.NYA;1", "CAR1.NYA",
         "car1.nya;1", "car1.nya"
     };
-    constexpr bool kPocReserveHwrForTrack = (MASTER_FRAME_PHASE_TELEMETRY != 0);
-    constexpr bool kPocUseWramCar = !kPocReserveHwrForTrack;
+    // Keep the car in Cart RAM before loading the 20-segment track window.
+    // HWR is the tight pool at boot; Cart RAM still has ample headroom.
+    constexpr bool kPocUseWramCar = false;
     AppState::Set(AppState::Stage::CarLoad, 0);
     CarPipeline carPipe{};
-    if (renderCar && !kPocReserveHwrForTrack)
+    if (renderCar)
     {
         carPipe = LoadCarPipeline(carPaths,
                                   sizeof(carPaths) / sizeof(carPaths[0]),
@@ -1223,6 +1224,7 @@ static int RunPhysicsPocMode()
     }
     ModelObject* carPtr = carPipe.ActiveModel();
     bool carValid = carPipe.Loaded();
+    const bool carLoadedBeforeTrack = carValid;
     LogPocRam(8, "RAM car");
 
     Vector3D lightDirection = Vector3D(0.35, -0.15, 0.35);
@@ -1263,9 +1265,7 @@ static int RunPhysicsPocMode()
 
     if (renderCar && !carValid)
     {
-        // In the detailed telemetry profile this is the first car load: the
-        // track has already claimed its HWR and the car remains in Cart RAM.
-        // In the normal profile this is only the legacy early-load fallback.
+        // Retry a failed early car load after the track is ready.
         carPipe = LoadCarPipeline(carPaths,
                                   sizeof(carPaths) / sizeof(carPaths[0]),
                                   kPocUseWramCar,
@@ -1274,10 +1274,10 @@ static int RunPhysicsPocMode()
         carValid = carPipe.Loaded();
     }
 
-    if (trackSystemReady)
+    if (trackSystemReady && carValid && !carLoadedBeforeTrack)
     {
-        // The track was loaded before the Cart-resident car in the detailed
-        // profile. Protect both texture ranges from later track heap resets.
+        // Only a car loaded after the track needs its later texture slots
+        // protected from the track heap reset.
         trackSystem.RebaseTrackTextureHeapBase();
     }
 

@@ -10135,7 +10135,10 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     slideBackBuffer_.outgoingSegmentId = segmentRenderers_[dropIdx].id;
     slideBackBuffer_.nextStartId = nextStartId;
     const size_t windowCount = segmentRenderers_.size();
-    const size_t incomingLogicalRank = windowCount - 1u;
+    // Advance drops the logical head. Retreat drops the logical tail, so the
+    // operation is fully described by the selected physical slot.
+    const bool retreat = dropIdx != activeWindowHead_;
+    const size_t incomingLogicalRank = retreat ? 0u : (windowCount - 1u);
 
     Vector3D incomingCenter = slidePrefetchCenter_;
     // Persistent scratch — no LWR alloc/free per slide. Tail = low design geo.
@@ -10365,6 +10368,7 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
         return false;
     }
 
+    const bool retreat = slideBackBuffer_.dropIdx != activeWindowHead_;
     SegmentRenderEntry& slot = segmentRenderers_[slideBackBuffer_.dropIdx];
     TrackSegmentEntry& meta = segmentEntries_[slideBackBuffer_.dropIdx];
     DemobilizeSegmentSlotMetadata(slot);
@@ -10400,7 +10404,9 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     slot.lodState.desiredLodIndex = slideBackBuffer_.incomingResidentLodIndex;
     slot.lodState.desiredBaseRank = slideBackBuffer_.incomingResidentBaseRank;
     {
-        const size_t incomingLogicalRank = segmentRenderers_.size() - 1u;
+        const size_t incomingLogicalRank = retreat
+            ? 0u
+            : (segmentRenderers_.size() - 1u);
         const uint8_t geoTier = ResolveDesignGeoTierByRank(incomingLogicalRank);
         slot.lodState.currentDesignGeoTier = geoTier;
         slot.lodState.desiredDesignGeoTier = geoTier;
@@ -10413,7 +10419,12 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
 
     InvalidateActiveWindowLookupTables();
     activeWindowStartId_ = slideBackBuffer_.nextStartId;
-    if (!AdvanceWindowHeadByDirection(slideBackBuffer_.direction, segmentRenderers_.size()))
+    if (retreat)
+    {
+        // The old far tail slot is now the new logical head.
+        activeWindowHead_ = slideBackBuffer_.dropIdx;
+    }
+    else if (!AdvanceWindowHeadByDirection(slideBackBuffer_.direction, segmentRenderers_.size()))
     {
         (void)ResolveWindowHeadByStartId(slideBackBuffer_.dropIdx);
     }
@@ -10437,16 +10448,10 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
         ++runtimeLodSegmentUpdatesThisFrame_;
         InvalidateEntryWorkingSetCache(*entry);
     }
-    // === POST-SLIDE COST INSTRUMENTATION (Passo C do DUAL_SH2_OPTIMIZATION_PLAN) ===
-    // MediÃ§Ã£o de ticks SH2 para as fases mais pesadas do commit.
-    // Remover ou desabilitar quando o diagnÃ³stico estiver concluÃ­do.
-    const uint16_t lodUpdateStart = Sh2FrtProfiler::Now();
     UpdateDesiredStabilizedWindowLodTargets();
-    const uint16_t lodUpdateTicks = Sh2FrtProfiler::Elapsed(lodUpdateStart, Sh2FrtProfiler::Now());
 
     // Family consolidation can scan the entire resident window. Keep it out
     // of the publication frame; RunPrefetchStage executes it alone later.
-    const uint16_t mergeTicks = 0u;
     if (familyMergeCooldown_ == 0u)
     {
         stagedFamilyMergePending_ = true;
@@ -10456,16 +10461,7 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
         --familyMergeCooldown_;
     }
     SetFamilyWorkingSetDirty(true);
-    const uint16_t handleStart = Sh2FrtProfiler::Now();
     BuildSegmentHandleTable();
-    const uint16_t handleTicks = Sh2FrtProfiler::Elapsed(handleStart, Sh2FrtProfiler::Now());
-
-    SRL::Debug::Print(1, 31, "SL tks lod:%u mrg:%u hdl:%u sid:%d",
-                      static_cast<unsigned>(lodUpdateTicks),
-                      static_cast<unsigned>(mergeTicks),
-                      static_cast<unsigned>(handleTicks),
-                      static_cast<int>(slideBackBuffer_.incomingSegmentId));
-    // === FIM INSTRUMENTAÃ‡ÃƒO ===
     ResetSlidePrefetchState();
     ResetSlideBackBuffer();
     ++runtimeSlidesThisFrame_;
@@ -15167,6 +15163,9 @@ bool TrackSystem::Initialize(const Config& config)
     (void)PreloadHighTrackRuntimePack();
     printInitRam(7, "RAM packs");
 
+    // The car textures are already resident. Everything uploaded from this
+    // point belongs to the track and must be reclaimable by its residency pass.
+    CaptureTrackTextureHeapBase();
     const size_t loadLimit = ResolveInitialLoadLimit(config);
     const bool beltReady = PrepareInitialSegmentPackages(loadLimit);
     printInitRam(8, "RAM belt");
@@ -15178,7 +15177,6 @@ bool TrackSystem::Initialize(const Config& config)
 
     if (beltReady && SegmentsReady())
     {
-        CaptureTrackTextureHeapBase();
         SegmentRuntimeDraw::HeaderV1 warmRdrHeader{};
         (void)LoadRdrHeaderForSegment(1, warmRdrHeader);
         if (totalSegmentCount_ > 1)
@@ -16155,6 +16153,7 @@ void TrackSystem::BeginFrame(uint32_t frameId)
     slideHwrTrace_.afterCommit = 0u;
     prefetchBuildAttemptsThisFrame_ = 0u;
     prefetchBuildBudgetDropsThisFrame_ = 0u;
+    int32_t signedWindowBacklogThisFrame = 0;
     {
         bool freeValid = false;
         const size_t freeBytes = GetHighWorkRamFreeBytesSafe(&freeValid);
@@ -16170,15 +16169,24 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                     WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
                 if (currentStartId > 0 && targetStartId > 0)
                 {
-                    const int32_t total = static_cast<int32_t>(totalSegmentCount_);
-                    // Direction aware backlog:
-                    // +1 uses forward wrap distance current -> target.
-                    // -1 uses backward wrap distance current -> target.
-                    backlog = (slideDirection > 0)
-                        ? ((targetStartId - currentStartId) % total)
-                        : ((currentStartId - targetStartId) % total);
-                    if (backlog < 0) backlog += total;
-                    if (backlog >= (total / 2)) backlog = 0;
+                    const int32_t reverseStartId = WrapSegmentIdToRange(
+                        currentStartId - static_cast<int32_t>(slideDirection),
+                        totalSegmentCount_);
+                    if (targetStartId == reverseStartId)
+                    {
+                        signedWindowBacklogThisFrame = -1;
+                        backlog = 1;
+                    }
+                    else
+                    {
+                        const int32_t total = static_cast<int32_t>(totalSegmentCount_);
+                        backlog = (slideDirection > 0)
+                            ? ((targetStartId - currentStartId) % total)
+                            : ((currentStartId - targetStartId) % total);
+                        if (backlog < 0) backlog += total;
+                        if (backlog >= (total / 2)) backlog = 0;
+                        signedWindowBacklogThisFrame = backlog;
+                    }
                 }
             }
 
@@ -16217,25 +16225,23 @@ void TrackSystem::BeginFrame(uint32_t frameId)
         LWR_PROBE_BEGIN();
         if (kEnableTrackRuntimeStabilization &&
             SegmentsReady() &&
-            totalSegmentCount_ > 0)
+            totalSegmentCount_ > 0 &&
+            !segmentRenderers_.empty())
         {
             const int8_t slideDirection = (windowDirection_ < 0) ? -1 : 1;
             const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
             const int32_t targetStartId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
             if (currentStartId > 0 && targetStartId > 0)
             {
-                const int32_t total = static_cast<int32_t>(totalSegmentCount_);
-                // Direction aware catch-up for both forward and reverse travel.
-                int32_t backlog = (slideDirection > 0)
-                    ? ((targetStartId - currentStartId) % total)
-                    : ((currentStartId - targetStartId) % total);
-                if (backlog < 0) backlog += total;
-                if ((backlog <= 0 || backlog >= (total / 2)) && slideBackBuffer_.Ready())
+                const int32_t signedBacklog = signedWindowBacklogThisFrame;
+                const bool retreat = signedBacklog < 0;
+                const int32_t backlog = retreat ? -signedBacklog : signedBacklog;
+                if (backlog <= 0 && slideBackBuffer_.Ready())
                 {
                     // The target was cancelled or changed before publication.
                     ResetSlideBackBuffer();
                 }
-                if (backlog > 0 && backlog < (total / 2))
+                if (backlog > 0)
                 {
                     // Catch-up: prefer draining backlog. REDRIVER2-style streaming
                     // keeps the working set under the car — stalling freezes the map.
@@ -16263,10 +16269,16 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                     {
                         if (kEnableStagedSlidePipeline)
                         {
-                            const int32_t incomingId = ResolveWindowIncomingSegmentId(
-                                slideDirection, segmentRenderers_.size());
+                            const size_t windowCount = segmentRenderers_.size();
+                            const int32_t incomingId = retreat
+                                ? WrapSegmentIdToRange(
+                                    activeWindowStartId_ - static_cast<int32_t>(slideDirection),
+                                    totalSegmentCount_)
+                                : ResolveWindowIncomingSegmentId(slideDirection, windowCount);
                             const int32_t nextStartId = WrapSegmentIdToRange(
-                                activeWindowStartId_ + static_cast<int32_t>(slideDirection),
+                                activeWindowStartId_ + static_cast<int32_t>(retreat
+                                    ? -slideDirection
+                                    : slideDirection),
                                 totalSegmentCount_);
                             const bool preparedMatches =
                                 slideBackBuffer_.Ready() &&
@@ -16287,15 +16299,16 @@ void TrackSystem::BeginFrame(uint32_t frameId)
                                 preparedMatches);
                             if (action == TrackStreamingPolicy::StagedSlideAction::PreparePrefetch)
                             {
-                                TryPrefetchUpcomingSegment();
+                                (void)BuildSegmentIntoPrefetch(incomingId, false);
                                 break;
                             }
                             if (action == TrackStreamingPolicy::StagedSlideAction::PrepareSlide)
                             {
                                 size_t dropIdx = 0u;
+                                const size_t dropRank = retreat ? (windowCount - 1u) : 0u;
+                                dropIdx = LogicalToPhysicalWindowIndex(dropRank, windowCount);
                                 if (nextStartId <= 0 ||
-                                    !ResolveWindowDropIndexByDirection(
-                                        slideDirection, segmentRenderers_.size(), dropIdx) ||
+                                    dropIdx >= windowCount ||
                                     !PrepareStabilizedSlideBackBuffer(
                                         dropIdx, slideDirection, incomingId, nextStartId))
                                 {

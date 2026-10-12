@@ -289,6 +289,37 @@ void TestTurnaroundReserveKeepsRoadBehindCarResident(TestContext& ctx)
                        reverseTarget, totalSegments, windowCount, -1), carId);
 }
 
+void TestWindowRetreatRecyclesTailInBothOrientations(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    std::array<int32_t, 5> forwardResident{{96, 97, 98, 99, 100}};
+    size_t forwardHead = 0u;
+    const size_t forwardDrop = LogicalToPhysicalWindowIndex(forwardHead, +1, 4u, 5u);
+    forwardResident[forwardDrop] = 95;
+    forwardHead = forwardDrop;
+    const std::array<int32_t, 5> expectedForward{{95, 96, 97, 98, 99}};
+    for (size_t rank = 0u; rank < expectedForward.size(); ++rank)
+    {
+        EXPECT_EQ(ctx,
+                  forwardResident[LogicalToPhysicalWindowIndex(forwardHead, +1, rank, 5u)],
+                  expectedForward[rank]);
+    }
+
+    std::array<int32_t, 5> reverseResident{{100, 101, 102, 103, 104}};
+    size_t reverseHead = 4u;
+    const size_t reverseDrop = LogicalToPhysicalWindowIndex(reverseHead, -1, 4u, 5u);
+    reverseResident[reverseDrop] = 105;
+    reverseHead = reverseDrop;
+    const std::array<int32_t, 5> expectedReverse{{105, 104, 103, 102, 101}};
+    for (size_t rank = 0u; rank < expectedReverse.size(); ++rank)
+    {
+        EXPECT_EQ(ctx,
+                  reverseResident[LogicalToPhysicalWindowIndex(reverseHead, -1, rank, 5u)],
+                  expectedReverse[rank]);
+    }
+}
+
 void TestWindowWrapsAcrossLapBoundary(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
@@ -707,6 +738,7 @@ int main()
         {"StagedSlideSeparatesPreparationFromCommit", &TestStagedSlideSeparatesPreparationFromCommit},
         {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
         {"TurnaroundReserveKeepsRoadBehindCarResident", &TestTurnaroundReserveKeepsRoadBehindCarResident},
+        {"WindowRetreatRecyclesTailInBothOrientations", &TestWindowRetreatRecyclesTailInBothOrientations},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},
         {"CollectRetiredSlotsForRemovedFamilies", &TestCollectRetiredSlotsForRemovedFamilies},
         {"CollectRetiredSlotsDeduplicatesAcrossLods", &TestCollectRetiredSlotsDeduplicatesAcrossLods},
