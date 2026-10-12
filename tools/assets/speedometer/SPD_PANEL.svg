@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="80" viewBox="0 0 128 80" shape-rendering="crispEdges">
+  <rect x="2" y="2" width="124" height="76" rx="6" fill="#0b1720" stroke="#9bb5bd" stroke-width="2"/>
+  <rect x="5" y="5" width="118" height="70" rx="3" fill="#172832" stroke="#344d57"/>
+  <path d="M8 7h34" stroke="#e4c24a" stroke-width="2"/>
+  <text x="10" y="16" font-family="DejaVu Sans,Arial,sans-serif" font-size="8" font-weight="bold" fill="#e8f2e9">RPM</text>
+  <text x="88" y="16" font-family="DejaVu Sans,Arial,sans-serif" font-size="7" font-weight="bold" fill="#9bb5bd">x1000</text>
+  <g fill="#384d53" stroke="#0b1720" stroke-width="1">
+    <rect x="18" y="20" width="12" height="10"/><rect x="34" y="20" width="12" height="10"/>
+    <rect x="50" y="20" width="12" height="10"/><rect x="66" y="20" width="12" height="10"/>
+    <rect x="82" y="20" width="12" height="10"/><rect x="98" y="20" width="12" height="10"/>
+    <rect x="18" y="36" width="12" height="10"/><rect x="34" y="36" width="12" height="10"/>
+    <rect x="50" y="36" width="12" height="10"/><rect x="66" y="36" width="12" height="10"/>
+    <rect x="82" y="36" width="12" height="10"/><rect x="98" y="36" width="12" height="10"/>
+  </g>
+  <path d="M16 48h48v27H16z" fill="#0a141b" stroke="#607b80"/>
+  <path d="M96 48h16v27H96z" fill="#0a141b" stroke="#607b80"/>
+  <text x="66" y="66" font-family="DejaVu Sans,Arial,sans-serif" font-size="8" font-weight="bold" fill="#f2d257">KM/H</text>
+</svg>

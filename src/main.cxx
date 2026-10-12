@@ -51,7 +51,11 @@ constexpr bool kVerboseFrameLogs = false;
 #ifndef PHYSICS_POC_MODE
 #define PHYSICS_POC_MODE 0
 #endif
+#ifndef SPEEDOMETER_HUD
+#define SPEEDOMETER_HUD 1
+#endif
 constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
+constexpr bool kEnableSpeedometerHud = (SPEEDOMETER_HUD != 0);
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
 // Car smooth-face GRDA base in VDP1 gouraud VRAM (ATTR.Gouraud = 0xe000 + offset).
@@ -1181,6 +1185,11 @@ static int RunPhysicsPocMode()
     SRL::VDP2::SetBackColor(HighColor::FromRGB555(0, 31, 31));
     SRL::VDP2::NBG3::SetPriority(SRL::VDP2::Priority::Layer7);
 
+    // Load this small VDP2 atlas before the 20-segment belt consumes HWR.
+    static SpeedometerSystem speedometer;
+    const bool speedometerReady = kEnableSpeedometerHud && speedometer.Initialize();
+    SRL::Debug::Print(0, 0, "SPD:%u", static_cast<unsigned>(speedometer.StatusCode()));
+
     BackgroundManager bgManager;
     bool bgReady = false;
     const char* skyPaths[] = {
@@ -1377,6 +1386,7 @@ static int RunPhysicsPocMode()
 
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
+    if (speedometerReady) hudSystem.SetSpeedometer(&speedometer);
 
     // Ride height: Tunables::kRideHeightOffset only (~−0.09).
     // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant.
@@ -1584,6 +1594,10 @@ int GameApp::Run()
     // Mantem configuracao padrao de prioridades da engine para evitar ocultar NBG3/HUD.
     SRL::VDP2::NBG3::SetPriority(SRL::VDP2::Priority::Layer7);
 
+    static SpeedometerSystem speedometer;
+    const bool speedometerReady = kEnableSpeedometerHud && speedometer.Initialize();
+    SRL::Debug::Print(0, 0, "SPD:%u", static_cast<unsigned>(speedometer.StatusCode()));
+
 
 
     const bool enableBg = true; // background VDP2 ativo para teste
@@ -1775,6 +1789,7 @@ int GameApp::Run()
 
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
+    if (speedometerReady) hudSystem.SetSpeedometer(&speedometer);
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
 
     // Ride height: Tunables::kRideHeightOffset only (~−0.09).

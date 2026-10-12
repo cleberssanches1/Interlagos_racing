@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="80" height="64" viewBox="0 0 80 64" shape-rendering="crispEdges">
+  <defs>
+    <g id="a" fill="#f6d34d"><path d="M4 1 H12 L10 4 H3 Z"/></g>
+    <g id="b" fill="#f6d34d"><path d="M12 3 L14 5 V14 L11 15 V6 Z"/></g>
+    <g id="c" fill="#f6d34d"><path d="M11 16 L14 17 V26 L12 28 L10 26 Z"/></g>
+    <g id="d" fill="#f6d34d"><path d="M3 27 H10 L12 30 H4 Z"/></g>
+    <g id="e" fill="#f6d34d"><path d="M1 17 L4 16 L3 26 L1 28 L0 26 Z"/></g>
+    <g id="f" fill="#f6d34d"><path d="M1 5 L3 3 L4 6 L3 15 L0 14 Z"/></g>
+    <g id="g" fill="#f6d34d"><path d="M3 14 H11 L10 17 H3 L1 16 Z"/></g>
+  </defs>
+  <g transform="translate(0 8) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#b"/><use xlink:href="#c"/><use xlink:href="#d"/><use xlink:href="#e"/><use xlink:href="#f"/></g>
+  <g transform="translate(16 8) scale(1 .72)"><use xlink:href="#b"/><use xlink:href="#c"/></g>
+  <g transform="translate(32 8) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#b"/><use xlink:href="#g"/><use xlink:href="#e"/><use xlink:href="#d"/></g>
+  <g transform="translate(48 8) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#b"/><use xlink:href="#g"/><use xlink:href="#c"/><use xlink:href="#d"/></g>
+  <g transform="translate(64 8) scale(1 .72)"><use xlink:href="#f"/><use xlink:href="#g"/><use xlink:href="#b"/><use xlink:href="#c"/></g>
+  <g transform="translate(0 40) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#f"/><use xlink:href="#g"/><use xlink:href="#c"/><use xlink:href="#d"/></g>
+  <g transform="translate(16 40) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#f"/><use xlink:href="#g"/><use xlink:href="#e"/><use xlink:href="#c"/><use xlink:href="#d"/></g>
+  <g transform="translate(32 40) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#b"/><use xlink:href="#c"/></g>
+  <g transform="translate(48 40) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#b"/><use xlink:href="#c"/><use xlink:href="#d"/><use xlink:href="#e"/><use xlink:href="#f"/><use xlink:href="#g"/></g>
+  <g transform="translate(64 40) scale(1 .72)"><use xlink:href="#a"/><use xlink:href="#b"/><use xlink:href="#c"/><use xlink:href="#d"/><use xlink:href="#f"/><use xlink:href="#g"/></g>
+</svg>

@@ -1464,6 +1464,13 @@ private:
                                    context_.modelOffset,
                                    camera.location,
                                    context_.carWorldPosition);
+        if (Game::CarSystem* car = ActiveCarSystem())
+        {
+            const auto drivetrain = car->BuildDrivetrainDebugSnapshot();
+            context_.hudSystem->UpdateDrivetrain(drivetrain.speedKmh,
+                                                drivetrain.engineRpm,
+                                                drivetrain.gearChar);
+        }
     }
 
     struct CarRenderRuntimeInputs

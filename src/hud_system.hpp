@@ -5,10 +5,18 @@
 #include <srl.hpp>
 
 #include "hud_stats.hpp"
+#include "speedometer_system.hpp"
 
 class HudSystem
 {
 public:
+    void SetSpeedometer(SpeedometerSystem* speedometer) { speedometer_ = speedometer; }
+
+    void UpdateDrivetrain(int16_t speedKmh, int16_t engineRpm, char gear)
+    {
+        if (speedometer_) speedometer_->Update(speedKmh, engineRpm, gear);
+    }
+
     // Initialize HUD baseline model statistics.
     void Initialize(uint32_t faceCount,
                     uint32_t vertexCount,
@@ -109,6 +117,7 @@ public:
     }
 
 private:
+    SpeedometerSystem* speedometer_ = nullptr;
     // SGL_MAX_POLYGONS is the per-frame SGL work-area limit. Track
     // initialization reserves 64 for non-track content, so this reports the
     // shared ceiling and the peak headroom for additional visible 3D objects.
