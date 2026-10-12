@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -345,6 +346,51 @@ constexpr int32_t ResolveWindowIncomingSegmentId(int32_t startSegmentId,
     const int32_t dir = (direction < 0) ? -1 : 1;
     return WrapSegmentIdToRange(
         startSegmentId + (dir * static_cast<int32_t>(windowCount)),
+        totalSegmentCount);
+}
+
+// Keep a small, already-renderable reserve behind the car.  It is not a
+// second allocation: it occupies ranks in the normal resident window.  When
+// the player performs a confirmed U-turn, these ranks become the first road
+// available in the new direction while the far tail converges incrementally.
+// Four segments is intentionally independent from the 20-segment desktop
+// profile and is clamped for smaller test/runtime windows.
+constexpr size_t kTurnaroundReserveSegments = 4u;
+
+constexpr size_t ResolveTurnaroundReserveSize(size_t windowCount) noexcept
+{
+    return (windowCount > 1u)
+        ? std::min(kTurnaroundReserveSegments, windowCount - 1u)
+        : 0u;
+}
+
+constexpr int32_t ResolveWindowStartFromCarSegment(int32_t carSegmentId,
+                                                    uint16_t totalSegmentCount,
+                                                    size_t windowCount,
+                                                    int8_t windowDirection) noexcept
+{
+    if (totalSegmentCount == 0u || windowCount == 0u) return -1;
+    const int32_t carId = WrapSegmentIdToRange(carSegmentId, totalSegmentCount);
+    if (carId <= 0) return -1;
+
+    const size_t reserve = ResolveTurnaroundReserveSize(windowCount);
+    const int32_t direction = (windowDirection < 0) ? -1 : 1;
+    return WrapSegmentIdToRange(
+        carId - (direction * static_cast<int32_t>(reserve)),
+        totalSegmentCount);
+}
+
+constexpr int32_t ResolveCarSegmentFromWindowStart(int32_t windowStartId,
+                                                    uint16_t totalSegmentCount,
+                                                    size_t windowCount,
+                                                    int8_t windowDirection) noexcept
+{
+    if (totalSegmentCount == 0u || windowCount == 0u) return -1;
+    const int32_t startId = WrapSegmentIdToRange(windowStartId, totalSegmentCount);
+    if (startId <= 0) return -1;
+    const int32_t direction = (windowDirection < 0) ? -1 : 1;
+    return WrapSegmentIdToRange(
+        startId + (direction * static_cast<int32_t>(ResolveTurnaroundReserveSize(windowCount))),
         totalSegmentCount);
 }
 

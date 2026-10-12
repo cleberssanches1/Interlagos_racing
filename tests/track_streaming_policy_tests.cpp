@@ -245,6 +245,50 @@ void TestRingReorientationWrapsAtLapBoundary(TestContext& ctx)
               287);
 }
 
+void TestTurnaroundReserveKeepsRoadBehindCarResident(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    constexpr uint16_t totalSegments = 290u;
+    constexpr size_t windowCount = 20u;
+    constexpr int32_t carId = 100;
+
+    const int32_t forwardStart = ResolveWindowStartFromCarSegment(
+        carId, totalSegments, windowCount, +1);
+    const std::vector<int32_t> forward = BuildWindowSegmentIds(
+        forwardStart, totalSegments, windowCount, +1);
+    EXPECT_EQ(ctx, forwardStart, 96);
+    EXPECT_EQ(ctx, forward[kTurnaroundReserveSegments], carId);
+    EXPECT_EQ(ctx, forward[kTurnaroundReserveSegments - 1u], carId - 1);
+    EXPECT_EQ(ctx, ResolveCarSegmentFromWindowStart(
+                       forwardStart, totalSegments, windowCount, +1), carId);
+
+    // Reorientation preserves the same resident slots.  The reverse road
+    // directly behind the car is therefore immediately drawable; only the
+    // distant tail still needs normal staged streaming.
+    WindowRingState state{};
+    state.startSegmentId = forwardStart;
+    state.headIndex = 0u;
+    state.direction = +1;
+    state.physicalStep = +1;
+    state = ReorientWindowRing(state, totalSegments, windowCount, -1);
+    const std::vector<int32_t> reoriented = BuildWindowSegmentIds(
+        state.startSegmentId, totalSegments, windowCount, state.direction);
+    EXPECT_EQ(ctx, reoriented[15u], carId);
+    EXPECT_EQ(ctx, reoriented[16u], carId - 1);
+    EXPECT_EQ(ctx, reoriented[19u], carId - 4);
+
+    const int32_t reverseTarget = ResolveWindowStartFromCarSegment(
+        carId, totalSegments, windowCount, -1);
+    EXPECT_EQ(ctx, reverseTarget, 104);
+    const std::vector<int32_t> reverse = BuildWindowSegmentIds(
+        reverseTarget, totalSegments, windowCount, -1);
+    EXPECT_EQ(ctx, reverse[kTurnaroundReserveSegments], carId);
+    EXPECT_EQ(ctx, reverse[kTurnaroundReserveSegments + 1u], carId - 1);
+    EXPECT_EQ(ctx, ResolveCarSegmentFromWindowStart(
+                       reverseTarget, totalSegments, windowCount, -1), carId);
+}
+
 void TestWindowWrapsAcrossLapBoundary(TestContext& ctx)
 {
     using namespace TrackStreamingPolicy;
@@ -662,6 +706,7 @@ int main()
         {"ConservativeAabbCameraRejection", &TestConservativeAabbCameraRejection},
         {"StagedSlideSeparatesPreparationFromCommit", &TestStagedSlideSeparatesPreparationFromCommit},
         {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
+        {"TurnaroundReserveKeepsRoadBehindCarResident", &TestTurnaroundReserveKeepsRoadBehindCarResident},
         {"WindowWrapsAcrossLapBoundary", &TestWindowWrapsAcrossLapBoundary},
         {"CollectRetiredSlotsForRemovedFamilies", &TestCollectRetiredSlotsForRemovedFamilies},
         {"CollectRetiredSlotsDeduplicatesAcrossLods", &TestCollectRetiredSlotsDeduplicatesAcrossLods},

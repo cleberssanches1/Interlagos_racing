@@ -496,20 +496,6 @@ static int32_t WrapDistanceForward(int32_t fromId, int32_t toId, uint16_t totalS
     return d;
 }
 
-static int32_t ResolveWindowStartFromCarSegment(int32_t carSegmentId,
-                                                uint16_t totalSegmentCount,
-                                                int8_t windowDirection)
-{
-    if (totalSegmentCount == 0) return -1;
-    const int32_t carId = WrapSegmentIdToRange(carSegmentId, totalSegmentCount);
-    if (carId <= 0) return -1;
-    const int32_t dir = (windowDirection < 0) ? -1 : 1;
-    // Keep the car on the 2nd rendered segment:
-    // dir +1 => [car-1, car, car+1...]
-    // dir -1 => [car+1, car, car-1...]
-    return WrapSegmentIdToRange(carId - dir, totalSegmentCount);
-}
-
 static bool BuildNormalizedFlatDirectionRaw(int32_t dxRaw,
                                             int32_t dzRaw,
                                             Vector3D& outDirection)
@@ -14135,7 +14121,8 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
     cameraDirectionReferenceValid_ = true;
 
     const int32_t desiredStartId =
-        ResolveWindowStartFromCarSegment(anchorId, totalSegmentCount_, desiredDirection);
+        TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+            anchorId, totalSegmentCount_, segmentRenderers_.size(), desiredDirection);
     if (desiredStartId <= 0) return;
     targetWindowStartId_ = desiredStartId;
     trackedCarSegmentId_ = anchorId;
@@ -14169,7 +14156,8 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     const size_t windowCount = segmentRenderers_.size();
     if (windowCount == 0) return false;
     const int32_t currentAnchorId =
-        WrapSegmentIdToRange(startId + (desiredDirection > 0 ? 1 : -1), totalSegmentCount_);
+        TrackStreamingPolicy::ResolveCarSegmentFromWindowStart(
+            startId, totalSegmentCount_, windowCount, desiredDirection);
     if (currentAnchorId <= 0) return false;
 
     auto scoreToId = [&](int32_t id) -> SRL::Math::Types::Fxp
@@ -14273,7 +14261,8 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     if (observedCarSegmentId_ > 0 && observedId > 0)
     {
         const int32_t observedStartId =
-            ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection);
+            TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+                observedId, totalSegmentCount_, segmentRenderers_.size(), desiredDirection);
         if (observedStartId > 0)
         {
             const int32_t observedForwardDistance = distanceAlongDirection(startId, observedStartId);
@@ -14322,7 +14311,8 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
         SetTrackedCarSegmentValid(true);
 
         const int32_t localStartId =
-            ResolveWindowStartFromCarSegment(localSegmentId, totalSegmentCount_, desiredDirection);
+            TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+                localSegmentId, totalSegmentCount_, segmentRenderers_.size(), desiredDirection);
         const int32_t forwardDistance = (localStartId > 0) ? distanceAlongDirection(startId, localStartId) : 0;
         if (localStartId > 0 && forwardDistance > 0)
         {
@@ -16858,7 +16848,8 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
     if (observedId <= 0) return;
     const int8_t desiredDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
     const int32_t desiredStartId =
-        ResolveWindowStartFromCarSegment(observedId, totalSegmentCount_, desiredDirection);
+        TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+            observedId, totalSegmentCount_, segmentRenderers_.size(), desiredDirection);
     if (desiredStartId <= 0) return;
 
     const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
