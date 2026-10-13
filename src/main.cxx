@@ -54,8 +54,12 @@ constexpr bool kVerboseFrameLogs = false;
 #ifndef SPEEDOMETER_HUD
 #define SPEEDOMETER_HUD 1
 #endif
+#ifndef MINIMAP_HUD
+#define MINIMAP_HUD 1
+#endif
 constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 constexpr bool kEnableSpeedometerHud = (SPEEDOMETER_HUD != 0);
+constexpr bool kEnableMinimapHud = (MINIMAP_HUD != 0);
 #define MLOG(...) do { if constexpr (kLog) { SRL::Debug::Print(__VA_ARGS__); } } while(0)
 
 // Car smooth-face GRDA base in VDP1 gouraud VRAM (ATTR.Gouraud = 0xe000 + offset).
@@ -1189,6 +1193,9 @@ static int RunPhysicsPocMode()
     static SpeedometerSystem speedometer;
     const bool speedometerReady = kEnableSpeedometerHud && speedometer.Initialize();
     SRL::Debug::Print(0, 0, "SPD:%u", static_cast<unsigned>(speedometer.StatusCode()));
+    static MinimapSystem minimap;
+    const bool minimapReady = kEnableMinimapHud && minimap.Initialize();
+    if (!minimapReady) SRL::VDP2::NBG1::ScrollDisable();
 
     BackgroundManager bgManager;
     bool bgReady = false;
@@ -1387,6 +1394,7 @@ static int RunPhysicsPocMode()
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
     if (speedometerReady) hudSystem.SetSpeedometer(&speedometer);
+    if (minimapReady) hudSystem.SetMinimap(&minimap);
 
     // Ride height: Tunables::kRideHeightOffset only (~−0.09).
     // 16-04 −0.0625 bury · 16-17 −0.125 float · mid plant.
@@ -1597,6 +1605,9 @@ int GameApp::Run()
     static SpeedometerSystem speedometer;
     const bool speedometerReady = kEnableSpeedometerHud && speedometer.Initialize();
     SRL::Debug::Print(0, 0, "SPD:%u", static_cast<unsigned>(speedometer.StatusCode()));
+    static MinimapSystem minimap;
+    const bool minimapReady = kEnableMinimapHud && minimap.Initialize();
+    if (!minimapReady) SRL::VDP2::NBG1::ScrollDisable();
 
 
 
@@ -1790,6 +1801,7 @@ int GameApp::Run()
     HudSystem hudSystem;
     hudSystem.Initialize(faceCount, vertexCount, meshCount, isSmoothMesh, modelCenter, minV, maxV);
     if (speedometerReady) hudSystem.SetSpeedometer(&speedometer);
+    if (minimapReady) hudSystem.SetMinimap(&minimap);
     TrackCollisionQueryFromSystem trackCollision(&trackSystem, &trackSegOffset);
 
     // Ride height: Tunables::kRideHeightOffset only (~−0.09).

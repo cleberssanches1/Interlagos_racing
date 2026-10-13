@@ -1,5 +1,5 @@
 0;Plane;shell.001,santander,rayban,IRR,hp_b,hpVermelho,aws
-1;roda3.005;
-2;roda3.003;
-3;roda3.004;
-4;roda3.001;
+1;roda3.004;roda.002,pneu
+2;roda3.001;roda.002,pneu
+3;roda3.002;roda.002,pneu
+4;roda3.006;roda.002,pneu

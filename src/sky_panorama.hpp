@@ -218,7 +218,9 @@ struct SkyPanorama
         SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(scaleX, scaleY);
         SRL::VDP2::NBG0::SetScale(skyScale);
         SRL::VDP2::NBG0::ScrollEnable();
+#if !defined(MINIMAP_HUD) || (MINIMAP_HUD == 0)
         SRL::VDP2::NBG1::ScrollDisable();
+#endif
 
         SRL::Debug::Print(0, 3, "SPN ok mw:%d sw:%d", mapWidthPx, scrollWrapWidthPx);
         (void)loadedPath;
@@ -259,7 +261,9 @@ struct SkyPanorama
         SRL::Math::Types::Vector2D skyScale = SRL::Math::Types::Vector2D(scaleX, scaleY);
         SRL::VDP2::NBG0::SetScale(skyScale);
         SRL::VDP2::NBG0::ScrollEnable();
+#if !defined(MINIMAP_HUD) || (MINIMAP_HUD == 0)
         SRL::VDP2::NBG1::ScrollDisable();
+#endif
         SRL::VDP2::NBG0::SetPosition(scroll);
     }
 

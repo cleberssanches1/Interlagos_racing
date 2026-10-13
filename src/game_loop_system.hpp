@@ -1460,6 +1460,7 @@ private:
     // HUD consumes the resolved camera snapshot and current world state.
     void UpdateHud(const CameraFrameState& camera)
     {
+        context_.hudSystem->UpdateMinimap(latestActiveSegmentId_, carYawDeg_);
         context_.hudSystem->Update(context_.cameraSystem->State(),
                                    context_.modelOffset,
                                    camera.location,

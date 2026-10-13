@@ -30,6 +30,7 @@ AUDIO_PROFILE ?= 1
 # make MASTER_FRAME_PHASE_TELEMETRY=0 to recover High Work RAM headroom.
 MASTER_FRAME_PHASE_TELEMETRY ?= 0
 SPEEDOMETER_HUD ?= 1
+MINIMAP_HUD ?= 1
 
 # Visible track residency. Override at build time, for example:
 # make TRACK_LOD0_SEGMENTS=3 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
@@ -55,6 +56,7 @@ endif
 SRL_CUSTOM_CCFLAGS += -DTRACK_LOD0_SEGMENTS=$(TRACK_LOD0_SEGMENTS) -DTRACK_LOD1_SEGMENTS=$(TRACK_LOD1_SEGMENTS) -DTRACK_LOD2_SEGMENTS=$(TRACK_LOD2_SEGMENTS)
 SRL_CUSTOM_CCFLAGS += -DMASTER_FRAME_PHASE_TELEMETRY=$(MASTER_FRAME_PHASE_TELEMETRY)
 SRL_CUSTOM_CCFLAGS += -DSPEEDOMETER_HUD=$(SPEEDOMETER_HUD)
+SRL_CUSTOM_CCFLAGS += -DMINIMAP_HUD=$(MINIMAP_HUD)
 
 # Disk name
 CD_NAME = Interlagos_racing
@@ -68,3 +70,12 @@ SOURCES += $(patsubst ./%,%,$(shell find src/ -name '*.cxx'))
 # Include shared makefile
 SDK_ROOT = ../../saturnringlib
 include $(SDK_ROOT)/shared.mk
+
+# Re-bake both map assets once per build. The game uses only MPILUT.BIN at
+# runtime; NumPy/ICP work stays on the host, never on either SH-2.
+.PHONY: minimap_assets
+minimap_assets: cd/data/TCOL.BIN cd/data/mpint.tga tools/generate_minimap_assets.py
+	python tools/generate_minimap_assets.py
+
+build: minimap_assets
+create_iso: minimap_assets

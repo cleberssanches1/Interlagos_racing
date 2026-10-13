@@ -5,12 +5,19 @@
 #include <srl.hpp>
 
 #include "hud_stats.hpp"
+#include "minimap_system.hpp"
 #include "speedometer_system.hpp"
 
 class HudSystem
 {
 public:
     void SetSpeedometer(SpeedometerSystem* speedometer) { speedometer_ = speedometer; }
+    void SetMinimap(MinimapSystem* minimap) { minimap_ = minimap; }
+
+    void UpdateMinimap(int32_t activeGroundSegmentId, int32_t carYawDeg)
+    {
+        if (minimap_) minimap_->UpdateSegment(activeGroundSegmentId, carYawDeg);
+    }
 
     void UpdateDrivetrain(int16_t speedKmh, int16_t engineRpm, char gear)
     {
@@ -118,6 +125,7 @@ public:
 
 private:
     SpeedometerSystem* speedometer_ = nullptr;
+    MinimapSystem* minimap_ = nullptr;
     // SGL_MAX_POLYGONS is the per-frame SGL work-area limit. Track
     // initialization reserves 64 for non-track content, so this reports the
     // shared ceiling and the peak headroom for additional visible 3D objects.
