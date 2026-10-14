@@ -1,5 +1,9 @@
 #pragma once
 
+#include <stdint.h>
+
+extern "C" uint32_t TakeLwrMallocFallbackCount(void);
+
 namespace std
 {
     void __throw_bad_array_new_length() __attribute__((weak));

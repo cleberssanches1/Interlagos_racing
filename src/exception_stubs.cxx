@@ -12,11 +12,21 @@ namespace std
 
 extern "C"
 {
+    static uint32_t g_lwrMallocFallbacks = 0;
+
+    uint32_t TakeLwrMallocFallbackCount(void)
+    {
+        const uint32_t count = g_lwrMallocFallbacks;
+        g_lwrMallocFallbacks = 0u;
+        return count;
+    }
+
     static void* AllocFromWorkRam(size_t size)
     {
         void* ptr = SRL::Memory::HighWorkRam::Malloc(size);
         if (ptr != nullptr) return ptr;
         // Fallback: keep application alive when HWR is saturated but LWR is still available.
+        g_lwrMallocFallbacks = g_lwrMallocFallbacks + 1u;
         return SRL::Memory::LowWorkRam::Malloc(size);
     }
 

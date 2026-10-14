@@ -5,6 +5,7 @@
 #include "track_wall_query_policy.hpp"
 #include "interfaces.hpp"
 #include "surface_classify.hpp"
+#include "exception_stubs.hpp"
 
 #include <algorithm>
 #include <array>
@@ -59,35 +60,167 @@ static LwrStageProbeAccum g_lwrStageAccum{};
 
 inline uint32_t LwrProbeCapture()
 {
-    return static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetReport().FreeSize);
+    // O(1) allocator counter. GetReport() scans every LWR block, and doing
+    // that around each stage makes the diagnostic itself slow down over time.
+    return static_cast<uint32_t>(SRL::Memory::LowWorkRam::GetOpStats().LiveBytes);
 }
 inline int32_t LwrProbeDelta(uint32_t before)
 {
-    return static_cast<int32_t>(LwrProbeCapture()) - static_cast<int32_t>(before);
+    // Preserve the existing sign: negative means the stage retained payload.
+    return static_cast<int32_t>(before) - static_cast<int32_t>(LwrProbeCapture());
 }
 } // namespace
 
-// Imprime o acumulado de probes do frame atual (chamar uma vez por frame).
-// Uso: adicionar TrackSystem::PrintLwrStageProbes() no game loop de debug.
-void TrackSystem::PrintLwrStageProbes()
+// Imprime o acumulado de probes; o game loop amostra a cada 60 frames.
+void TrackSystem::PrintLwrStageProbes() const
 {
-    SRL::Debug::Print(2, 9, "LWP rst:%d/%d bld:%d      ",
-                      static_cast<int>(g_lwrStageAccum.resetPrefetch),
-                      static_cast<int>(g_lwrStageAccum.resetBackBuf),
-                      static_cast<int>(g_lwrStageAccum.buildPrefetch));
+    using DebugTag = SRL::Memory::DebugTag;
+    static constexpr char kTagLabels[] = {
+        '?', 'i', 'g', 'a', 'v', 'h', 'c', 'p', 'l', 'x', 'b', 'r', 'f', 's'
+    };
+    static_assert(sizeof(kTagLabels) == static_cast<size_t>(DebugTag::Count));
+    static bool baselineValid = false;
+    static uint32_t baselineFree = 0u;
+    static uint32_t baselineUnaccounted = 0u;
+    static uint32_t baselineBlocks = 0u;
+    static uint32_t baselineTagBytes[static_cast<size_t>(DebugTag::Count)]{};
+    const auto tagKiB = [](DebugTag tag) -> uint32_t {
+        // The allocator maintains this counter on malloc/free. Unlike
+        // GetUsedBytesByTag(), it does not scan every block on the SH-2.
+        return static_cast<uint32_t>(
+            SRL::Memory::LowWorkRam::GetTagStats(tag).LiveBytes / 1024u);
+    };
+    const LowWorkCategoryBreakdown retained = CaptureLowWorkBreakdown();
+    const auto report = SRL::Memory::LowWorkRam::GetReport();
+    const uint32_t payload = static_cast<uint32_t>(
+        SRL::Memory::LowWorkRam::GetUsedPayloadBytes());
+    const uint32_t used = (report.TotalSize >= report.FreeSize)
+        ? static_cast<uint32_t>(report.TotalSize - report.FreeSize) : 0u;
+    const uint32_t overhead = (used > payload) ? (used - payload) : 0u;
+    const uint32_t unaccounted = (payload > retained.total)
+        ? (payload - retained.total) : 0u;
+    if (!baselineValid)
+    {
+        baselineFree = static_cast<uint32_t>(report.FreeSize);
+        baselineUnaccounted = unaccounted;
+        baselineBlocks = static_cast<uint32_t>(report.UsedBlocks);
+        for (size_t i = 0u; i < static_cast<size_t>(DebugTag::Count); ++i)
+        {
+            baselineTagBytes[i] = static_cast<uint32_t>(
+                SRL::Memory::LowWorkRam::GetTagStats(static_cast<DebugTag>(i)).LiveBytes);
+        }
+        baselineValid = true;
+    }
+    char growingTag = '-';
+    uint32_t growingBytes = 0u;
+    for (size_t i = 0u; i < static_cast<size_t>(DebugTag::Count); ++i)
+    {
+        const uint32_t now = static_cast<uint32_t>(
+            SRL::Memory::LowWorkRam::GetTagStats(static_cast<DebugTag>(i)).LiveBytes);
+        const uint32_t growth = (now > baselineTagBytes[i]) ? (now - baselineTagBytes[i]) : 0u;
+        if (growth > growingBytes)
+        {
+            growingBytes = growth;
+            growingTag = kTagLabels[i];
+        }
+    }
+    SRL::Debug::Print(2, 6, "LWG i:%u g:%u v:%u c:%u o:%u  ",
+                      static_cast<unsigned>(tagKiB(DebugTag::Init) + tagKiB(DebugTag::Unknown)),
+                      static_cast<unsigned>(tagKiB(DebugTag::Gameplay) + tagKiB(DebugTag::AutoLap)),
+                      static_cast<unsigned>(tagKiB(DebugTag::Background) + tagKiB(DebugTag::Hud)),
+                      static_cast<unsigned>(tagKiB(DebugTag::Car)),
+                      static_cast<unsigned>(tagKiB(DebugTag::Finish) + tagKiB(DebugTag::Sync)));
+    SRL::Debug::Print(2, 7, "LWT c:%u p:%u l:%u x:%u b:%u  ",
+                      static_cast<unsigned>(tagKiB(DebugTag::TrackCore)),
+                      static_cast<unsigned>(tagKiB(DebugTag::TrackPrepare)),
+                      static_cast<unsigned>(tagKiB(DebugTag::TrackLod)),
+                      static_cast<unsigned>(tagKiB(DebugTag::TrackTexture)),
+                      static_cast<unsigned>(tagKiB(DebugTag::TrackBackend)));
+    // DRV owns row 12 and MEM10 owns row 13. Keep this line visible.
+    SRL::Debug::Print(2, 8, "LWC r:%u s:%u f:%u t:%u d:%c+%u   ",
+                      static_cast<unsigned>(retained.renderers / 1024u),
+                      static_cast<unsigned>((retained.slotState + retained.workingSet) / 1024u),
+                      static_cast<unsigned>(retained.familyCache / 1024u),
+                      static_cast<unsigned>((retained.transient + retained.metadata) / 1024u),
+                      growingTag,
+                      static_cast<unsigned>(growingBytes / 1024u));
+    // Compact enough for SRL_DEBUG_MAX_PRINT_LENGTH=45, even near LWR exhaustion.
+    SRL::Debug::Print(2, 9, "LWA f%u h%u u%u b%u d%d/%d/%d  ",
+                      static_cast<unsigned>(report.FreeSize / 1024u),
+                      static_cast<unsigned>(overhead / 1024u),
+                      static_cast<unsigned>(unaccounted / 1024u),
+                      static_cast<unsigned>(report.UsedBlocks),
+                      static_cast<int>(static_cast<int32_t>(report.FreeSize / 1024u) -
+                                       static_cast<int32_t>(baselineFree / 1024u)),
+                      static_cast<int>(static_cast<int32_t>(unaccounted / 1024u) -
+                                       static_cast<int32_t>(baselineUnaccounted / 1024u)),
+                      static_cast<int>(static_cast<int32_t>(report.UsedBlocks) -
+                                       static_cast<int32_t>(baselineBlocks)));
     SRL::Debug::Print(2, 10, "LWP prp:%d cmt:%d mrg:%d hnd:%d  ",
                       static_cast<int>(g_lwrStageAccum.prepareSlide),
                       static_cast<int>(g_lwrStageAccum.commitSlide),
                       static_cast<int>(g_lwrStageAccum.mergeFamilies),
                       static_cast<int>(g_lwrStageAccum.buildHandleTable));
-    SRL::Debug::Print(2, 11, "LWP drw:%d efr:%d mnt:%d       ",
-                      static_cast<int>(g_lwrStageAccum.drawStage),
-                      static_cast<int>(g_lwrStageAccum.releaseEndFrame),
-                      static_cast<int>(g_lwrStageAccum.maintenanceTrim));
-    SRL::Debug::Print(2, 12, "LWP frs:%d vld:%d bfr:%d       ",
-                      static_cast<int>(g_lwrStageAccum.flushRetiredSlots),
-                      static_cast<int>(g_lwrStageAccum.validateWindow),
-                      static_cast<int>(g_lwrStageAccum.beginFrameOps));
+    // Header walk, not GetTagStats. LWG/LWT stay on the incremental counters.
+    // Letters follow DebugTag order: ? I G A B H C P L X K c F S.
+    // '!' means Header.Tag was outside DebugTag::Count.
+    static constexpr char kHeaderTagLabels[] = {
+        '?', 'I', 'G', 'A', 'B', 'H', 'C', 'P', 'L', 'X', 'K', 'c', 'F', 'S'
+    };
+    static_assert(sizeof(kHeaderTagLabels) == static_cast<size_t>(DebugTag::Count));
+    static bool headerBaselineValid = false;
+    static uint32_t headerBaselineTagBytes[static_cast<size_t>(DebugTag::Count)]{};
+    static uint32_t headerBaselineInvalidBytes = 0u;
+    constexpr size_t kSmallBlockMax = 160u;
+    const auto blockClass = SRL::Memory::LowWorkRam::CollectUsedBlockClass(kSmallBlockMax);
+    const auto heapCheck = SRL::Memory::LowWorkRam::Validate();
+    if (!headerBaselineValid)
+    {
+        for (size_t i = 0u; i < static_cast<size_t>(DebugTag::Count); ++i)
+        {
+            headerBaselineTagBytes[i] = static_cast<uint32_t>(blockClass.TagBytes[i]);
+        }
+        headerBaselineInvalidBytes = static_cast<uint32_t>(blockClass.InvalidBytes);
+        headerBaselineValid = true;
+    }
+    char headerTag = '-';
+    uint32_t headerGrowth = 0u;
+    for (size_t i = 0u; i < static_cast<size_t>(DebugTag::Count); ++i)
+    {
+        const uint32_t now = static_cast<uint32_t>(blockClass.TagBytes[i]);
+        const uint32_t growth = (now > headerBaselineTagBytes[i]) ? (now - headerBaselineTagBytes[i]) : 0u;
+        if (growth > headerGrowth)
+        {
+            headerGrowth = growth;
+            headerTag = kHeaderTagLabels[i];
+        }
+    }
+    const uint32_t invalidNow = static_cast<uint32_t>(blockClass.InvalidBytes);
+    const uint32_t invalidGrowth = (invalidNow > headerBaselineInvalidBytes)
+        ? (invalidNow - headerBaselineInvalidBytes) : 0u;
+    if (invalidGrowth > headerGrowth)
+    {
+        headerGrowth = invalidGrowth;
+        headerTag = '!';
+    }
+    const auto capU = [](uint32_t value, uint32_t limit) -> uint32_t {
+        return (value > limit) ? limit : value;
+    };
+    const uint32_t failedNow = static_cast<uint32_t>(
+        SRL::Memory::LowWorkRam::GetOpStats().FailedAllocCalls);
+    static uint32_t failedBaseline = 0u;
+    const uint32_t failedDelta = (failedNow > failedBaseline) ? (failedNow - failedBaseline) : 0u;
+    failedBaseline = failedNow;
+    // Row 11 replaces the second LWP line. Keep it inside the 45-char print cap.
+    SRL::Debug::Print(2, 11, "LWH n%u k%u i%u t%c+%u v%u f%u a%u ",
+                      static_cast<unsigned>(capU(static_cast<uint32_t>(blockClass.SmallBlocks), 99999u)),
+                      static_cast<unsigned>(capU(static_cast<uint32_t>(blockClass.SmallBytes / 1024u), 9999u)),
+                      static_cast<unsigned>(capU(static_cast<uint32_t>(blockClass.InvalidBytes / 1024u), 9999u)),
+                      headerTag,
+                      static_cast<unsigned>(capU(headerGrowth / 1024u, 9999u)),
+                      static_cast<unsigned>(capU(heapCheck.code, 9u)),
+                      static_cast<unsigned>(capU(TakeLwrMallocFallbackCount(), 999u)),
+                      static_cast<unsigned>(capU(failedDelta, 99u)));
     g_lwrStageAccum = LwrStageProbeAccum{};
 }
 
@@ -389,6 +522,10 @@ static constexpr bool kEnableRuntimeTextureCompaction = false;
 // Keep leak-isolation mode conservative: texture compaction during runtime
 // introduced visible corruption/stalls in long runs.
 static constexpr bool kEnableLeakIsolationTextureCompaction = false;
+// Video 223812: without any reclaim, trackTexUsed ratchets until soft-admit
+// paints solid colors and the belt collapses. Allow ONLY the hard-cap path
+// (trackTexUsed>=112 or V1 free==0) — not idle/pressure churn compaction.
+static constexpr bool kEnableHardCapTextureResidencyRebuild = true;
 // Prefetch can run safely in leak-isolation because it does not force texture
 // compaction/recycle. Keeping it enabled reduces synchronous SDR misses on slide.
 static constexpr bool kEnableLeakIsolationPrefetch = true;
@@ -9760,6 +9897,18 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
                                                    &incomingPrepared.lodState.faceFamilyIds);
     };
 
+    auto abandonIncomingAdmission = [&]()
+    {
+        rollbackAddedIncomingFamilies();
+        if (incomingPrepared.renderer)
+        {
+            slideScratchRenderer_ = std::move(incomingPrepared.renderer);
+        }
+        incomingPrepared.lodState.currentFaceSlots.clear();
+        incomingPrepared.lodState.faceRankOffsets.clear();
+        incomingPrepared.lodState.SetReady(false);
+    };
+
     // Prefer exact LOD for the tail rank; on VDP1 pressure flush retired slots
     // and retry, then fall back to the opposite band (32↔64) so the window
     // keeps sliding instead of freezing mid-track.
@@ -9787,6 +9936,14 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     bool incomingSoftAdmit = false;
     if (!incomingRebuilt)
     {
+        // At the VDP1 hard cap, refuse degraded mounts (223812 solid colors).
+        // The refusal is paired with a hard-cap residency rebuild in the same
+        // frame; restore the prepared renderer/family table before returning.
+        if (ShouldRefuseDegradedTextureAdmit())
+        {
+            abandonIncomingAdmission();
+            return false;
+        }
         // Degraded admit: mount geometry even with partial/missing textures so
         // the sliding window never freezes mid-track (prefer pop-in over stall).
         const uint32_t missingIncoming = CountMissingOrDeadRequiredFaceTextureSlots(
@@ -9811,6 +9968,11 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     else if (HasMissingRequiredFaceTextureSlots(incomingPrepared.lodState.currentFaceSlots,
                                                 &incomingPrepared.lodState.faceFamilyIds))
     {
+        if (ShouldRefuseDegradedTextureAdmit())
+        {
+            abandonIncomingAdmission();
+            return false;
+        }
         incomingSoftAdmit = true;
         if (beltSoftAdmitThisFrame_ < 255u) ++beltSoftAdmitThisFrame_;
         incomingPrepared.lodState.desiredLodIndex =
@@ -9940,10 +10102,11 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
     }
     if (slideScratchRenderer_)
     {
-        // O scratch volta a ser preenchido no proximo slide. Preserve as
-        // capacidades normais para nao fazer free/realloc por segmento; o
-        // proprio RecycleRuntimeState ainda reduz apenas outliers >2x o piso.
-        slideScratchRenderer_->RecycleRuntimeState();
+        // Preserve reusable capacity in normal play; when LWR is pressured,
+        // do not retain the outgoing segment's peak geometry in the ring.
+        const bool releaseOversized =
+            GetLowWorkRamFreeBytesSafe() <= kLowWorkRamSoftFloorBytes;
+        slideScratchRenderer_->RecycleRuntimeState(false, releaseOversized);
     }
 
     slot.id = nextId;
@@ -10274,6 +10437,18 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
                                                    &incomingPrepared.lodState.faceFamilyIds);
     };
 
+    auto abandonIncomingAdmission = [&]()
+    {
+        rollbackAddedIncomingFamilies();
+        if (incomingPrepared.renderer)
+        {
+            slideScratchRenderer_ = std::move(incomingPrepared.renderer);
+        }
+        incomingPrepared.lodState.currentFaceSlots.clear();
+        incomingPrepared.lodState.faceRankOffsets.clear();
+        incomingPrepared.lodState.SetReady(false);
+    };
+
     // Prefer exact LOD for the tail rank; on VDP1 pressure flush retired slots
     // and retry, then fall back to the opposite band (32↔64) so the window
     // keeps sliding instead of freezing mid-track.
@@ -10300,6 +10475,13 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
     }
     if (!incomingRebuilt)
     {
+        // At the VDP1 hard cap, refuse degraded mounts (223812). Stall the
+        // staged slide instead of publishing solid-color / -1 face slots.
+        if (ShouldRefuseDegradedTextureAdmit())
+        {
+            abandonIncomingAdmission();
+            return false;
+        }
         // Degraded admit: keep sliding with partial textures (pop-in > freeze).
         const uint32_t missingIncoming = CountMissingOrDeadRequiredFaceTextureSlots(
             incomingPrepared.lodState.currentFaceSlots,
@@ -10316,6 +10498,7 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         incomingPrepared.lodState.desiredLodIndex =
             ResolveSegmentLodIndexByRank(incomingLogicalRank);
         incomingRebuilt = true;
+        if (beltSoftAdmitThisFrame_ < 255u) ++beltSoftAdmitThisFrame_;
         QueuePendingStabilizedLodRank(incomingLogicalRank);
     }
 
@@ -10428,7 +10611,9 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     }
     if (slideScratchRenderer_)
     {
-        slideScratchRenderer_->RecycleRuntimeState();
+        const bool releaseOversized =
+            GetLowWorkRamFreeBytesSafe() <= kLowWorkRamSoftFloorBytes;
+        slideScratchRenderer_->RecycleRuntimeState(false, releaseOversized);
     }
 
     slot.id = slideBackBuffer_.incomingSegmentId;
@@ -10498,11 +10683,21 @@ bool TrackSystem::CommitStabilizedSlideBackBuffer()
     }
     UpdateDesiredStabilizedWindowLodTargets();
 
-    // Family consolidation can scan the entire resident window. Keep it out
-    // of the publication frame; RunPrefetchStage executes it alone later.
+    // Family consolidation scans the complete resident window. Prefer a later
+    // quiet frame; if movement never leaves one, service pending work only at
+    // the cooldown cadence (not on every commit) to keep the cache bounded.
     if (familyMergeCooldown_ == 0u)
     {
-        stagedFamilyMergePending_ = true;
+        if (stagedFamilyMergePending_)
+        {
+            MergeCurrentWindowFamilies();
+            stagedFamilyMergePending_ = false;
+            familyMergeCooldown_ = ResolveFamilyMergeCooldownFrames(FullTrackFamilyCacheReady());
+        }
+        else
+        {
+            stagedFamilyMergePending_ = true;
+        }
     }
     else
     {
@@ -11339,6 +11534,30 @@ bool TrackSystem::RebuildTrackTextureResidencyForWindow(bool forceStrongReset)
     }
     SetFamilyWorkingSetDirty(true);
     return true;
+}
+
+bool TrackSystem::ShouldRefuseDegradedTextureAdmit() const
+{
+    // Returning false aborts this slide before publication, leaving a quiet
+    // frame in which the matching hard-cap recovery can run. LWR/upload-failure
+    // checks had no paired remediation and could freeze the belt indefinitely.
+    if (TrackTextureHeapBaseValid())
+    {
+        const uint16_t texCount = SRL::VDP1::GetTextureCount();
+        if (texCount > trackTextureHeapBase_)
+        {
+            const uint16_t trackTexUsed =
+                static_cast<uint16_t>(texCount - trackTextureHeapBase_);
+            const size_t availableBytes = SRL::VDP1::GetAvailableMemory();
+            return TrackStreamingPolicy::ShouldRunHardCapTextureResidencyRebuild(
+                trackTexUsed,
+                availableBytes,
+                textureHeapCompactCooldown_ == 0u,
+                /*quietFrame*/true,
+                slideBackBuffer_.Ready());
+        }
+    }
+    return false;
 }
 
 bool TrackSystem::ShouldRecycleTrackTextureHeap() const
@@ -12237,6 +12456,13 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
     const bool criticalLowLowWork = lowFreeValid && lowFreeBytes <= kLowWorkRamHardFloorBytes;
     if (kEnableTrackRuntimeStabilization)
     {
+        // The track owns almost no HWR in this profile. Its permanent ~17 KiB
+        // free reading must not turn a *soft LWR* warning into an aggressive
+        // HWR trim on every frame. LWR still has its own soft/hard thresholds.
+        const bool trackSoftLowMemory = !trackOwnsLittleHwr && softLowMemory;
+        const bool trackCriticalLowMemory = !trackOwnsLittleHwr && criticalLowMemory;
+        const MemoryPressureLevel trackPressure = trackOwnsLittleHwr
+            ? MemoryPressureLevel::Normal : pressure;
         if (freeValid && freeBytes > kLodRecoveryFreeBytes)
         {
             lodDegradeCooldown_ = 0;
@@ -12257,9 +12483,9 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             }
             return;
         }
-        if (pressure != MemoryPressureLevel::Normal)
+        if (trackPressure != MemoryPressureLevel::Normal)
         {
-            if (pressure == MemoryPressureLevel::Critical &&
+            if (trackPressure == MemoryPressureLevel::Critical &&
                 (slidePrefetchSegmentId_ >= 0 || !slidePrefetchFamilyIds_.empty()))
             {
                 const int32_t upcomingId = (segmentRenderers_.empty() || totalSegmentCount_ == 0)
@@ -12286,15 +12512,15 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
         const bool shouldTrimForWindowReuse =
             windowSlid &&
             workRamTrimCooldown_ == 0 &&
-            !criticalLowMemory &&
+            !trackCriticalLowMemory &&
             !criticalLowLowWork &&
-            (softLowMemory || softLowLowWork);
-        if ((criticalLowMemory || softLowMemory || criticalLowLowWork || softLowLowWork || shouldTrimForWindowReuse) &&
+            (trackSoftLowMemory || softLowLowWork);
+        if ((trackCriticalLowMemory || trackSoftLowMemory || criticalLowLowWork || softLowLowWork || shouldTrimForWindowReuse) &&
             workRamTrimCooldown_ == 0)
         {
             ranTrimThisCall = true;
             const bool aggressiveTrim =
-                criticalLowMemory || softLowMemory || criticalLowLowWork;
+                trackCriticalLowMemory || trackSoftLowMemory || criticalLowLowWork;
             LWR_PROBE_BEGIN();
             TrimRuntimeBlobScratchCaches(aggressiveTrim || softLowLowWork || shouldTrimForWindowReuse);
             int32_t freeDelta = 0;
@@ -12314,7 +12540,7 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             const bool ineffectiveAggressiveTrim =
                 trimmed &&
                 freeDelta <= 0 &&
-                !criticalLowMemory &&
+                !trackCriticalLowMemory &&
                 !criticalLowLowWork;
             workRamTrimCooldown_ =
                 ineffectiveAggressiveTrim ? 12u :
@@ -12325,12 +12551,12 @@ void TrackSystem::RunWorkRamMaintenance(bool windowSlid)
             --workRamTrimCooldown_;
         }
 
-        if (pressure == MemoryPressureLevel::Normal)
+        if (trackPressure == MemoryPressureLevel::Normal)
         {
             ReacquireWorkRamEmergencyReserve();
         }
 
-        if (catastrophicLowMemory &&
+        if (catastrophicLowMemory && !trackOwnsLittleHwr &&
             workRamWindowRebuildCooldown_ == 0 &&
             !windowSlid &&
             runtimeSlidesThisFrame_ == 0u &&
@@ -18020,7 +18246,9 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
 {
     const bool leakIsolationCompactionEnabled =
         kEnableTrackLeakIsolationFixed64Pipeline && kEnableLeakIsolationTextureCompaction;
-    if (kEnableTrackLeakIsolationFixed64Pipeline && !leakIsolationCompactionEnabled)
+    if (kEnableTrackLeakIsolationFixed64Pipeline &&
+        !leakIsolationCompactionEnabled &&
+        !kEnableHardCapTextureResidencyRebuild)
     {
         (void)windowSlid;
         return;
@@ -18029,14 +18257,22 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
     {
         return;
     }
-    if (!kEnableRuntimeTextureCompaction && !leakIsolationCompactionEnabled)
+    const bool hardCapRebuildOnly =
+        !kEnableRuntimeTextureCompaction &&
+        !leakIsolationCompactionEnabled &&
+        kEnableHardCapTextureResidencyRebuild;
+    if (!kEnableRuntimeTextureCompaction &&
+        !leakIsolationCompactionEnabled &&
+        !kEnableHardCapTextureResidencyRebuild)
     {
         return;
     }
 
     const bool idleWindowFrame = !windowSlid && runtimeSlidesThisFrame_ == 0u;
     const bool compactByIdleSlack =
-        idleWindowFrame && ShouldCompactTrackTextureHeapInStabilization();
+        !hardCapRebuildOnly &&
+        idleWindowFrame &&
+        ShouldCompactTrackTextureHeapInStabilization();
 
     const uint16_t texCount = SRL::VDP1::GetTextureCount();
     const uint16_t trackTexUsed =
@@ -18079,17 +18315,22 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
         ? static_cast<uint32_t>(baselineLwr - lwrFreeNow32)
         : 0u;
     const bool compactByHardCap =
-        textureHeapCompactCooldown_ == 0u &&
         TrackTextureHeapBaseValid() &&
-        !slideBackBuffer_.Ready() &&
-        trackTexUsed >= 112u;
+        TrackStreamingPolicy::ShouldRunHardCapTextureResidencyRebuild(
+            trackTexUsed,
+            SRL::VDP1::GetAvailableMemory(),
+            textureHeapCompactCooldown_ == 0u,
+            idleWindowFrame,
+            slideBackBuffer_.Ready());
     const bool compactByRetireBacklog =
+        !hardCapRebuildOnly &&
         textureHeapCompactCooldown_ == 0u &&
         TrackTextureHeapBaseValid() &&
         !slideBackBuffer_.Ready() &&
         trackTexUsed >= 64u &&
         retiredSlots >= 32u;
     const bool compactByLowWorkEmergency =
+        !hardCapRebuildOnly &&
         textureHeapCompactCooldown_ == 0u &&
         TrackTextureHeapBaseValid() &&
         !slideBackBuffer_.Ready() &&
@@ -18106,7 +18347,8 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
          (lwrValidNow && lwrDrop >= static_cast<uint32_t>(16u * 1024u)));
 
     bool compactByPressure = false;
-    if (!compactByIdleSlack &&
+    if (!hardCapRebuildOnly &&
+        !compactByIdleSlack &&
         !idleWindowFrame &&
         textureHeapCompactCooldown_ == 0u &&
         TrackTextureHeapBaseValid() &&
@@ -18130,6 +18372,7 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
     }
 
     const bool compactByBaselineDrop =
+        !hardCapRebuildOnly &&
         kEnableTrackCompactByBaselineDrop &&
         textureHeapCompactCooldown_ == 0u &&
         TrackTextureHeapBaseValid() &&
@@ -18139,7 +18382,8 @@ void TrackSystem::RunTextureCompactionStage(bool windowSlid)
         lwrDrop >= static_cast<uint32_t>(kLowWorkCompactDropBytes);
 
     bool compactByStaleResidency = false;
-    if (!compactByIdleSlack &&
+    if (!hardCapRebuildOnly &&
+        !compactByIdleSlack &&
         !compactByBaselineDrop &&
         textureHeapCompactCooldown_ == 0u &&
         TrackTextureHeapBaseValid() &&
@@ -18286,6 +18530,7 @@ void TrackSystem::RunPrefetchStage(bool windowSlid)
         sh2MasterPrefetchTicksThisFrame_ = 0u;
         return;
     }
+    const uint16_t prefetchTicksStart = Sh2FrtProfiler::Now();
     if (kEnableStagedSlidePipeline &&
         kEnableTrackRuntimeStabilization &&
         (windowSlid || runtimeSlidesThisFrame_ != 0u || slideBackBuffer_.Ready() ||
@@ -18296,7 +18541,8 @@ void TrackSystem::RunPrefetchStage(bool windowSlid)
         sh2MasterPrefetchTicksThisFrame_ = 0u;
         return;
     }
-    const uint16_t prefetchTicksStart = Sh2FrtProfiler::Now();
+    // Family consolidation scans the active window. Service it only on a
+    // later quiet frame, never on the frame that publishes a new segment.
     if (kEnableStagedSlidePipeline && stagedFamilyMergePending_)
     {
         MergeCurrentWindowFamilies();

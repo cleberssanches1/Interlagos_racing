@@ -44,9 +44,8 @@ TRACK_LWR_STAGE_TRACE ?= 1
 # make TRACK_LOD0_SEGMENTS=3 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
 # lod_0: detailed GEO + 64x64; lod_1: lighter GEO + 64x64;
 # lod_2: lighter GEO + 32x32. Their sum is the visible window size.
-# A/B 2026-10-07 stabilization: 5/6/8 left LWR+VDP1 at 0 free and flickered.
-# Keep 3/4/5 (12 segs) while BG/walls stabilize; restore 5/6/8 later.
 # := prevents stale shell env from forcing 0/10/10.
+# Keep the project LOD window as configured (do not change for resource A/B).
 TRACK_LOD0_SEGMENTS := 0
 TRACK_LOD1_SEGMENTS := 20
 TRACK_LOD2_SEGMENTS := 0

@@ -74,6 +74,20 @@ constexpr StagedSlideAction ResolveStagedSlideAction(int32_t backlog,
     return StagedSlideAction::PreparePrefetch;
 }
 
+// Keep the hard-cap admission guard and its maintenance stage on the same
+// predicate. The full-window residency rebuild is allowed only on a quiet
+// frame, after its cooldown, and when no staged slide is awaiting publication.
+constexpr bool ShouldRunHardCapTextureResidencyRebuild(uint16_t trackSlotsUsed,
+                                                       size_t vdp1BytesAvailable,
+                                                       bool cooldownReady,
+                                                       bool quietFrame,
+                                                       bool slideBackBufferReady) noexcept
+{
+    if (!cooldownReady || !quietFrame || slideBackBufferReady) return false;
+    return trackSlotsUsed >= 112u ||
+           (trackSlotsUsed >= 64u && vdp1BytesAvailable == 0u);
+}
+
 // Conservative draw-only rejection.  Streaming/residency is intentionally
 // independent: a segment is rejected only when its complete XZ AABB lies
 // behind an expanded camera plane.  Using the AABB support point instead of

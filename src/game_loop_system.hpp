@@ -652,7 +652,10 @@ private:
         static uint8_t stageTraceCooldown = 0u;
         if (stageTraceCooldown == 0u)
         {
-            TrackSystem::PrintLwrStageProbes();
+            if (context_.trackSystem && context_.TrackSystemReady())
+            {
+                context_.trackSystem->PrintLwrStageProbes();
+            }
             stageTraceCooldown = 60u;
         }
         else

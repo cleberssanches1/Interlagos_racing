@@ -717,6 +717,19 @@ void TestStagedSlideSeparatesPreparationFromCommit(TestContext& ctx)
                          StagedSlideAction::CommitSlide);
 }
 
+void TestHardCapTextureRebuildRequiresMatchingSafeWindow(TestContext& ctx)
+{
+    using namespace TrackStreamingPolicy;
+
+    EXPECT_TRUE(ctx, !ShouldRunHardCapTextureResidencyRebuild(111u, 1u, true, true, false));
+    EXPECT_TRUE(ctx, ShouldRunHardCapTextureResidencyRebuild(112u, 1024u, true, true, false));
+    EXPECT_TRUE(ctx, !ShouldRunHardCapTextureResidencyRebuild(112u, 1024u, false, true, false));
+    EXPECT_TRUE(ctx, !ShouldRunHardCapTextureResidencyRebuild(112u, 1024u, true, false, false));
+    EXPECT_TRUE(ctx, !ShouldRunHardCapTextureResidencyRebuild(112u, 1024u, true, true, true));
+    EXPECT_TRUE(ctx, !ShouldRunHardCapTextureResidencyRebuild(64u, 1u, true, true, false));
+    EXPECT_TRUE(ctx, ShouldRunHardCapTextureResidencyRebuild(64u, 0u, true, true, false));
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -736,6 +749,7 @@ int main()
         {"DriveableSegmentBridgeSkipsSceneryHole", &TestDriveableSegmentBridgeSkipsSceneryHole},
         {"ConservativeAabbCameraRejection", &TestConservativeAabbCameraRejection},
         {"StagedSlideSeparatesPreparationFromCommit", &TestStagedSlideSeparatesPreparationFromCommit},
+        {"HardCapTextureRebuildRequiresMatchingSafeWindow", &TestHardCapTextureRebuildRequiresMatchingSafeWindow},
         {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
         {"TurnaroundReserveKeepsRoadBehindCarResident", &TestTurnaroundReserveKeepsRoadBehindCarResident},
         {"WindowRetreatRecyclesTailInBothOrientations", &TestWindowRetreatRecyclesTailInBothOrientations},

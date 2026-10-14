@@ -1691,9 +1691,10 @@ public:
     }
 
     // Release CPU-side buffers so streamed windows do not accumulate peak sizes.
-    // compact=false (default): keeps all vector capacities intact for immediate reuse.
-    // compact=true: aggressively shrinks all vectors after a permanent release.
-    void RecycleRuntimeState(bool compact = false)
+    // compact=false keeps normal capacities for reuse. releaseOversized drops
+    // excess capacity when an outgoing segment is evicted under LWR pressure.
+    // compact=true aggressively shrinks buffers after a permanent release.
+    void RecycleRuntimeState(bool compact = false, bool releaseOversized = false)
     {
         if (trackObj_) { delete trackObj_; trackObj_ = nullptr; }
         componentMode_ = false;
@@ -1706,11 +1707,12 @@ public:
         meshCenters_.clear();
         meshBytes_.clear();
         meshMap_.clear();
-        if (componentVertCapacityFloor_ > 0u && componentVerts_.capacity() < componentVertCapacityFloor_)
+        if (!releaseOversized && componentVertCapacityFloor_ > 0u &&
+            componentVerts_.capacity() < componentVertCapacityFloor_)
         {
             componentVerts_.reserve(componentVertCapacityFloor_);
         }
-        if (componentFaceCapacityFloor_ > 0u)
+        if (!releaseOversized && componentFaceCapacityFloor_ > 0u)
         {
             if (componentFaces_.capacity() < componentFaceCapacityFloor_)
             {
@@ -1728,7 +1730,20 @@ public:
         // If component vectors grew far beyond the floor (outlier segment), compact
         // them back to the floor now. This is a one-time cost paid when the outlier
         // segment is evicted; normal segments stay at or below 2× floor and skip this.
-        if (componentFaceCapacityFloor_ > 0u)
+        if (releaseOversized)
+        {
+            // The old ring member is already inactive. Release its peak
+            // capacity without allocating a replacement in a pressured heap.
+            if (componentFaces_.capacity() > componentFaceCapacityFloor_)
+                ComponentFaceVector{}.swap(componentFaces_);
+            if (componentAttrs_.capacity() > componentFaceCapacityFloor_)
+                ComponentAttrVector{}.swap(componentAttrs_);
+            if (componentLights_.capacity() > componentFaceCapacityFloor_)
+                ComponentLightVector{}.swap(componentLights_);
+            if (componentVerts_.capacity() > componentVertCapacityFloor_)
+                ComponentVertVector{}.swap(componentVerts_);
+        }
+        else if (componentFaceCapacityFloor_ > 0u)
         {
             const size_t faceFloor = static_cast<size_t>(componentFaceCapacityFloor_);
             if (componentFaces_.capacity() > faceFloor * 2u)
@@ -1738,7 +1753,7 @@ public:
                 { ComponentLightVector tmp; tmp.reserve(faceFloor); componentLights_.swap(tmp); }
             }
         }
-        if (componentVertCapacityFloor_ > 0u)
+        if (!releaseOversized && componentVertCapacityFloor_ > 0u)
         {
             const size_t vertFloor = static_cast<size_t>(componentVertCapacityFloor_);
             if (componentVerts_.capacity() > vertFloor * 2u)

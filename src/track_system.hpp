@@ -298,7 +298,7 @@ public:
     // Re-anchor track texture heap base after loading non-track assets (e.g. car).
     void RebaseTrackTextureHeapBase();
 #if TRACK_LWR_STAGE_TRACE
-    static void PrintLwrStageProbes();
+    void PrintLwrStageProbes() const;
 #endif
 
 private:
@@ -769,6 +769,9 @@ private:
     bool RebuildTrackTextureResidencyForWindow(bool forceStrongReset = false);
     bool ShouldRecycleTrackTextureHeap() const;
     bool ShouldCompactTrackTextureHeapInStabilization() const;
+    // True only when a quiet-frame VDP1 hard-cap residency rebuild can recover
+    // before degraded/soft-admit would mount incomplete textures.
+    bool ShouldRefuseDegradedTextureAdmit() const;
     void RecycleTrackTextureHeap();
     uint32_t EstimateWorkRamRetainedBytes() const;
     uint32_t EstimateLowWorkRamRetainedBytes() const;
