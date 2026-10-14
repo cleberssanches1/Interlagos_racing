@@ -19,6 +19,9 @@
 #ifndef TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK
 #define TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK 0
 #endif
+#ifndef TRACK_FAILURE_TELEMETRY
+#define TRACK_FAILURE_TELEMETRY 0
+#endif
 
 #if TRACK_ENABLE_HOST_SEGMENTS_MAP_FALLBACK
 #include <errno.h>
@@ -34,7 +37,7 @@ extern "C" uint32_t SRL_AppGetVblankCounter();
 // Cada linha mostra o delta de bytes livres de LWR antes/apÃ³s a funÃ§Ã£o.
 // delta negativo = a funÃ§Ã£o consumiu LWR neste frame.
 // ============================================================================
-#ifdef TRACK_LWR_STAGE_TRACE
+#if TRACK_LWR_STAGE_TRACE
 namespace {
 struct LwrStageProbeAccum
 {
@@ -7006,6 +7009,49 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
     return false;
 }
 
+void TrackSystem::LogTailSoftAdmissionTelemetry(int32_t segmentId,
+                                                uint32_t missingFaceSlots,
+                                                uint8_t requestedLod,
+                                                uint8_t admittedLod) const
+{
+#if TRACK_FAILURE_TELEMETRY
+    // This path runs only after target-LOD retry and fallback both failed.
+    // Keep expensive pool queries and extra HUD writes out of normal frames.
+    const auto high = SRL::Memory::HighWorkRam::GetReport();
+    const auto low = SRL::Memory::LowWorkRam::GetReport();
+    const auto cart = SRL::Memory::CartRam::GetReport();
+    const size_t vdp1Free = SRL::VDP1::GetAvailableMemory();
+    const uint16_t textureCount = SRL::VDP1::GetTextureCount();
+
+    // Keep this event on its own VDP2 debug rows: the regular driver/FPS
+    // overlay reuses plane 1 rows 11-14 and used to hide the useful details.
+    SRL::Debug::Print(2, 16, "PKG soft id:%d miss:%u lod:%u>%u          ",
+                      segmentId,
+                      static_cast<unsigned>(missingFaceSlots),
+                      static_cast<unsigned>(requestedLod),
+                      static_cast<unsigned>(admittedLod));
+    SRL::Debug::Print(2, 17, "TX mf:%u df:%u uf:%u om:%u              ",
+                      static_cast<unsigned>(beltMissFamilyThisFrame_),
+                      static_cast<unsigned>(beltDecodeFailThisFrame_),
+                      static_cast<unsigned>(beltUploadFailThisFrame_),
+                      static_cast<unsigned>(beltOwnedMismatchThisFrame_));
+    SRL::Debug::Print(2, 18, "RAM H:%u L:%u C:%u V:%u                 ",
+                      static_cast<unsigned>(high.FreeSize / 1024u),
+                      static_cast<unsigned>(low.FreeSize / 1024u),
+                      static_cast<unsigned>(cart.FreeSize / 1024u),
+                      static_cast<unsigned>(vdp1Free / 1024u));
+    SRL::Debug::Print(2, 19, "BLK H:%u L:%u TEX:%u                    ",
+                      static_cast<unsigned>(SRL::Memory::HighWorkRam::GetLargestFreeBlockSize() / 1024u),
+                      static_cast<unsigned>(SRL::Memory::LowWorkRam::GetLargestFreeBlockSize() / 1024u),
+                      static_cast<unsigned>(textureCount));
+#else
+    (void)segmentId;
+    (void)missingFaceSlots;
+    (void)requestedLod;
+    (void)admittedLod;
+#endif
+}
+
 bool TrackSystem::PreloadFullTrackFamilyLodCache()
 {
     // Keep the three logical design-LOD indexes resident in slots [1..3].
@@ -9746,9 +9792,10 @@ bool TrackSystem::ExecuteDeterministicStabilizedSlide(size_t dropIdx,
         const uint32_t missingIncoming = CountMissingOrDeadRequiredFaceTextureSlots(
             incomingPrepared.lodState.currentFaceSlots,
             &incomingPrepared.lodState.faceFamilyIds);
-        SRL::Debug::Print(1, 11, "PKG tail soft id:%d ms:%u",
-                          nextId,
-                          static_cast<unsigned>(missingIncoming));
+        LogTailSoftAdmissionTelemetry(nextId,
+                                      missingIncoming,
+                                      incomingPrepared.lodState.currentLodIndex,
+                                      kTrackLod32Index);
         (void)RebuildSegmentFaceSlotsForLod(incomingPrepared,
                                             kTrackLod32Index,
                                             seg1FamilySlots_,
@@ -10257,9 +10304,10 @@ bool TrackSystem::PrepareStabilizedSlideBackBuffer(size_t dropIdx,
         const uint32_t missingIncoming = CountMissingOrDeadRequiredFaceTextureSlots(
             incomingPrepared.lodState.currentFaceSlots,
             &incomingPrepared.lodState.faceFamilyIds);
-        SRL::Debug::Print(1, 11, "PKG tail soft id:%d ms:%u",
-                          nextId,
-                          static_cast<unsigned>(missingIncoming));
+        LogTailSoftAdmissionTelemetry(nextId,
+                                      missingIncoming,
+                                      incomingPrepared.lodState.currentLodIndex,
+                                      kTrackLod32Index);
         (void)RebuildSegmentFaceSlotsForLod(incomingPrepared,
                                             kTrackLod32Index,
                                             seg1FamilySlots_,
@@ -19166,6 +19214,39 @@ void TrackSystem::PresentSh2UsageOverlay()
 
 void TrackSystem::RunEndFrameResourceMaintenance()
 {
+#if TRACK_FAILURE_TELEMETRY
+    // A whole-window face-slot scan is intentionally not run every frame.
+    // When LWR is low, sample it once per 60 frames to tell whether texture
+    // bindings are actually disappearing before the track visibly collapses.
+    {
+        static uint8_t missingScanCooldown = 0u;
+        if (missingScanCooldown == 0u)
+        {
+            missingScanCooldown = 60u;
+            const auto lwr = SRL::Memory::LowWorkRam::GetReport();
+            if (lwr.FreeSize <= (48u * 1024u))
+            {
+                uint32_t missingFaceSlots = 0u;
+                for (size_t si = 0; si < segmentRenderers_.size(); ++si)
+                {
+                    const SegmentRenderEntry& entry = segmentRenderers_[si];
+                    missingFaceSlots += CountMissingOrDeadRequiredFaceTextureSlots(
+                        entry.lodState.currentFaceSlots,
+                        &entry.lodState.faceFamilyIds);
+                }
+                SRL::Debug::Print(2, 15, "TXMISS f:%u L:%u B:%u q:%u              ",
+                                  static_cast<unsigned>(missingFaceSlots),
+                                  static_cast<unsigned>(lwr.FreeSize / 1024u),
+                                  static_cast<unsigned>(SRL::Memory::LowWorkRam::GetLargestFreeBlockSize() / 1024u),
+                                  static_cast<unsigned>(CountReusableTrackTextureSlots()));
+            }
+        }
+        else
+        {
+            --missingScanCooldown;
+        }
+    }
+#endif
     if constexpr (kEnableBeltTelemetryOverlay)
     {
         // Count missing required face slots across the active window (pre-release).

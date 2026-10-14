@@ -646,6 +646,20 @@ private:
               typename TOverlay = LowWorkOverlayStorage>
     void UpdateLowWorkFreeOverlayEnabled()
     {
+#if TRACK_LWR_STAGE_TRACE
+        // The detailed allocator overlay is intentionally off. Sample the
+        // fixed stage counters independently at a low HUD cadence instead.
+        static uint8_t stageTraceCooldown = 0u;
+        if (stageTraceCooldown == 0u)
+        {
+            TrackSystem::PrintLwrStageProbes();
+            stageTraceCooldown = 60u;
+        }
+        else
+        {
+            --stageTraceCooldown;
+        }
+#endif
         if constexpr (!tEnabled)
         {
             return;
@@ -667,10 +681,6 @@ private:
             }
             lowWorkFreeOverlayCooldownFrames_ = kLowWorkFreeOverlayCadenceFrames;
             TOverlay& overlay = lowWorkOverlay_;
-
-#ifdef TRACK_LWR_STAGE_TRACE
-            TrackSystem::PrintLwrStageProbes();
-#endif
 
             GameLoopMemoryPresentationDomain::PresentCapturedLowWorkOverlayByMode(
                 kEnableLowWorkFreeOverlayFull,

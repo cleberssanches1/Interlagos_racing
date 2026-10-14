@@ -8,6 +8,10 @@
 #include <utility>
 #include <vector>
 
+#ifndef TRACK_LWR_STAGE_TRACE
+#define TRACK_LWR_STAGE_TRACE 0
+#endif
+
 #define DOXYGEN 1
 #include <srl.hpp>
 #undef DOXYGEN
@@ -293,7 +297,7 @@ public:
     bool RuntimeStatsLogsEnabled() const { return runtimeDiagnostics_.RuntimeStatsLogsEnabled(); }
     // Re-anchor track texture heap base after loading non-track assets (e.g. car).
     void RebaseTrackTextureHeapBase();
-#ifdef TRACK_LWR_STAGE_TRACE
+#if TRACK_LWR_STAGE_TRACE
     static void PrintLwrStageProbes();
 #endif
 
@@ -640,6 +644,10 @@ private:
                                        uint8_t lodIndex,
                                        FamilySlotVector& familySlots,
                                        bool bypassUploadBudget = false);
+    void LogTailSoftAdmissionTelemetry(int32_t segmentId,
+                                       uint32_t missingFaceSlots,
+                                       uint8_t requestedLod,
+                                       uint8_t admittedLod) const;
     // Rebuild one batch face slot table using the first logical rank carried by that batch.
     bool RebuildSegmentFaceSlotsForBaseRank(SegmentRenderEntry& entry,
                                             size_t baseRank,

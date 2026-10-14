@@ -62,9 +62,10 @@ public:
 
         if (!enableRuntimeStatsLogs) return;
 
-        const int32_t hwrFree = SRL::Memory::CartRam::GetFreeSpace();
-        const int32_t hwrTotal = 4 * 1024 * 1024;
-        const int32_t hwrUsed  = hwrTotal - hwrFree;
+        const auto cartReport = SRL::Memory::CartRam::GetReport();
+        const int32_t cartFree = static_cast<int32_t>(cartReport.FreeSize);
+        const int32_t cartTotal = static_cast<int32_t>(cartReport.TotalSize);
+        const int32_t cartUsed  = cartTotal - cartFree;
         const size_t vdp1HeapUsed = SRL::VDP1::GetUsedMemory();
         const size_t vdp1HeapFree = SRL::VDP1::GetAvailableMemory();
         const size_t vdp1HeapTotal = vdp1HeapUsed + vdp1HeapFree;
@@ -102,14 +103,14 @@ public:
         const uint32_t vdp1Free = (kVdp1FrameBudgetBytes > vdp1Used) ? (kVdp1FrameBudgetBytes - vdp1Used) : 0;
         const uint32_t vdp1Pct = (kVdp1FrameBudgetBytes > 0) ? static_cast<uint32_t>((vdp1Used * 100u) / kVdp1FrameBudgetBytes) : 0;
         const uint32_t peakPct = (kVdp1FrameBudgetBytes > 0) ? static_cast<uint32_t>((peakVdp1Used_ * 100u) / kVdp1FrameBudgetBytes) : 0;
-        const int32_t hwrPct10 = (hwrTotal > 0) ? (hwrUsed * 1000 / hwrTotal) : 0;
+        const int32_t cartPct10 = (cartTotal > 0) ? (cartUsed * 1000 / cartTotal) : 0;
 
         if (logCar)
         {
             SRL::Debug::Print(0, 24, "Car faces:%u verts:%u", (unsigned)faceCount, (unsigned)vertexCount);
         }
-        if (logTrack) SRL::Debug::Print(0, 25, "HWR used:%d free:%d", hwrUsed, hwrFree);
-        if (logTrack) SRL::Debug::Print(0, 26, "HWR pct:%d.%d%%", hwrPct10 / 10, hwrPct10 % 10);
+        if (logTrack) SRL::Debug::Print(0, 25, "Cart used:%d free:%d", cartUsed, cartFree);
+        if (logTrack) SRL::Debug::Print(0, 26, "Cart pct:%d.%d%%", cartPct10 / 10, cartPct10 % 10);
         if (logTrack)
         {
             SRL::Debug::Print(0, 27, "VDP1 faces N:%u A:%u", (unsigned)submittedFacesNow, (unsigned)avgFaces);
@@ -198,22 +199,16 @@ private:
         polygonPeakFaces_ = 0u;
     }
 
-    // Values are used/free KiB. VDP1 represents only its usable texture heap:
-    // the preceding command-table reservation is deliberately excluded. VDP2
-    // includes the fixed NBG3/ASCII reservation as used memory.
+    // Values are free KiB. VDP1 excludes its preceding command-table
+    // reservation; VDP2 sums the four physical banks used by this project.
     static void PresentMemoryBudgetOverlay()
     {
         const auto highWorkRam = SRL::Memory::HighWorkRam::GetReport();
         const auto lowWorkRam = SRL::Memory::LowWorkRam::GetReport();
+        const auto cartRam = SRL::Memory::CartRam::GetReport();
 
         const size_t highFree = highWorkRam.FreeSize;
-        const size_t highUsed = (highWorkRam.TotalSize >= highFree)
-            ? (highWorkRam.TotalSize - highFree)
-            : 0u;
         const size_t lowFree = lowWorkRam.FreeSize;
-        const size_t lowUsed = (lowWorkRam.TotalSize >= lowFree)
-            ? (lowWorkRam.TotalSize - lowFree)
-            : 0u;
 
         constexpr size_t kVdp1TextureCapacity =
             static_cast<size_t>(SRL::VDP1::UserAreaEnd - (SpriteVRAM + CGADDRESS));
@@ -223,27 +218,23 @@ private:
             : ((vdp1ReportedFree <= kVdp1TextureCapacity)
                 ? vdp1ReportedFree
                 : kVdp1TextureCapacity);
-        const size_t vdp1Used = kVdp1TextureCapacity - vdp1Free;
-
         const size_t vdp2Free =
             SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::A0) +
             SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::A1) +
             SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::B0) +
             SRL::VDP2::VRAM::GetAvailable(SRL::VDP2::VramBank::B1);
-        constexpr size_t kVdp2PhysicalCapacity = 512u * 1024u;
-        const size_t vdp2Used = (vdp2Free <= kVdp2PhysicalCapacity)
-            ? (kVdp2PhysicalCapacity - vdp2Free)
-            : 0u;
-
-        SRL::Debug::Print(0, 18, "MEM10 H:%u/%u L:%u/%u V1:%u/%u V2:%u/%u",
-                          static_cast<unsigned>(highUsed / 1024u),
+        // Rows 13-14 are not used by the track or frame-timing overlays.
+        // Values are free KiB; largest blocks help distinguish exhaustion from
+        // allocator fragmentation. This sampler runs only once per 10 seconds.
+        SRL::Debug::Print(0, 13, "MEM10 H:%u L:%u C:%u V1:%u V2:%u          ",
                           static_cast<unsigned>(highFree / 1024u),
-                          static_cast<unsigned>(lowUsed / 1024u),
                           static_cast<unsigned>(lowFree / 1024u),
-                          static_cast<unsigned>(vdp1Used / 1024u),
+                          static_cast<unsigned>(cartRam.FreeSize / 1024u),
                           static_cast<unsigned>(vdp1Free / 1024u),
-                          static_cast<unsigned>(vdp2Used / 1024u),
                           static_cast<unsigned>(vdp2Free / 1024u));
+        SRL::Debug::Print(0, 14, "BLK10 H:%u L:%u               ",
+                          static_cast<unsigned>(SRL::Memory::HighWorkRam::GetLargestFreeBlockSize() / 1024u),
+                          static_cast<unsigned>(SRL::Memory::LowWorkRam::GetLargestFreeBlockSize() / 1024u));
     }
 
     HudStats stats_{};
