@@ -32,7 +32,7 @@ MASTER_FRAME_PHASE_TELEMETRY ?= 0
 SPEEDOMETER_HUD ?= 1
 # Temporarily disable the minimap while exposing runtime diagnostics.
 # Re-enable with: make MINIMAP_HUD=1
-MINIMAP_HUD ?= 0
+MINIMAP_HUD ?= 1
 # Memory-pool readout sampled every ten seconds; set to 0 for release builds.
 PHYS_ENABLE_MEM10_OVERLAY ?= 1
 # Emit detailed memory/texture state only when a tail segment is soft-admitted.

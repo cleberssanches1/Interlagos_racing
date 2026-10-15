@@ -6,16 +6,16 @@
     4
   ],
   "segmentCount": 290,
-  "binaryBytes": 940510,
-  "sourceFaceCount": 20232,
-  "selectedGroundFaceCountBeforeSimplification": 16745,
-  "groundFaceCount": 16741,
-  "wallFaceCount": 6151,
+  "binaryBytes": 939262,
+  "sourceFaceCount": 20222,
+  "selectedGroundFaceCountBeforeSimplification": 16744,
+  "groundFaceCount": 16740,
+  "wallFaceCount": 6121,
   "collisionVertexCount": 22107,
   "duplicateGroundFacesRemoved": 4,
   "coplanarTrianglePairsMerged": 0,
   "groundFacesSavedByConservativeSimplification": 4,
-  "duplicateWallsRemoved": 282,
+  "duplicateWallsRemoved": 277,
   "laneWallsRemoved": 0,
   "midLaneWallsRemoved": 0,
   "midCorridorWallsRemoved": 0,
@@ -26,7 +26,7 @@
   "crossingWallsRemoved": 123,
   "protectedLongitudinalWalls": 214,
   "driveableWallsSkipped": 0,
-  "verticalFacesEmitted": 3407,
+  "verticalFacesEmitted": 3399,
   "freeFacesSkipped": 1688,
   "wallEdgeKeepBandRaw": 6291456,
   "wallMidLaneClearRaw": 3145728,
@@ -74,8 +74,8 @@
     23,
     38,
     51,
-    61,
-    62
+    62,
+    64
   ],
   "groundSelection": "LOD0 floor-like faces whose family surfaceTypeId is 1, 2 or 3",
   "wallSelection": "every non-floor LOD0 face except freeTraverseStems; floors never block; driveable contour stays off; preserve verified longitudinal physical walls near the asphalt centroid; drop true racing-line chords, Y-dead walls, and transverse seam caps",
@@ -151,10 +151,10 @@
     },
     {
       "id": 4,
-      "sourceFaces": 65,
+      "sourceFaces": 57,
       "vertices": 60,
       "groundFaces": 44,
-      "walls": 46,
+      "walls": 16,
       "duplicatesRemoved": 0,
       "coplanarPairsMerged": 0,
       "laneWallsRemoved": 0,
@@ -167,7 +167,7 @@
       "crossingWallsRemoved": 0,
       "protectedLongitudinalWalls": 4,
       "driveableWallsSkipped": 0,
-      "verticalFacesEmitted": 20
+      "verticalFacesEmitted": 12
     },
     {
       "id": 5,
@@ -211,7 +211,7 @@
     },
     {
       "id": 7,
-      "sourceFaces": 57,
+      "sourceFaces": 56,
       "vertices": 60,
       "groundFaces": 44,
       "walls": 20,
@@ -231,7 +231,7 @@
     },
     {
       "id": 8,
-      "sourceFaces": 65,
+      "sourceFaces": 64,
       "vertices": 60,
       "groundFaces": 44,
       "walls": 28,
@@ -271,9 +271,9 @@
     },
     {
       "id": 10,
-      "sourceFaces": 62,
+      "sourceFaces": 61,
       "vertices": 60,
-      "groundFaces": 45,
+      "groundFaces": 44,
       "walls": 30,
       "duplicatesRemoved": 0,
       "coplanarPairsMerged": 0,
@@ -3171,7 +3171,7 @@
     },
     {
       "id": 155,
-      "sourceFaces": 58,
+      "sourceFaces": 59,
       "vertices": 75,
       "groundFaces": 56,
       "walls": 2,
