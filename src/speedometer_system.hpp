@@ -375,9 +375,15 @@ private:
 
     void InstallTimeAttackPalette()
     {
-        // VDP2 special color calculation mode 3 uses CRAM bit 15 per pixel.
-        // A second 16-color bank keeps the speedometer fully opaque while
-        // only the timing-strip background colors blend with the game.
+        // Transparencia real: o VDP2 mistura a cor do NBG2 com a imagem que
+        // esta atras dele. Nao e um quadriculado (mesh), nem apenas o indice
+        // zero da textura deixando o pixel totalmente vazado.
+        //
+        // No modo especial 3, o bit 15 de cada entrada da CRAM decide se
+        // aquele pixel participa da mistura. Reservamos outra paleta para
+        // que as faixas do Time Attack possam usar esse bit sem trocar as
+        // cores da arte original do velocimetro. O pattern name de 1 word
+        // comporta somente quatro bits para o numero da paleta (0..15).
         const int altId = SRL::CRAM::GetFreeBank(SRL::CRAM::TextureColorMode::Paletted16);
         if (altId < 0 || altId >= 16) return; // 1-word PND has four palette bits.
         SRL::CRAM::SetBankUsedState(static_cast<uint16_t>(altId),
@@ -395,15 +401,28 @@ private:
             const uint8_t blue = static_cast<uint8_t>((color >> 10u) & 31u);
             const bool darkStrip = red < 7u && green < 8u && blue < 15u;
             const bool redStrip = red > 18u && green < 7u && blue < 9u;
+            // Na paleta alternativa, apenas os tons de fundo das faixas
+            // recebem o bit de mistura. Letras e numeros ficam sem ele.
             tinted[i] = static_cast<uint16_t>((color & 0x7fffu) |
                 ((darkStrip || redStrip) ? 0x8000u : 0u));
+            // A paleta original continua com as mesmas cores RGB, mas sem
+            // solicitar mistura por pixel. O velocimetro usa essa paleta.
             original[i] = static_cast<uint16_t>(color & 0x7fffu);
         }
+        // TimeSource() coloca este ID nos bits 15:12 dos pattern names das
+        // faixas e numeros; PutPanel() preserva a paleta original.
         timeAttackPalette_ = static_cast<uint8_t>(altId);
+        // SetOpacity habilita color calculation para todo o plano NBG2 e
+        // define o peso: 0.58 = 58% faixa + 42% cena de fundo.
         SRL::VDP2::NBG2::SetOpacity(SRL::Math::Fxp(0.58));
+        // SFCCMD em 25F800EE: bits 5:4 = 11 selecionam o modo especial 3
+        // apenas para NBG2; os demais planos mantem seus proprios modos.
         volatile uint16_t* const specialColorMode =
             reinterpret_cast<volatile uint16_t*>(0x25f800eeu);
         *specialColorMode = static_cast<uint16_t>((*specialColorMode & ~0x0030u) | 0x0030u);
+        // Observado no jogo: o velocimetro tambem ficou translucido. Logo,
+        // a separacao pretendida por paleta ainda nao esta comprovada na
+        // execucao; nao tratar a opacidade dele como garantia deste metodo.
     }
 
     uint16_t Source(uint8_t x, uint8_t y) const
