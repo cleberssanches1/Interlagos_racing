@@ -82,6 +82,7 @@
 #include "simulation_scheduler_telemetry_assembler.hpp"
 #include "track_render_transition_ops.hpp"
 #include "track_system.hpp"
+#include "time_attack_hud.hpp"
 
 extern "C" uint32_t SRL_AppGetVblankCounter();
 
@@ -109,7 +110,8 @@ public:
             kAutoLapEnabledOnStartBit = 1u << 14,
             kAllowAutoLapInputToggleBit = 1u << 15,
             kRenderCarShadowModelBit = 1u << 16,
-            kSbaLoadedBit = 1u << 17
+            kSbaLoadedBit = 1u << 17,
+            kTimeAttackEnabledBit = 1u << 18
         };
 
         bool* cartOkFlag = nullptr;
@@ -144,6 +146,9 @@ public:
         Game::ICarPhysics* carPhysics = nullptr;
         Game::IGameplayTick* gameplayTick = nullptr;
         Game::IAudioEvents* audioEvents = nullptr;
+        uint32_t* timeAttackRecordCourseTicks = nullptr;
+        uint16_t timeAttackStartSegment = 13u;
+        uint8_t timeAttackLaps = 3u;
 
         bool HasFlag(uint32_t bit) const { return (flags & bit) != 0u; }
         void SetFlag(uint32_t bit, bool enabled)
@@ -188,6 +193,8 @@ public:
         void SetRenderCarShadowModel(bool enabled) { SetFlag(kRenderCarShadowModelBit, enabled); }
         bool SbaLoaded() const { return HasFlag(kSbaLoadedBit); }
         void SetSbaLoaded(bool enabled) { SetFlag(kSbaLoadedBit, enabled); }
+        bool TimeAttackEnabled() const { return HasFlag(kTimeAttackEnabledBit); }
+        void SetTimeAttackEnabled(bool enabled) { SetFlag(kTimeAttackEnabledBit, enabled); }
     };
 
     explicit GameLoopSystem(const Context& context)
@@ -209,6 +216,15 @@ public:
 #if MASTER_FRAME_PHASE_TELEMETRY
         Sh2FrtProfiler::EnsureInitialized();
 #endif
+        if (context_.TimeAttackEnabled())
+        {
+            TimeAttack::Config config{};
+            config.laps = context_.timeAttackLaps;
+            config.startSegment = context_.timeAttackStartSegment;
+            config.segmentCount = context_.trackSystem->SegmentCount();
+            timeAttack_.Start(config, SRL_AppGetVblankCounter(),
+                              context_.timeAttackRecordCourseTicks);
+        }
         while (1)
         {
 #if MASTER_FRAME_PHASE_TELEMETRY
@@ -232,6 +248,7 @@ public:
 #endif
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
+            if (context_.TimeAttackEnabled()) timeAttack_.Tick(SRL_AppGetVblankCounter());
 #if MASTER_FRAME_PHASE_TELEMETRY
             const FramePhaseTelemetry::Stamp inputTicksEnd = CaptureMasterPhaseStamp();
             masterFrameTiming_.inputTicks =
@@ -948,6 +965,9 @@ private:
         carYawDeg_ = yawDeg;
         SyncCameraHeadingFromCar();
         latestActiveSegmentId_ = frameState.activeSegmentId;
+        if (context_.TimeAttackEnabled())
+            timeAttack_.Observe(frameState.frameId, frameState.activeSegmentId,
+                                SRL_AppGetVblankCounter());
         if (Game::CarSystem* car = ActiveCarSystem())
         {
             car->ApplySimulationFrameState(frameState);
@@ -1090,7 +1110,8 @@ private:
         if (car)
         {
             Game::CarSystem::GameplayInputSnapshot gameplayInput{};
-            if (!AutoLapTestEnabled())
+            if (!AutoLapTestEnabled() &&
+                (!context_.TimeAttackEnabled() || !timeAttack_.BlocksControls()))
             {
                 gameplayInput.SetAccelerateHeld(input.bHeld);
                 gameplayInput.SetBrakeHeld(input.cHeld);
@@ -1932,6 +1953,8 @@ private:
             Sh2FrtProfiler::Elapsed(finishPrepTicksStart.frt, finishHudTicksStart.frt);
 #endif
         PresentFrameHudAndTelemetry(framePresentation, trackTelemetryView);
+        if (context_.TimeAttackEnabled() && (frameCounter_ % 6u == 0u))
+            context_.hudSystem->PresentTimeAttack(timeAttack_, SRL_AppGetVblankCounter());
 #if MASTER_FRAME_PHASE_TELEMETRY
         const FramePhaseTelemetry::Stamp finishHudTicksEnd = CaptureMasterPhaseStamp();
         masterFrameTiming_.hudTicks = SaturatingAddTicks(
@@ -1983,6 +2006,10 @@ private:
         const GameLoopRuntime::TrackRenderTelemetryViewPacket& trackTelemetryView)
     {
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Finish);
+        // NBG3 diagnostic text would cover the NBG2 bitmap timing panels.
+        // Keep diagnostics available if the optional image atlas failed.
+        if (context_.TimeAttackEnabled() && context_.hudSystem->HasTimeAttackImage())
+            return;
         const bool allowOptionalHudTelemetry =
             !Game::MemoryBudgetRuntimeBridge::ShouldAvoidHudOptionalTelemetry();
         context_.hudSystem->PresentPeriodicFrameStats(frameCounter_,
@@ -3172,6 +3199,7 @@ private:
     using SimulationRuntimeState = Game::SimulationRuntimeState;
 
     Context context_{};
+    TimeAttack::Session timeAttack_{};
     SRL::Input::Digital pad_{0};
     CameraRig::OrbitState orbitState_{};    
     int32_t carYawDeg_ = 0;

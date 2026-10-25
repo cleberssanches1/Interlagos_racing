@@ -23,6 +23,7 @@
 #include "application_state.hpp"
 #include "background_manager.hpp"
 #include "game_loop_system.hpp"
+#include "game_menu_screen.hpp"
 #include "track_system.hpp"
 
 #include <array>
@@ -57,6 +58,15 @@ constexpr bool kVerboseFrameLogs = false;
 #ifndef MINIMAP_HUD
 #define MINIMAP_HUD 1
 #endif
+#ifndef GAME_MENU_ENABLED
+#define GAME_MENU_ENABLED 1
+#endif
+#ifndef TIME_ATTACK_LAPS
+#define TIME_ATTACK_LAPS 3
+#endif
+static_assert(TIME_ATTACK_LAPS >= 1 && TIME_ATTACK_LAPS <= TimeAttack::kMaxLaps,
+              "TIME_ATTACK_LAPS must be in 1..12");
+static uint32_t g_timeAttackRecordCourseTicks = 0u; // RAM only; no backup write yet.
 constexpr bool kPhysicsPocMode = (PHYSICS_POC_MODE != 0);
 constexpr bool kEnableSpeedometerHud = (SPEEDOMETER_HUD != 0);
 constexpr bool kEnableMinimapHud = (MINIMAP_HUD != 0);
@@ -1134,7 +1144,7 @@ private:
     bool spawnInitialized_ = false;
 };
 
-static int RunPhysicsPocMode()
+static int RunPhysicsPocMode(const GameMenu::Selection& selection)
 {
     // Test mode fixed to Track + Car to avoid accidental A/B scenario lock.
     const bool renderTrack = true;
@@ -1191,7 +1201,8 @@ static int RunPhysicsPocMode()
 
     // Load this small VDP2 atlas before the 20-segment belt consumes HWR.
     static SpeedometerSystem speedometer;
-    const bool speedometerReady = kEnableSpeedometerHud && speedometer.Initialize();
+    const bool speedometerReady = kEnableSpeedometerHud &&
+        speedometer.Initialize(selection.mode->id == GameMenu::Mode::TimeAttack);
     SRL::Debug::Print(0, 0, "SPD:%u", static_cast<unsigned>(speedometer.StatusCode()));
     static MinimapSystem minimap;
     const bool minimapReady = kEnableMinimapHud && minimap.Initialize();
@@ -1220,12 +1231,8 @@ static int RunPhysicsPocMode()
     cameraSystem.SetChaseResponsePreset(CameraSystem::ChaseResponsePreset::Rigid);
     cameraSystem.SetChaseNearFollowDistance(320);
 
-    const char* carPaths[] = {
-        "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
-        "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
-        "CAR1.NYA;1", "CAR1.NYA",
-        "car1.nya;1", "car1.nya"
-    };
+    const char* const* carPaths = selection.car->paths;
+    const size_t carPathCount = selection.car->pathCount;
     // Keep the car in Cart RAM before loading the 20-segment track window.
     // HWR is the tight pool at boot; Cart RAM still has ample headroom.
     constexpr bool kPocUseWramCar = false;
@@ -1234,7 +1241,7 @@ static int RunPhysicsPocMode()
     if (renderCar)
     {
         carPipe = LoadCarPipeline(carPaths,
-                                  sizeof(carPaths) / sizeof(carPaths[0]),
+                                  carPathCount,
                                   kPocUseWramCar,
                                   kCarGouraudOffset);
     }
@@ -1283,7 +1290,7 @@ static int RunPhysicsPocMode()
     {
         // Retry a failed early car load after the track is ready.
         carPipe = LoadCarPipeline(carPaths,
-                                  sizeof(carPaths) / sizeof(carPaths[0]),
+                                  carPathCount,
                                   kPocUseWramCar,
                                   kCarGouraudOffset);
         carPtr = carPipe.ActiveModel();
@@ -1441,6 +1448,13 @@ static int RunPhysicsPocMode()
                                                                static_cast<Game::ICarPhysics*>(&carPhysics),
                                                                static_cast<Game::IGameplayTick*>(&gameplayTick),
                                                                static_cast<Game::IAudioEvents*>(&audioEvents));
+    if (selection.mode->id == GameMenu::Mode::TimeAttack)
+    {
+        loopContext.timeAttackLaps = TIME_ATTACK_LAPS;
+        loopContext.timeAttackStartSegment = selection.track->startLineSegmentId;
+        loopContext.timeAttackRecordCourseTicks = &g_timeAttackRecordCourseTicks;
+        loopContext.SetTimeAttackEnabled(trackSystemReady);
+    }
     MLOG(1, 7, "POC SH2 trk:%u sim:%u lock:%u cpr:%u",
          static_cast<unsigned>(kPocEnableTrackSlave ? 1u : 0u),
          static_cast<unsigned>(kPocEnableSlaveSimulation ? 1u : 0u),
@@ -1484,9 +1498,14 @@ int GameApp::Run()
         PrintBootRam(0, "RAM boot");
     }
 
+    GameMenu::Selection selection{};
+#if GAME_MENU_ENABLED
+    selection = GameMenu::Run();
+#endif
+
     if constexpr (kPhysicsPocMode)
     {
-        return RunPhysicsPocMode();
+        return RunPhysicsPocMode(selection);
     }
 
     const bool logCar = kCarLogs;
@@ -1534,12 +1553,8 @@ int GameApp::Run()
     const bool renderAxes = false; // desliga eixos de debug
 
         // Carrega carro na DRAM do cart (somente se renderCar estiver ativo)
-    const char* carPaths[] = {
-        "CD/DATA/CAR1.NYA;1", "CD/DATA/CAR1.NYA",
-        "DATA/CAR1.NYA;1", "DATA/CAR1.NYA",
-        "CAR1.NYA;1", "CAR1.NYA",
-        "car1.nya;1", "car1.nya"
-    };
+    const char* const* carPaths = selection.car->paths;
+    const size_t carPathCount = selection.car->pathCount;
     // Keep an independent WRAM copy of CAR1.NYA to isolate car rendering from
     // track Cart RAM streaming activity.
     const bool useCartCopyPipeline = true; // cart + WRAM copy
@@ -1547,7 +1562,7 @@ int GameApp::Run()
     CarPipeline carPipe{};
     if (renderCar && !loadCarAfterTrack)
     {
-        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths)/sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
+        carPipe = LoadCarPipeline(carPaths, carPathCount, useCartCopyPipeline, kCarGouraudOffset);
     }
 
     ModelObject* carPtr = carPipe.ActiveModel();
@@ -1603,7 +1618,8 @@ int GameApp::Run()
     SRL::VDP2::NBG3::SetPriority(SRL::VDP2::Priority::Layer7);
 
     static SpeedometerSystem speedometer;
-    const bool speedometerReady = kEnableSpeedometerHud && speedometer.Initialize();
+    const bool speedometerReady = kEnableSpeedometerHud &&
+        speedometer.Initialize(selection.mode->id == GameMenu::Mode::TimeAttack);
     SRL::Debug::Print(0, 0, "SPD:%u", static_cast<unsigned>(speedometer.StatusCode()));
     static MinimapSystem minimap;
     const bool minimapReady = kEnableMinimapHud && minimap.Initialize();
@@ -1714,7 +1730,7 @@ int GameApp::Run()
 
         AppState::Set(AppState::Stage::CarLoad, 1);
         SRL::Cd::ChangeDir((const char*)0);
-        carPipe = LoadCarPipeline(carPaths, sizeof(carPaths) / sizeof(carPaths[0]), useCartCopyPipeline, kCarGouraudOffset);
+        carPipe = LoadCarPipeline(carPaths, carPathCount, useCartCopyPipeline, kCarGouraudOffset);
         carPtr = carPipe.ActiveModel();
         carValid = carPipe.Loaded();
         SyncLoadedCarState(carPtr, carValid, logCar, carWasSmooth, isSmoothMesh, faceCount, vertexCount, meshCount);
@@ -1847,12 +1863,19 @@ int GameApp::Run()
                                                                renderPipeline,
                                                                hudSystem,
                                                                enableRuntimeSimulation,
-                                                               true,
-                                                               true,
+                                                               selection.mode->id != GameMenu::Mode::TimeAttack,
+                                                               selection.mode->id != GameMenu::Mode::TimeAttack,
                                                                static_cast<Game::ITrackCollisionQuery*>(&trackCollision),
                                                                static_cast<Game::ICarPhysics*>(&carPhysics),
                                                                static_cast<Game::IGameplayTick*>(&gameplayTick),
                                                                static_cast<Game::IAudioEvents*>(&audioEvents));
+    if (selection.mode->id == GameMenu::Mode::TimeAttack)
+    {
+        loopContext.timeAttackLaps = TIME_ATTACK_LAPS;
+        loopContext.timeAttackStartSegment = selection.track->startLineSegmentId;
+        loopContext.timeAttackRecordCourseTicks = &g_timeAttackRecordCourseTicks;
+        loopContext.SetTimeAttackEnabled(trackSystemReady);
+    }
 
     GameLoopSystem gameLoop(loopContext);
     AppState::Set(AppState::Stage::LoopStart, 0);

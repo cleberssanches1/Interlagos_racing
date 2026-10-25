@@ -383,7 +383,9 @@ static char g_tgaLastName[64] = "none";
 static uint32_t g_smapBytes = 0;
 static char g_smapSig[24] = "none";
 static char g_smapHead[48] = "none";
-static Segment1TextureJson g_seg1MapCache{};
+// This fixed 33 KiB catalog is metadata, not a hot render buffer. Keeping it
+// in HWR .bss consumed the last track-heap margin once the timing HUD grew.
+static Segment1TextureJson* g_seg1MapCache = nullptr;
 static bool g_seg1MapCacheValid = false;
 static uint32_t g_packedAssetCacheEntryBytesLwr = 0;
 static RdrBuildScratch g_rdrBuildScratch{};
@@ -6279,7 +6281,7 @@ static bool LoadPackedAssetEntryToBlob(PackedAssetCache& cache, const char* entr
 bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
 {
     ReleaseSeg1TgaCatalog();
-    g_seg1MapCache = {};
+    *g_seg1MapCache = {};
     g_seg1MapCacheValid = false;
     ResetSeg1TgaPreloadDebugState(seg1TgaPreloadCount_,
                                   seg1TgaAttemptCount_,
@@ -6338,8 +6340,8 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
             (void)loadNameToCart(renMap.entries[i].targetName);
         }
         std::vector<char> smapText{};
-        g_seg1MapCache = {};
-        g_seg1MapCacheValid = LoadSeg1TextureJsonFromSmapCd(smapText, g_seg1MapCache);
+        *g_seg1MapCache = {};
+        g_seg1MapCacheValid = LoadSeg1TextureJsonFromSmapCd(smapText, *g_seg1MapCache);
         if (g_seg1MapCacheValid) UpdateSeg1SmapDebugSnapshot(smapText, false);
         return FinalizeSeg1TgaPreloadCatalog(seg1TgaCatalog_, seg1TgaPreloadCount_);
     }
@@ -6367,7 +6369,7 @@ bool TrackSystem::PreloadTgaCatalogFromSegmentsMap()
 
     char variantNames[1024][64]{};
     const size_t variantCount = CollectAllVariantTextureNames(jsonText.data(), variantNames, 1024);
-    g_seg1MapCacheValid = ParseSegment1TextureJson(jsonText.data(), g_seg1MapCache);
+    g_seg1MapCacheValid = ParseSegment1TextureJson(jsonText.data(), *g_seg1MapCache);
     size_t extracted = 0;
     if (variantCount > 0)
     {
@@ -11737,7 +11739,9 @@ uint32_t TrackSystem::EstimateLowWorkRamRetainedBytes() const
     {
         bytes += VectorCapacityBytesSafe(slideBackBuffer_.incomingFaceSlots);
     }
-    bytes += VectorCapacityBytesSafe(g_seg1MapCache.faceFamily);
+    if (g_seg1MapCache)
+        bytes += sizeof(Segment1TextureJson) +
+                 VectorCapacityBytesSafe(g_seg1MapCache->faceFamily);
     bytes += VectorCapacityBytesSafe(seg1TgaCatalog_);
     bytes += VectorCapacityBytesSafe(seg1ComponentVerts_);
     bytes += VectorCapacityBytesSafe(seg1ComponentFaces_);
@@ -11808,7 +11812,9 @@ TrackSystem::LowWorkCategoryBreakdown TrackSystem::CaptureLowWorkBreakdown() con
     out.metadata += VectorCapacityBytesSafe(segmentRenderers_);
     out.metadata += VectorCapacityBytesSafe(segmentHandles_);
     out.metadata += VectorCapacityBytesSafe(rawSegmentCatalog_);
-    out.metadata += VectorCapacityBytesSafe(g_seg1MapCache.faceFamily);
+    if (g_seg1MapCache)
+        out.metadata += sizeof(Segment1TextureJson) +
+                        VectorCapacityBytesSafe(g_seg1MapCache->faceFamily);
     out.metadata += VectorCapacityBytesSafe(seg1TgaCatalog_);
     out.metadata += VectorCapacityBytesSafe(seg1ComponentVerts_);
     out.metadata += VectorCapacityBytesSafe(seg1ComponentFaces_);
@@ -15409,6 +15415,17 @@ void TrackSystem::ApplyInitialSdrFamilySlots()
 
 bool TrackSystem::Initialize(const Config& config)
 {
+    if (!g_seg1MapCache)
+    {
+        void* memory = SRL::Memory::Malloc(sizeof(Segment1TextureJson),
+                                             SRL::Memory::Zone::LWRam);
+        if (!memory)
+        {
+            SRL::Debug::Print(1, 28, "TRK LWR catalog alloc fail");
+            return false;
+        }
+        g_seg1MapCache = new (memory) Segment1TextureJson();
+    }
     auto printInitRam = [](int row, const char* tag)
     {
         if constexpr (!kEnableBootRamTelemetry) return;
@@ -15872,9 +15889,9 @@ bool TrackSystem::Initialize(const Config& config)
                 {
                     Segment1TextureJson map1ForSeg{};
                     bool map1ForSegOk = false;
-                    if (g_seg1MapCacheValid && !g_seg1MapCache.faceFamily.empty())
+                    if (g_seg1MapCacheValid && !g_seg1MapCache->faceFamily.empty())
                     {
-                        map1ForSeg = g_seg1MapCache;
+                        map1ForSeg = *g_seg1MapCache;
                         map1ForSegOk = true;
                     }
                     else

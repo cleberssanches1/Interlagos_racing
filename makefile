@@ -30,6 +30,9 @@ AUDIO_PROFILE ?= 1
 # make MASTER_FRAME_PHASE_TELEMETRY=0 to recover High Work RAM headroom.
 MASTER_FRAME_PHASE_TELEMETRY ?= 0
 SPEEDOMETER_HUD ?= 1
+GAME_MENU_ENABLED ?= 1
+# Voltas cronometradas do Time Attack (1..12). Futuramente ajustavel no menu.
+TIME_ATTACK_LAPS ?= 3
 # Temporarily disable the minimap while exposing runtime diagnostics.
 # Re-enable with: make MINIMAP_HUD=1
 MINIMAP_HUD ?= 1
@@ -64,6 +67,8 @@ endif
 SRL_CUSTOM_CCFLAGS += -DTRACK_LOD0_SEGMENTS=$(TRACK_LOD0_SEGMENTS) -DTRACK_LOD1_SEGMENTS=$(TRACK_LOD1_SEGMENTS) -DTRACK_LOD2_SEGMENTS=$(TRACK_LOD2_SEGMENTS)
 SRL_CUSTOM_CCFLAGS += -DMASTER_FRAME_PHASE_TELEMETRY=$(MASTER_FRAME_PHASE_TELEMETRY)
 SRL_CUSTOM_CCFLAGS += -DSPEEDOMETER_HUD=$(SPEEDOMETER_HUD)
+SRL_CUSTOM_CCFLAGS += -DGAME_MENU_ENABLED=$(GAME_MENU_ENABLED)
+SRL_CUSTOM_CCFLAGS += -DTIME_ATTACK_LAPS=$(TIME_ATTACK_LAPS)
 SRL_CUSTOM_CCFLAGS += -DMINIMAP_HUD=$(MINIMAP_HUD)
 
 # Disk name
@@ -87,3 +92,11 @@ minimap_assets: cd/data/TCOL.BIN cd/data/mpint.tga tools/generate_minimap_assets
 
 build: minimap_assets
 create_iso: minimap_assets
+
+# The Time Attack image atlas includes the original speedometer art. Regenerate
+# it whenever either source changes, without rebaking track segments.
+cd/data/TAHUD.TGA: cd/data/SPDHUD.TGA tools/assets/time_attack/TA_EXTRA.svg tools/assets/time_attack/generate.ps1
+	powershell -NoProfile -ExecutionPolicy Bypass -File tools/assets/time_attack/generate.ps1
+
+build: cd/data/TAHUD.TGA
+create_iso: cd/data/TAHUD.TGA

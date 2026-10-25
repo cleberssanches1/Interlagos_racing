@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="96" viewBox="0 0 256 96">
+  <!-- Native 8x8 Time Attack cells, packed into unused speedometer cells. -->
+  <defs>
+    <style>
+      .title { font-family: Arial, sans-serif; font-weight: bold; font-size: 7px; fill: #f8f7f1; }
+      .digits { font-family: Arial, sans-serif; font-weight: bold; font-size: 8px; text-anchor: middle; fill: #f8f7f1; }
+      .count { font-family: Impact, 'Arial Narrow', sans-serif; font-weight: bold; font-size: 15px; text-anchor: middle; fill: #ffe051; stroke: #ab311c; stroke-width: .6px; paint-order: stroke fill; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="64" height="8" fill="#16171e"/>
+  <rect x="64" y="0" width="64" height="8" fill="#16171e"/>
+  <rect x="0" y="8" width="56" height="8" fill="#172753"/>
+  <rect x="64" y="8" width="56" height="8" fill="#172753"/>
+  <text class="title" x="2" y="7">TOTAL TIME</text>
+  <text class="title" x="66" y="7">LAP TIME</text>
+  <text class="title" x="2" y="15">BEST LAP</text>
+  <text class="title" x="66" y="15" style="font-size:5.5px">COURSE RECORD</text>
+  <g class="digits">
+    <text x="4" y="23">0</text><text x="12" y="23">1</text>
+    <text x="20" y="23">2</text><text x="28" y="23">3</text>
+    <text x="36" y="23">4</text><text x="44" y="23">5</text>
+    <text x="52" y="23">6</text><text x="60" y="23">7</text>
+    <text x="68" y="23">8</text><text x="76" y="23">9</text>
+    <text x="84" y="23">'</text><text x="92" y="23">&quot;</text>
+    <text x="100" y="23">-</text>
+  </g>
+  <rect x="0" y="24" width="104" height="8" fill="#b71225"/>
+  <g class="digits">
+    <text x="4" y="31">0</text><text x="12" y="31">1</text>
+    <text x="20" y="31">2</text><text x="28" y="31">3</text>
+    <text x="36" y="31">4</text><text x="44" y="31">5</text>
+    <text x="52" y="31">6</text><text x="60" y="31">7</text>
+    <text x="68" y="31">8</text><text x="76" y="31">9</text>
+    <text x="84" y="31">'</text><text x="92" y="31">&quot;</text>
+    <text x="100" y="31">-</text>
+  </g>
+  <g class="count">
+    <text x="8" y="46">3</text><text x="24" y="46">2</text>
+    <text x="40" y="46">1</text><text x="56" y="46" style="font-size:11px">GO</text>
+  </g>
+</svg>

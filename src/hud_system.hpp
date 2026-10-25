@@ -7,12 +7,17 @@
 #include "hud_stats.hpp"
 #include "minimap_system.hpp"
 #include "speedometer_system.hpp"
+#include "time_attack_hud.hpp"
 
 class HudSystem
 {
 public:
     void SetSpeedometer(SpeedometerSystem* speedometer) { speedometer_ = speedometer; }
     void SetMinimap(MinimapSystem* minimap) { minimap_ = minimap; }
+    bool HasTimeAttackImage() const
+    {
+        return speedometer_ && speedometer_->HasTimeAttackArt();
+    }
 
     void UpdateMinimap(int32_t activeGroundSegmentId, int32_t carYawDeg)
     {
@@ -22,6 +27,13 @@ public:
     void UpdateDrivetrain(int16_t speedKmh, int16_t engineRpm, char gear)
     {
         if (speedometer_) speedometer_->Update(speedKmh, engineRpm, gear);
+    }
+
+    void PresentTimeAttack(const TimeAttack::Session& session, uint32_t now)
+    {
+        if (speedometer_ && speedometer_->DrawTimeAttack(session, now)) return;
+        // A missing/corrupt optional atlas must not hide the timing data.
+        TimeAttack::Draw(session, now);
     }
 
     // Initialize HUD baseline model statistics.
