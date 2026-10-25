@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "car_audio_profile.hpp"
+#include "car_tire_audio_policy.hpp"
 #include "interfaces.hpp"
 #include "memory_budget_runtime_bridge.hpp"
 #include "scsp_engine_loop.hpp"
@@ -24,12 +25,11 @@ public:
     static constexpr uint16_t kRpmRisePerFrame    = 220u;
     static constexpr uint16_t kRpmDropPerFrame    = 280u;
     static constexpr int16_t  kStoppedSpeedKmh    = 2;
-    static constexpr int16_t  kSkidSpeedThreshold = 30;
     static constexpr uint8_t  kEngineVolume       = 110u;
     static constexpr uint8_t  kEngineShiftDuckVolume = 110u;
     static constexpr uint8_t  kEngineShiftDuckFrames = 2u;
-    static constexpr uint8_t  kShiftUpVolume      = 118u;
-    static constexpr uint8_t  kShiftDownVolume    = 124u;
+    static constexpr uint8_t  kShiftUpVolume      = 77u;  // 65% of the previous level (118)
+    static constexpr uint8_t  kShiftDownVolume    = 81u;  // 65% of the previous level (124)
     static constexpr int8_t   kShiftUpPan         = 4;
     static constexpr int8_t   kShiftDownPan       = -2;
     static constexpr uint8_t  kShiftVoiceHoldFrames = 20u;
@@ -99,7 +99,7 @@ private:
         int16_t lastGear = 0;
         bool engineActive = false;
         bool useScspLoop = false;
-        bool skidActive = false;
+        CarTireAudioPolicy::State skidPolicy{};
         bool gearInitialized = false;
         uint32_t lastShiftSoundFrameId = 0u;
         uint8_t lastShiftFrames = 0u;
@@ -332,31 +332,24 @@ inline void CarAudioSystem::TickGearShift(const GameplayFrameState& fs)
 
 inline void CarAudioSystem::TickTire(const GameplayFrameState& fs)
 {
-    const bool shouldSkid =
-        (fs.carSpeedKmh > kSkidSpeedThreshold) &&
-        (fs.wheelsSpinning || fs.braking);
+    const CarTireAudioPolicy::Decision skid = CarTireAudioPolicy::Advance(
+        state_.skidPolicy,
+        {fs.carSpeedKmh, fs.carGear, fs.brakeHoldFrames, fs.braking != 0u});
+    const uint8_t voice = ResolveVoice(AudioVoiceGroup::CarTireSkid);
 
-    if (shouldSkid)
+    if (skid.started)
     {
-        if (IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarTireSkid)))
+        if (tireSample_ && IsVoiceFree(voice))
         {
-            if (tireSample_)
-            {
-                tireSample_->PlayOnVoice(ResolveVoice(AudioVoiceGroup::CarTireSkid), kSkidVolume, 0);
-            }
-        }
-        else
-        {
-            SetVoiceVolumePan(ResolveVoice(AudioVoiceGroup::CarTireSkid), kSkidVolume, 0);
+            tireSample_->PlayOnVoice(voice, kSkidVolume, 0);
         }
     }
-    else if (!IsVoiceFree(ResolveVoice(AudioVoiceGroup::CarTireSkid)))
+    else if (skid.stopped && !IsVoiceFree(voice))
     {
-        StopVoice(ResolveVoice(AudioVoiceGroup::CarTireSkid));
+        StopVoice(voice);
     }
 
-    state_.skidActive = shouldSkid;
-    snapshot_.skidActive = shouldSkid;
+    snapshot_.skidActive = skid.active;
 }
 
 inline uint16_t CarAudioSystem::GetPhysicsRpm(const GameplayFrameState& fs)

@@ -72,10 +72,10 @@
     8,
     19,
     23,
-    38,
+    39,
     51,
-    61,
-    62
+    62,
+    63
   ],
   "groundSelection": "LOD0 floor-like faces whose family surfaceTypeId is 1, 2 or 3",
   "wallSelection": "every non-floor LOD0 face except freeTraverseStems; floors never block; driveable contour stays off; preserve verified longitudinal physical walls near the asphalt centroid; drop true racing-line chords, Y-dead walls, and transverse seam caps",
