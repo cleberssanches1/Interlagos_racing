@@ -4,6 +4,10 @@
 #define MASTER_FRAME_PHASE_TELEMETRY 0
 #endif
 
+#ifndef AUTO_LAP_PHYSICS_DRIVER
+#define AUTO_LAP_PHYSICS_DRIVER 1
+#endif
+
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -21,12 +25,15 @@
 #include "background_manager.hpp"
 #include "application_state.hpp"
 #include "auto_lap_route_build_ops.hpp"
+#include "auto_lap_drive_policy.hpp"
+#include "auto_lap_route_selection_policy.hpp"
 #include "auto_lap_route_transition_ops.hpp"
 #include "auto_lap_route_runtime_state.hpp"
 #include "auto_lap_route_lifecycle_ops.hpp"
 #include "camera_path_runtime_state.hpp"
 #include "camera_surface_guard.hpp"
 #include "camera_system.hpp"
+#include "car_physics_shared.hpp"
 #include "car_render_state_assembler.hpp"
 #include "car_prepare_runtime_state.hpp"
 #include "car_system.hpp"
@@ -216,6 +223,13 @@ public:
 #if MASTER_FRAME_PHASE_TELEMETRY
         Sh2FrtProfiler::EnsureInitialized();
 #endif
+        if (AutoLapPhysicsEnabled() && !InitializeAutoLapPhysicalStart())
+        {
+            // Do not let the pilot accelerate from the segment bounds center
+            // when PATH or a strict asphalt contact is unavailable.
+            SetAutoLapTestEnabled(false);
+            SRL::Debug::Print(1, 24, "AUTO START: PATH/TCOL fail");
+        }
         if (context_.TimeAttackEnabled())
         {
             TimeAttack::Config config{};
@@ -268,7 +282,7 @@ public:
             SyncCameraHeadingFromCar();
             CaptureWorkRamStage(hwrStageTrace_.gameplay, lwrStageTrace_.gameplay);
 
-            if (AutoLapTestEnabled())
+            if (AutoLapLegacyEnabled())
             {
                 SetWorkRamDebugTag(SRL::Memory::DebugTag::AutoLap);
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
@@ -360,6 +374,8 @@ private:
         else stateFlags_ &= static_cast<uint8_t>(~bit);
     }
     bool AutoLapTestEnabled() const { return HasStateFlag(kAutoLapTestEnabledBit); }
+    bool AutoLapPhysicsEnabled() const { return AutoLapTestEnabled() && (AUTO_LAP_PHYSICS_DRIVER != 0); }
+    bool AutoLapLegacyEnabled() const { return AutoLapTestEnabled() && !AutoLapPhysicsEnabled(); }
     void SetAutoLapTestEnabled(bool enabled) { SetStateFlag(kAutoLapTestEnabledBit, enabled); }
     bool AutoLapInputToggleEnabled() const { return HasStateFlag(kAutoLapInputToggleEnabledBit); }
     void SetAutoLapInputToggleEnabled(bool enabled) { SetStateFlag(kAutoLapInputToggleEnabledBit, enabled); }
@@ -929,9 +945,12 @@ private:
                 if (AutoLapInputToggleEnabled())
                 {
                     SetAutoLapTestEnabled(!AutoLapTestEnabled());
+                    autoLapDriveState_ = {};
                     AutoLapRouteDomain::ClearAutoLapStartupYawAlignment(autoLapRoute_);
                     if (AutoLapTestEnabled())
                     {
+                        // Camera guidance may have cached a different line.
+                        // Rebuild so the pilot selects the middle PATH line.
                         AutoLapRouteDomain::ResetAutoLapPendingBuild(autoLapRoute_);
                     }
                     else
@@ -1102,6 +1121,118 @@ private:
         }
     }
 
+    bool InitializeAutoLapPhysicalStart()
+    {
+        Game::CarSystem* car = ActiveCarSystem();
+        if (!car || !context_.trackSystem || !context_.TrackSystemReady() ||
+            !EnsureAutoLapRouteReady(context_, context_.carWorldPosition) ||
+            autoLapRoute_.selectedGuideLine < 0 ||
+            autoLapRoute_.centers.size() < 3u ||
+            !AutoLapRouteDomain::HasConsistentMappedRoute(autoLapRoute_) ||
+            !AutoLapRouteDomain::HasConsistentYawRoute(autoLapRoute_))
+        {
+            return false;
+        }
+
+        size_t nearest = 0u;
+        if (!AutoLapRouteDomain::FindNearestRoutePointIndex(
+                autoLapRoute_, context_.carWorldPosition, nearest)) return false;
+
+        const auto& routePoint = autoLapRoute_.centers[nearest];
+        static constexpr uint8_t kAsphaltSurfaceType = 1u;
+        SRL::Math::Types::Fxp groundY{};
+        int32_t groundSegmentId = -1;
+        const int32_t routeSegmentId = static_cast<int32_t>(autoLapRoute_.ids[nearest]);
+        if (!context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                routePoint, context_.trackSegOffset, &kAsphaltSurfaceType, 1u,
+                groundY, &groundSegmentId, routeSegmentId, false))
+        {
+            return false;
+        }
+
+        // Place the car on the selected PATH line before its first physics
+        // frame. TCOL supplies Y; the guide supplies only XZ and heading.
+        context_.carWorldPosition = routePoint;
+        context_.carWorldPosition.Y = groundY + Game::CarPhysics::GetRideHeightOffset();
+        carYawDeg_ = NormalizeYawDeg360(autoLapRoute_.yawDeg[nearest]);
+        autoLapRoute_.index = static_cast<uint16_t>(nearest);
+        AutoLapRouteDomain::MarkAutoLapInitialized(autoLapRoute_);
+        autoLapDriveState_ = {};
+        if (groundSegmentId > 0)
+            latestActiveSegmentId_ = static_cast<int16_t>(groundSegmentId);
+        car->SyncRenderState(context_.carWorldPosition, carYawDeg_);
+        SyncCameraHeadingFromCar();
+        cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
+        return true;
+    }
+
+    void BuildAutoLapDriveInput(Game::CarSystem& car,
+                                Game::CarSystem::GameplayInputSnapshot& outInput)
+    {
+        if (!context_.trackSystem || !context_.TrackSystemReady() ||
+            !EnsureAutoLapRouteReady(context_, context_.carWorldPosition) ||
+            autoLapRoute_.selectedGuideLine < 0 || autoLapRoute_.centers.size() < 3u)
+        {
+            // An unaudited segment-center fallback must not drive the car.
+            // Releasing the controls leaves collision/ground ownership intact.
+            outInput.SetAnalogSteering(0);
+            return;
+        }
+
+        if (!autoLapRoute_.Initialized())
+        {
+            size_t nearest = 0u;
+            if (!AutoLapRouteDomain::FindNearestRoutePointIndex(
+                    autoLapRoute_, context_.carWorldPosition, nearest)) return;
+            autoLapRoute_.index = static_cast<uint16_t>(nearest);
+            AutoLapRouteDomain::MarkAutoLapInitialized(autoLapRoute_);
+        }
+
+        const size_t count = autoLapRoute_.centers.size();
+        size_t current = static_cast<size_t>(autoLapRoute_.index);
+        // Keep progress local to the published car pose. A stopped car cannot
+        // move the stream by advancing a route index independently of physics.
+        for (size_t guard = 0u; guard < 3u; ++guard)
+        {
+            const size_t next = (current + 1u) % count;
+            if (!AutoLapRouteDomain::HasReachedOrPassedWaypoint(
+                    autoLapRoute_, current, next, context_.carWorldPosition)) break;
+            current = next;
+        }
+        autoLapRoute_.index = static_cast<uint16_t>(current);
+        const size_t next = (current + 1u) % count;
+        const size_t afterNext = (next + 1u) % count;
+        const auto& routeCurrent = autoLapRoute_.centers[current];
+        const auto& routeNext = autoLapRoute_.centers[next];
+        const auto& routeAfterNext = autoLapRoute_.centers[afterNext];
+        const auto yawAngle = SRL::Math::Types::Angle::FromDegrees(
+            SRL::Math::Types::Fxp::BuildRaw(NormalizeYawDeg360(carYawDeg_) << 16));
+        const auto forwardX = SRL::Math::Trigonometry::Sin(yawAngle);
+        const auto forwardZ = SRL::Math::Trigonometry::Cos(yawAngle);
+        const auto& carDebug = car.RuntimeDebug();
+
+        AutoLapDrivePolicy::Input drive{};
+        drive.car = {context_.carWorldPosition.X.RawValue(),
+                     context_.carWorldPosition.Z.RawValue()};
+        drive.current = {routeCurrent.X.RawValue(), routeCurrent.Z.RawValue()};
+        drive.next = {routeNext.X.RawValue(), routeNext.Z.RawValue()};
+        drive.afterNext = {routeAfterNext.X.RawValue(), routeAfterNext.Z.RawValue()};
+        drive.forwardXRaw = forwardX.RawValue();
+        drive.forwardZRaw = -forwardZ.RawValue();
+        drive.speedKmh = carDebug.speedKmh;
+        drive.upcomingTurnDeg = static_cast<int16_t>(std::max(
+            std::abs(ShortestDeltaDeg(autoLapRoute_.yawDeg[current], autoLapRoute_.yawDeg[next])),
+            std::abs(ShortestDeltaDeg(autoLapRoute_.yawDeg[next], autoLapRoute_.yawDeg[afterNext]))));
+        drive.surfaceType = carDebug.groundSurfaceType;
+        drive.groundSupported = carDebug.GroundSupport();
+        drive.wallHit = carDebug.WallHit();
+        const AutoLapDrivePolicy::Output command =
+            AutoLapDrivePolicy::Step(drive, autoLapDriveState_);
+        outInput.SetAccelerateHeld(command.accelerate);
+        outInput.SetBrakeHeld(command.brake);
+        outInput.SetAnalogSteering(command.steering);
+    }
+
     Game::GameplayFrameState BuildGameplayFrameState(const FrameInputState& input)
     {
         Game::GameplayFrameState frameState{};
@@ -1110,8 +1241,12 @@ private:
         if (car)
         {
             Game::CarSystem::GameplayInputSnapshot gameplayInput{};
-            if (!AutoLapTestEnabled() &&
-                (!context_.TimeAttackEnabled() || !timeAttack_.BlocksControls()))
+            if (AutoLapPhysicsEnabled())
+            {
+                BuildAutoLapDriveInput(*car, gameplayInput);
+            }
+            else if (!AutoLapTestEnabled() &&
+                     (!context_.TimeAttackEnabled() || !timeAttack_.BlocksControls()))
             {
                 gameplayInput.SetAccelerateHeld(input.bHeld);
                 gameplayInput.SetBrakeHeld(input.cHeld);
@@ -1121,11 +1256,11 @@ private:
                 gameplayInput.SetShiftUpHeld(input.rHeld);
                 gameplayInput.SetShiftLockHeld(input.xHeld);
             }
-            car->PrepareGameplayFrameState(AutoLapTestEnabled() ? nullptr : &gameplayInput,
+            car->PrepareGameplayFrameState(AutoLapLegacyEnabled() ? nullptr : &gameplayInput,
                                            frameCounter_,
                                            context_.carWorldPosition,
                                            carYawDeg_,
-                                           AutoLapTestEnabled(),
+                                           AutoLapLegacyEnabled(),
                                            frameState);
         }
         else
@@ -3061,10 +3196,15 @@ private:
     {
         if (!LoadAutoLapGuideLines()) return false;
 
-        const int32_t selectedLineIndex = AutoLapRouteDomain::SelectBestGuideLineIndex(
-            autoLapRoute_,
-            context_.trackSegOffset,
-            referenceCarWorldPosition);
+        const bool autoLapEnabled = AutoLapTestEnabled();
+        const int32_t nearestLineIndex = autoLapEnabled ? -1 :
+            AutoLapRouteDomain::SelectBestGuideLineIndex(
+                autoLapRoute_, context_.trackSegOffset, referenceCarWorldPosition);
+        const int32_t selectedLineIndex = AutoLapRouteSelectionPolicy::Select(
+            autoLapEnabled,
+            AutoLapRouteDomain::HasGuideLineMinimumPoints(
+                autoLapRoute_, AutoLapRouteSelectionPolicy::kMiddleGuideLineIndex),
+            nearestLineIndex);
         if (selectedLineIndex < 0)
         {
             LogAutoLapGuideLineEmpty();
@@ -3084,6 +3224,10 @@ private:
         const bool reversed = AutoLapRouteDomain::NormalizeRouteDirection(
             autoLapRoute_,
             segmentCount);
+        // Guide validity includes the yaw/offset arrays. Build them before
+        // testing validity, otherwise every parsed PATH falls back to catalog
+        // centers and the physical pilot never sees the selected guide line.
+        RebuildAutoLapRouteYawData();
         const auto build = AutoLapRouteDomain::BuildAutoLapRouteBuildPacket(
             autoLapRoute_,
             AutoLapRouteDomain::HasValidGuideBuildOutput(autoLapRoute_),
@@ -3097,7 +3241,6 @@ private:
             build.routePointCount);
         LogAutoLapGuideRouteSelection(routeTrace);
         LogAutoLapGuideBuildResult(build);
-        RebuildAutoLapRouteYawData();
         return build.valid;
     }
 
@@ -3142,6 +3285,9 @@ private:
     {
         const int32_t segmentCount = static_cast<int32_t>(context.trackSystem->SegmentCount());
         LogAutoLapFallbackBuild();
+        // A failed PATH build must never leave a stale guide-line marker that
+        // would allow the physics pilot to use unverified segment centers.
+        autoLapRoute_.selectedGuideLine = -1;
         AutoLapRouteDomain::PopulateFallbackCenters(
             autoLapRoute_,
             *context.trackSystem,
@@ -3260,6 +3406,7 @@ private:
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)
     AutoLapRouteState autoLapRoute_{};
+    AutoLapDrivePolicy::State autoLapDriveState_{};
     CameraPathRuntimeState cameraPathRuntime_{};
     HwrStageTrace hwrStageTrace_{};
     WorkRamTraceCooldownType hwrTraceCooldownFrames_ = 0;

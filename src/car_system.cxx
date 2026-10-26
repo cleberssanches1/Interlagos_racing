@@ -421,6 +421,14 @@ void CarSystem::PrepareGameplayFrameState(const GameplayInputSnapshot* input,
     }
 
     TickCommandState();
+    if (!autoLapEnabled && input && input->AnalogSteeringValid())
+    {
+        // Auto Lap supplies a bounded analog target. Digital player steering
+        // still follows the original latch/ramp path above.
+        commandState_.steering = std::clamp<int16_t>(input->analogSteering,
+                                                     -kSteeringMax,
+                                                     kSteeringMax);
+    }
     WriteCommandsToFrameState(ioFrameState, !autoLapEnabled);
 }
 

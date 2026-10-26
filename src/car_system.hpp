@@ -57,10 +57,12 @@ public:
             kSteerRightHeld = 1u << 3,
             kShiftDownHeld = 1u << 4,
             kShiftUpHeld = 1u << 5,
-            kShiftLockHeld = 1u << 6
+            kShiftLockHeld = 1u << 6,
+            kAnalogSteeringValid = 1u << 7
         };
 
         uint8_t flags = 0u;
+        int16_t analogSteering = 0;
 
         bool AccelerateHeld() const { return (flags & kAccelerateHeld) != 0u; }
         bool BrakeHeld() const { return (flags & kBrakeHeld) != 0u; }
@@ -69,6 +71,7 @@ public:
         bool ShiftDownHeld() const { return (flags & kShiftDownHeld) != 0u; }
         bool ShiftUpHeld() const { return (flags & kShiftUpHeld) != 0u; }
         bool ShiftLockHeld() const { return (flags & kShiftLockHeld) != 0u; }
+        bool AnalogSteeringValid() const { return (flags & kAnalogSteeringValid) != 0u; }
 
         void SetAccelerateHeld(bool enabled) { SetFlag(kAccelerateHeld, enabled); }
         void SetBrakeHeld(bool enabled) { SetFlag(kBrakeHeld, enabled); }
@@ -77,6 +80,11 @@ public:
         void SetShiftDownHeld(bool enabled) { SetFlag(kShiftDownHeld, enabled); }
         void SetShiftUpHeld(bool enabled) { SetFlag(kShiftUpHeld, enabled); }
         void SetShiftLockHeld(bool enabled) { SetFlag(kShiftLockHeld, enabled); }
+        void SetAnalogSteering(int16_t value)
+        {
+            analogSteering = value;
+            SetFlag(kAnalogSteeringValid, true);
+        }
 
     private:
         void SetFlag(uint8_t bit, bool enabled)

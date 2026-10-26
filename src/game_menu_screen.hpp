@@ -4,6 +4,10 @@
 
 #include "game_menu_catalog.hpp"
 
+#ifndef AUTO_LAP_PHYSICS_DRIVER
+#define AUTO_LAP_PHYSICS_DRIVER 1
+#endif
+
 namespace GameMenu
 {
 inline void DrawOptionLine(uint8_t row, bool selected, const char* name, bool available)
@@ -29,6 +33,9 @@ inline void Draw(const State& state)
         SRL::Debug::Print(3, 15, "CARRO: %s", selection.car->name);
         if (selection.mode->id == Mode::TimeAttack)
             SRL::Debug::Print(3, 18, "HUD DE TEMPOS: ATIVO");
+        else if (selection.mode->id == Mode::AutoLap)
+            SRL::Debug::Print(3, 18, AUTO_LAP_PHYSICS_DRIVER ?
+                             "PILOTO: FISICA/TCOL" : "ROTA GUIADA: PROTOTIPO");
         SRL::Debug::Print(3, 20, "A/START: INICIAR");
     }
     else

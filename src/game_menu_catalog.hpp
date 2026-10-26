@@ -9,6 +9,7 @@ enum class Mode : uint8_t
 {
     FreeDrive = 0,
     TimeAttack,
+    AutoLap,
     Race
 };
 
@@ -73,6 +74,7 @@ inline constexpr const char* kCar1Paths[] = {
 inline constexpr ModeEntry kModes[] = {
     {Mode::FreeDrive, "TREINO LIVRE", true},
     {Mode::TimeAttack, "TIME ATTACK", true},
+    {Mode::AutoLap, "AUTO LAP", true},
     {Mode::Race, "CORRIDA", false}
 };
 inline constexpr TrackEntry kTracks[] = {
@@ -85,6 +87,7 @@ inline constexpr CarEntry kCars[] = {
 constexpr size_t ModeCount() { return sizeof(kModes) / sizeof(kModes[0]); }
 constexpr size_t TrackCount() { return sizeof(kTracks) / sizeof(kTracks[0]); }
 constexpr size_t CarCount() { return sizeof(kCars) / sizeof(kCars[0]); }
+constexpr bool StartsAutoLap(Mode mode) { return mode == Mode::AutoLap; }
 
 struct Selection
 {
