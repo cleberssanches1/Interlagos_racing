@@ -803,6 +803,26 @@ static void BuildCarDrawOrder(uint32_t meshCount, std::array<size_t, 5>& outOrde
     outOrderCount = 0u;
 }
 
+static uint32_t TrackFaceBudgetForSelectedMode(bool autoLap, ModelObject* car)
+{
+#if AUTO_LAP_NPCS > 0
+    if (autoLap && car)
+    {
+        // Track + player + two NPC draws share the same fixed SGL command list.
+        // CAR1.NYA currently has 318 faces; this gives the track 682 of 1700
+        // polygons in Auto Lap, with 64 left as a safety margin. Other modes
+        // retain the original track budget.
+        const uint8_t extraCars = AUTO_LAP_NPCS < 2 ? AUTO_LAP_NPCS : 2;
+        return AutoLapNpcPolicy::TrackFaceBudget(
+            SGL_MAX_POLYGONS, static_cast<uint32_t>(car->GetFaceCount()), extraCars);
+    }
+#else
+    (void)autoLap;
+    (void)car;
+#endif
+    return AutoLapNpcPolicy::TrackFaceBudget(SGL_MAX_POLYGONS, 0u, 0u);
+}
+
 static Game::CarSystem::Config BuildCarBootstrapVisualConfig(
     uint32_t meshCount,
     const Vector3D& modelCenter,
@@ -1272,8 +1292,8 @@ static int RunPhysicsPocMode(const GameMenu::Selection& selection)
     trackConfig.initialSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
     trackConfig.minSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
     trackConfig.initialMeshes = 512u;
-    trackConfig.initialFaces =
-        static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
+    trackConfig.initialFaces = TrackFaceBudgetForSelectedMode(
+        GameMenu::StartsAutoLap(selection.mode->id), carPtr);
     trackConfig.useSlave = kPocEnableTrackSlave;
     bool trackSystemReady = false;
     if (renderTrack)
@@ -1690,7 +1710,8 @@ int GameApp::Run()
     trackConfig.minSegments = static_cast<uint16_t>(TrackLodConfig::kVisibleSegments);
     // Keep per-frame SGL submissions under compile-time work area limits.
     trackConfig.initialMeshes = 512;
-    trackConfig.initialFaces = static_cast<uint32_t>((SGL_MAX_POLYGONS > 64) ? (SGL_MAX_POLYGONS - 64) : SGL_MAX_POLYGONS);
+    trackConfig.initialFaces = TrackFaceBudgetForSelectedMode(
+        GameMenu::StartsAutoLap(selection.mode->id), carPtr);
     trackConfig.useSlave = enableTrackSlaveProducer;
     SRL::Cd::ChangeDir((const char*)0);
     const bool trackSystemReady = renderTrack ? trackSystem.Initialize(trackConfig) : false;

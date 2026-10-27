@@ -38,6 +38,8 @@ public:
     bool Valid() const { return renderer_ != nullptr; }
     ModelObject* Model() { return carObj_; }
     const ModelObject* Model() const { return carObj_; }
+    bool IsSmoothMesh() const { return isSmooth_; }
+    const Config& VisualConfig() const { return config_; }
 
     // Update wheel spin state from external start/stop events.
     void UpdateWheels(bool start, bool stop);

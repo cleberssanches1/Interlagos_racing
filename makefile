@@ -34,6 +34,9 @@ GAME_MENU_ENABLED ?= 1
 # 1 = Auto Lap drives the normal car physics from PATH.NYA; 0 = legacy
 # direct-pose route stepper for A/B diagnosis. No geometry rebuild required.
 AUTO_LAP_PHYSICS_DRIVER ?= 1
+# Two independently moving PATH cars (lines 0 and 2). Set to 0 for the
+# established single-car Auto Lap; no generated track assets need rebuilding.
+AUTO_LAP_NPCS ?= 2
 # Voltas cronometradas do Time Attack (1..12). Futuramente ajustavel no menu.
 TIME_ATTACK_LAPS ?= 3
 # Temporarily disable the minimap while exposing runtime diagnostics.
@@ -72,6 +75,7 @@ SRL_CUSTOM_CCFLAGS += -DMASTER_FRAME_PHASE_TELEMETRY=$(MASTER_FRAME_PHASE_TELEME
 SRL_CUSTOM_CCFLAGS += -DSPEEDOMETER_HUD=$(SPEEDOMETER_HUD)
 SRL_CUSTOM_CCFLAGS += -DGAME_MENU_ENABLED=$(GAME_MENU_ENABLED)
 SRL_CUSTOM_CCFLAGS += -DAUTO_LAP_PHYSICS_DRIVER=$(AUTO_LAP_PHYSICS_DRIVER)
+SRL_CUSTOM_CCFLAGS += -DAUTO_LAP_NPCS=$(AUTO_LAP_NPCS)
 SRL_CUSTOM_CCFLAGS += -DTIME_ATTACK_LAPS=$(TIME_ATTACK_LAPS)
 SRL_CUSTOM_CCFLAGS += -DMINIMAP_HUD=$(MINIMAP_HUD)
 

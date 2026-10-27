@@ -7,6 +7,7 @@
 
 #include "cd_asset_transition_ops.hpp"
 #include "path_nya_loader.hpp"
+#include "auto_lap_distance.hpp"
 #include "auto_lap_route_runtime_state.hpp"
 
 namespace AutoLapRouteDomain
@@ -138,13 +139,15 @@ inline bool FindNearestRoutePointIndex(const AutoLapRouteState& state,
 
     size_t nearestIndex = 0u;
     bool foundNearest = false;
-    SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+    // PATH spans most of the circuit. Summing two 16.16 distances can wrap
+    // the signed 32-bit Fxp value and make a distant point look "nearest".
+    uint64_t bestScore = UINT64_MAX;
     for (size_t i = 0u; i < state.centers.size(); ++i)
     {
         const auto& routePoint = state.centers[i];
-        const auto dx = (routePoint.X - worldPosition.X).Abs();
-        const auto dz = (routePoint.Z - worldPosition.Z).Abs();
-        const auto score = dx + dz;
+        const uint64_t score = AutoLapDistance::ManhattanRaw(
+            routePoint.X.RawValue(), routePoint.Z.RawValue(),
+            worldPosition.X.RawValue(), worldPosition.Z.RawValue());
         if (!foundNearest || score < bestScore)
         {
             foundNearest = true;
@@ -580,6 +583,17 @@ inline const TrackLowWorkVector<SRL::Math::Types::Vector3D>* ResolveSelectedRout
     if (!HasPositiveSegmentCount(segmentCount))
     {
         return nullptr;
+    }
+
+    // Most PATH files (including Interlagos' 321-point lines) already fit the
+    // cap. Keep the original Low Work RAM buffer instead of copying it twice
+    // through SimplifyGuideLine and vector assignment without changing data.
+    const size_t targetMaxPoints = std::min<size_t>(
+        std::max<size_t>(static_cast<size_t>(segmentCount) * 6u, 1536u),
+        2048u);
+    if (selectedLine.size() <= targetMaxPoints)
+    {
+        return &selectedLine;
     }
 
     const auto simplifiedMiddleLine =

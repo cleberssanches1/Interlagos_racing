@@ -8,6 +8,10 @@
 #define AUTO_LAP_PHYSICS_DRIVER 1
 #endif
 
+#ifndef AUTO_LAP_NPCS
+#define AUTO_LAP_NPCS 0
+#endif
+
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -26,6 +30,8 @@
 #include "application_state.hpp"
 #include "auto_lap_route_build_ops.hpp"
 #include "auto_lap_drive_policy.hpp"
+#include "auto_lap_startup_policy.hpp"
+#include "auto_lap_npc_policy.hpp"
 #include "auto_lap_route_selection_policy.hpp"
 #include "auto_lap_route_transition_ops.hpp"
 #include "auto_lap_route_runtime_state.hpp"
@@ -223,13 +229,18 @@ public:
 #if MASTER_FRAME_PHASE_TELEMETRY
         Sh2FrtProfiler::EnsureInitialized();
 #endif
-        if (AutoLapPhysicsEnabled() && !InitializeAutoLapPhysicalStart())
+        uint8_t autoLapStartFailure = 0u;
+        if (AutoLapPhysicsEnabled() &&
+            !InitializeAutoLapPhysicalStart(autoLapStartFailure))
         {
             // Do not let the pilot accelerate from the segment bounds center
             // when PATH or a strict asphalt contact is unavailable.
             SetAutoLapTestEnabled(false);
-            SRL::Debug::Print(1, 24, "AUTO START: PATH/TCOL fail");
+            SRL::Debug::Print(1, 24, "AUTO START fail:%u", static_cast<unsigned>(autoLapStartFailure));
         }
+#if AUTO_LAP_NPCS > 0
+        if (AutoLapPhysicsEnabled()) InitializeAutoLapNpcs();
+#endif
         if (context_.TimeAttackEnabled())
         {
             TimeAttack::Config config{};
@@ -262,6 +273,9 @@ public:
 #endif
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
+#if AUTO_LAP_NPCS > 0
+            UpdateAutoLapNpcs();
+#endif
             if (context_.TimeAttackEnabled()) timeAttack_.Tick(SRL_AppGetVblankCounter());
 #if MASTER_FRAME_PHASE_TELEMETRY
             const FramePhaseTelemetry::Stamp inputTicksEnd = CaptureMasterPhaseStamp();
@@ -383,6 +397,21 @@ private:
     void SetYHeldPrev(bool enabled) { SetStateFlag(kYHeldPrevBit, enabled); }
 
     static constexpr int32_t kAutoLapYawBiasDeg = 0;
+
+#if AUTO_LAP_NPCS > 0
+    static constexpr size_t kAutoLapNpcCount = AUTO_LAP_NPCS < 2 ? AUTO_LAP_NPCS : 2;
+    struct AutoLapNpc
+    {
+        TrackLowWorkVector<SRL::Math::Types::Vector3D> points{};
+        TrackLowWorkVector<int32_t> lengthsRaw{};
+        TrackLowWorkVector<int16_t> yawDeg{};
+        std::unique_ptr<Game::CarSystem> car{};
+        AutoLapNpcPolicy::State motion{};
+        SRL::Math::Types::Vector3D position{};
+        int32_t groundOffsetRaw = 0;
+        int32_t yaw = 0;
+    };
+#endif
 
 #if defined(SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY) && SRL_ENABLE_DETAILED_WORKRAM_TELEMETRY
     static constexpr bool kEnableDetailedWorkRamTelemetry = true;
@@ -1121,33 +1150,130 @@ private:
         }
     }
 
-    bool InitializeAutoLapPhysicalStart()
+    bool InitializeAutoLapPhysicalStart(uint8_t& outFailure)
     {
+        outFailure = 0u;
         Game::CarSystem* car = ActiveCarSystem();
-        if (!car || !context_.trackSystem || !context_.TrackSystemReady() ||
-            !EnsureAutoLapRouteReady(context_, context_.carWorldPosition) ||
+        if (!car || !context_.trackSystem || !context_.TrackSystemReady())
+        {
+            outFailure = 1u; // player or track unavailable
+            return false;
+        }
+        if (!EnsureAutoLapRouteReady(context_, context_.carWorldPosition))
+        {
+            outFailure = 2u; // PATH could not be built
+            return false;
+        }
+        if (
             autoLapRoute_.selectedGuideLine < 0 ||
             autoLapRoute_.centers.size() < 3u ||
             !AutoLapRouteDomain::HasConsistentMappedRoute(autoLapRoute_) ||
             !AutoLapRouteDomain::HasConsistentYawRoute(autoLapRoute_))
         {
+            outFailure = 3u; // PATH fell back or has inconsistent arrays
             return false;
         }
 
+        // The belt always boots at its first rendered segment. Use the same
+        // catalog center as the track spawn, independent of any car pose that
+        // may have been changed while setting up the menu/camera.
+        int32_t startupSegmentId = -1;
+        SRL::Math::Types::Vector3D startupAnchor{};
+        if (!context_.trackSystem->GetRenderWindowSegmentIdAt(0u, startupSegmentId) ||
+            !context_.trackSystem->FindSegmentCenterById(
+                startupSegmentId, context_.trackSegOffset, startupAnchor))
+        {
+            outFailure = 4u;
+            return false;
+        }
         size_t nearest = 0u;
         if (!AutoLapRouteDomain::FindNearestRoutePointIndex(
-                autoLapRoute_, context_.carWorldPosition, nearest)) return false;
+                autoLapRoute_, startupAnchor, nearest))
+        {
+            outFailure = 4u;
+            return false;
+        }
+
+        // The generic nearest result is not trusted if it is far from the
+        // starting segment. The observed failure selected PATH index 0 at
+        // 7022 units despite the baked middle line passing near segment 1.
+        // Retry once with bounded integer-world distances; this costs one
+        // route scan only at startup and never affects frame-time steering.
+        const auto& selectedPoint = autoLapRoute_.centers[nearest];
+        if (AutoLapStartupPolicy::ManhattanWorldUnits(
+                selectedPoint.X.RawValue(), selectedPoint.Z.RawValue(),
+                startupAnchor.X.RawValue(), startupAnchor.Z.RawValue()) > 1024u)
+        {
+            uint32_t localScore = 1025u;
+            for (size_t i = 0u; i < autoLapRoute_.centers.size(); ++i)
+            {
+                const auto& point = autoLapRoute_.centers[i];
+                const uint32_t score = AutoLapStartupPolicy::ManhattanWorldUnits(
+                    point.X.RawValue(), point.Z.RawValue(),
+                    startupAnchor.X.RawValue(), startupAnchor.Z.RawValue());
+                if (score >= localScore) continue;
+                nearest = i;
+                localScore = score;
+            }
+        }
 
         const auto& routePoint = autoLapRoute_.centers[nearest];
         static constexpr uint8_t kAsphaltSurfaceType = 1u;
         SRL::Math::Types::Fxp groundY{};
         int32_t groundSegmentId = -1;
         const int32_t routeSegmentId = static_cast<int32_t>(autoLapRoute_.ids[nearest]);
-        if (!context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+        const bool hasStrictAsphalt = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
                 routePoint, context_.trackSegOffset, &kAsphaltSurfaceType, 1u,
-                groundY, &groundSegmentId, routeSegmentId, false))
+                groundY, &groundSegmentId, startupSegmentId, false);
+        if (!hasStrictAsphalt)
         {
-            return false;
+            // Startup-only recovery. PATH supplies its own Y, and the baked
+            // middle line is near the player's initial pose. Do not turn a
+            // missing TCOL map or a distant/malformed route into a driveable
+            // spawn. Runtime wheel and wall queries still use strict TCOL.
+            const int64_t dx =
+                (static_cast<int64_t>(routePoint.X.RawValue()) -
+                 startupAnchor.X.RawValue()) >> 16;
+            const int64_t dz =
+                (static_cast<int64_t>(routePoint.Z.RawValue()) -
+                 startupAnchor.Z.RawValue()) >> 16;
+            const int64_t distanceSq = dx * dx + dz * dz;
+            const bool tcolReady = context_.trackSystem->TrackCollisionMapReady();
+            if (!AutoLapStartupPolicy::CanUsePathHeight(
+                    tcolReady,
+                    routeSegmentId, context_.trackSystem->SegmentCount(),
+                    distanceSq))
+            {
+                outFailure = 5u; // strict contact missing; fallback unsafe
+                const uint32_t distanceUnits = static_cast<uint32_t>(
+                    (dx < 0 ? -dx : dx) + (dz < 0 ? -dz : dz));
+                SRL::Debug::Print(1, 25, "A5 t:%u a:%d p:%u id:%d d:%u n:%u",
+                                  tcolReady ? 1u : 0u,
+                                  static_cast<int>(startupSegmentId),
+                                  static_cast<unsigned>(nearest),
+                                  static_cast<int>(routeSegmentId),
+                                  static_cast<unsigned>(distanceUnits),
+                                  static_cast<unsigned>(autoLapRoute_.centers.size()));
+                SRL::Debug::Print(1, 26, "A6 a:%d,%d r:%d,%d",
+                                  startupAnchor.X.RawValue() >> 16,
+                                  startupAnchor.Z.RawValue() >> 16,
+                                  routePoint.X.RawValue() >> 16,
+                                  routePoint.Z.RawValue() >> 16);
+                const size_t probe106 = std::min<size_t>(106u, autoLapRoute_.centers.size() - 1u);
+                const size_t probe214 = std::min<size_t>(214u, autoLapRoute_.centers.size() - 1u);
+                SRL::Debug::Print(1, 27, "A7 l:%d q106:%d,%d",
+                                  static_cast<int>(autoLapRoute_.selectedGuideLine),
+                                  autoLapRoute_.centers[probe106].X.RawValue() >> 16,
+                                  autoLapRoute_.centers[probe106].Z.RawValue() >> 16);
+                SRL::Debug::Print(1, 28, "A8 q214:%d,%d",
+                                  autoLapRoute_.centers[probe214].X.RawValue() >> 16,
+                                  autoLapRoute_.centers[probe214].Z.RawValue() >> 16);
+                return false;
+            }
+            groundY = routePoint.Y;
+            SRL::Debug::Print(1, 25, "AUTO START PATH Y p:%u id:%d",
+                              static_cast<unsigned>(nearest),
+                              static_cast<int>(routeSegmentId));
         }
 
         // Place the car on the selected PATH line before its first physics
@@ -1165,6 +1291,206 @@ private:
         cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
         return true;
     }
+
+#if AUTO_LAP_NPCS > 0
+    size_t NearestAutoLapNpcPoint(const AutoLapNpc& npc,
+                                 const SRL::Math::Types::Vector3D& worldPosition) const
+    {
+        size_t bestIndex = 0u;
+        int64_t bestDistance = INT64_MAX;
+        for (size_t i = 0u; i < npc.points.size(); ++i)
+        {
+            const int64_t dx =
+                (static_cast<int64_t>(npc.points[i].X.RawValue()) - worldPosition.X.RawValue()) >> 16;
+            const int64_t dz =
+                (static_cast<int64_t>(npc.points[i].Z.RawValue()) - worldPosition.Z.RawValue()) >> 16;
+            const int64_t distance = dx * dx + dz * dz;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            bestIndex = i;
+        }
+        return bestIndex;
+    }
+
+    void BuildAutoLapNpcGeometry(AutoLapNpc& npc)
+    {
+        const size_t count = npc.points.size();
+        npc.lengthsRaw.clear();
+        npc.yawDeg.clear();
+        npc.lengthsRaw.reserve(count);
+        npc.yawDeg.reserve(count);
+        for (size_t i = 0u; i < count; ++i)
+        {
+            const auto& from = npc.points[i];
+            const auto& to = npc.points[(i + 1u) % count];
+            const int32_t dx = to.X.RawValue() - from.X.RawValue();
+            const int32_t dz = to.Z.RawValue() - from.Z.RawValue();
+            const int64_t absDx = dx < 0 ? -static_cast<int64_t>(dx) : dx;
+            const int64_t absDz = dz < 0 ? -static_cast<int64_t>(dz) : dz;
+            npc.lengthsRaw.push_back(static_cast<int32_t>(
+                std::max<int64_t>(1, std::min<int64_t>(0x7FFFFFFF, std::max(absDx, absDz)))));
+            npc.yawDeg.push_back(static_cast<int16_t>(YawFromDeltaRaw(
+                dx, dz, i == 0u ? carYawDeg_ : npc.yawDeg.back())));
+        }
+    }
+
+    SRL::Math::Types::Vector3D AutoLapNpcPosition(const AutoLapNpc& npc) const
+    {
+        using SRL::Math::Types::Fxp;
+        const size_t count = npc.points.size();
+        const size_t index = static_cast<size_t>(npc.motion.segment) % count;
+        const auto& from = npc.points[index];
+        const auto& to = npc.points[(index + 1u) % count];
+        const int32_t length = npc.lengthsRaw[index];
+        const int32_t along = std::min(npc.motion.alongRaw, length);
+        const auto lerpRaw = [length, along](int32_t a, int32_t b) -> int32_t
+        {
+            return a + static_cast<int32_t>(
+                (static_cast<int64_t>(b - a) * along) / length);
+        };
+        return SRL::Math::Types::Vector3D(
+            Fxp::BuildRaw(lerpRaw(from.X.RawValue(), to.X.RawValue())),
+            Fxp::BuildRaw(lerpRaw(from.Y.RawValue(), to.Y.RawValue()) + npc.groundOffsetRaw),
+            Fxp::BuildRaw(lerpRaw(from.Z.RawValue(), to.Z.RawValue())));
+    }
+
+    void InitializeAutoLapNpcs()
+    {
+        Game::CarSystem* player = ActiveCarSystem();
+        if (!player || !player->Valid() || !context_.trackSystem) return;
+        // Keep the player's proven one-car PATH build unchanged. The two NPC
+        // lines are read only after that route and its strict TCOL start pass.
+        if (!LoadAutoLapGuideLines())
+        {
+            SRL::Debug::Print(1, 24, "AUTO NPC PATH load fail");
+            return;
+        }
+        static constexpr size_t kNpcLines[2] = {0u, 2u};
+        for (size_t i = 0u; i < kAutoLapNpcCount; ++i)
+        {
+            autoLapNpcs_[i].points = std::move(autoLapRoute_.guideLines[kNpcLines[i]]);
+            for (auto& point : autoLapNpcs_[i].points)
+                point = point + context_.trackSegOffset;
+        }
+        AutoLapRouteDomain::ClearAutoLapGuideLines(autoLapRoute_);
+        static constexpr int32_t kStartAheadRaw[2] = {600 << 16, 1200 << 16};
+        static constexpr uint8_t kAsphaltSurfaceType = 1u;
+        uint8_t ready = 0u;
+        for (size_t i = 0u; i < kAutoLapNpcCount; ++i)
+        {
+            AutoLapNpc& npc = autoLapNpcs_[i];
+            if (npc.points.size() < 3u || npc.points.size() > 65535u) continue;
+            size_t nearest = NearestAutoLapNpcPoint(npc, context_.carWorldPosition);
+            const size_t next = (nearest + 1u) % npc.points.size();
+            const int32_t tangentYaw = YawFromDeltaRaw(
+                npc.points[next].X.RawValue() - npc.points[nearest].X.RawValue(),
+                npc.points[next].Z.RawValue() - npc.points[nearest].Z.RawValue(),
+                carYawDeg_);
+            if (AutoLapNpcPolicy::ShouldReverseLine(tangentYaw, carYawDeg_))
+            {
+                std::reverse(npc.points.begin(), npc.points.end());
+                nearest = NearestAutoLapNpcPoint(npc, context_.carWorldPosition);
+            }
+            BuildAutoLapNpcGeometry(npc);
+            npc.motion.segment = static_cast<uint16_t>(nearest);
+            (void)AutoLapNpcPolicy::Advance(
+                npc.motion, npc.lengthsRaw.data(), npc.lengthsRaw.size(), kStartAheadRaw[i]);
+            const auto routePosition = AutoLapNpcPosition(npc);
+            SRL::Math::Types::Fxp groundY{};
+            int32_t groundSegmentId = -1;
+            // One startup contact per NPC; no wheel or wall queries are added
+            // to the running player/Slave physics path.
+            if (context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                    routePosition, context_.trackSegOffset, &kAsphaltSurfaceType, 1u,
+                    groundY, &groundSegmentId, -1, false,
+                    nullptr, nullptr, nullptr, -1, false))
+            {
+                npc.groundOffsetRaw = groundY.RawValue() +
+                    Game::CarPhysics::GetRideHeightOffset().RawValue() - routePosition.Y.RawValue();
+            }
+            else
+            {
+                // PATH carries altitude. Use the player's calibrated offset
+                // only if the independent TCOL probe missed at this waypoint.
+                npc.groundOffsetRaw = context_.carWorldPosition.Y.RawValue() -
+                    autoLapRoute_.centers[autoLapRoute_.index].Y.RawValue();
+            }
+            npc.position = AutoLapNpcPosition(npc);
+            npc.yaw = npc.yawDeg[npc.motion.segment];
+            npc.car = std::make_unique<Game::CarSystem>(
+                player->Model(), player->IsSmoothMesh(), player->VisualConfig());
+            if (!npc.car || !npc.car->Valid()) { npc.car.reset(); continue; }
+            npc.car->SetVisualYawOffsetDegrees(player->VisualYawOffsetDegrees());
+            npc.car->SyncRenderState(npc.position, npc.yaw);
+            ++ready;
+        }
+        autoLapNpcLastVblank_ = SRL_AppGetVblankCounter();
+        SRL::Debug::Print(1, 24, "AUTO NPC ready:%u", static_cast<unsigned>(ready));
+    }
+
+    void UpdateAutoLapNpcs()
+    {
+        if (!AutoLapPhysicsEnabled()) return;
+        const uint32_t now = SRL_AppGetVblankCounter();
+        const uint32_t elapsed = now - autoLapNpcLastVblank_;
+        autoLapNpcLastVblank_ = now;
+        const uint8_t ticks = static_cast<uint8_t>(std::min<uint32_t>(elapsed, 4u));
+        if (ticks == 0u) return;
+        for (size_t i = 0u; i < kAutoLapNpcCount; ++i)
+        {
+            AutoLapNpc& npc = autoLapNpcs_[i];
+            if (!npc.car || npc.lengthsRaw.size() < 3u) continue;
+            const size_t index = npc.motion.segment;
+            const size_t next = (index + 1u) % npc.points.size();
+            const int16_t turn = static_cast<int16_t>(
+                std::abs(ShortestDeltaDeg(npc.yawDeg[index], npc.yawDeg[next])));
+            AutoLapNpcPolicy::ApproachSpeed(
+                npc.motion, AutoLapNpcPolicy::TargetSpeedRaw(turn, static_cast<uint8_t>(i)), ticks);
+            (void)AutoLapNpcPolicy::Advance(
+                npc.motion, npc.lengthsRaw.data(), npc.lengthsRaw.size(), npc.motion.speedRaw * ticks);
+            npc.position = AutoLapNpcPosition(npc);
+            const size_t current = npc.motion.segment;
+            const size_t following = (current + 1u) % npc.points.size();
+            const int32_t tRaw = static_cast<int32_t>(
+                (static_cast<int64_t>(npc.motion.alongRaw) << 16) / npc.lengthsRaw[current]);
+            npc.yaw = LerpShortestAngleDeg(npc.yawDeg[current], npc.yawDeg[following], tRaw);
+            Game::GameplayFrameState visual{};
+            visual.carSpeedKmh = static_cast<int16_t>((npc.motion.speedRaw >> 16) * 5);
+            npc.car->SetRuntimeFrameState(visual);
+            npc.car->SyncRenderState(npc.position, npc.yaw);
+        }
+    }
+
+    void RenderAutoLapNpcs(const CameraFrameState& camera)
+    {
+        if (!AutoLapPhysicsEnabled() || !CanRenderCar() ||
+            !context_.renderPipeline || lastSubmittedTrackFacesThisFrame_ == 0u) return;
+        Game::CarSystem* player = ActiveCarSystem();
+        const uint32_t carFaces = player->Renderer()->LastRenderFaceCount();
+        if (carFaces == 0u) return;
+        static constexpr int64_t kMaxDrawDistanceSq = 3500ll * 3500ll;
+        for (size_t i = 0u; i < kAutoLapNpcCount; ++i)
+        {
+            AutoLapNpc& npc = autoLapNpcs_[i];
+            if (!npc.car || !npc.car->Valid()) continue;
+            const int64_t dx =
+                (static_cast<int64_t>(npc.position.X.RawValue()) - camera.location.X.RawValue()) >> 16;
+            const int64_t dz =
+                (static_cast<int64_t>(npc.position.Z.RawValue()) - camera.location.Z.RawValue()) >> 16;
+            if (dx * dx + dz * dz > kMaxDrawDistanceSq) continue;
+#if defined(SGL_MAX_POLYGONS)
+            if (static_cast<uint32_t>(lastSubmittedTrackFacesThisFrame_) +
+                    lastRenderedCarFacesThisFrame_ + carFaces + 64u >
+                static_cast<uint32_t>(SGL_MAX_POLYGONS)) continue;
+#endif
+            npc.car->SetLightDirection(context_.lightDirection);
+            const auto rendered = GameLoopRuntime::SubmitCarRenderRuntime(
+                *context_.renderPipeline, *npc.car);
+            lastRenderedCarFacesThisFrame_ = GameLoopRuntime::ClampToU16(
+                static_cast<uint32_t>(lastRenderedCarFacesThisFrame_) + rendered.renderedFaceCount);
+        }
+    }
+#endif
 
     void BuildAutoLapDriveInput(Game::CarSystem& car,
                                 Game::CarSystem::GameplayInputSnapshot& outInput)
@@ -1944,6 +2270,9 @@ private:
         const FramePhaseTelemetry::Stamp carTicksStart = CaptureMasterPhaseStamp();
 #endif
         RenderCar(camera);
+#if AUTO_LAP_NPCS > 0
+        RenderAutoLapNpcs(camera);
+#endif
 #if MASTER_FRAME_PHASE_TELEMETRY
         const FramePhaseTelemetry::Stamp carTicksEnd = CaptureMasterPhaseStamp();
         masterFrameTiming_.carTicks =
@@ -3407,6 +3736,10 @@ private:
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)
     AutoLapRouteState autoLapRoute_{};
     AutoLapDrivePolicy::State autoLapDriveState_{};
+#if AUTO_LAP_NPCS > 0
+    std::array<AutoLapNpc, 2> autoLapNpcs_{};
+    uint32_t autoLapNpcLastVblank_ = 0u;
+#endif
     CameraPathRuntimeState cameraPathRuntime_{};
     HwrStageTrace hwrStageTrace_{};
     WorkRamTraceCooldownType hwrTraceCooldownFrames_ = 0;
