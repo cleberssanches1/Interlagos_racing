@@ -1,5 +1,8 @@
 #include "mesh_renderer.hpp"
 #include "exception_stubs.hpp"
+#if defined(AUTO_LAP_NPC_RAILS) && AUTO_LAP_NPC_RAILS && !(defined(AUTO_LAP_NPC_SLIM) && AUTO_LAP_NPC_SLIM)
+#include "npc_draw_diag.hpp"
+#endif
 
 #include "sgl_poly_renderer.hpp"
 #include <algorithm>
@@ -117,6 +120,9 @@ void MeshRenderer::Render(const SRL::Math::Types::Vector3D& position,
             lastMeshId_ = meshId;
             ++lastRenderMeshCount_;
             lastRenderFaceCount_ += facesDrawn;
+#if defined(AUTO_LAP_NPC_RAILS) && AUTO_LAP_NPC_RAILS && !(defined(AUTO_LAP_NPC_SLIM) && AUTO_LAP_NPC_SLIM)
+            NpcDrawDiag::NoteMeshPut(facesDrawn);
+#endif
         }
 
         SRL::Scene3D::PopMatrix();

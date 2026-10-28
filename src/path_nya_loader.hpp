@@ -5,6 +5,24 @@
 #include <cstdint>
 #include <vector>
 
+// On Saturn, PATH parse scratch must live in Low Work RAM: dual/base PathLine
+// on High Work (~12 KiB) exhausted the ~14 KiB heapFree window (fail:2).
+// Host unit tests keep std::vector via PATH_NYA_HOST_STD_VECTOR.
+#if defined(PATH_NYA_HOST_STD_VECTOR)
+namespace PathNyaDetail
+{
+template <typename T>
+using LineVector = std::vector<T>;
+}
+#else
+#include "track_zone_alloc.hpp"
+namespace PathNyaDetail
+{
+template <typename T>
+using LineVector = TrackLowWorkVectorBase<T>;
+}
+#endif
+
 namespace PathNya
 {
 static constexpr size_t kMaxSupportedLines = 3u;
@@ -16,7 +34,7 @@ struct PointRaw
     int32_t zRaw = 0;
 };
 
-using PathLine = std::vector<PointRaw>;
+using PathLine = PathNyaDetail::LineVector<PointRaw>;
 
 struct ParseResult
 {
@@ -161,36 +179,44 @@ inline bool Parse(const uint8_t* bytes, size_t size, ParseResult& outResult)
     uint32_t lineCount = 0u;
     if (!DetectEndian(bytes, size, bigEndian, version, lineCount)) return false;
 
-    std::array<PathLine, kMaxSupportedLines> linesBase8{};
-    std::array<PathLine, kMaxSupportedLines> linesBase12{};
+    outResult.version = version;
+    outResult.lineCount = lineCount;
+    outResult.bigEndian = bigEndian;
+
+    // Sequential bases — never keep base8 + base12 PathLine arrays at once.
+    // Dual parse peaked ~23 KiB on HWR and broke Ensure on the ~14 KiB heap.
     size_t totalPointsBase8 = 0u;
-    size_t totalPointsBase12 = 0u;
     const bool parsedBase8 = TryParseWithDescriptorBase(
         bytes,
         size,
         bigEndian,
         lineCount,
         8u,
-        linesBase8,
+        outResult.lines,
         totalPointsBase8);
+    // Interlagos PATH.NYA is descriptor base 8 (3×321). Keep it when healthy.
+    if (parsedBase8 && totalPointsBase8 >= 2u)
+    {
+        return true;
+    }
+
+    for (size_t i = 0; i < outResult.lines.size(); ++i) outResult.lines[i].clear();
+    size_t totalPointsBase12 = 0u;
     const bool parsedBase12 = TryParseWithDescriptorBase(
         bytes,
         size,
         bigEndian,
         lineCount,
         12u,
-        linesBase12,
+        outResult.lines,
         totalPointsBase12);
+    if (parsedBase12 && totalPointsBase12 >= 2u)
+    {
+        return true;
+    }
 
-    if (!parsedBase8 && !parsedBase12) return false;
-
-    outResult.version = version;
-    outResult.lineCount = lineCount;
-    outResult.bigEndian = bigEndian;
-    outResult.lines = (parsedBase12 && totalPointsBase12 > totalPointsBase8)
-        ? linesBase12
-        : linesBase8;
-    return true;
+    Clear(outResult);
+    return false;
 }
 
 inline bool HasUsableLine(const ParseResult& result,

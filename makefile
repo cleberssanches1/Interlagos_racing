@@ -34,6 +34,12 @@ GAME_MENU_ENABLED ?= 1
 # 1 = Auto Lap drives the normal car physics from PATH.NYA; 0 = legacy
 # direct-pose route stepper for A/B diagnosis. No geometry rebuild required.
 AUTO_LAP_PHYSICS_DRIVER ?= 1
+# Populate PATH.NYA side rails (0 and 2) for Auto Lap NPC pose-followers.
+# Default OFF: NPC LWR/HWR work regressed Auto Lap start (fail:2 / car stuck).
+# Re-enable explicitly: make AUTO_LAP_NPC_RAILS=1
+AUTO_LAP_NPC_RAILS ?= 0
+# 1 = omit NPC runtime .text (track/Auto Lap boot). 0 = full NPC after heap OK.
+AUTO_LAP_NPC_SLIM ?= 1
 # Voltas cronometradas do Time Attack (1..12). Futuramente ajustavel no menu.
 TIME_ATTACK_LAPS ?= 3
 # Temporarily disable the minimap while exposing runtime diagnostics.
@@ -72,6 +78,8 @@ SRL_CUSTOM_CCFLAGS += -DMASTER_FRAME_PHASE_TELEMETRY=$(MASTER_FRAME_PHASE_TELEME
 SRL_CUSTOM_CCFLAGS += -DSPEEDOMETER_HUD=$(SPEEDOMETER_HUD)
 SRL_CUSTOM_CCFLAGS += -DGAME_MENU_ENABLED=$(GAME_MENU_ENABLED)
 SRL_CUSTOM_CCFLAGS += -DAUTO_LAP_PHYSICS_DRIVER=$(AUTO_LAP_PHYSICS_DRIVER)
+SRL_CUSTOM_CCFLAGS += -DAUTO_LAP_NPC_RAILS=$(AUTO_LAP_NPC_RAILS)
+SRL_CUSTOM_CCFLAGS += -DAUTO_LAP_NPC_SLIM=$(AUTO_LAP_NPC_SLIM)
 SRL_CUSTOM_CCFLAGS += -DTIME_ATTACK_LAPS=$(TIME_ATTACK_LAPS)
 SRL_CUSTOM_CCFLAGS += -DMINIMAP_HUD=$(MINIMAP_HUD)
 

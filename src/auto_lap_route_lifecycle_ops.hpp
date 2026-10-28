@@ -116,4 +116,14 @@ inline void ReleaseAutoLapRouteStorage(AutoLapRouteState& state)
     ResetAutoLapRouteState(state);
 }
 
+template <typename TRouteArray>
+inline void ReleaseAutoLapNpcRailRoutes(TRouteArray& routes, uint8_t& ioReadyCount)
+{
+    for (size_t i = 0; i < routes.size(); ++i)
+    {
+        ReleaseAutoLapRouteStorage(routes[i]);
+    }
+    ioReadyCount = 0u;
+}
+
 } // namespace AutoLapRouteDomain

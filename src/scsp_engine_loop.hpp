@@ -32,7 +32,7 @@ public:
         playing_ = false;
 
         SRL::Cd::File file(filename);
-        if (!file.Exists() || file.Size.Bytes < 44u)
+        if (!file.Exists() || file.Size.Bytes < 44)
         {
             return false;
         }

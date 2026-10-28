@@ -30,44 +30,14 @@ public:
 
     void UpdateSegment(int32_t segmentId, int32_t carYawDeg)
     {
-        if (!ready_ || !map_ || segmentId <= 0 || segmentId > segmentCount_) return;
-        const size_t coordinateOffset = kLookupHeaderBytes + (static_cast<uint16_t>(segmentId) - 1u) * 2u;
-        const uint8_t u = lookupFile_[coordinateOffset];
-        const uint8_t v = lookupFile_[coordinateOffset + 1u];
-        // A 16x16 arrow is centered on the LUT pixel, not rounded down to an
-        // 8x8 VDP2 cell. Its shifted footprint occupies at most 3x3 cells.
-        const uint8_t pixelX = (u < 8u) ? 0u : ((u > 120u) ? 112u : static_cast<uint8_t>(u - 8u));
-        const uint8_t pixelY = (v < 8u) ? 0u : ((v > 120u) ? 112u : static_cast<uint8_t>(v - 8u));
-        const uint8_t markerX = (pixelX >> 3u) > kImageCells - 3u
-            ? kImageCells - 3u : static_cast<uint8_t>(pixelX >> 3u);
-        const uint8_t markerY = (pixelY >> 3u) > kImageCells - 3u
-            ? kImageCells - 3u : static_cast<uint8_t>(pixelY >> 3u);
-        const uint8_t offsetX = static_cast<uint8_t>(pixelX - markerX * 8u);
-        const uint8_t offsetY = static_cast<uint8_t>(pixelY - markerY * 8u);
-        int32_t mapHeading = (carYawDeg * yawSense_ * 100 + yawOffsetCentideg_) % 36000;
-        if (mapHeading < 0) mapHeading += 36000;
-        const uint8_t direction = static_cast<uint8_t>(((mapHeading + 2250) / 4500) & 7);
-        if (markerVisible_ && pixelX == markerPixelX_ && pixelY == markerPixelY_ &&
-            direction == markerDirection_) return;
+        UpdateMarker(0u, segmentId, carYawDeg);
+    }
 
-        if (markerVisible_)
-        {
-            for (uint8_t i = 0; i < 9u; ++i) map_[markerMapIndices_[i]] = previousPatterns_[i];
-        }
-        for (uint8_t row = 0u; row < 3u; ++row)
-            for (uint8_t col = 0u; col < 3u; ++col)
-            {
-                const uint8_t tile = static_cast<uint8_t>(row * 3u + col);
-                const uint16_t mapIndex = static_cast<uint16_t>(kMapX + markerX + col) +
-                    static_cast<uint16_t>(kMapY + markerY + row) * kMapWidth;
-                markerMapIndices_[tile] = mapIndex;
-                previousPatterns_[tile] = map_[mapIndex];
-            }
-        WriteMarker(offsetX, offsetY, direction);
-        markerPixelX_ = pixelX;
-        markerPixelY_ = pixelY;
-        markerDirection_ = direction;
-        markerVisible_ = true;
+    // Extra arrows for Auto Lap NPC cars (slot 0/1 → marker 1/2).
+    void UpdateNpcSegment(uint8_t npcSlot, int32_t segmentId, int32_t carYawDeg)
+    {
+        if (npcSlot >= 2u) return;
+        UpdateMarker(static_cast<uint8_t>(1u + npcSlot), segmentId, carYawDeg);
     }
 
     bool Ready() const { return ready_; }
@@ -118,19 +88,88 @@ private:
                (static_cast<uint32_t>(p[2]) << 16u) | (static_cast<uint32_t>(p[3]) << 24u);
     }
 
-    void WriteMarker(uint8_t offsetX, uint8_t offsetY, uint8_t direction)
+    static constexpr uint8_t kMarkerCount = 3u; // player + 2 NPC
+    static constexpr uint8_t kBlendBanksPerMarker = 2u;
+    static constexpr uint8_t kBlendTiles = 9u;
+    static constexpr uint8_t kBlendCellCount =
+        static_cast<uint8_t>(kMarkerCount * kBlendBanksPerMarker * kBlendTiles);
+
+    struct MarkerState
+    {
+        uint16_t mapIndices[kBlendTiles]{};
+        uint16_t previousPatterns[kBlendTiles]{};
+        uint8_t pixelX = 0u;
+        uint8_t pixelY = 0u;
+        uint8_t direction = 0u;
+        uint8_t blendBank = 0u;
+        bool visible = false;
+    };
+
+    void UpdateMarker(uint8_t markerIndex, int32_t segmentId, int32_t carYawDeg)
+    {
+        if (!ready_ || !map_ || markerIndex >= kMarkerCount) return;
+        if (segmentId <= 0 || segmentId > segmentCount_) return;
+
+        const size_t coordinateOffset =
+            kLookupHeaderBytes + (static_cast<uint16_t>(segmentId) - 1u) * 2u;
+        const uint8_t u = lookupFile_[coordinateOffset];
+        const uint8_t v = lookupFile_[coordinateOffset + 1u];
+        // A 16x16 arrow is centered on the LUT pixel, not rounded down to an
+        // 8x8 VDP2 cell. Its shifted footprint occupies at most 3x3 cells.
+        const uint8_t pixelX = (u < 8u) ? 0u : ((u > 120u) ? 112u : static_cast<uint8_t>(u - 8u));
+        const uint8_t pixelY = (v < 8u) ? 0u : ((v > 120u) ? 112u : static_cast<uint8_t>(v - 8u));
+        const uint8_t markerX = (pixelX >> 3u) > kImageCells - 3u
+            ? kImageCells - 3u : static_cast<uint8_t>(pixelX >> 3u);
+        const uint8_t markerY = (pixelY >> 3u) > kImageCells - 3u
+            ? kImageCells - 3u : static_cast<uint8_t>(pixelY >> 3u);
+        const uint8_t offsetX = static_cast<uint8_t>(pixelX - markerX * 8u);
+        const uint8_t offsetY = static_cast<uint8_t>(pixelY - markerY * 8u);
+        int32_t mapHeading = (carYawDeg * yawSense_ * 100 + yawOffsetCentideg_) % 36000;
+        if (mapHeading < 0) mapHeading += 36000;
+        const uint8_t direction = static_cast<uint8_t>(((mapHeading + 2250) / 4500) & 7);
+
+        MarkerState& marker = markers_[markerIndex];
+        if (marker.visible && pixelX == marker.pixelX && pixelY == marker.pixelY &&
+            direction == marker.direction) return;
+
+        if (marker.visible)
+        {
+            for (uint8_t i = 0; i < kBlendTiles; ++i)
+                map_[marker.mapIndices[i]] = marker.previousPatterns[i];
+        }
+        for (uint8_t row = 0u; row < 3u; ++row)
+            for (uint8_t col = 0u; col < 3u; ++col)
+            {
+                const uint8_t tile = static_cast<uint8_t>(row * 3u + col);
+                const uint16_t mapIndex = static_cast<uint16_t>(kMapX + markerX + col) +
+                    static_cast<uint16_t>(kMapY + markerY + row) * kMapWidth;
+                marker.mapIndices[tile] = mapIndex;
+                marker.previousPatterns[tile] = map_[mapIndex];
+            }
+        WriteMarker(markerIndex, offsetX, offsetY, direction);
+        marker.pixelX = pixelX;
+        marker.pixelY = pixelY;
+        marker.direction = direction;
+        marker.visible = true;
+    }
+
+    void WriteMarker(uint8_t markerIndex, uint8_t offsetX, uint8_t offsetY, uint8_t direction)
     {
         // Compose into the inactive nine-cell bank before changing map names.
         // This avoids editing a pattern while VDP2 is still displaying it.
-        const uint8_t nextBank = markerVisible_ ? static_cast<uint8_t>(blendBank_ ^ 1u) : 0u;
-        uint16_t blendIndices[9u]{};
+        MarkerState& marker = markers_[markerIndex];
+        const uint8_t nextBank =
+            marker.visible ? static_cast<uint8_t>(marker.blendBank ^ 1u) : 0u;
+        uint16_t blendIndices[kBlendTiles]{};
         uint16_t arrowIndices[4u]{};
         for (uint8_t tile = 0u; tile < 4u; ++tile)
             arrowIndices[tile] = static_cast<uint16_t>(markerCells_[direction][tile] & 0x0fffu) - cellBaseOffset_;
-        for (uint8_t tile = 0u; tile < 9u; ++tile)
+        for (uint8_t tile = 0u; tile < kBlendTiles; ++tile)
         {
-            const uint16_t groundIndex = static_cast<uint16_t>(previousPatterns_[tile] & 0x0fffu) - cellBaseOffset_;
-            const uint16_t blendIndex = static_cast<uint16_t>(blendCells_[nextBank][tile] & 0x0fffu) - cellBaseOffset_;
+            const uint16_t groundIndex =
+                static_cast<uint16_t>(marker.previousPatterns[tile] & 0x0fffu) - cellBaseOffset_;
+            const uint16_t blendIndex =
+                static_cast<uint16_t>(blendCells_[markerIndex][nextBank][tile] & 0x0fffu) - cellBaseOffset_;
             blendIndices[tile] = blendIndex;
             const volatile uint8_t* ground = cells_ + static_cast<uint32_t>(groundIndex) * 32u;
             volatile uint8_t* blend = cells_ + static_cast<uint32_t>(blendIndex) * 32u;
@@ -154,9 +193,9 @@ private:
                     ? static_cast<uint8_t>((previous & 0xf0u) | color)
                     : static_cast<uint8_t>((previous & 0x0fu) | (color << 4u));
             }
-        for (uint8_t tile = 0u; tile < 9u; ++tile)
-            map_[markerMapIndices_[tile]] = blendCells_[nextBank][tile];
-        blendBank_ = nextBank;
+        for (uint8_t tile = 0u; tile < kBlendTiles; ++tile)
+            map_[marker.mapIndices[tile]] = blendCells_[markerIndex][nextBank][tile];
+        marker.blendBank = nextBank;
     }
 
     bool LoadLookup(SRL::Cd::File& file)
@@ -278,8 +317,9 @@ private:
         }
 
         // Build one true 8x8 VDP2 page. The authored map occupies 16x16 cells;
-        // the eight arrow patterns and two nine-cell blend banks stay offscreen.
-        static constexpr uint16_t kMaxCells = 1u + kImageCells * kImageCells + 8u * 4u + 18u;
+        // the eight arrow patterns and per-marker nine-cell blend banks stay offscreen.
+        static constexpr uint16_t kMaxCells =
+            1u + kImageCells * kImageCells + 8u * 4u + kBlendCellCount;
         uint8_t* cells = static_cast<uint8_t*>(SRL::Memory::CartRam::Malloc(kMaxCells * 32u));
         uint16_t* names = static_cast<uint16_t*>(SRL::Memory::CartRam::Malloc(kMapWidth * kMapWidth * 2u));
         if (!cells || !names)
@@ -320,7 +360,7 @@ private:
                     names[(kMarkerAtlasY + y) * kMapWidth + x] = pattern;
             }
         }
-        for (uint8_t tile = 0u; tile < 18u; ++tile)
+        for (uint8_t tile = 0u; tile < kBlendCellCount; ++tile)
         {
             memset(cells + static_cast<size_t>(cellCount) * 32u, 0, 32u);
             names[kBlendAtlasY * kMapWidth + tile] = cellCount++;
@@ -369,9 +409,15 @@ private:
             markerCells_[direction][2] = map_[base + kMapWidth];
             markerCells_[direction][3] = map_[base + kMapWidth + 1u];
         }
-        for (uint8_t bank = 0u; bank < 2u; ++bank)
-            for (uint8_t tile = 0u; tile < 9u; ++tile)
-                blendCells_[bank][tile] = map_[kBlendAtlasY * kMapWidth + bank * 9u + tile];
+        for (uint8_t marker = 0u; marker < kMarkerCount; ++marker)
+            for (uint8_t bank = 0u; bank < kBlendBanksPerMarker; ++bank)
+                for (uint8_t tile = 0u; tile < kBlendTiles; ++tile)
+                {
+                    const uint16_t atlasIndex = static_cast<uint16_t>(
+                        (marker * kBlendBanksPerMarker + bank) * kBlendTiles + tile);
+                    blendCells_[marker][bank][tile] =
+                        map_[kBlendAtlasY * kMapWidth + atlasIndex];
+                }
         SRL::VDP2::NBG1::SetPriority(SRL::VDP2::Priority::Layer7);
         SRL::VDP2::NBG1::TransparentEnable();
         SRL::VDP2::NBG1::ScrollEnable();
@@ -381,19 +427,13 @@ private:
     uint8_t lookupFile_[kLookupHeaderBytes + kMaximumSegments * 2u]{};
     volatile uint16_t* map_ = nullptr;
     volatile uint8_t* cells_ = nullptr;
-    uint16_t markerMapIndices_[9u]{};
+    MarkerState markers_[kMarkerCount]{};
     uint16_t markerCells_[8u][4u]{};
-    uint16_t blendCells_[2u][9u]{};
-    uint16_t previousPatterns_[9u]{};
+    uint16_t blendCells_[kMarkerCount][kBlendBanksPerMarker][kBlendTiles]{};
     uint16_t cellBaseOffset_ = 0u;
-    uint8_t blendBank_ = 0u;
     uint16_t segmentCount_ = 0u;
-    uint8_t markerPixelX_ = 0u;
-    uint8_t markerPixelY_ = 0u;
-    uint8_t markerDirection_ = 0u;
     int16_t yawOffsetCentideg_ = 0;
     int8_t yawSense_ = 1;
-    bool markerVisible_ = false;
     bool ready_ = false;
     uint8_t status_ = 0u;
 

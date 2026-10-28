@@ -8,6 +8,16 @@
 #define AUTO_LAP_PHYSICS_DRIVER 1
 #endif
 
+#ifndef AUTO_LAP_NPC_RAILS
+#define AUTO_LAP_NPC_RAILS 0
+#endif
+
+// 1 = strip NPC runtime .text so HWR heap fits under 0x060C0000 (track belt).
+// Set 0 only after map shows heapFree >= ~16KiB with heavy code linked.
+#ifndef AUTO_LAP_NPC_SLIM
+#define AUTO_LAP_NPC_SLIM 1
+#endif
+
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -26,7 +36,12 @@
 #include "application_state.hpp"
 #include "auto_lap_route_build_ops.hpp"
 #include "auto_lap_drive_policy.hpp"
+#include "auto_lap_npc_rail_policy.hpp"
 #include "auto_lap_route_selection_policy.hpp"
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+#include "npc_rail_follower.hpp"
+#include "npc_rail_route.hpp"
+#endif
 #include "auto_lap_route_transition_ops.hpp"
 #include "auto_lap_route_runtime_state.hpp"
 #include "auto_lap_route_lifecycle_ops.hpp"
@@ -223,12 +238,20 @@ public:
 #if MASTER_FRAME_PHASE_TELEMETRY
         Sh2FrtProfiler::EnsureInitialized();
 #endif
-        if (AutoLapPhysicsEnabled() && !InitializeAutoLapPhysicalStart())
+        if (AutoLapPhysicsEnabled())
         {
-            // Do not let the pilot accelerate from the segment bounds center
-            // when PATH or a strict asphalt contact is unavailable.
-            SetAutoLapTestEnabled(false);
-            SRL::Debug::Print(1, 24, "AUTO START: PATH/TCOL fail");
+            const uint8_t startFail = InitializeAutoLapPhysicalStart();
+            if (startFail != AutoLapNpcRailPolicy::StartFail::kOk)
+            {
+                // Do not let the pilot accelerate from the segment bounds center
+                // when PATH or a strict asphalt contact is unavailable.
+                SetAutoLapTestEnabled(false);
+                ClearAutoLapNpcRailRoutes();
+                SRL::Debug::Print(1, 24, "AUTO START fail:%u",
+                                  static_cast<unsigned>(startFail));
+            }
+            // NPC rails arm later via stability gate in the frame loop — never
+            // in this start preface (log1/telemetrias_3 regressions).
         }
         if (context_.TimeAttackEnabled())
         {
@@ -288,6 +311,7 @@ public:
                 UpdateAutoLapRoute(context_, context_.carWorldPosition, carYawDeg_);
                 SyncCameraHeadingFromCar();
             }
+            TickAutoLapNpcRails();
             CaptureWorkRamStage(hwrStageTrace_.autoLap, lwrStageTrace_.autoLap);
 #if MASTER_FRAME_PHASE_TELEMETRY
             const FramePhaseTelemetry::Stamp gameplayTicksEnd = CaptureMasterPhaseStamp();
@@ -947,6 +971,7 @@ private:
                     SetAutoLapTestEnabled(!AutoLapTestEnabled());
                     autoLapDriveState_ = {};
                     AutoLapRouteDomain::ClearAutoLapStartupYawAlignment(autoLapRoute_);
+                    ClearAutoLapNpcRailRoutes();
                     if (AutoLapTestEnabled())
                     {
                         // Camera guidance may have cached a different line.
@@ -1121,22 +1146,37 @@ private:
         }
     }
 
-    bool InitializeAutoLapPhysicalStart()
+    uint8_t InitializeAutoLapPhysicalStart()
     {
+        namespace StartFail = AutoLapNpcRailPolicy::StartFail;
+
         Game::CarSystem* car = ActiveCarSystem();
-        if (!car || !context_.trackSystem || !context_.TrackSystemReady() ||
-            !EnsureAutoLapRouteReady(context_, context_.carWorldPosition) ||
-            autoLapRoute_.selectedGuideLine < 0 ||
+        if (!car || !context_.trackSystem || !context_.TrackSystemReady())
+        {
+            return StartFail::kCarOrTrack;
+        }
+        if (!EnsureAutoLapRouteReady(context_, context_.carWorldPosition))
+        {
+            // Built/count help separate "PATH missing" from "centers wiped".
+            SRL::Debug::Print(1, 23, "AUTO ENSURE b:%u n:%u",
+                              autoLapRoute_.Built() ? 1u : 0u,
+                              static_cast<unsigned>(autoLapRoute_.centers.size()));
+            return StartFail::kRouteReady;
+        }
+        if (autoLapRoute_.selectedGuideLine < 0 ||
             autoLapRoute_.centers.size() < 3u ||
             !AutoLapRouteDomain::HasConsistentMappedRoute(autoLapRoute_) ||
             !AutoLapRouteDomain::HasConsistentYawRoute(autoLapRoute_))
         {
-            return false;
+            return StartFail::kRouteData;
         }
 
         size_t nearest = 0u;
         if (!AutoLapRouteDomain::FindNearestRoutePointIndex(
-                autoLapRoute_, context_.carWorldPosition, nearest)) return false;
+                autoLapRoute_, context_.carWorldPosition, nearest))
+        {
+            return StartFail::kNearestPoint;
+        }
 
         const auto& routePoint = autoLapRoute_.centers[nearest];
         static constexpr uint8_t kAsphaltSurfaceType = 1u;
@@ -1147,7 +1187,7 @@ private:
                 routePoint, context_.trackSegOffset, &kAsphaltSurfaceType, 1u,
                 groundY, &groundSegmentId, routeSegmentId, false))
         {
-            return false;
+            return StartFail::kAsphaltTcol;
         }
 
         // Place the car on the selected PATH line before its first physics
@@ -1163,7 +1203,7 @@ private:
         car->SyncRenderState(context_.carWorldPosition, carYawDeg_);
         SyncCameraHeadingFromCar();
         cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
-        return true;
+        return StartFail::kOk;
     }
 
     void BuildAutoLapDriveInput(Game::CarSystem& car,
@@ -1231,6 +1271,22 @@ private:
         outInput.SetAccelerateHeld(command.accelerate);
         outInput.SetBrakeHeld(command.brake);
         outInput.SetAnalogSteering(command.steering);
+        // Persistent Auto Lap drive readout: ground support, missing-ground
+        // frames, accelerate command, and speed. GS=0 for >8 frames forces
+        // accelerate off in AutoLapDrivePolicy.
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        lastAlGround_ = drive.groundSupported;
+        lastAlAccel_ = command.accelerate;
+        lastAlSpeedKmh_ = drive.speedKmh;
+#endif
+        if ((frameCounter_ & 7u) == 0u)
+        {
+            SRL::Debug::Print(1, 22, "AL g:%u m:%u a:%u s:%d",
+                              drive.groundSupported ? 1u : 0u,
+                              static_cast<unsigned>(autoLapDriveState_.missingGroundFrames),
+                              command.accelerate ? 1u : 0u,
+                              static_cast<int>(drive.speedKmh));
+        }
     }
 
     Game::GameplayFrameState BuildGameplayFrameState(const FrameInputState& input)
@@ -1630,6 +1686,7 @@ private:
     void UpdateHud(const CameraFrameState& camera)
     {
         context_.hudSystem->UpdateMinimap(latestActiveSegmentId_, carYawDeg_);
+        UpdateNpcMinimapMarkers();
         context_.hudSystem->Update(context_.cameraSystem->State(),
                                    context_.modelOffset,
                                    camera.location,
@@ -1832,7 +1889,9 @@ private:
             kCarVisualLiftUnits,
             renderInputs.depthBiasUnits);
 
+#if !AUTO_LAP_NPC_RAILS || AUTO_LAP_NPC_SLIM
         RenderCarShadowIfEnabled(renderPacket);
+#endif
         // Car is drawn unlit/flat (DrawAsFlat). Still rebind light so any residual
         // SGL global light state from track does not linger into other systems.
         car->SetLightDirection(context_.lightDirection);
@@ -1840,11 +1899,304 @@ private:
         // once during car bootstrap (main.cxx).  Re-walking every face here was
         // pure Master-side work on every frame.
         GameLoopRuntime::ApplyCarRenderRuntimeSync(*car, renderPacket, renderInputs.gameplayYawDeg);
-        const auto telemetry =
-            GameLoopRuntime::SubmitCarRenderRuntime(*context_.renderPipeline, *car);
+        // Fase 2A mesh1: player SubmitRender+Flush, then reuse the same
+        // MeshRenderer at side-rail poses (zero extra Model*/MeshRenderer alloc).
+        if (!context_.renderPipeline) return;
+        context_.renderPipeline->Reset();
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        PrepareNpcDrawPoses();
+        // Crosses before 3D flush (pose4: post-Flush Scene2D pins never showed).
+        DrawNpcPoseMarkers();
+#endif
+        car->SubmitRender(*context_.renderPipeline);
+        context_.renderPipeline->Flush();
         lastRenderedCarFacesThisFrame_ = GameLoopRuntime::ClampToU16(
             static_cast<uint32_t>(lastRenderedCarFacesThisFrame_) +
-            static_cast<uint32_t>(telemetry.renderedFaceCount));
+            static_cast<uint32_t>(
+                GameLoopRuntime::CaptureCarRenderRuntimeFaceCount(*car)));
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        RenderNpcWithPlayerRenderer(*car);
+#endif
+    }
+
+    bool EnsureNpcCarRenderers()
+    {
+        // mesh1 reuses the player MeshRenderer — no dedicated NPC clones.
+        return false;
+    }
+
+    // World PATH separation at the player's Auto Lap index: side[i] - mid[i].
+    bool ResolveNpcLiveLateralRaw(size_t slot, int32_t& outDx, int32_t& outDz) const
+    {
+        outDx = 0;
+        outDz = 0;
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (slot >= AutoLapNpcRailPolicy::kNpcRailCount) return false;
+        if (!autoLapNpcRoutes_[slot].Built() ||
+            autoLapNpcRoutes_[slot].centers.empty() ||
+            autoLapRoute_.centers.empty())
+        {
+            return false;
+        }
+        const size_t sideCount = autoLapNpcRoutes_[slot].centers.size();
+        const size_t midCount = autoLapRoute_.centers.size();
+        const size_t midIndex =
+            static_cast<size_t>(autoLapRoute_.index) % midCount;
+        const size_t sideIndex = (sideCount == midCount)
+            ? midIndex
+            : ((midIndex * sideCount) / midCount);
+        const auto& sidePt = autoLapNpcRoutes_[slot].centers[sideIndex];
+        const auto& midPt = autoLapRoute_.centers[midIndex];
+        outDx = sidePt.X.RawValue() - midPt.X.RawValue();
+        outDz = sidePt.Z.RawValue() - midPt.Z.RawValue();
+        return (outDx != 0 || outDz != 0);
+#else
+        (void)slot;
+        return false;
+#endif
+    }
+
+    // Project PATH (side-mid) onto the car's right axis (shadow-frame convention).
+    // mesh4 applied world dx/dz directly → after ~180° turns the NPC looked like
+    // it swapped rails relative to the nose. Local projection keeps one side.
+    bool ResolveNpcCarFrameLateralRaw(size_t slot,
+                                      int32_t yawDeg,
+                                      int32_t& outDx,
+                                      int32_t& outDz) const
+    {
+        outDx = 0;
+        outDz = 0;
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        int32_t worldDx = 0;
+        int32_t worldDz = 0;
+        if (!ResolveNpcLiveLateralRaw(slot, worldDx, worldDz))
+        {
+            worldDx = 72 << 16;
+            worldDz = -(76 << 16);
+        }
+
+        using SRL::Math::Types::Angle;
+        using SRL::Math::Types::Fxp;
+        const Angle yaw = Angle::FromDegrees(Fxp::BuildRaw(yawDeg << 16));
+        const Fxp sinYaw = SRL::Math::Trigonometry::Sin(yaw);
+        const Fxp cosYaw = SRL::Math::Trigonometry::Cos(yaw);
+        // Same basis as car shadow: right = (cos, sin).
+        const Fxp rightX = cosYaw;
+        const Fxp rightZ = sinYaw;
+
+        const int64_t dot64 =
+            (static_cast<int64_t>(worldDx) * static_cast<int64_t>(rightX.RawValue())) +
+            (static_cast<int64_t>(worldDz) * static_cast<int64_t>(rightZ.RawValue()));
+        const Fxp lat = Fxp::BuildRaw(static_cast<int32_t>(dot64 >> 16));
+
+        outDx = (rightX * lat).RawValue();
+        outDz = (rightZ * lat).RawValue();
+        return (outDx != 0 || outDz != 0);
+#else
+        (void)slot;
+        (void)yawDeg;
+        return false;
+#endif
+    }
+
+    SRL::Math::Types::Vector3D ResolveNpcCarDrawPosition(size_t slot)
+    {
+        const SRL::Math::Types::Vector3D base = ResolveCarRenderPosition();
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (slot >= AutoLapNpcRailPolicy::kNpcRailCount ||
+            !autoLapNpcFollowers_[slot].Active())
+        {
+            return base;
+        }
+        Game::CarSystem* car = ActiveCarSystem();
+        const int32_t visualYawOffsetDeg = car ? car->VisualYawOffsetDegrees() : 0;
+        const int32_t yawDeg = NormalizeYawDeg360(carYawDeg_ + visualYawOffsetDeg);
+        int32_t dx = 0;
+        int32_t dz = 0;
+        if (!ResolveNpcCarFrameLateralRaw(slot, yawDeg, dx, dz))
+        {
+            dx = 72 << 16;
+            dz = -(76 << 16);
+        }
+        SRL::Math::Types::Vector3D pos{};
+        pos.X = SRL::Math::Types::Fxp::BuildRaw(base.X.RawValue() + dx);
+        pos.Y = SRL::Math::Types::Fxp::BuildRaw(base.Y.RawValue());
+        pos.Z = SRL::Math::Types::Fxp::BuildRaw(base.Z.RawValue() + dz);
+        return pos;
+#else
+        (void)slot;
+        return base;
+#endif
+    }
+
+    // Live pose in car frame: player + project(side-mid → right); yaw = car 1.
+    void PrepareNpcDrawPoses()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            npcDrawValid_[slot] = false;
+            npcScreenValid_[slot] = false;
+        }
+        if (!npcRailsArmed_ || autoLapNpcRailReadyCount_ == 0u) return;
+
+        Game::CarSystem* car = ActiveCarSystem();
+        const int32_t visualYawOffsetDeg = car ? car->VisualYawOffsetDegrees() : 0;
+        const int32_t playerRenderYawDeg = NormalizeYawDeg360(
+            carYawDeg_ + visualYawOffsetDeg);
+        const SRL::Math::Types::Vector3D playerBase = ResolveCarRenderPosition();
+        const int32_t playerYRaw = playerBase.Y.RawValue();
+        npcBaseXRaw_ = playerBase.X.RawValue();
+        npcBaseZRaw_ = playerBase.Z.RawValue();
+
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            if (!autoLapNpcFollowers_[slot].Active()) continue;
+
+            int32_t dx = 0;
+            int32_t dz = 0;
+            if (!ResolveNpcCarFrameLateralRaw(slot, playerRenderYawDeg, dx, dz))
+            {
+                dx = 72 << 16;
+                dz = -(76 << 16);
+            }
+
+            npcDrawPos_[slot].X = SRL::Math::Types::Fxp::BuildRaw(
+                playerBase.X.RawValue() + dx);
+            npcDrawPos_[slot].Y = SRL::Math::Types::Fxp::BuildRaw(playerYRaw);
+            npcDrawPos_[slot].Z = SRL::Math::Types::Fxp::BuildRaw(
+                playerBase.Z.RawValue() + dz);
+
+            npcDrawYawDeg_[slot] = static_cast<int16_t>(playerRenderYawDeg);
+            npcDrawValid_[slot] = true;
+            npcLatDxRaw_[slot] = dx;
+            npcLatDzRaw_[slot] = dz;
+
+            SRL::Math::Types::Vector2D screen{};
+            const auto depth = SRL::Scene3D::ProjectToScreen(npcDrawPos_[slot], &screen);
+            npcScreenDepthRaw_[slot] = depth.RawValue();
+            if (depth.RawValue() > 0)
+            {
+                npcScreenX_[slot] = static_cast<int16_t>(screen.X.RawValue() >> 16);
+                npcScreenY_[slot] = static_cast<int16_t>(screen.Y.RawValue() >> 16);
+                npcScreenValid_[slot] = true;
+            }
+            else
+            {
+                npcScreenX_[slot] = -80;
+                npcScreenY_[slot] = -40;
+                npcScreenValid_[slot] = true;
+            }
+        }
+#endif
+    }
+
+    uint8_t RenderNpcSlotWithPlayerRenderer(Game::CarSystem& car, size_t slot)
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        MeshRenderer* renderer = car.Renderer();
+        if (!renderer || slot >= AutoLapNpcRailPolicy::kNpcRailCount) return 0u;
+        if (!npcDrawValid_[slot]) return 0u;
+
+        const SRL::Math::Types::Angle yaw =
+            SRL::Math::Types::Angle::FromDegrees(
+                SRL::Math::Types::Fxp::BuildRaw(
+                    static_cast<int32_t>(npcDrawYawDeg_[slot]) << 16));
+        renderer->Render(npcDrawPos_[slot], yaw, false);
+        const uint32_t faces = renderer->LastRenderFaceCount();
+        npcReuseFaces_[slot] = GameLoopRuntime::ClampToU16(faces);
+        lastRenderedCarFacesThisFrame_ = GameLoopRuntime::ClampToU16(
+            static_cast<uint32_t>(lastRenderedCarFacesThisFrame_) + faces);
+        return faces > 0u ? 1u : 0u;
+#else
+        (void)car;
+        (void)slot;
+        return 0u;
+#endif
+    }
+
+    uint8_t RenderNpcWithPlayerRenderer(Game::CarSystem& car)
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        uint8_t drawn = 0u;
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            npcReuseFaces_[slot] = 0u;
+            drawn = static_cast<uint8_t>(
+                drawn + RenderNpcSlotWithPlayerRenderer(car, slot));
+        }
+        return drawn;
+#else
+        (void)car;
+        return 0u;
+#endif
+    }
+
+    uint8_t EnqueueNpcCars(RenderPipeline& pipeline)
+    {
+        // mesh1 draws via RenderNpcWithPlayerRenderer after Flush (no Enqueue).
+        (void)pipeline;
+        return 0u;
+    }
+
+    // Printed after PresentPeriodicFrameStats so VDP1/DRV/FPS lines do not win.
+    void PrintNpcDiagHud()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        const unsigned act0 = autoLapNpcFollowers_[0].Active() ? 1u : 0u;
+        const unsigned v0 = npcDrawValid_[0] ? 1u : 0u;
+        SRL::Debug::Print(
+            0, 0, "ISO NPC mesh5 a:%u v:%u f:%u",
+            act0, v0,
+            static_cast<unsigned>(npcReuseFaces_[0]));
+
+        // Car-frame lateral (projected onto right); side should stay stable in turns.
+        SRL::Debug::Print(
+            0, 14, "d:%d/%d y:%d",
+            static_cast<int>(npcLatDxRaw_[0] >> 16),
+            static_cast<int>(npcLatDzRaw_[0] >> 16),
+            static_cast<int>(npcDrawYawDeg_[0]));
+#endif
+    }
+
+    void DrawNpcPoseMarkers()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (!npcRailsArmed_) return;
+
+        using SRL::Math::Types::Fxp;
+        using SRL::Math::Types::Vector2D;
+
+        static const SRL::Types::HighColor kColors[AutoLapNpcRailPolicy::kNpcRailCount] = {
+            SRL::Types::HighColor::FromRGB555(31, 31, 0),  // yellow
+        };
+        constexpr int16_t kArm = 36;
+        const Fxp armF = Fxp::BuildRaw(kArm << 16);
+        const Fxp frontSort = Fxp::BuildRaw(1);
+
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            if (!npcDrawValid_[slot] || !npcScreenValid_[slot]) continue;
+
+            // Use screen coords captured pre-Flush (view matrix still valid).
+            const Vector2D center2D(
+                Fxp::BuildRaw(static_cast<int32_t>(npcScreenX_[slot]) << 16),
+                Fxp::BuildRaw(static_cast<int32_t>(npcScreenY_[slot]) << 16));
+
+            const Vector2D left(center2D.X - armF, center2D.Y);
+            const Vector2D right(center2D.X + armF, center2D.Y);
+            const Vector2D up(center2D.X, center2D.Y - armF);
+            const Vector2D down(center2D.X, center2D.Y + armF);
+
+            SRL::Scene2D::DrawLine(left, right, kColors[slot], frontSort);
+            SRL::Scene2D::DrawLine(up, down, kColors[slot], frontSort);
+        }
+#endif
+    }
+
+    void UpdateNpcMinimapMarkers()
+    {
+        // Fase 3: minimapa NPC deferido para poupar .text/HWR na Fase 1.
     }
 
     SRL::Math::Types::Vector3D ResolveCarRenderPosition()
@@ -1937,6 +2289,7 @@ private:
         RenderTrackFrame(camera);
 
         // Track DrawSmoothMesh may have mutated light state; rebind before car.
+        // NPCs share this post-track window with the player (see RenderCar).
         ConfigureScene3dView(camera);
         RestoreDirectionalLight();
         SetWorkRamDebugTag(SRL::Memory::DebugTag::Car);
@@ -2157,6 +2510,15 @@ private:
                                                       context_.vertexCount,
                                                       framePresentation.submittedTrackFaces,
                                                       framePresentation.submittedCarFaces);
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        // After periodic VDP1/stats so NPC Y/dP lines are not overwritten.
+        PrintNpcDiagHud();
+#elif AUTO_LAP_NPC_RAILS && AUTO_LAP_NPC_SLIM
+        SRL::Debug::Print(0, 0, "ISO NPC slim");
+#else
+        // Control build fingerprint (AUTO_LAP_NPC_RAILS=0).
+        SRL::Debug::Print(0, 0, "ISO BASE rails0");
+#endif
         if (!framePresentation.RuntimeStatsEnabled()) return;
         if (Game::MemoryBudgetRuntimeBridge::ShouldAvoidDebugTransientOptionalTelemetry()) return;
 
@@ -2780,6 +3142,7 @@ private:
         if (!AutoLapTestEnabled() && AutoLapRouteDomain::HasRetainedAutoLapRouteStorage(autoLapRoute_))
         {
             AutoLapRouteDomain::ReleaseAutoLapRouteStorage(autoLapRoute_);
+            ClearAutoLapNpcRailRoutes();
         }
         cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
     }
@@ -3163,7 +3526,7 @@ private:
     {
         AutoLapRouteDomain::ClearAutoLapGuideLines(autoLapRoute_);
 
-        std::vector<uint8_t> bytes{};
+        AutoLapRouteDomain::GuideFileBytes bytes{};
         const char* loadedCandidate = nullptr;
         if (!AutoLapRouteDomain::TryLoadGuideBytes(bytes, loadedCandidate))
         {
@@ -3224,6 +3587,9 @@ private:
         const bool reversed = AutoLapRouteDomain::NormalizeRouteDirection(
             autoLapRoute_,
             segmentCount);
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        autoLapGuideReversed_ = reversed;
+#endif
         // Guide validity includes the yaw/offset arrays. Build them before
         // testing validity, otherwise every parsed PATH falls back to catalog
         // centers and the physical pilot never sees the selected guide line.
@@ -3241,7 +3607,348 @@ private:
             build.routePointCount);
         LogAutoLapGuideRouteSelection(routeTrace);
         LogAutoLapGuideBuildResult(build);
+        // Capture PATH lateral samples while all 3 raw guides still live in LWR.
+        // Freeing mid before arm caused Resolve to compare side rails against
+        // simplified player centers and yield dP:0/0 (autolap23).
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (build.valid)
+        {
+            CaptureNpcLateralSamplesFromGuides();
+        }
+#endif
+        // No NPC side-effects that allocate here. Arming happens after the
+        // player has stable ground + motion (safe F1 redesign).
         return build.valid;
+    }
+
+    void CaptureNpcLateralSamplesFromGuides()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            npcLatDxRaw_[slot] = 0;
+            npcLatDzRaw_[slot] = 0;
+            const int32_t lineIndex = AutoLapNpcRailPolicy::GuideLineIndexForNpcSlot(slot);
+            if (lineIndex < 0) continue;
+            if (!AutoLapRouteDomain::HasGuideLineMinimumPoints(
+                    autoLapRoute_, static_cast<size_t>(lineIndex), 2u) ||
+                !AutoLapRouteDomain::HasGuideLineMinimumPoints(autoLapRoute_, 1u, 2u))
+            {
+                continue;
+            }
+            const auto& side = autoLapRoute_.guideLines[static_cast<size_t>(lineIndex)];
+            const auto& mid = autoLapRoute_.guideLines[1];
+            // Sample near the player's current parametric index when possible.
+            size_t idx = 0u;
+            if (!autoLapRoute_.centers.empty() && mid.size() == side.size())
+            {
+                idx = static_cast<size_t>(autoLapRoute_.index) % side.size();
+            }
+            npcLatDxRaw_[slot] = side[idx].X.RawValue() - mid[idx].X.RawValue();
+            npcLatDzRaw_[slot] = side[idx].Z.RawValue() - mid[idx].Z.RawValue();
+        }
+#endif
+    }
+
+    void ClearAutoLapNpcRailRoutes()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
+            NpcRailFollower::Reset(autoLapNpcFollowers_[slot]);
+            autoLapNpcRailCounts_[slot] = 0u;
+            npcDrawValid_[slot] = false;
+            npcDrawYawDeg_[slot] = 0;
+            npcScreenValid_[slot] = false;
+            npcScreenX_[slot] = 0;
+            npcScreenY_[slot] = 0;
+            npcScreenDepthRaw_[slot] = 0;
+            npcLatDxRaw_[slot] = 0;
+            npcLatDzRaw_[slot] = 0;
+        }
+        autoLapNpcRailReadyCount_ = 0u;
+        npcRailsArmed_ = false;
+        npcStableFrames_ = 0u;
+#endif
+    }
+
+    void LogAutoLapNpcRailsTelemetry() const
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        // nSide = NPC guide 0 count; nMid = player Auto Lap centers.
+        const unsigned nSide = static_cast<unsigned>(autoLapNpcRailCounts_[0]);
+        const unsigned nMid = static_cast<unsigned>(autoLapRoute_.centers.size());
+        SRL::Debug::Print(1, 26, "AUTO RAILS s:%u m:%u", nSide, nMid);
+        SRL::Debug::Print(1, 27, "AUTO NPC ready:%u",
+                          static_cast<unsigned>(autoLapNpcRailReadyCount_));
+#else
+        (void)0;
+#endif
+    }
+
+    bool ArmNpcRailsOnce()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        // Mid ref for relative draw is autoLapRoute_.centers (already in LWR).
+        if (autoLapRoute_.centers.size() < 2u)
+        {
+            SRL::Debug::Print(1, 25, "AUTO NPC mid fail");
+            return false;
+        }
+
+        // Prefer resident LWR guideLines from the player PATH build — avoids a
+        // second CD reload + PathLine std::vector peak on the tight HWR heap.
+        bool usedResidentGuides = true;
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            const int32_t lineIndex = AutoLapNpcRailPolicy::GuideLineIndexForNpcSlot(slot);
+            if (lineIndex < 0 ||
+                !AutoLapRouteDomain::HasGuideLineMinimumPoints(
+                    autoLapRoute_, static_cast<size_t>(lineIndex), 2u))
+            {
+                usedResidentGuides = false;
+                break;
+            }
+        }
+
+        PathNya::ParseResult parsed{};
+        AutoLapRouteDomain::GuideFileBytes bytes{};
+        if (!usedResidentGuides)
+        {
+            const char* loadedCandidate = nullptr;
+            if (!AutoLapRouteDomain::TryLoadGuideBytes(bytes, loadedCandidate))
+            {
+                SRL::Debug::Print(1, 25, "AUTO NPC reload fail");
+                return false;
+            }
+            if (!PathNya::Parse(bytes.data(), bytes.size(), parsed))
+            {
+                SRL::Debug::Print(1, 25, "AUTO NPC parse fail");
+                return false;
+            }
+            // Drop file bytes before allocating HWR routes (parse owns copies).
+            bytes.clear();
+        }
+
+        uint8_t ready = 0u;
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            NpcRailFollower::Reset(autoLapNpcFollowers_[slot]);
+            ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
+            autoLapNpcRailCounts_[slot] = 0u;
+
+            const int32_t lineIndex = AutoLapNpcRailPolicy::GuideLineIndexForNpcSlot(slot);
+            if (lineIndex < 0) continue;
+
+            bool built = false;
+            if (usedResidentGuides)
+            {
+                // Swap-consume guide line (no second LWR allocate).
+                built = PromoteGuideLineToNpcRail(
+                    autoLapNpcRoutes_[slot],
+                    autoLapRoute_.guideLines[static_cast<size_t>(lineIndex)],
+                    lineIndex,
+                    context_.trackSegOffset,
+                    autoLapGuideReversed_);
+            }
+            else if (static_cast<size_t>(lineIndex) < parsed.lines.size() &&
+                     parsed.lines[static_cast<size_t>(lineIndex)].size() >= 2u)
+            {
+                built = BuildNpcRailFromPathLine(
+                    autoLapNpcRoutes_[slot],
+                    parsed.lines[static_cast<size_t>(lineIndex)],
+                    lineIndex,
+                    context_.trackSegOffset,
+                    autoLapGuideReversed_);
+            }
+            if (!built) continue;
+
+            RebuildNpcRailYaw(autoLapNpcRoutes_[slot],
+                               [this](int32_t dx, int32_t dz, int32_t fallback) {
+                                   return YawFromDeltaRaw(dx, dz, fallback);
+                               });
+            // yawDeg allocate can fail under LWR pressure — drop the rail if empty.
+            if (autoLapNpcRoutes_[slot].yawDeg.size() !=
+                autoLapNpcRoutes_[slot].centers.size())
+            {
+                ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
+                NpcRailFollower::Reset(autoLapNpcFollowers_[slot]);
+                continue;
+            }
+
+            // Same station as the player on this rail (mesh1 +8 ahead + faster
+            // step made NPCs race ahead and corner out of sync with the master).
+            size_t nearest = 0u;
+            if (!FindNearestNpcRailPointIndex(
+                    autoLapNpcRoutes_[slot], context_.carWorldPosition, nearest))
+            {
+                ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
+                continue;
+            }
+            const uint16_t startIndex = static_cast<uint16_t>(nearest);
+            const int16_t stepUnits = static_cast<int16_t>(
+                std::max<int32_t>(6, static_cast<int32_t>(autoLapStepUnits_)));
+            if (NpcRailFollower::Bind(autoLapNpcFollowers_[slot],
+                                       autoLapNpcRoutes_[slot],
+                                       startIndex,
+                                       stepUnits))
+            {
+                autoLapNpcRailCounts_[slot] = static_cast<uint16_t>(
+                    autoLapNpcRoutes_[slot].centers.size());
+                ++ready;
+            }
+            else
+            {
+                ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
+            }
+        }
+
+        // Fallback parse scratch no longer needed.
+        if (!usedResidentGuides)
+        {
+            PathNya::Clear(parsed);
+        }
+
+        autoLapNpcRailReadyCount_ = ready;
+        if (ready == 0u)
+        {
+            SRL::Debug::Print(1, 25, "AUTO NPC build fail");
+            return false;
+        }
+
+        // If build-time lateral capture missed (guides already gone), sample now
+        // against player centers before side guides are consumed.
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            if ((npcLatDxRaw_[slot] != 0 || npcLatDzRaw_[slot] != 0)) continue;
+            if (!autoLapNpcRoutes_[slot].Built() ||
+                autoLapNpcRoutes_[slot].centers.empty() ||
+                autoLapRoute_.centers.empty()) continue;
+            const size_t sideCount = autoLapNpcRoutes_[slot].centers.size();
+            const size_t midCount = autoLapRoute_.centers.size();
+            const size_t sideIndex = 0u;
+            const size_t midIndex = (sideCount == midCount)
+                ? sideIndex
+                : ((sideIndex * midCount) / sideCount);
+            npcLatDxRaw_[slot] =
+                autoLapNpcRoutes_[slot].centers[sideIndex].X.RawValue() -
+                autoLapRoute_.centers[midIndex].X.RawValue();
+            npcLatDzRaw_[slot] =
+                autoLapNpcRoutes_[slot].centers[sideIndex].Z.RawValue() -
+                autoLapRoute_.centers[midIndex].Z.RawValue();
+        }
+
+        npcRailsArmed_ = true;
+        LogAutoLapNpcRailsTelemetry();
+        SRL::Debug::Print(
+            1, 25, "AUTO NPC pose F1 dx:%d/%d",
+            static_cast<int>(npcLatDxRaw_[0] >> 16),
+            static_cast<int>(npcLatDzRaw_[0] >> 16));
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    void TickAutoLapNpcRails()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (!AutoLapPhysicsEnabled())
+        {
+            if (npcRailsArmed_ || autoLapNpcRailReadyCount_ != 0u)
+            {
+                ClearAutoLapNpcRailRoutes();
+            }
+            return;
+        }
+
+        if (!npcRailsArmed_)
+        {
+            static constexpr uint8_t kNpcStableFramesRequired = 30u;
+            const bool moving = lastAlAccel_ || lastAlSpeedKmh_ > 0;
+            if (lastAlGround_ && moving)
+            {
+                if (npcStableFrames_ < 255u) ++npcStableFrames_;
+            }
+            else
+            {
+                npcStableFrames_ = 0u;
+            }
+
+            if (npcStableFrames_ >= kNpcStableFramesRequired)
+            {
+                if (!ArmNpcRailsOnce())
+                {
+                    // Retry later after another stable window.
+                    npcStableFrames_ = 0u;
+                }
+            }
+            return;
+        }
+
+        for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            if (!autoLapNpcRoutes_[slot].Built()) continue;
+            // Re-bind if a prior Clear/Step dropped Active but the route remains.
+            if (!autoLapNpcFollowers_[slot].Active())
+            {
+                size_t nearest = 0u;
+                if (FindNearestNpcRailPointIndex(
+                        autoLapNpcRoutes_[slot], context_.carWorldPosition, nearest))
+                {
+                    const int16_t stepUnits = static_cast<int16_t>(
+                        std::max<int32_t>(6, static_cast<int32_t>(autoLapStepUnits_)));
+                    NpcRailFollower::Bind(
+                        autoLapNpcFollowers_[slot],
+                        autoLapNpcRoutes_[slot],
+                        static_cast<uint16_t>(nearest),
+                        stepUnits);
+                }
+            }
+            if (!autoLapNpcFollowers_[slot].Active()) continue;
+
+            // Keep side-rail station near the player's mid-rail index so yaw
+            // changes through corners match the master's timing.
+            if (!autoLapRoute_.centers.empty() &&
+                autoLapNpcRoutes_[slot].Built() &&
+                !autoLapNpcRoutes_[slot].centers.empty())
+            {
+                const size_t midCount = autoLapRoute_.centers.size();
+                const size_t sideCount = autoLapNpcRoutes_[slot].centers.size();
+                const size_t midIndex =
+                    static_cast<size_t>(autoLapRoute_.index) % midCount;
+                const size_t sideIndex = (sideCount == midCount)
+                    ? midIndex
+                    : ((midIndex * sideCount) / midCount);
+                auto& follower = autoLapNpcFollowers_[slot];
+                follower.pointIndex = static_cast<uint16_t>(sideIndex);
+                follower.pos = autoLapNpcRoutes_[slot].centers[sideIndex];
+                if (HasNpcRailYawAtIndex(autoLapNpcRoutes_[slot], sideIndex))
+                {
+                    follower.yawDeg = autoLapNpcRoutes_[slot].yawDeg[sideIndex];
+                }
+                follower.SetActive(true);
+            }
+            else
+            {
+                NpcRailFollower::Step(
+                    autoLapNpcFollowers_[slot],
+                    autoLapNpcRoutes_[slot],
+                    context_.trackSystem,
+                    context_.trackSegOffset,
+                    8u);
+            }
+        }
+
+        if ((frameCounter_ & 7u) == 0u)
+        {
+            SRL::Debug::Print(
+                1, 21, "NPC i:%u p:%u",
+                static_cast<unsigned>(autoLapNpcFollowers_[0].pointIndex),
+                static_cast<unsigned>(autoLapRoute_.index));
+        }
+#endif
     }
 
     void LogAutoLapGuideLineEmpty() const
@@ -3288,6 +3995,7 @@ private:
         // A failed PATH build must never leave a stale guide-line marker that
         // would allow the physics pilot to use unverified segment centers.
         autoLapRoute_.selectedGuideLine = -1;
+        ClearAutoLapNpcRailRoutes();
         AutoLapRouteDomain::PopulateFallbackCenters(
             autoLapRoute_,
             *context.trackSystem,
@@ -3406,6 +4114,30 @@ private:
     // PATH auto-lap speed multiplier test: 4x over baseline (6 -> 24).
     int16_t autoLapStepUnits_ = 12; // 2x do passo base (6)
     AutoLapRouteState autoLapRoute_{};
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+    std::array<NpcRailRoute, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcRoutes_{};
+    std::array<NpcRailFollower::State, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcFollowers_{};
+    std::array<uint16_t, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcRailCounts_{};
+    std::array<SRL::Math::Types::Vector3D, AutoLapNpcRailPolicy::kNpcRailCount> npcDrawPos_{};
+    std::array<int16_t, AutoLapNpcRailPolicy::kNpcRailCount> npcDrawYawDeg_{};
+    std::array<bool, AutoLapNpcRailPolicy::kNpcRailCount> npcDrawValid_{};
+    std::array<int16_t, AutoLapNpcRailPolicy::kNpcRailCount> npcScreenX_{};
+    std::array<int16_t, AutoLapNpcRailPolicy::kNpcRailCount> npcScreenY_{};
+    std::array<int32_t, AutoLapNpcRailPolicy::kNpcRailCount> npcScreenDepthRaw_{};
+    std::array<bool, AutoLapNpcRailPolicy::kNpcRailCount> npcScreenValid_{};
+    std::array<int32_t, AutoLapNpcRailPolicy::kNpcRailCount> npcLatDxRaw_{};
+    std::array<int32_t, AutoLapNpcRailPolicy::kNpcRailCount> npcLatDzRaw_{};
+    std::array<uint16_t, AutoLapNpcRailPolicy::kNpcRailCount> npcReuseFaces_{};
+    int32_t npcBaseXRaw_ = 0;
+    int32_t npcBaseZRaw_ = 0;
+    uint8_t autoLapNpcRailReadyCount_ = 0u;
+    uint8_t npcStableFrames_ = 0u;
+    bool npcRailsArmed_ = false;
+    bool autoLapGuideReversed_ = false;
+    bool lastAlGround_ = false;
+    bool lastAlAccel_ = false;
+    int16_t lastAlSpeedKmh_ = 0;
+#endif
     AutoLapDrivePolicy::State autoLapDriveState_{};
     CameraPathRuntimeState cameraPathRuntime_{};
     HwrStageTrace hwrStageTrace_{};

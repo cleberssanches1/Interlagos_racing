@@ -24,6 +24,11 @@ public:
         if (minimap_) minimap_->UpdateSegment(activeGroundSegmentId, carYawDeg);
     }
 
+    void UpdateNpcMinimap(uint8_t npcSlot, int32_t segmentId, int32_t yawDeg)
+    {
+        if (minimap_) minimap_->UpdateNpcSegment(npcSlot, segmentId, yawDeg);
+    }
+
     void UpdateDrivetrain(int16_t speedKmh, int16_t engineRpm, char gear)
     {
         if (speedometer_) speedometer_->Update(speedKmh, engineRpm, gear);

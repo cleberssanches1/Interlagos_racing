@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#define PATH_NYA_HOST_STD_VECTOR 1
 #include "path_nya_loader.hpp"
 
 namespace

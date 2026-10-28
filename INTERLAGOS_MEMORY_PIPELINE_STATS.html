@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interlagos — Pipeline e estatísticas de memória</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #070e18;
+      --panel: #101a2a;
+      --text: #e8f0ff;
+      --muted: #93a7c7;
+      --line: #243552;
+      --accent: #6ed7ff;
+      --ok: #7ef0b1;
+      --warn: #ffd36d;
+      --crit: #ff8f8f;
+      --hwr: #6ed7ff;
+      --lwr: #8cf2ba;
+      --cart: #cda9ff;
+      --vdp1: #ffb86b;
+      --vdp2: #f6a6ff;
+      --sgl: #9ec1ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 0%, rgba(110, 215, 255, 0.10), transparent 36%),
+        radial-gradient(circle at 80% 10%, rgba(140, 242, 186, 0.06), transparent 30%),
+        linear-gradient(180deg, #06101a, var(--bg));
+    }
+    .page { max-width: 1280px; margin: 0 auto; padding: 28px 20px 64px; }
+    h1, h2, h3 { margin: 0 0 8px; }
+    p, li { color: var(--muted); line-height: 1.55; }
+    a { color: var(--accent); }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 6px;
+      color: #ebf8ff;
+    }
+    .hero, .panel {
+      background: linear-gradient(180deg, rgba(16,26,42,.96), rgba(10,17,28,.98));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 18px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 18px;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .kpi {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .kpi .label { font-size: 12px; color: var(--muted); }
+    .kpi .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .kpi .sub { font-size: 12px; margin-top: 4px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+    .chart-box { position: relative; height: 300px; }
+    .chart-box.tall { height: 360px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--accent); font-weight: 600; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid transparent;
+    }
+    .tag.hwr { color: var(--hwr); border-color: rgba(110,215,255,.35); background: rgba(110,215,255,.08); }
+    .tag.lwr { color: var(--lwr); border-color: rgba(140,242,186,.35); background: rgba(140,242,186,.08); }
+    .tag.cart { color: var(--cart); border-color: rgba(205,169,255,.35); background: rgba(205,169,255,.08); }
+    .tag.vdp1 { color: var(--vdp1); border-color: rgba(255,184,107,.35); background: rgba(255,184,107,.08); }
+    .tag.vdp2 { color: var(--vdp2); border-color: rgba(246,166,255,.35); background: rgba(246,166,255,.08); }
+    .tag.sgl { color: var(--sgl); border-color: rgba(158,193,255,.35); background: rgba(158,193,255,.08); }
+    .tag.ok { color: var(--ok); border-color: rgba(126,240,177,.35); background: rgba(126,240,177,.08); }
+    .tag.warn { color: var(--warn); border-color: rgba(255,211,109,.35); background: rgba(255,211,109,.08); }
+    .tag.crit { color: var(--crit); border-color: rgba(255,143,143,.35); background: rgba(255,143,143,.08); }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .flow .step {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 10px;
+      min-height: 110px;
+    }
+    .flow .step strong { display: block; color: var(--text); margin-bottom: 6px; font-size: 13px; }
+    .flow .step span { font-size: 12px; color: var(--muted); }
+    .note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,211,109,0.08);
+      border: 1px solid rgba(255,211,109,0.25);
+      color: #ffe7a8;
+      font-size: 13px;
+    }
+    .crit-note {
+      background: rgba(255,143,143,0.08);
+      border-color: rgba(255,143,143,0.28);
+      color: #ffc4c4;
+    }
+    .ok-note {
+      background: rgba(126,240,177,0.08);
+      border-color: rgba(126,240,177,0.28);
+      color: #c8ffdf;
+    }
+    .meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    footer { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    @media (max-width: 980px) {
+      .hero-grid, .grid-2, .grid-3, .flow, .kpis { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <h1>Interlagos — Pipeline e uso de memória</h1>
+          <p>
+            Dashboard do pipeline Saturn: <code>HWR</code>, <code>LWR</code>, <code>Cart</code>,
+            <code>VDP1</code>, <code>VDP2</code> e <code>SGL WorkArea</code>.
+          </p>
+          <p style="margin-top:10px">
+            Atualizado com gate <code>TRACK_LOD*</code> (sem TBKLOD2), snapshot
+            <code>MEM10</code> de <code>log8.png</code>, map mesh5 e propostas do diagnóstico
+            <a href="./DIAGNOSTICO_MEMORIA_PIPELINE_2026-10-28_172338.md">DIAGNOSTICO_MEMORIA_PIPELINE_2026-10-28_172338.md</a>.
+          </p>
+          <div class="ok-note" style="margin-top:14px">
+            Ganho confirmado: Cart livre <strong>3545 → 3634 KiB</strong> (+89 KiB = tamanho de
+            <code>TBKLOD2.BIN</code>) após não carregar lod_2 com makefile <code>0/20/0</code>.
+          </div>
+          <p class="meta">Snapshot HTML: 2026-10-28 · ISO ref. <code>BuildDrop_npc_mesh5</code> / <code>C:\saturn\MESH5</code></p>
+        </div>
+        <div class="kpis">
+          <div class="kpi">
+            <div class="label">HWR heap (map mesh5)</div>
+            <div class="value" style="color:var(--crit)">5,0 KiB</div>
+            <div class="sub"><code>0x060bec00 → 0x060c0000</code></div>
+          </div>
+          <div class="kpi">
+            <div class="label">MEM10 log8 (livre)</div>
+            <div class="value" style="color:var(--ok)">C:3634</div>
+            <div class="sub">H:5 L:689 V1:206 V2:352</div>
+          </div>
+          <div class="kpi">
+            <div class="label">LOD janela</div>
+            <div class="value" style="color:var(--warn)">0/20/0</div>
+            <div class="sub">só lod_1 · 20×64²</div>
+          </div>
+          <div class="kpi">
+            <div class="label">TBKLOD2 no Cart</div>
+            <div class="value" style="color:var(--ok)">OFF</div>
+            <div class="sub">gate makefile · +89 KiB</div>
+          </div>
+          <div class="kpi">
+            <div class="label">SGL WorkArea</div>
+            <div class="value" style="color:var(--sgl)">237 KiB</div>
+            <div class="sub">margem TransList ~0,9 KiB</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Teto polígonos</div>
+            <div class="value" style="color:var(--warn)">1700</div>
+            <div class="sub">1 NPC ≈ +118 faces</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>1. Pipeline de frame</h2>
+      <p>Pools dominantes por etapa. Solo/paredes = <code>TCOL.BIN</code> (Cart), independente de <code>TRACK_LOD0_SEGMENTS=0</code>.</p>
+      <div class="flow">
+        <div class="step">
+          <strong>1. Boot / CD</strong>
+          <span>CAR1, PATH, packs → <span class="tag cart">Cart</span>. High GEO ainda pode residir (ver §5).</span>
+        </div>
+        <div class="step">
+          <strong>2. Track belt</strong>
+          <span>GEO low <code>TRKRDRL</code> em <span class="tag lwr">LWR</span>; tex 64² via TBKLOD0 → <span class="tag vdp1">VDP1</span>.</span>
+        </div>
+        <div class="step">
+          <strong>3. TCOL</strong>
+          <span>Solo/paredes LOD0 offline em <span class="tag cart">Cart</span>. Não usa TBKLOD.</span>
+        </div>
+        <div class="step">
+          <strong>4. Simulação</strong>
+          <span>Física/Auto Lap em <span class="tag hwr">HWR</span> .text. PATH + rota NPC em <span class="tag lwr">LWR</span>.</span>
+        </div>
+        <div class="step">
+          <strong>5. Render 3D</strong>
+          <span>Pista + carro + 1 NPC reuse → <span class="tag sgl">SGL</span> → <span class="tag vdp1">VDP1</span>.</span>
+        </div>
+        <div class="step">
+          <strong>6. HUD / céu</strong>
+          <span><span class="tag vdp2">VDP2</span> NBG/RBG. <code>MEM10</code> amostra livres.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>2. Capacidades vs MEM10 livre (log8)</h2>
+      <div class="grid-2">
+        <div class="chart-box tall"><canvas id="chartPools"></canvas></div>
+        <div class="chart-box tall"><canvas id="chartMem10"></canvas></div>
+      </div>
+      <div class="note" style="margin-top:14px">
+        Barras da esquerda = capacidade estrutural. Direita = <strong>livre KiB</strong> em
+        <code>log5</code> (pré-gate) vs <code>log8</code> (pós-gate TBKLOD2). Cart sobe 89 KiB;
+        H/L/V1/V2 iguais neste instante.
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>3. High Work RAM — partição mesh5</h2>
+      <div class="grid-2">
+        <div class="chart-box tall"><canvas id="chartHwr"></canvas></div>
+        <div>
+          <table>
+            <thead><tr><th>Região</th><th>Endereço / size</th><th>KiB</th></tr></thead>
+            <tbody>
+              <tr><td>SGL/boot baixo</td><td><code>0x06000000 → 0x06004000</code></td><td>16</td></tr>
+              <tr><td>.text</td><td><code>0x929a0</code></td><td>586,4</td></tr>
+              <tr><td>.data / .bss / gaps</td><td>até heap</td><td>~145</td></tr>
+              <tr><td><strong>Heap malloc</strong></td><td><code>0x060bec00 → 0x060c0000</code></td><td><strong>5,0</strong></td></tr>
+              <tr><td>WorkArea SGL</td><td><code>0x060c0000</code> · <code>0x3c000</code></td><td>240</td></tr>
+              <tr><td>Cauda / TransList</td><td>até <code>0x060FFFFF</code></td><td>~16</td></tr>
+            </tbody>
+          </table>
+          <div class="note crit-note">
+            NPC mesh5: .text +~26,5 KiB vs BuildDrop rails0 → heap 33 → 5 KiB.
+            Rotas NPC estão em LWR; o vilão do heap é .text, não o PATH.
+          </div>
+        </div>
+      </div>
+      <div class="chart-box" style="margin-top:18px; height:260px"><canvas id="chartHeapCompare"></canvas></div>
+    </section>
+
+    <section class="panel">
+      <h2>4. Cart — artefactos e gate LOD</h2>
+      <div class="grid-2">
+        <div class="chart-box tall"><canvas id="chartCart"></canvas></div>
+        <div>
+          <table>
+            <thead><tr><th>Ficheiro</th><th>KiB</th><th>Estado c/ 0/20/0</th></tr></thead>
+            <tbody>
+              <tr><td><code>TRKRDR.BIN</code> high</td><td>1202</td><td><span class="tag warn">ainda residente (desperdício)</span></td></tr>
+              <tr><td><code>TRKRDRL.BIN</code> low</td><td>396</td><td><span class="tag ok">usado na janela</span></td></tr>
+              <tr><td><code>TCOL.BIN</code></td><td>917</td><td><span class="tag ok">solo/paredes</span></td></tr>
+              <tr><td><code>TBKLOD0.BIN</code></td><td>335</td><td><span class="tag ok">64² shared (lod1)</span></td></tr>
+              <tr><td><code>TBKLOD1.BIN</code></td><td>~0</td><td><span class="tag ok">stub alias</span></td></tr>
+              <tr><td><code>TBKLOD2.BIN</code></td><td>89</td><td><span class="tag ok">OFF — gated</span></td></tr>
+              <tr><td><code>PATH.NYA</code></td><td>11</td><td><span class="tag lwr">LWR</span> (não Cart steady)</td></tr>
+            </tbody>
+          </table>
+          <div class="ok-note">
+            <code>IsTrackTextureLodConfigured</code>: lod_2=0 → sem Cart/VDP1 32×32.
+            TBKLOD0 mantém-se porque lod_1&gt;0 (alias shared-64). Solo = TCOL, não TBKLOD0.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>5. SGL WorkArea e polígonos</h2>
+      <div class="grid-2">
+        <div class="chart-box"><canvas id="chartWorkArea"></canvas></div>
+        <div class="chart-box"><canvas id="chartPolys"></canvas></div>
+      </div>
+      <div class="note" style="margin-top:14px">
+        V=2200 P=1700 → 242 776 B; margem TransList ≈ 936 B. Baixar P/V aumenta margem;
+        <strong>não</strong> devolve KiB ao heap malloc (WorkArea fixa em <code>0x060C0000</code>).
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>6. Roadmap de economia (sem perder features)</h2>
+      <p>Extraído do diagnóstico 2026-10-28_172338. Solo, esteira, Auto Lap e 1 NPC preservados.</p>
+      <div class="grid-2">
+        <div class="chart-box tall"><canvas id="chartRoadmap"></canvas></div>
+        <div>
+          <table>
+            <thead><tr><th>Fase</th><th>Ação</th><th>Est.</th><th>Risco</th></tr></thead>
+            <tbody>
+              <tr><td>A</td><td>TRACE/MEM10/diag NPC off em release</td><td>5–15 KiB .text</td><td>Baixo</td></tr>
+              <tr><td><strong>B1</strong></td><td>Sem TRKRDR high no Cart se lod0=0</td><td><strong>0,8–1,2 MiB</strong></td><td>Médio</td></tr>
+              <tr><td>B2</td><td>Reserva TCOL 128→32–64</td><td>64–96 KiB</td><td>Baixo–médio</td></tr>
+              <tr><td>C</td><td>Floors LWR 256→192 + tile céu</td><td>50–140 KiB LWR</td><td>Baixo–médio</td></tr>
+              <tr><td>D</td><td>LOD 5/6/8 ou 3/4/5 (opt-in visual)</td><td>80–200 KiB V1</td><td>Médio</td></tr>
+              <tr><td>E</td><td>SGL 2000/1500 se F permitir</td><td>margem +27 KiB</td><td>Médio</td></tr>
+            </tbody>
+          </table>
+          <div class="note">
+            Ordem sugerida: A → B1 → C → B2 → D/E com medição.
+            Não subir <code>SGL_MAX_*</code>; não 2º NPC; não devolver PATH ao HWR.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>7. Pressão atual</h2>
+      <div class="grid-3">
+        <div class="kpi">
+          <div class="label">HWR heap</div>
+          <div class="value" style="color:var(--crit)">Crítico</div>
+          <div class="sub">5 KiB · cortar .text diag / traces</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Cart GEO high</div>
+          <div class="value" style="color:var(--warn)">Ocioso</div>
+          <div class="sub">~1,2 MiB TRKRDR com janela low</div>
+        </div>
+        <div class="kpi">
+          <div class="label">TBKLOD2 / lod2</div>
+          <div class="value" style="color:var(--ok)">Resolvido</div>
+          <div class="sub">+89 KiB Cart em log8</div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Fontes: map mesh5 · log5/log8 MEM10 · makefile LOD 0/20/0 ·
+      <a href="./DIAGNOSTICO_MEMORIA_PIPELINE_2026-10-28_172338.md">diagnóstico 2026-10-28_172338</a> ·
+      Chart.js CDN. Atualizar após cada ISO / MEM10 relevante.
+    </footer>
+  </div>
+
+  <script>
+    Chart.defaults.color = "#93a7c7";
+    Chart.defaults.borderColor = "rgba(36,53,82,0.8)";
+    Chart.defaults.font.family = "'Segoe UI', Arial, sans-serif";
+    const commonLegend = { position: "bottom", labels: { boxWidth: 12, padding: 14 } };
+    const kiB = (n) => Math.round(n * 10) / 10;
+
+    new Chart(document.getElementById("chartPools"), {
+      type: "bar",
+      data: {
+        labels: ["HWR físico", "HWR heap", "LWR", "Cart", "VDP1 tex", "VDP2"],
+        datasets: [{
+          label: "Capacidade (KiB)",
+          data: [1024, 5.0, 1024, 4096, 447.5, 512],
+          backgroundColor: [
+            "rgba(110,215,255,0.75)", "rgba(255,143,143,0.85)",
+            "rgba(140,242,186,0.75)", "rgba(205,169,255,0.75)",
+            "rgba(255,184,107,0.75)", "rgba(246,166,255,0.75)"
+          ],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: "Capacidade por pool (KiB)", color: "#e8f0ff" }
+        },
+        scales: {
+          y: {
+            type: "logarithmic",
+            title: { display: true, text: "KiB (log)" },
+            ticks: { callback: (v) => v }
+          }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartMem10"), {
+      type: "bar",
+      data: {
+        labels: ["H", "L", "C", "V1", "V2"],
+        datasets: [
+          {
+            label: "log5 pré-gate (livre KiB)",
+            data: [5, 689, 3545, 206, 352],
+            backgroundColor: "rgba(158,193,255,0.55)",
+            borderRadius: 6
+          },
+          {
+            label: "log8 pós-gate (livre KiB)",
+            data: [5, 689, 3634, 206, 352],
+            backgroundColor: "rgba(126,240,177,0.75)",
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: commonLegend,
+          title: { display: true, text: "MEM10 livre: log5 vs log8", color: "#e8f0ff" }
+        },
+        scales: {
+          y: {
+            type: "logarithmic",
+            title: { display: true, text: "KiB livres (log)" },
+            ticks: { callback: (v) => v }
+          }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartHwr"), {
+      type: "doughnut",
+      data: {
+        labels: [
+          "SGL/boot (16)", ".text (586)", ".data/.bss (~145)",
+          "Heap (5)", "WorkArea (240)", "Cauda (~16)"
+        ],
+        datasets: [{
+          data: [16, 586.4, 145, 5.0, 240, 16],
+          backgroundColor: ["#3d5a80", "#6ed7ff", "#9ec1ff", "#ff8f8f", "#ffb86b", "#5c6b82"],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: commonLegend,
+          title: { display: true, text: "Partição HWR 1024 KiB (mesh5)", color: "#e8f0ff" }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartHeapCompare"), {
+      type: "bar",
+      data: {
+        labels: ["BuildDrop rails0", "npc_rails", "npc_mesh5"],
+        datasets: [{
+          label: "HWR heap livre (KiB, map)",
+          data: [
+            (0x060c0000 - 0x060b7be0) / 1024,
+            (0x060c0000 - 0x060be9d0) / 1024,
+            (0x060c0000 - 0x060bec00) / 1024
+          ],
+          backgroundColor: ["#7ef0b1", "#ffd36d", "#ff8f8f"],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: "Impacto NPC no heap HWR", color: "#e8f0ff" }
+        },
+        scales: { y: { beginAtZero: true, title: { display: true, text: "KiB" } } }
+      }
+    });
+
+    new Chart(document.getElementById("chartCart"), {
+      type: "doughnut",
+      data: {
+        labels: [
+          "TRKRDR high (ocioso)",
+          "TRKRDRL low",
+          "TCOL",
+          "TBKLOD0 64²",
+          "TBKLOD2 OFF",
+          "Outros / livre"
+        ],
+        datasets: [{
+          // Approximate residency sketch vs 4096 Cart (order-of-magnitude)
+          data: [1202, 396, 917, 335, 0, 4096 - 1202 - 396 - 917 - 335],
+          backgroundColor: [
+            "rgba(255,143,143,0.85)",
+            "rgba(140,242,186,0.75)",
+            "rgba(110,215,255,0.7)",
+            "rgba(255,184,107,0.75)",
+            "rgba(80,90,100,0.4)",
+            "rgba(205,169,255,0.35)"
+          ],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: commonLegend,
+          title: { display: true, text: "Cart ~4096 KiB — consumidores principais", color: "#e8f0ff" }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartWorkArea"), {
+      type: "doughnut",
+      data: {
+        labels: ["SortList", "Zbuffer", "SpriteBuf", "Pbuffer", "CLOfstBuf", "CommandBuf"],
+        datasets: [{
+          data: [
+            12 * (1700 + 6), 4 * 1700, 72 * (1700 + 6),
+            16 * 2200, 3072, 32 * 1700
+          ].map((b) => kiB(b / 1024)),
+          backgroundColor: ["#6ed7ff", "#8cf2ba", "#ffb86b", "#cda9ff", "#9ec1ff", "#ff8f8f"],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: commonLegend,
+          title: { display: true, text: "WorkArea SGL (KiB) V=2200 P=1700", color: "#e8f0ff" }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartPolys"), {
+      type: "bar",
+      data: {
+        labels: ["Teto", "Pista típica", "Carro", "NPC×1", "~2 carros", "~3 carros"],
+        datasets: [{
+          label: "Faces",
+          data: [1700, 1350, 118, 118, 1586, 1704],
+          backgroundColor: [
+            "rgba(158,193,255,0.5)", "rgba(110,215,255,0.75)",
+            "rgba(140,242,186,0.75)", "rgba(255,184,107,0.75)",
+            "rgba(126,240,177,0.85)", "rgba(255,143,143,0.9)"
+          ],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: "Orçamento polígonos / frame", color: "#e8f0ff" }
+        },
+        scales: { y: { beginAtZero: true, max: 1900, title: { display: true, text: "faces" } } }
+      }
+    });
+
+    new Chart(document.getElementById("chartRoadmap"), {
+      type: "bar",
+      data: {
+        labels: ["A traces", "B1 TRKRDR high", "B2 reserva TCOL", "C LWR floors+céu", "D LOD perfil", "E SGL margem"],
+        datasets: [{
+          label: "Economia estimada (KiB, log scale)",
+          data: [10, 1000, 80, 90, 140, 27],
+          backgroundColor: [
+            "rgba(126,240,177,0.8)",
+            "rgba(255,143,143,0.85)",
+            "rgba(205,169,255,0.75)",
+            "rgba(140,242,186,0.75)",
+            "rgba(255,184,107,0.75)",
+            "rgba(158,193,255,0.75)"
+          ],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: "Potencial por fase (ordem de grandeza)", color: "#e8f0ff" },
+          tooltip: {
+            callbacks: {
+              afterLabel: (ctx) => {
+                const tips = [
+                  "Release hygiene .text",
+                  "Maior ganho Cart — lod0=0",
+                  "Após TC estável",
+                  "256→192 + tile NBG0",
+                  "Opt-in visual 5/6/8",
+                  "Margem TransList, não heap"
+                ];
+                return tips[ctx.dataIndex];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: "logarithmic",
+            title: { display: true, text: "KiB (log)" },
+            ticks: { callback: (v) => v }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

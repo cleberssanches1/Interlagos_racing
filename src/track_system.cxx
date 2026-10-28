@@ -589,6 +589,36 @@ static inline uint8_t NormalizeTrackTextureLodIndex(uint8_t lodIndex)
         : kTrackLod2Index;
 }
 
+// Makefile TRACK_LOD* gates which texture banks enter Cart/VDP1.
+// Ground/walls use TCOL.BIN (LOD0-derived, Cart) — not TBKLOD pixels — so
+// TRACK_LOD0_SEGMENTS=0 does not disable plant. TBKLOD0 stays required whenever
+// lod_0 OR lod_1 is in the window (shared 64x64 base for LOD1 aliases).
+static inline bool IsTrackTextureLodConfigured(uint8_t lodIndex)
+{
+    switch (NormalizeTrackTextureLodIndex(lodIndex))
+    {
+        case kTrackLod0Index:
+            return TrackLodConfig::kLod0Segments > 0u ||
+                   TrackLodConfig::kLod1Segments > 0u;
+        case kTrackLod1Index:
+            return TrackLodConfig::kLod0Segments > 0u ||
+                   TrackLodConfig::kLod1Segments > 0u;
+        case kTrackLod2Index:
+            return TrackLodConfig::kLod2Segments > 0u;
+        default:
+            return false;
+    }
+}
+
+static inline uint8_t PreferredConfiguredTrackTextureLodIndex()
+{
+    // Match window presentation: prefer mid/near 64 band over far 32.
+    if (TrackLodConfig::kLod1Segments > 0u) return kTrackLod1Index;
+    if (TrackLodConfig::kLod0Segments > 0u) return kTrackLod0Index;
+    if (TrackLodConfig::kLod2Segments > 0u) return kTrackLod2Index;
+    return kTrackLod1Index;
+}
+
 static inline int TrackTextureLodValue(uint8_t lodIndex)
 {
     return (NormalizeTrackTextureLodIndex(lodIndex) == kTrackLod2Index) ? 32 : 64;
@@ -608,9 +638,19 @@ static inline uint8_t PreferredFallbackTrackTextureLodIndex(uint8_t lodIndex)
 {
     switch (NormalizeTrackTextureLodIndex(lodIndex))
     {
-        case kTrackLod0Index: return kTrackLod1Index;
-        case kTrackLod1Index: return kTrackLod2Index;
-        default: return kTrackLod1Index;
+        case kTrackLod0Index:
+            return IsTrackTextureLodConfigured(kTrackLod1Index)
+                ? kTrackLod1Index
+                : kTrackLod0Index;
+        case kTrackLod1Index:
+            // Do not fall into 32x32 when lod_2 is off in the makefile.
+            if (IsTrackTextureLodConfigured(kTrackLod2Index)) return kTrackLod2Index;
+            if (IsTrackTextureLodConfigured(kTrackLod0Index)) return kTrackLod0Index;
+            return kTrackLod1Index;
+        default:
+            return IsTrackTextureLodConfigured(kTrackLod1Index)
+                ? kTrackLod1Index
+                : kTrackLod0Index;
     }
 }
 
@@ -6437,6 +6477,14 @@ bool TrackSystem::BuildSeg1TexbankCandidatePaths(int bankId,
 bool TrackSystem::LoadSeg1TexbankIndexToCart(size_t lodIndex, int bankId)
 {
     if (lodIndex >= seg1Texbanks_.size()) return false;
+    // Skip TBKLOD* not selected by TRACK_LOD0/1/2_SEGMENTS (e.g. TBKLOD2 when
+    // lod_2=0). Shared64 still pulls TBKLOD0 whenever lod_0 or lod_1 is on.
+    if (lodIndex > 0u &&
+        lodIndex <= static_cast<size_t>(kTrackLod0Index) &&
+        !IsTrackTextureLodConfigured(static_cast<uint8_t>(lodIndex)))
+    {
+        return false;
+    }
     auto& bank = seg1Texbanks_[lodIndex];
     // A sparse override bank may legitimately contain zero entries when every
     // LOD1 texture is shared with the LOD0 64x64 base bank.
@@ -7033,6 +7081,7 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
 
     if (targetLodIndex > 3) return false;
     targetLodIndex = NormalizeTrackTextureLodIndex(targetLodIndex);
+    if (!IsTrackTextureLodConfigured(targetLodIndex)) return false;
     if (slotEntry.familyId == 0) return false;
     const bool shared64 =
         (targetLodIndex == kTrackLod0Index || targetLodIndex == kTrackLod1Index) &&
@@ -7072,18 +7121,35 @@ bool TrackSystem::TryLoadFamilyLodSlot(Seg1FamilySlotEntry& slotEntry,
     appendUnique(shared64 ? kTrackLod0Index : targetLodIndex);
     if (fallbackToLowerLods)
     {
-        if (targetLodIndex == kTrackLod0Index) appendUnique(kTrackLod1Index);
-        if (targetLodIndex != kTrackLod2Index) appendUnique(kTrackLod2Index);
+        if (targetLodIndex == kTrackLod0Index &&
+            IsTrackTextureLodConfigured(kTrackLod1Index))
+        {
+            appendUnique(kTrackLod1Index);
+        }
+        if (targetLodIndex != kTrackLod2Index &&
+            IsTrackTextureLodConfigured(kTrackLod2Index))
+        {
+            appendUnique(kTrackLod2Index);
+        }
     }
     if (fallbackToHigherLods)
     {
-        if (targetLodIndex == kTrackLod2Index) appendUnique(kTrackLod1Index);
-        if (targetLodIndex != kTrackLod0Index) appendUnique(kTrackLod0Index);
+        if (targetLodIndex == kTrackLod2Index &&
+            IsTrackTextureLodConfigured(kTrackLod1Index))
+        {
+            appendUnique(kTrackLod1Index);
+        }
+        if (targetLodIndex != kTrackLod0Index &&
+            IsTrackTextureLodConfigured(kTrackLod0Index))
+        {
+            appendUnique(kTrackLod0Index);
+        }
     }
 
     for (size_t si = 0; si < searchCount; ++si)
     {
         const uint8_t sourceLodIndex = searchOrder[si];
+        if (!IsTrackTextureLodConfigured(sourceLodIndex)) continue;
         const int sourceBankId = TrackTextureBankId(sourceLodIndex);
         if (!LoadSeg1TexbankIndexToCart(static_cast<size_t>(sourceLodIndex), sourceBankId)) continue;
         const auto& bank = seg1Texbanks_[sourceLodIndex];
@@ -7193,9 +7259,10 @@ void TrackSystem::LogTailSoftAdmissionTelemetry(int32_t segmentId,
 
 bool TrackSystem::PreloadFullTrackFamilyLodCache()
 {
-    // Keep the three logical design-LOD indexes resident in slots [1..3].
+    // Keep configured design-LOD indexes resident in slots [1..3].
     // In contract v4 index 1 is a sparse LOD1 override bank; shared 64x64
     // payloads live only in the LOD0 base bank at index 3.
+    // Unconfigured banks (e.g. TBKLOD2 when TRACK_LOD2_SEGMENTS=0) stay out of Cart.
     const size_t loadBankStart = static_cast<size_t>(kTrackLod1Index);
     const size_t loadBankCount = seg1Texbanks_.size();
     // Index 0 remains reserved.
@@ -7207,13 +7274,29 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
         bank = {};
         bank.bankId = -1;
     }
+    bool anyConfiguredBank = false;
     for (size_t li = loadBankStart; li < loadBankCount; ++li)
     {
-        if (!LoadSeg1TexbankIndexToCart(li, TrackTextureBankId(static_cast<uint8_t>(li))))
+        const uint8_t lodIndex = static_cast<uint8_t>(li);
+        if (!IsTrackTextureLodConfigured(lodIndex))
+        {
+            auto& bank = seg1Texbanks_[li];
+            if (bank.cartPtr && bank.ownsCartPtr) SRL::Memory::CartRam::Free(bank.cartPtr);
+            bank = {};
+            bank.bankId = -1;
+            continue;
+        }
+        anyConfiguredBank = true;
+        if (!LoadSeg1TexbankIndexToCart(li, TrackTextureBankId(lodIndex)))
         {
             SetFullTrackFamilyCacheReady(false);
             return false;
         }
+    }
+    if (!anyConfiguredBank)
+    {
+        SetFullTrackFamilyCacheReady(false);
+        return false;
     }
 
     // Backward compatibility for legacy builds where LOD0 and LOD1 were both
@@ -7303,7 +7386,9 @@ bool TrackSystem::PreloadFullTrackFamilyLodCache()
         const uint8_t savedTextureUploads = textureUploadsThisFrame_;
         SetReadyFlag(false);
         textureUploadsThisFrame_ = 0;
-        const uint8_t preloadLodIndex = kTrackLod32Index;
+        // Preload the makefile-selected presentation band (64 for 0/20/0),
+        // never force 32x32 when TRACK_LOD2_SEGMENTS=0.
+        const uint8_t preloadLodIndex = PreferredConfiguredTrackTextureLodIndex();
         for (auto& family : seg1FamilySlots_)
         {
             bool sawMissingFamily = false;
@@ -8007,10 +8092,11 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     if (!entry.renderer) return false;
     if (entry.id <= 0) return false;
 
-    uint8_t desiredLodIndex = kTrackLod32Index;
+    uint8_t desiredLodIndex = PreferredConfiguredTrackTextureLodIndex();
     if (kEnableTrackLodBandsInStabilization)
     {
-        if (entry.lodState.desiredLodIndex <= 3u)
+        if (entry.lodState.desiredLodIndex <= 3u &&
+            IsTrackTextureLodConfigured(entry.lodState.desiredLodIndex))
         {
             desiredLodIndex = NormalizeTrackTextureLodIndex(entry.lodState.desiredLodIndex);
         }
@@ -8021,13 +8107,15 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
             {
                 desiredLodIndex = ResolveSegmentLodIndexByRank(logicalRank);
             }
-            else if (entry.lodState.currentLodIndex <= 3u)
+            else if (entry.lodState.currentLodIndex <= 3u &&
+                     IsTrackTextureLodConfigured(entry.lodState.currentLodIndex))
             {
                 desiredLodIndex = NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex);
             }
         }
     }
-    else if (entry.lodState.currentLodIndex <= 3u)
+    else if (entry.lodState.currentLodIndex <= 3u &&
+             IsTrackTextureLodConfigured(entry.lodState.currentLodIndex))
     {
         desiredLodIndex = NormalizeTrackTextureLodIndex(entry.lodState.currentLodIndex);
     }
@@ -8078,10 +8166,28 @@ bool TrackSystem::RebuildSafeSegmentEntry(SegmentRenderEntry& entry)
     {
         lodAttempts = {{kTrackLod2Index, kTrackLod1Index, kTrackLod0Index}};
     }
-    const size_t lodAttemptCount = requireExactLod ? 1u : lodAttempts.size();
+    std::array<uint8_t, 3> filteredAttempts{};
+    size_t filteredCount = 0u;
+    for (size_t i = 0; i < lodAttempts.size(); ++i)
+    {
+        if (!IsTrackTextureLodConfigured(lodAttempts[i])) continue;
+        bool dup = false;
+        for (size_t j = 0; j < filteredCount; ++j)
+        {
+            if (filteredAttempts[j] == lodAttempts[i]) { dup = true; break; }
+        }
+        if (dup) continue;
+        filteredAttempts[filteredCount++] = lodAttempts[i];
+    }
+    if (filteredCount == 0u)
+    {
+        filteredAttempts[0] = PreferredConfiguredTrackTextureLodIndex();
+        filteredCount = 1u;
+    }
+    const size_t lodAttemptCount = requireExactLod ? 1u : filteredCount;
     for (size_t attempt = 0; attempt < lodAttemptCount; ++attempt)
     {
-        const uint8_t lodIndex = lodAttempts[attempt];
+        const uint8_t lodIndex = filteredAttempts[attempt];
         entry.lodState.currentFaceSlots.assign(entry.lodState.faceFamilyIds.size(), -1);
         if (!RebuildSegmentFaceSlotsForLod(entry,
                                            lodIndex,
@@ -13405,6 +13511,8 @@ bool TrackSystem::SlideActiveSegmentWindow(size_t stepCount, int8_t direction)
 
 void TrackSystem::PrewarmNextSegmentLod32()
 {
+    // No far-band 32x32 prewarm when TRACK_LOD2_SEGMENTS=0.
+    if (TrackLodConfig::kLod2Segments == 0u) return;
     // Stabilization: allow capped texture prewarm (1–2 families) so the next
     // tail admit does not decode every new family in one slide frame.
     if (totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
@@ -15768,11 +15876,13 @@ bool TrackSystem::Initialize(const Config& config)
 
                 auto loadTexbankToCart = [&](size_t li) -> bool
                 {
+                    if (!IsTrackTextureLodConfigured(static_cast<uint8_t>(li))) return false;
                     return LoadSeg1TexbankIndexToCart(li, kSeg1FamilyBankIds[li]);
                 };
 
                 for (size_t li = 1; li < 4; ++li)
                 {
+                    if (!IsTrackTextureLodConfigured(static_cast<uint8_t>(li))) continue;
                     if (!loadTexbankToCart(li))
                     {
                         texFail += familyIdsUsedCount;
@@ -15847,6 +15957,11 @@ bool TrackSystem::Initialize(const Config& config)
                             bool anyLoaded = false;
                             for (size_t li = 0; li < 4; ++li)
                             {
+                                if (li > 0u &&
+                                    !IsTrackTextureLodConfigured(static_cast<uint8_t>(li)))
+                                {
+                                    continue;
+                                }
                                 const int32_t slot =
                                     TryUploadSeg1FamilyLodFromCatalog(seg1TgaCatalog_,
                                                                       fam,
@@ -16108,6 +16223,7 @@ bool TrackSystem::Initialize(const Config& config)
 
                     auto loadTexbankToCart = [&](size_t li) -> bool
                     {
+                        if (!IsTrackTextureLodConfigured(static_cast<uint8_t>(li))) return false;
                         return LoadSeg1TexbankIndexToCart(li, kSeg1FamilyBankIds[li]);
                     };
 
@@ -16118,6 +16234,7 @@ bool TrackSystem::Initialize(const Config& config)
                     size_t texUploadFail = 0;
                     for (size_t li = 1; li < 4; ++li)
                     {
+                        if (!IsTrackTextureLodConfigured(static_cast<uint8_t>(li))) continue;
                         if (!loadTexbankToCart(li))
                         {
                             texFail += familyIdsUsedCount;
@@ -16314,11 +16431,14 @@ bool TrackSystem::Initialize(const Config& config)
         }
 
         size_t banksOk = 0;
+        size_t banksWanted = 0;
         if (kEnableSeg1WarmupTexbank)
         {
             const size_t loadCount = std::min<size_t>(kSeg1WarmupTexbankCount, 3);
             for (size_t li = 1; li <= loadCount; ++li)
             {
+                if (!IsTrackTextureLodConfigured(static_cast<uint8_t>(li))) continue;
+                ++banksWanted;
                 if (LoadSeg1TexbankIndexToCart(li, kSeg1FamilyBankIds[li])) ++banksOk;
             }
         }
@@ -16327,7 +16447,9 @@ bool TrackSystem::Initialize(const Config& config)
                           mapOk ? 1u : 0u,
                           mapOk ? (unsigned)faceFamily.size() : 0u,
                           (unsigned)famCount);
-        SRL::Debug::Print(1, 21, "S1Bk ok:%u/3", (unsigned)banksOk);
+        SRL::Debug::Print(1, 21, "S1Bk ok:%u/%u",
+                          (unsigned)banksOk,
+                          (unsigned)banksWanted);
     }
 
     // Keep track rendering available even when coordinator allocation fails.
