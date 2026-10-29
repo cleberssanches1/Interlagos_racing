@@ -315,17 +315,17 @@
           <table>
             <thead><tr><th>Fase</th><th>Ação</th><th>Est.</th><th>Risco</th></tr></thead>
             <tbody>
-              <tr><td>A</td><td>TRACE/MEM10/diag NPC off em release</td><td>5–15 KiB .text</td><td>Baixo</td></tr>
-              <tr><td><strong>B1</strong></td><td>Sem TRKRDR high no Cart se lod0=0</td><td><strong>0,8–1,2 MiB</strong></td><td>Médio</td></tr>
-              <tr><td>B2</td><td>Reserva TCOL 128→32–64</td><td>64–96 KiB</td><td>Baixo–médio</td></tr>
+              <tr><td><strong>B1</strong></td><td>Sem TRKRDR high no Cart se lod0=0</td><td><strong>0,8–1,2 MiB</strong></td><td>Médio · <strong>próximo</strong></td></tr>
               <tr><td>C</td><td>Floors LWR 256→192 + tile céu</td><td>50–140 KiB LWR</td><td>Baixo–médio</td></tr>
+              <tr><td>B2</td><td>Reserva TCOL 128→32–64</td><td>64–96 KiB</td><td>Baixo–médio</td></tr>
               <tr><td>D</td><td>LOD 5/6/8 ou 3/4/5 (opt-in visual)</td><td>80–200 KiB V1</td><td>Médio</td></tr>
               <tr><td>E</td><td>SGL 2000/1500 se F permitir</td><td>margem +27 KiB</td><td>Médio</td></tr>
+              <tr><td>A</td><td>TRACE/MEM10/diag NPC off</td><td>5–15 KiB .text</td><td><span class="tag warn">DIFERIDO</span> — manter telemetrias no dev</td></tr>
             </tbody>
           </table>
           <div class="note">
-            Ordem sugerida: A → B1 → C → B2 → D/E com medição.
-            Não subir <code>SGL_MAX_*</code>; não 2º NPC; não devolver PATH ao HWR.
+            Ordem atual: <strong>B1 → C → B2 → D/E</strong>. Fase A só em polish/release.
+            Não desligar MEM10 / LWR TRACE / failure telemetry / ISO NPC neste estágio.
           </div>
         </div>
       </div>
@@ -563,17 +563,17 @@
     new Chart(document.getElementById("chartRoadmap"), {
       type: "bar",
       data: {
-        labels: ["A traces", "B1 TRKRDR high", "B2 reserva TCOL", "C LWR floors+céu", "D LOD perfil", "E SGL margem"],
+        labels: ["B1 TRKRDR high", "C LWR floors+céu", "B2 reserva TCOL", "D LOD perfil", "E SGL margem", "A traces (diferido)"],
         datasets: [{
           label: "Economia estimada (KiB, log scale)",
-          data: [10, 1000, 80, 90, 140, 27],
+          data: [1000, 90, 80, 140, 27, 10],
           backgroundColor: [
-            "rgba(126,240,177,0.8)",
             "rgba(255,143,143,0.85)",
-            "rgba(205,169,255,0.75)",
             "rgba(140,242,186,0.75)",
+            "rgba(205,169,255,0.75)",
             "rgba(255,184,107,0.75)",
-            "rgba(158,193,255,0.75)"
+            "rgba(158,193,255,0.75)",
+            "rgba(120,120,120,0.45)"
           ],
           borderRadius: 8
         }]
@@ -583,17 +583,17 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          title: { display: true, text: "Potencial por fase (ordem de grandeza)", color: "#e8f0ff" },
+          title: { display: true, text: "Potencial por fase (A diferida no dev)", color: "#e8f0ff" },
           tooltip: {
             callbacks: {
               afterLabel: (ctx) => {
                 const tips = [
-                  "Release hygiene .text",
-                  "Maior ganho Cart — lod0=0",
-                  "Após TC estável",
+                  "Próximo — Cart ~1 MiB se lod0=0",
                   "256→192 + tile NBG0",
+                  "Após TC estável",
                   "Opt-in visual 5/6/8",
-                  "Margem TransList, não heap"
+                  "Margem TransList, não heap",
+                  "Só polish/release — manter MEM10 agora"
                 ];
                 return tips[ctx.dataIndex];
               }

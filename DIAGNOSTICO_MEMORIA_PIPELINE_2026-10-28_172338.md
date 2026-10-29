@@ -114,25 +114,27 @@ VDP2: céu NBG0, minimapa, velocímetro, ASCII HUD
 
 Ordenadas por **ganho / risco**. Todas preservam: **TCOL/plant**, **esteira visual**, **Auto Lap player**, **céu**, e **1 NPC** (quando `AUTO_LAP_NPC_RAILS=1`).
 
-### Fase A — rápido / baixo risco (release hygiene)
+### Fase A — release hygiene (DIFERIDA neste estágio)
 
-| ID | Ação | Economia est. | Pool | Risco | Funcionalidade |
-|----|------|---------------|------|-------|----------------|
-| A1 | `TRACK_LWR_STAGE_TRACE=0` | 3–8 KiB `.text` + CPU | HWR | Baixo | Nenhuma feature de jogo |
-| A2 | `TRACK_FAILURE_TELEMETRY=0` (produto) | 1–4 KiB `.text` | HWR | Baixo | Perde dumps de soft-admit |
-| A3 | `PHYS_ENABLE_MEM10_OVERLAY=0` (produto) | 0,5–2 KiB | HWR | Baixo | Perde MEM10 em ecrã (manter em builds diag) |
-| A4 | `SRL_ENABLE_FREQ_ANALYSIS=0` se DSP unused | ~1–2 KiB | LWR/Sound | Baixo | Sem análise 3BAND |
-| A5 | Compilar NPC produto com **diag draw off** (`NPC_DRAW_DIAG=0`: sem cruzes/`ISO NPC` verbose) | vários KiB `.text` | HWR | Baixo* | NPC e Auto Lap mantêm-se; perde telemetria visual |
+> **Decisão (2026-10-28):** desmobilizar telemetrias **não** é boa ideia enquanto o desenvolvimento
+> depende de `MEM10`, LWR stage, failure telemetry e fingerprints NPC. Manter A1–A5 **ligados**
+> nos builds de trabalho. Revisitar só numa fase de polish/release, com drop diag separado.
 
-\*Manter flag diag para builds de investigação (arm/LAT).
+| ID | Ação | Economia est. | Pool | Estado |
+|----|------|---------------|------|--------|
+| A1 | `TRACK_LWR_STAGE_TRACE=0` | 3–8 KiB `.text` | HWR | **Diferido** — necessário p/ leak LWR |
+| A2 | `TRACK_FAILURE_TELEMETRY=0` | 1–4 KiB `.text` | HWR | **Diferido** — soft-admit / belt |
+| A3 | `PHYS_ENABLE_MEM10_OVERLAY=0` | 0,5–2 KiB | HWR | **Diferido** — MEM10/BLK10/POLY10 |
+| A4 | `SRL_ENABLE_FREQ_ANALYSIS=0` | ~1–2 KiB | LWR/Sound | Opcional / baixo valor agora |
+| A5 | `NPC_DRAW_DIAG=0` | vários KiB `.text` | HWR | **Diferido** — arm/LAT/cruzes |
 
-**Combo A típico:** ~**5–15 KiB** de folga HWR `.text` → heap sobe na mesma ordem (1:1 com `_end`).
+**Combo A** continua válido para **release final**, não para o estágio atual.
 
 ### Fase B — Cart / GEO (maior ganho estrutural)
 
 | ID | Ação | Economia est. | Pool | Risco | Nota |
 |----|------|---------------|------|-------|------|
-| **B1** | Com `TRACK_LOD0_SEGMENTS==0`, **não** manter `TRKRDR.BIN` high residente: preload/prime só **TRKRDRL**; fallback high só em miss | **~800–1200 KiB Cart** | Cart | Médio | Solo continua no TCOL; validar miss→blank |
+| **B1** | Com `TRACK_LOD0_SEGMENTS==0`, **não** manter `TRKRDR.BIN` high residente | **~800–1200 KiB Cart** | Cart | **Aplicado** — `PK B1 h:0 l:1`; prime só TRKRDRL; sem fallback high; `NormalizeDesignGeoTier` |
 | B2 | Reduzir `kCartReserveAfterTcolBytes` 128→32–64 KiB após TC=1 estável | 64–96 KiB | Cart | Baixo–médio | Após belt+TCOL OK |
 | B3 | Manter gate TBKLOD2 (já feito); documentar no HTML de stats | 89 KiB (já) | Cart | — | Confirmado em log8 |
 
@@ -140,10 +142,17 @@ Ordenadas por **ganho / risco**. Todas preservam: **TCOL/plant**, **esteira visu
 
 | ID | Ação | Economia est. | Pool | Risco |
 |----|------|---------------|------|-------|
+| **C0** | **Log SEGCAP** (usado vs capacity por segmento) — **implementado** | 0 (só HUD) | — | — |
 | C1 | Remover hardcode `max(256u, familySlotCapacityFloor_)` → usar floor já calibrado (64+) | 10–40 KiB | LWR | Baixo |
 | C2 | `kStabilizedFace/VertexCapacityFloorCap` 256→192 (ou min com header do pack) | 40–100 KiB | LWR | Médio |
-| C3 | Liberar tile LWR do `SkyPanorama` após upload NBG0 (céu fica em VDP2) | 16–40 KiB | LWR | Médio |
+| **C3** | Liberar tile LWR do `SkyPanorama` após upload NBG0 | 16–40 KiB | LWR | **Aplicado** — `SPN ok … LWR0`; Update sem `tile*` |
 | C4 | Após arm NPC: libertar guia PATH não usada (guia 2) cedo | pico ~4–8 KiB | LWR | Baixo se após Capture |
+
+**C0 (2026-10-28):** `TRACK_SEG_CAP_TELEMETRY=1` (default). HUD:
+- `SEGCAP fl:%u F:%u@%d V:%u@%d` — floor + picos lifetime faces/verts e id do segmento
+- `S%03u f:%u/%u v:%u/%u s:%u` — slot da janela a rodar (~1 Hz): used/capacity + slack faces  
+Cue: `BuildDrop_segcap` / `C:\saturn\SEGCAP\Interlagos_racing.cue`.  
+**Não baixar floors (C1/C2) até recolher maxF/maxV e slacks duma volta.**
 
 ### Fase D — VDP1 / perfil visual (funcionalidade preservada, aspeto muda)
 
@@ -180,12 +189,12 @@ Ordenadas por **ganho / risco**. Todas preservam: **TCOL/plant**, **esteira visu
 ## 5. Roadmap sugerido (ordem de implementação)
 
 ```
-1) A1–A5     → recuperar .text / heap HWR (NPC + produto)
-2) B1        → maior ganho Cart (TRKRDR high off quando lod0=0)
-3) C1–C3     → LWR floors + céu tile
-4) B2        → reserva TCOL
-5) D1 ou E1  → só com aceite visual / medição POLY
-6) F1        → só com aceite de áudio
+1) B1        → maior ganho Cart (TRKRDR high off quando lod0=0)  ← próximo
+2) C1–C3     → LWR floors + céu tile
+3) B2        → reserva TCOL
+4) D1 ou E1  → só com aceite visual / medição POLY
+5) F1        → só com aceite de áudio
+6) A1–A5     → DIFERIDO até polish/release (manter telemetrias agora)
 ```
 
 **Critérios de aceite por passo**
@@ -204,9 +213,9 @@ Ordenadas por **ganho / risco**. Todas preservam: **TCOL/plant**, **esteira visu
 |------|---------|----------------------|
 | `TRACK_LOD0/1/2` | 0/20/0 | Manter até B1 estável; depois avaliar D1 |
 | `SGL_MAX_V/P` | 2200/1700 | Avaliar E1 após medir F: |
-| `TRACK_LWR_STAGE_TRACE` | **1** | **0** em release (A1) |
-| `TRACK_FAILURE_TELEMETRY` | 1 | 0 em release (A2) |
-| `PHYS_ENABLE_MEM10_OVERLAY` | 1 | 0 em release / 1 em diag |
+| `TRACK_LWR_STAGE_TRACE` | **1** | **Manter 1 no dev** (A1 só em polish/release) |
+| `TRACK_FAILURE_TELEMETRY` | 1 | **Manter 1 no dev** |
+| `PHYS_ENABLE_MEM10_OVERLAY` | 1 | **Manter 1 no dev** (MEM10) |
 | `MASTER_FRAME_PHASE_TELEMETRY` | 0 | Manter 0 |
 | `AUTO_LAP_NPC_RAILS` | 0 | 1 só em drops NPC |
 | `AUTO_LAP_NPC_SLIM` | 1 | 0 nos drops NPC produto |

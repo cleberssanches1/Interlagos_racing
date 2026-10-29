@@ -62,9 +62,8 @@ struct BackgroundManager
         if (!loaded && cachedPathCount > 0)
         {
             ++retryTicks;
-            // SkyPanorama allocates its TGA/tile staging in LWR. Checking HWR
-            // here allowed retries while the allocator that matters was still
-            // exhausted or fragmented.
+            // SkyPanorama stages TGA/tile in LWR, then frees the tile after
+            // VDP2 upload (C3). Retries still need LWR headroom to rebuild.
             const auto lwr = SRL::Memory::LowWorkRam::GetReport();
             const size_t largestLwrBlock = SRL::Memory::LowWorkRam::GetLargestFreeBlockSize();
             constexpr size_t kMinRetryLwrBytes = 96u * 1024u;

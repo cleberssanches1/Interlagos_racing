@@ -1095,6 +1095,13 @@ public:
     bool IsSmooth() const { return isSmooth_; }
     uint32_t FaceCount() const { return faceCount_; }
     uint32_t VertexCount() const { return vertexCount_; }
+    // Component-buffer residency (Fase C calibration: used vs capacity vs floor).
+    size_t ComponentFaceSize() const { return componentFaces_.size(); }
+    size_t ComponentFaceCapacity() const { return componentFaces_.capacity(); }
+    size_t ComponentVertexSize() const { return componentVerts_.size(); }
+    size_t ComponentVertexCapacity() const { return componentVerts_.capacity(); }
+    size_t ComponentFaceCapacityFloor() const { return componentFaceCapacityFloor_; }
+    size_t ComponentVertexCapacityFloor() const { return componentVertCapacityFloor_; }
     size_t MeshCount() const { return meshCount_; }
     const ModelBounds& Bounds() const { return bounds_; }
     SRL::Math::Types::Vector3D Offset() const { return trackOffset_; }

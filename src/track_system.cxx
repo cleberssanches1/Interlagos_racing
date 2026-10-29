@@ -4189,6 +4189,22 @@ static uint8_t ResolveDesignGeoTierByRank(size_t rank)
     return (rank < kDesignLod0RankCount) ? kDesignGeoHigh : kDesignGeoLow;
 }
 
+// B1: when lod_0 is off, never default into TRKRDR high.
+static uint8_t ResolveDefaultDesignGeoTier()
+{
+    return (TrackLodConfig::kLod0Segments > 0u) ? kDesignGeoHigh : kDesignGeoLow;
+}
+
+static uint8_t NormalizeDesignGeoTier(uint8_t designGeoTier)
+{
+    if (designGeoTier == 0xFFu) return ResolveDefaultDesignGeoTier();
+    if (designGeoTier == kDesignGeoHigh && TrackLodConfig::kLod0Segments == 0u)
+    {
+        return kDesignGeoLow;
+    }
+    return designGeoTier;
+}
+
 static TrackRuntimePackCache& GetHighTrackRuntimePackCache()
 {
     static TrackRuntimePackCache sTrackRdrPackCacheHigh{};
@@ -4260,8 +4276,9 @@ static bool LoadRdrMappedForSegment(int segmentId,
                                     SegmentRuntimeDraw::Loader::View& outView,
                                     SegmentRuntimeDraw::Blob* fallbackBlob = nullptr,
                                     bool quietMissLog = false,
-                                    uint8_t designGeoTier = kDesignGeoHigh)
+                                    uint8_t designGeoTier = 0xFF)
 {
+    designGeoTier = NormalizeDesignGeoTier(designGeoTier);
     TrackRuntimePackCache& sTrackRdrPackCache =
         (designGeoTier != kDesignGeoHigh) ? GetLowTrackRuntimePackCache()
                                           : GetHighTrackRuntimePackCache();
@@ -4320,8 +4337,9 @@ static bool LoadRdrMappedForSegment(int segmentId,
         }
     }
 
-    // Low pack miss → fall back to high mesh (still better than blank).
-    if (designGeoTier != kDesignGeoHigh)
+    // Low pack miss → fall back to high mesh only when lod_0 is in the window.
+    // B1: TRACK_LOD0_SEGMENTS==0 must not pull TRKRDR (~1.2 MiB) into Cart.
+    if (designGeoTier != kDesignGeoHigh && TrackLodConfig::kLod0Segments > 0u)
     {
         return LoadRdrMappedForSegment(segmentId, outBlob, outView, fallbackBlob, quietMissLog, kDesignGeoHigh);
     }
@@ -4642,8 +4660,9 @@ static bool BuildRendererFromRdr(int segmentId,
                                  TrackRenderer& renderer,
                                  Vector3D* outCenter,
                                  TrackLowWorkU16Vector* outFamilyIds = nullptr,
-                                 uint8_t designGeoTier = kDesignGeoHigh)
+                                 uint8_t designGeoTier = 0xFF)
 {
+    designGeoTier = NormalizeDesignGeoTier(designGeoTier);
     const auto previousHwrTag = SRL::Memory::HighWorkRam::GetDebugTag();
     const auto previousLwrTag = SRL::Memory::LowWorkRam::GetDebugTag();
     SetTrackWorkRamDebugTag(SRL::Memory::DebugTag::TrackPrepare);
@@ -4997,8 +5016,9 @@ static bool BuildRendererFromRuntimeBlob(int segmentId,
                                          Vector3D* outCenter,
                                          TrackLowWorkU16Vector* outFamilyIds,
                                          bool* outUsedRdr,
-                                         uint8_t designGeoTier = kDesignGeoHigh)
+                                         uint8_t designGeoTier = 0xFF)
 {
+    designGeoTier = NormalizeDesignGeoTier(designGeoTier);
     if (outUsedRdr) *outUsedRdr = false;
     if (BuildRendererFromRdr(segmentId, renderer, outCenter, outFamilyIds, designGeoTier))
     {
@@ -11056,7 +11076,12 @@ bool TrackSystem::BuildSegmentIntoRenderer(int32_t segmentId,
                                            uint8_t designGeoTier)
 {
     if (segmentId <= 0) return false;
-    if (designGeoTier == 0xFFu) designGeoTier = kDesignGeoHigh;
+    if (designGeoTier == 0xFFu)
+    {
+        designGeoTier = (TrackLodConfig::kLod0Segments > 0u)
+            ? kDesignGeoHigh
+            : kDesignGeoLow;
+    }
 
     outFamilyIds.clear();
     bool usedRdr = false;
@@ -11144,7 +11169,9 @@ bool TrackSystem::BuildSegmentIntoSlideScratch(int32_t segmentId,
     if (!slideScratchRenderer_) return false;
     if (designGeoTier == 0xFFu)
     {
-        designGeoTier = kDesignGeoHigh;
+        designGeoTier = (TrackLodConfig::kLod0Segments > 0u)
+            ? kDesignGeoHigh
+            : kDesignGeoLow;
     }
     if (!BuildSegmentIntoRenderer(segmentId,
                                   *slideScratchRenderer_,
@@ -15362,17 +15389,73 @@ void TrackSystem::LoadTrackCollisionCartMaps()
     }
 }
 
-bool TrackSystem::PreloadHighTrackRuntimePack()
+bool TrackSystem::PreloadLowTrackRuntimePack()
 {
     size_t packCandidateCount = 0;
-    const char* const* packCandidates = GetHighTrackRuntimePackCandidates(packCandidateCount);
-    TrackRuntimePackCache& cache = GetHighTrackRuntimePackCache();
+    const char* const* packCandidates = GetLowTrackRuntimePackCandidates(packCandidateCount);
+    TrackRuntimePackCache& cache = GetLowTrackRuntimePackCache();
     TrackPackLoadFail fail = TrackPackLoadFail::None;
     const bool loaded = LoadTrackRuntimePackToCart(packCandidates, packCandidateCount, cache, &fail);
     if constexpr (kEnableBootRamTelemetry)
     {
         const auto cart = SRL::Memory::CartRam::GetReport();
-        // Row 4 stays sticky across later RAM pre/maps/packs/belt/tcol/post lines.
+        SRL::Debug::Print(1, 4, "PK l:%u cf:%u",
+                          loaded ? 1u : 0u,
+                          static_cast<unsigned>(cart.FreeSize));
+    }
+    if (!loaded)
+    {
+        const char* why = "miss";
+        switch (fail)
+        {
+        case TrackPackLoadFail::Open: why = "open"; break;
+        case TrackPackLoadFail::Malloc: why = "malloc"; break;
+        case TrackPackLoadFail::Read: why = "read"; break;
+        case TrackPackLoadFail::Parse: why = "parse"; break;
+        case TrackPackLoadFail::Miss:
+        case TrackPackLoadFail::None:
+        default: why = "miss"; break;
+        }
+        SRL::Debug::Print(1, 3, "PKL fail %s", why);
+    }
+    return loaded;
+}
+
+bool TrackSystem::PreloadHighTrackRuntimePack()
+{
+    // B1: window 0/20/0 never draws lod_0 high mesh — keep TRKRDR out of Cart
+    // (~1.2 MiB). Prime TRKRDRL instead and drop any stale high cache.
+    if (TrackLodConfig::kLod0Segments == 0u)
+    {
+        InvalidateTrackRuntimePackCache(GetHighTrackRuntimePackCache());
+        const bool lowOk = PreloadLowTrackRuntimePack();
+        if constexpr (kEnableBootRamTelemetry)
+        {
+            const auto cart = SRL::Memory::CartRam::GetReport();
+            SRL::Debug::Print(1, 4, "PK B1 h:0 l:%u cf:%u",
+                              lowOk ? 1u : 0u,
+                              static_cast<unsigned>(cart.FreeSize));
+        }
+        else
+        {
+            SRL::Debug::Print(1, 4, "PK B1 h:0 l:%u", lowOk ? 1u : 0u);
+        }
+        return lowOk;
+    }
+
+    size_t packCandidateCount = 0;
+    const char* const* packCandidates = GetHighTrackRuntimePackCandidates(packCandidateCount);
+    TrackRuntimePackCache& cache = GetHighTrackRuntimePackCache();
+    TrackPackLoadFail fail = TrackPackLoadFail::None;
+    const bool loaded = LoadTrackRuntimePackToCart(packCandidates, packCandidateCount, cache, &fail);
+    // Also prime low when lod_1/lod_2 are configured (mixed windows).
+    if (TrackLodConfig::kLod1Segments > 0u || TrackLodConfig::kLod2Segments > 0u)
+    {
+        (void)PreloadLowTrackRuntimePack();
+    }
+    if constexpr (kEnableBootRamTelemetry)
+    {
+        const auto cart = SRL::Memory::CartRam::GetReport();
         SRL::Debug::Print(1, 4, "PK h:%u cf:%u",
                           loaded ? 1u : 0u,
                           static_cast<unsigned>(cart.FreeSize));
@@ -15390,7 +15473,6 @@ bool TrackSystem::PreloadHighTrackRuntimePack()
         case TrackPackLoadFail::None:
         default: why = "miss"; break;
         }
-        // Always surface pack failure — empty belt is otherwise silent.
         SRL::Debug::Print(1, 3, "PK fail %s", why);
     }
     return loaded;
@@ -15557,8 +15639,8 @@ bool TrackSystem::Initialize(const Config& config)
     LoadSurfaceCollisionMaps();
     printInitRam(6, "RAM maps");
 
-    // Visual belt packs must win Cart before TCOL. Preload TRKRDR explicitly so
-    // RebuildActiveSegmentWindow does not start with an empty pack cache.
+    // Visual belt packs before TCOL. B1: with lod_0=0 this primes TRKRDRL only
+    // (no ~1.2 MiB TRKRDR high resident in Cart).
     (void)PreloadHighTrackRuntimePack();
     printInitRam(7, "RAM packs");
 
@@ -19225,6 +19307,144 @@ void TrackSystem::RenderFrame(bool renderTrack,
     (void)segment01Prepared;
 }
 
+void TrackSystem::PresentSegCapacityTelemetry()
+{
+#if !defined(TRACK_SEG_CAP_TELEMETRY) || (TRACK_SEG_CAP_TELEMETRY == 0)
+    return;
+#else
+    // Fase C calibration v2 (autolap31): f:256/256 s:0 on every slot looked
+    // saturated at the floor. Split metrics:
+    //   n = FaceCount/VertexCount (draw tally)
+    //   b = component vector size
+    //   c = component capacity (after floor reserve)
+    // If n==c==fl always, geometry really fills the floor; if b<<c, waste is real.
+    if (!ReadyFlag() || segmentRenderers_.empty())
+    {
+        SRL::Debug::Print(0, 17, "SEGCAP wait n:%u",
+                          static_cast<unsigned>(segmentRenderers_.size()));
+        return;
+    }
+
+    static uint16_t sRotate = 0u;
+    static uint16_t sPeakN = 0u;
+    static uint16_t sPeakB = 0u;
+    static uint16_t sPeakC = 0u;
+    static int16_t sPeakSegId = 0;
+    static uint16_t sPeakSlack = 0u; // max (c - n) using draw count vs capacity
+
+    uint16_t floorFaces = slotFaceCapacityFloor_;
+    if (rendererFaceCapacityFloor_ > floorFaces)
+    {
+        floorFaces = rendererFaceCapacityFloor_;
+    }
+    uint16_t liveSlots = 0u;
+
+    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+    {
+        const auto& entry = segmentRenderers_[i];
+        if (!entry.renderer) continue;
+        TrackRenderer& ren = *entry.renderer;
+        const size_t n = static_cast<size_t>(ren.FaceCount());
+        const size_t b = ren.ComponentFaceSize();
+        size_t c = ren.ComponentFaceCapacity();
+        const size_t fl = ren.ComponentFaceCapacityFloor();
+        if (fl > floorFaces)
+        {
+            floorFaces = static_cast<uint16_t>(std::min<size_t>(fl, 999u));
+        }
+        if (fl > c) c = fl;
+        if (n == 0u && b == 0u) continue;
+        ++liveSlots;
+
+        if (n > sPeakN)
+        {
+            sPeakN = static_cast<uint16_t>(std::min<size_t>(n, 9999u));
+            sPeakB = static_cast<uint16_t>(std::min<size_t>(b, 9999u));
+            sPeakC = static_cast<uint16_t>(std::min<size_t>(c, 9999u));
+            sPeakSegId = static_cast<int16_t>(entry.id);
+        }
+        if (c > n)
+        {
+            const uint16_t slack = static_cast<uint16_t>(
+                std::min<size_t>(c - n, 9999u));
+            if (slack > sPeakSlack) sPeakSlack = slack;
+        }
+    }
+
+    if (liveSlots == 0u)
+    {
+        SRL::Debug::Print(0, 17, "SEGCAP empty fl:%u n:%u",
+                          static_cast<unsigned>(floorFaces),
+                          static_cast<unsigned>(segmentRenderers_.size()));
+        return;
+    }
+
+    size_t detailIndex = segmentRenderers_.size();
+    uint16_t seen = 0u;
+    const uint16_t target = static_cast<uint16_t>(sRotate % liveSlots);
+    for (size_t i = 0; i < segmentRenderers_.size(); ++i)
+    {
+        const auto& entry = segmentRenderers_[i];
+        if (!entry.renderer) continue;
+        if (entry.renderer->FaceCount() == 0u &&
+            entry.renderer->ComponentFaceSize() == 0u)
+        {
+            continue;
+        }
+        if (seen == target)
+        {
+            detailIndex = i;
+            break;
+        }
+        ++seen;
+    }
+
+    // SEGCAP fl + peak draw-count @seg + peak slack (c-n).
+    SRL::Debug::Print(
+        0, 17, "SEGCAP fl:%u n:%u@%d sk:%u",
+        static_cast<unsigned>(floorFaces),
+        static_cast<unsigned>(sPeakN),
+        static_cast<int>(sPeakSegId),
+        static_cast<unsigned>(sPeakSlack));
+
+    if (detailIndex < segmentRenderers_.size() &&
+        segmentRenderers_[detailIndex].renderer)
+    {
+        TrackRenderer& ren = *segmentRenderers_[detailIndex].renderer;
+        const int32_t rawId = segmentRenderers_[detailIndex].id;
+        const unsigned id = static_cast<unsigned>(rawId > 0 ? rawId : 0);
+        const unsigned n = static_cast<unsigned>(
+            std::min<size_t>(ren.FaceCount(), 9999u));
+        const unsigned b = static_cast<unsigned>(
+            std::min<size_t>(ren.ComponentFaceSize(), 9999u));
+        size_t cRaw = ren.ComponentFaceCapacity();
+        if (ren.ComponentFaceCapacityFloor() > cRaw)
+        {
+            cRaw = ren.ComponentFaceCapacityFloor();
+        }
+        const unsigned c = static_cast<unsigned>(std::min<size_t>(cRaw, 9999u));
+        const unsigned vn = static_cast<unsigned>(
+            std::min<size_t>(ren.VertexCount(), 9999u));
+        const unsigned vb = static_cast<unsigned>(
+            std::min<size_t>(ren.ComponentVertexSize(), 9999u));
+        // Siii n/b/c + vn (draw / bufSize / capacity + vert draw). ≤45 chars.
+        SRL::Debug::Print(
+            0, 18, "S%03u n/b/c:%u/%u/%u vn:%u",
+            id, n, b, c, vn);
+        (void)vb;
+        (void)sPeakB;
+        (void)sPeakC;
+    }
+
+    static uint8_t sFrameDiv = 0u;
+    if (++sFrameDiv >= 30u)
+    {
+        sFrameDiv = 0u;
+        ++sRotate;
+    }
+#endif
+}
+
 void TrackSystem::PresentVdp1FpsTelemetry()
 {
     if (!runtimeDiagnostics_.RuntimeStatsLogsEnabled()) return;
@@ -20060,6 +20280,7 @@ void TrackSystem::EndFrame()
     PresentSh2UsageOverlay();
     RunEndFrameResourceMaintenance();
     PresentVdp1FpsTelemetry();
+    PresentSegCapacityTelemetry();
     PresentPerFrameDebugOverlay();
     UpdateAdaptiveBudgetAfterFrame();
 }

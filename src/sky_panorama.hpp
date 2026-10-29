@@ -222,8 +222,15 @@ struct SkyPanorama
         SRL::VDP2::NBG1::ScrollDisable();
 #endif
 
-        SRL::Debug::Print(0, 3, "SPN ok mw:%d sw:%d", mapWidthPx, scrollWrapWidthPx);
+        // C3: VDP2 already holds the panorama. Drop LWR Bmp2Tile so belt/PATH
+        // reclaim the staging block. Update() only scrolls NBG0; retries that
+        // call Load() again will rebuild a fresh tile, upload, then free.
+        delete tile;
+        tile = nullptr;
+
+        SRL::Debug::Print(0, 3, "SPN ok mw:%d LWR0", mapWidthPx);
         (void)loadedPath;
+        (void)scrollWrapWidthPx;
         loaded = true;
         return true;
     }
@@ -231,8 +238,8 @@ struct SkyPanorama
     void Update(int32_t yawDeg, int32_t viewYawDeg, int32_t pitchDeg)
     {
         (void)pitchDeg;
-        if (!loaded || !tile) return;
-        if (!tile->GetCellData() || !tile->GetMapData()) return;
+        // tile may be null after C3 LWR release; NBG0 VRAM stays valid.
+        if (!loaded) return;
 
         const int32_t yawNorm = NormalizeDeg360(yawDeg + viewYawDeg);
         if (!yawAnchorSet)

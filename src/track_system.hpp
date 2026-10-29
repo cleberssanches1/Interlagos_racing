@@ -866,6 +866,8 @@ private:
     void RunEndFrameResourceMaintenance();
     void UpdateAdaptiveBudgetAfterFrame();
     void PresentVdp1FpsTelemetry();
+    // Fase C calibration: peak face/vert used vs capacity per window segment.
+    void PresentSegCapacityTelemetry();
     void PresentPerFrameDebugOverlay();
     const TrackSegmentCopy* FindRawSegmentCopyById(int id) const;
     const char* FindExistingPath(const char* const* paths, size_t count);
@@ -882,7 +884,10 @@ private:
     // Cart-resident TCOL (+ optional FSMAP free). Call after visual belt Ready.
     void LoadTrackCollisionCartMaps();
     // Preload TRKRDR.BIN (high) into Cart before RebuildActiveSegmentWindow.
+    // B1: no-ops (primes low instead) when TRACK_LOD0_SEGMENTS==0.
     bool PreloadHighTrackRuntimePack();
+    // Preload TRKRDRL.BIN (low) — used by the 0/20/0 window and by B1.
+    bool PreloadLowTrackRuntimePack();
     void ApplyTrackSlaveMode();
     void LogInitialSegmentDiagnostics() const;
     void ApplyInitialSdrFamilySlots();
