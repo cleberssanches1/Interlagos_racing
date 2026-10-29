@@ -135,7 +135,7 @@ Ordenadas por **ganho / risco**. Todas preservam: **TCOL/plant**, **esteira visu
 | ID | Ação | Economia est. | Pool | Risco | Nota |
 |----|------|---------------|------|-------|------|
 | **B1** | Com `TRACK_LOD0_SEGMENTS==0`, **não** manter `TRKRDR.BIN` high residente | **~800–1200 KiB Cart** | Cart | **Aplicado** — `PK B1 h:0 l:1`; prime só TRKRDRL; sem fallback high; `NormalizeDesignGeoTier` |
-| B2 | Reduzir `kCartReserveAfterTcolBytes` 128→32–64 KiB após TC=1 estável | 64–96 KiB | Cart | Baixo–médio | Após belt+TCOL OK |
+| **B2** | Reserva pós-TCOL makefile `TRACK_CART_RESERVE_AFTER_TCOL_KIB` (128→**64** no cue teste) | **64 KiB** | Cart | **Em teste** — HUD `TCOL ok r:64`; cue `BuildDrop_b2_tcol` / `C:\saturn\B2` |
 | B3 | Manter gate TBKLOD2 (já feito); documentar no HTML de stats | 89 KiB (já) | Cart | — | Confirmado em log8 |
 
 ### Fase C — LWR esteira
@@ -189,9 +189,9 @@ Cue: `BuildDrop_segcap` / `C:\saturn\SEGCAP\Interlagos_racing.cue`.
 ## 5. Roadmap sugerido (ordem de implementação)
 
 ```
-1) B1        → maior ganho Cart (TRKRDR high off quando lod0=0)  ← próximo
-2) C1–C3     → LWR floors + céu tile
-3) B2        → reserva TCOL
+1) B1        → FEITO (código/cue) — confirmar MEM10 C: vs log8
+2) C3 + C0   → FEITO (céu LWR0; SEGCAP sk:0 → C1/C2 skip)
+3) B2        → EM TESTE (reserve 64 KiB; cue C:\saturn\B2)  ← reteste agora
 4) D1 ou E1  → só com aceite visual / medição POLY
 5) F1        → só com aceite de áudio
 6) A1–A5     → DIFERIDO até polish/release (manter telemetrias agora)

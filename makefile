@@ -36,10 +36,11 @@ GAME_MENU_ENABLED ?= 1
 AUTO_LAP_PHYSICS_DRIVER ?= 1
 # Populate PATH.NYA side rails (0 and 2) for Auto Lap NPC pose-followers.
 # Default OFF: NPC LWR/HWR work regressed Auto Lap start (fail:2 / car stuck).
-# Re-enable explicitly: make AUTO_LAP_NPC_RAILS=1
-AUTO_LAP_NPC_RAILS ?= 0
+# NPC side-rail pose-follow + mesh. Disable: make AUTO_LAP_NPC_RAILS=0
+AUTO_LAP_NPC_RAILS ?= 1
 # 1 = omit NPC runtime .text (track/Auto Lap boot). 0 = full NPC after heap OK.
-AUTO_LAP_NPC_SLIM ?= 1
+# 0 = mesh CAR1 no NPC; 1 = pose/cruzes only (menos .text)
+AUTO_LAP_NPC_SLIM ?= 0
 # Voltas cronometradas do Time Attack (1..12). Futuramente ajustavel no menu.
 TIME_ATTACK_LAPS ?= 3
 # Temporarily disable the minimap while exposing runtime diagnostics.
@@ -53,6 +54,9 @@ TRACK_FAILURE_TELEMETRY ?= 1
 TRACK_LWR_STAGE_TRACE ?= 1
 # Fase C calibration: HUD peak face/vert used vs capacity per window segment.
 TRACK_SEG_CAP_TELEMETRY ?= 1
+# B2: Cart slack required after TCOL load (KiB). Default 64 (legacy was 128).
+# Override: make TRACK_CART_RESERVE_AFTER_TCOL_KIB=128
+TRACK_CART_RESERVE_AFTER_TCOL_KIB ?= 64
 
 # Visible track residency. Override at build time, for example:
 # make TRACK_LOD0_SEGMENTS=3 TRACK_LOD1_SEGMENTS=8 TRACK_LOD2_SEGMENTS=6
@@ -76,6 +80,7 @@ else
 SRL_CUSTOM_CCFLAGS = -DPHYSICS_POC_MODE=$(PHYSICS_POC_MODE) -DAUDIO_PROFILE=$(AUDIO_PROFILE) -DPHYS_SATURN_LOW_COST=1 -DPHYS_WALL_COLLISION_RUNTIME=1 -DPHYS_WHEEL_STRICT_SURFACE=0 -DPHYS_ENABLE_MEM10_OVERLAY=$(PHYS_ENABLE_MEM10_OVERLAY) -DTRACK_FAILURE_TELEMETRY=$(TRACK_FAILURE_TELEMETRY) -DTRACK_LWR_STAGE_TRACE=$(TRACK_LWR_STAGE_TRACE) -DTRACK_SEG_CAP_TELEMETRY=$(TRACK_SEG_CAP_TELEMETRY)
 endif
 SRL_CUSTOM_CCFLAGS += -DTRACK_LOD0_SEGMENTS=$(TRACK_LOD0_SEGMENTS) -DTRACK_LOD1_SEGMENTS=$(TRACK_LOD1_SEGMENTS) -DTRACK_LOD2_SEGMENTS=$(TRACK_LOD2_SEGMENTS)
+SRL_CUSTOM_CCFLAGS += -DTRACK_CART_RESERVE_AFTER_TCOL_KIB=$(TRACK_CART_RESERVE_AFTER_TCOL_KIB)
 SRL_CUSTOM_CCFLAGS += -DMASTER_FRAME_PHASE_TELEMETRY=$(MASTER_FRAME_PHASE_TELEMETRY)
 SRL_CUSTOM_CCFLAGS += -DSPEEDOMETER_HUD=$(SPEEDOMETER_HUD)
 SRL_CUSTOM_CCFLAGS += -DGAME_MENU_ENABLED=$(GAME_MENU_ENABLED)
@@ -88,8 +93,9 @@ SRL_CUSTOM_CCFLAGS += -DMINIMAP_HUD=$(MINIMAP_HUD)
 # Disk name
 CD_NAME = Interlagos_racing
 
-# Directory build will be placed into (use alternate drop to avoid stale locks)
-BUILD_DROP = ./BuildDrop
+# Default ISO/CUE/BIN/ELF/MAP output. Override still allowed, e.g.:
+#   make BUILD_DROP=./BuildDrop_b2_tcol
+BUILD_DROP ?= C:/saturn/SaturnRingLib-main/Projects/Interlagos_racing/BuildDrop
 # Find all .c and .cxx files
 SOURCES = $(patsubst ./%,%,$(shell find src/ -name '*.c'))
 SOURCES += $(patsubst ./%,%,$(shell find src/ -name '*.cxx'))

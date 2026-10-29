@@ -139,8 +139,28 @@
     }
     .meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
     footer { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+    .module-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 150px;
+    }
+    .module-card h3 {
+      font-size: 14px;
+      color: var(--text);
+      margin: 0 0 6px;
+    }
+    .module-card p { font-size: 12px; margin: 0 0 8px; }
+    .module-card .pools { display: flex; flex-wrap: wrap; gap: 4px; }
     @media (max-width: 980px) {
-      .hero-grid, .grid-2, .grid-3, .flow, .kpis { grid-template-columns: 1fr; }
+      .hero-grid, .grid-2, .grid-3, .flow, .kpis, .module-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -152,18 +172,29 @@
           <h1>Interlagos — Pipeline e uso de memória</h1>
           <p>
             Dashboard do pipeline Saturn: <code>HWR</code>, <code>LWR</code>, <code>Cart</code>,
-            <code>VDP1</code>, <code>VDP2</code> e <code>SGL WorkArea</code>.
+            <code>VDP1</code>, <code>VDP2</code>, <code>SGL WorkArea</code> e
+            <strong>módulos do motor</strong> (esteira, céu, carro, física, som).
           </p>
           <p style="margin-top:10px">
-            Atualizado com gate <code>TRACK_LOD*</code> (sem TBKLOD2), snapshot
-            <code>MEM10</code> de <code>log8.png</code>, map mesh5 e propostas do diagnóstico
+            Atualizado com <strong>B1</strong> (TRKRDR high OFF), <strong>C3</strong> (céu LWR0),
+            <strong>SEGCAP</strong> <code>sk:0</code>, gate TBKLOD2, baseline <code>MEM10</code>
+            <code>log8.png</code> e diagnóstico
             <a href="./DIAGNOSTICO_MEMORIA_PIPELINE_2026-10-28_172338.md">DIAGNOSTICO_MEMORIA_PIPELINE_2026-10-28_172338.md</a>.
           </p>
           <div class="ok-note" style="margin-top:14px">
-            Ganho confirmado: Cart livre <strong>3545 → 3634 KiB</strong> (+89 KiB = tamanho de
-            <code>TBKLOD2.BIN</code>) após não carregar lod_2 com makefile <code>0/20/0</code>.
+            Confirmados no código/cues: <code>PK B1 h:0 l:*</code> (só TRKRDRL),
+            <code>SPN ok … LWR0</code> (tile céu libertado), SEGCAP
+            <code>n/b/c:256/256/256 sk:0</code> → C1/C2 skip. Baseline log8 Cart
+            <strong>3634 KiB</strong> (+89 vs pré-TBKLOD2); ganho B1 Cart ~+0,8–1,2 MiB a
+            confirmar no reteste <code>MEM10 C:</code>.
           </div>
-          <p class="meta">Snapshot HTML: 2026-10-28 · ISO ref. <code>BuildDrop_npc_mesh5</code> / <code>C:\saturn\MESH5</code></p>
+          <p class="meta">
+            Snapshot HTML: 2026-10-28 · cues
+            <code>BuildDrop_b1_trkrdr</code> / <code>C:\saturn\B1</code> ·
+            <code>BuildDrop_sky_c3</code> / <code>C:\saturn\SKYC3</code> ·
+            <code>BuildDrop_segcap</code> / <code>C:\saturn\SEGCAP</code> ·
+            baseline map <code>BuildDrop_npc_mesh5</code>
+          </p>
         </div>
         <div class="kpis">
           <div class="kpi">
@@ -172,9 +203,9 @@
             <div class="sub"><code>0x060bec00 → 0x060c0000</code></div>
           </div>
           <div class="kpi">
-            <div class="label">MEM10 log8 (livre)</div>
+            <div class="label">MEM10 log8 (baseline)</div>
             <div class="value" style="color:var(--ok)">C:3634</div>
-            <div class="sub">H:5 L:689 V1:206 V2:352</div>
+            <div class="sub">H:5 L:689 V1:206 V2:352 · pré-B1</div>
           </div>
           <div class="kpi">
             <div class="label">LOD janela</div>
@@ -182,19 +213,19 @@
             <div class="sub">só lod_1 · 20×64²</div>
           </div>
           <div class="kpi">
-            <div class="label">TBKLOD2 no Cart</div>
+            <div class="label">TRKRDR high (B1)</div>
             <div class="value" style="color:var(--ok)">OFF</div>
-            <div class="sub">gate makefile · +89 KiB</div>
+            <div class="sub">lod0=0 · ~+1 MiB Cart est.</div>
           </div>
           <div class="kpi">
-            <div class="label">SGL WorkArea</div>
-            <div class="value" style="color:var(--sgl)">237 KiB</div>
-            <div class="sub">margem TransList ~0,9 KiB</div>
+            <div class="label">Céu LWR (C3)</div>
+            <div class="value" style="color:var(--ok)">LWR0</div>
+            <div class="sub">tile free pós-NBG0 · 16–40 KiB</div>
           </div>
           <div class="kpi">
-            <div class="label">Teto polígonos</div>
-            <div class="value" style="color:var(--warn)">1700</div>
-            <div class="sub">1 NPC ≈ +118 faces</div>
+            <div class="label">SEGCAP slack</div>
+            <div class="value" style="color:var(--warn)">sk:0</div>
+            <div class="sub">n=b=c=256 · C1/C2 skip</div>
           </div>
         </div>
       </div>
@@ -206,7 +237,7 @@
       <div class="flow">
         <div class="step">
           <strong>1. Boot / CD</strong>
-          <span>CAR1, PATH, packs → <span class="tag cart">Cart</span>. High GEO ainda pode residir (ver §5).</span>
+          <span>CAR1, PATH, packs → <span class="tag cart">Cart</span>. B1: sem <code>TRKRDR</code> high se lod0=0.</span>
         </div>
         <div class="step">
           <strong>2. Track belt</strong>
@@ -226,26 +257,152 @@
         </div>
         <div class="step">
           <strong>6. HUD / céu</strong>
-          <span><span class="tag vdp2">VDP2</span> NBG/RBG. <code>MEM10</code> amostra livres.</span>
+          <span><span class="tag vdp2">VDP2</span> NBG. C3: bitmap céu só em VRAM (<code>LWR0</code>). <code>MEM10</code> / SEGCAP.</span>
         </div>
       </div>
     </section>
 
     <section class="panel">
-      <h2>2. Capacidades vs MEM10 livre (log8)</h2>
+      <h2>2. Módulos do motor</h2>
+      <p>
+        O Interlagos é um motor Saturn próprio: esteira de segmentos, fundo/céu, carro 3D,
+        física/plant e som do motor. Cada módulo pressiona pools diferentes — o gráfico
+        abaixo usa <strong>ordens de grandeza</strong> (KiB de asset dominante + orçamento
+        de faces), não um profiler por frame.
+      </p>
+
+      <div class="module-grid">
+        <div class="module-card">
+          <h3>Esteira de segmentos</h3>
+          <p>
+            <code>TrackSystem</code>: janela LOD (hoje 0/20/0), GEO low
+            <code>TRKRDRL</code>, texturas <code>TBKLOD0</code> 64², submit SGL→VDP1.
+          </p>
+          <div class="pools">
+            <span class="tag lwr">LWR GEO/MAT</span>
+            <span class="tag cart">Cart packs</span>
+            <span class="tag vdp1">VDP1 tex</span>
+            <span class="tag sgl">~1350 faces</span>
+          </div>
+        </div>
+        <div class="module-card">
+          <h3>Background / céu</h3>
+          <p>
+            <code>SkyPanorama</code> → NBG0 VDP2. Após C3 o bitmap LWR é libertado
+            (<code>SPN … LWR0</code>); o scroll usa só VRAM.
+          </p>
+          <div class="pools">
+            <span class="tag vdp2">VDP2 NBG0</span>
+            <span class="tag ok">LWR0 pós-upload</span>
+          </div>
+        </div>
+        <div class="module-card">
+          <h3>Carro 3D</h3>
+          <p>
+            Mesh <code>CAR1.NYA</code> + <code>MeshRenderer</code> (jogador; NPC reutiliza
+            o mesmo mesh quando rails=1). ~118 faces no orçamento SGL.
+          </p>
+          <div class="pools">
+            <span class="tag cart">Cart ~47 KiB</span>
+            <span class="tag vdp1">VDP1 / SGL</span>
+            <span class="tag hwr">.text render</span>
+          </div>
+        </div>
+        <div class="module-card">
+          <h3>Física / plant</h3>
+          <p>
+            <code>CarPhysics</code> + mapa <code>TCOL.BIN</code> (solo/paredes) no Cart.
+            Independente do LOD visual. PATH/Auto Lap em LWR quando HWR está apertada.
+          </p>
+          <div class="pools">
+            <span class="tag cart">TCOL ~917 KiB</span>
+            <span class="tag hwr">.text sim</span>
+            <span class="tag lwr">PATH ~11 KiB</span>
+          </div>
+        </div>
+        <div class="module-card">
+          <h3>Som do carro</h3>
+          <p>
+            Loop motor <code>ENGSD.WAV</code> no driver SGL/SCSP. Pitch no Master;
+            one-shots sob <code>AUDIO_PROFILE</code>.
+          </p>
+          <div class="pools">
+            <span class="tag warn">Sound ~172 KiB</span>
+            <span class="tag hwr">glue PCM</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="chart-box tall"><canvas id="chartModulesPools"></canvas></div>
+        <div class="chart-box tall"><canvas id="chartModulesFaces"></canvas></div>
+      </div>
+
+      <div class="grid-2" style="margin-top:18px">
+        <div class="chart-box"><canvas id="chartModulesShare"></canvas></div>
+        <div>
+          <table>
+            <thead>
+              <tr><th>Módulo</th><th>Fonte principal</th><th>Pool dominante</th><th>Ordem (KiB / faces)</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Esteira</td>
+                <td><code>TRKRDRL</code> + <code>TBKLOD0</code></td>
+                <td><span class="tag cart">Cart</span> + <span class="tag vdp1">VDP1</span> + <span class="tag lwr">LWR</span></td>
+                <td>~396 + ~335 Cart; ~1350 faces; LWR GEO/MAT da janela</td>
+              </tr>
+              <tr>
+                <td>Background</td>
+                <td><code>SKY.tga</code> → NBG0</td>
+                <td><span class="tag vdp2">VDP2</span></td>
+                <td>~128 KiB fonte; residente em VRAM; LWR free (C3)</td>
+              </tr>
+              <tr>
+                <td>Carro</td>
+                <td><code>CAR1.NYA</code></td>
+                <td><span class="tag sgl">SGL</span> / <span class="tag vdp1">VDP1</span></td>
+                <td>~47 KiB Cart; ~118 faces (+118 se 1 NPC)</td>
+              </tr>
+              <tr>
+                <td>Física</td>
+                <td><code>TCOL.BIN</code> + sim SH-2</td>
+                <td><span class="tag cart">Cart</span> + <span class="tag hwr">HWR</span></td>
+                <td>~917 KiB TCOL; código em <code>.text</code>; PATH ~11 LWR</td>
+              </tr>
+              <tr>
+                <td>Som</td>
+                <td><code>ENGSD.WAV</code></td>
+                <td><span class="tag warn">Sound RAM</span></td>
+                <td>~172 KiB sample (SCSP); não compete com VDP1</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="note" style="margin-top:12px">
+            HUD (velocímetro/minimapa) também usa <span class="tag vdp2">VDP2</span> e fica
+            fora desta tabela de “motor de corrida”; custo baixo vs esteira/TCOL.
+            Dual SH-2: física pode ir no Slave; VDP1/VDP2/SCSP ficam no Master.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>3. Capacidades vs MEM10 livre (log8)</h2>
       <div class="grid-2">
         <div class="chart-box tall"><canvas id="chartPools"></canvas></div>
         <div class="chart-box tall"><canvas id="chartMem10"></canvas></div>
       </div>
       <div class="note" style="margin-top:14px">
         Barras da esquerda = capacidade estrutural. Direita = <strong>livre KiB</strong> em
-        <code>log5</code> (pré-gate) vs <code>log8</code> (pós-gate TBKLOD2). Cart sobe 89 KiB;
-        H/L/V1/V2 iguais neste instante.
+        <code>log5</code> (pré-gate) vs <code>log8</code> (pós-gate TBKLOD2, <strong>pré-B1</strong>).
+        Cart +89 KiB; H/L/V1/V2 iguais nesse instante. Reteste B1 deve mostrar
+        <code>MEM10 C:</code> ~+800–1200 vs log8.
       </div>
     </section>
 
     <section class="panel">
-      <h2>3. High Work RAM — partição mesh5</h2>
+      <h2>4. High Work RAM — partição mesh5</h2>
       <div class="grid-2">
         <div class="chart-box tall"><canvas id="chartHwr"></canvas></div>
         <div>
@@ -270,15 +427,15 @@
     </section>
 
     <section class="panel">
-      <h2>4. Cart — artefactos e gate LOD</h2>
+      <h2>5. Cart — artefactos e gate LOD / B1</h2>
       <div class="grid-2">
         <div class="chart-box tall"><canvas id="chartCart"></canvas></div>
         <div>
           <table>
             <thead><tr><th>Ficheiro</th><th>KiB</th><th>Estado c/ 0/20/0</th></tr></thead>
             <tbody>
-              <tr><td><code>TRKRDR.BIN</code> high</td><td>1202</td><td><span class="tag warn">ainda residente (desperdício)</span></td></tr>
-              <tr><td><code>TRKRDRL.BIN</code> low</td><td>396</td><td><span class="tag ok">usado na janela</span></td></tr>
+              <tr><td><code>TRKRDR.BIN</code> high</td><td>1202</td><td><span class="tag ok">OFF — B1 (lod0=0)</span></td></tr>
+              <tr><td><code>TRKRDRL.BIN</code> low</td><td>396</td><td><span class="tag ok">único GEO primed</span></td></tr>
               <tr><td><code>TCOL.BIN</code></td><td>917</td><td><span class="tag ok">solo/paredes</span></td></tr>
               <tr><td><code>TBKLOD0.BIN</code></td><td>335</td><td><span class="tag ok">64² shared (lod1)</span></td></tr>
               <tr><td><code>TBKLOD1.BIN</code></td><td>~0</td><td><span class="tag ok">stub alias</span></td></tr>
@@ -287,15 +444,16 @@
             </tbody>
           </table>
           <div class="ok-note">
-            <code>IsTrackTextureLodConfigured</code>: lod_2=0 → sem Cart/VDP1 32×32.
-            TBKLOD0 mantém-se porque lod_1&gt;0 (alias shared-64). Solo = TCOL, não TBKLOD0.
+            B1: <code>PreloadHighTrackRuntimePack</code> com lod0=0 →
+            <code>PK B1 h:0 l:*</code>; <code>NormalizeDesignGeoTier</code> remapeia high→low;
+            sem fallback low→high. TBKLOD2 já gated; TBKLOD0 mantém-se (lod_1&gt;0). Solo = TCOL.
           </div>
         </div>
       </div>
     </section>
 
     <section class="panel">
-      <h2>5. SGL WorkArea e polígonos</h2>
+      <h2>6. SGL WorkArea e polígonos</h2>
       <div class="grid-2">
         <div class="chart-box"><canvas id="chartWorkArea"></canvas></div>
         <div class="chart-box"><canvas id="chartPolys"></canvas></div>
@@ -307,24 +465,28 @@
     </section>
 
     <section class="panel">
-      <h2>6. Roadmap de economia (sem perder features)</h2>
-      <p>Extraído do diagnóstico 2026-10-28_172338. Solo, esteira, Auto Lap e 1 NPC preservados.</p>
+      <h2>7. Roadmap de economia (sem perder features)</h2>
+      <p>Extraído do diagnóstico 2026-10-28_172338 e atualizado pós-B1/C3/SEGCAP. Solo, esteira, Auto Lap e 1 NPC preservados.</p>
       <div class="grid-2">
         <div class="chart-box tall"><canvas id="chartRoadmap"></canvas></div>
         <div>
           <table>
-            <thead><tr><th>Fase</th><th>Ação</th><th>Est.</th><th>Risco</th></tr></thead>
+            <thead><tr><th>Fase</th><th>Ação</th><th>Est.</th><th>Estado</th></tr></thead>
             <tbody>
-              <tr><td><strong>B1</strong></td><td>Sem TRKRDR high no Cart se lod0=0</td><td><strong>0,8–1,2 MiB</strong></td><td>Médio · <strong>próximo</strong></td></tr>
-              <tr><td>C</td><td>Floors LWR 256→192 + tile céu</td><td>50–140 KiB LWR</td><td>Baixo–médio</td></tr>
-              <tr><td>B2</td><td>Reserva TCOL 128→32–64</td><td>64–96 KiB</td><td>Baixo–médio</td></tr>
+              <tr><td>B1</td><td>Sem TRKRDR high no Cart se lod0=0</td><td><strong>0,8–1,2 MiB</strong></td><td><span class="tag ok">FEITO</span> · reteste MEM10 C:</td></tr>
+              <tr><td>C3</td><td>Tile céu LWR free pós-NBG0</td><td>16–40 KiB LWR</td><td><span class="tag ok">FEITO</span> · <code>SPN … LWR0</code></td></tr>
+              <tr><td>C0</td><td>SEGCAP HUD (n/b/c + sk)</td><td>0 (diag)</td><td><span class="tag ok">FEITO</span> · <code>sk:0</code></td></tr>
+              <tr><td>C1/C2</td><td>Floors LWR 256→192</td><td>40–100 KiB</td><td><span class="tag warn">SKIP</span> · pico = floor</td></tr>
+              <tr><td><strong>B2</strong></td><td>Reserva TCOL 128→64 (flag makefile)</td><td>64 KiB</td><td><span class="tag warn">TESTE</span> · cue B2 · <code>r:64</code></td></tr>
               <tr><td>D</td><td>LOD 5/6/8 ou 3/4/5 (opt-in visual)</td><td>80–200 KiB V1</td><td>Médio</td></tr>
               <tr><td>E</td><td>SGL 2000/1500 se F permitir</td><td>margem +27 KiB</td><td>Médio</td></tr>
-              <tr><td>A</td><td>TRACE/MEM10/diag NPC off</td><td>5–15 KiB .text</td><td><span class="tag warn">DIFERIDO</span> — manter telemetrias no dev</td></tr>
+              <tr><td>A</td><td>TRACE/MEM10/diag NPC off</td><td>5–15 KiB .text</td><td><span class="tag warn">DIFERIDO</span> — telemetrias no dev</td></tr>
             </tbody>
           </table>
           <div class="note">
-            Ordem atual: <strong>B1 → C → B2 → D/E</strong>. Fase A só em polish/release.
+            Ordem atual: <strong>confirmar B1 MEM10 + reteste B2</strong> → D/E
+            (B1/C3 feitos; B2 cue com <code>TRACK_CART_RESERVE_AFTER_TCOL_KIB=64</code>;
+            C1/C2 skip por SEGCAP <code>sk:0</code>). Fase A só em polish/release.
             Não desligar MEM10 / LWR TRACE / failure telemetry / ISO NPC neste estágio.
           </div>
         </div>
@@ -332,28 +494,44 @@
     </section>
 
     <section class="panel">
-      <h2>7. Pressão atual</h2>
+      <h2>8. Pressão atual</h2>
       <div class="grid-3">
         <div class="kpi">
           <div class="label">HWR heap</div>
           <div class="value" style="color:var(--crit)">Crítico</div>
-          <div class="sub">5 KiB · cortar .text diag / traces</div>
+          <div class="sub">5 KiB · Fase A diferida (manter diag)</div>
         </div>
         <div class="kpi">
-          <div class="label">Cart GEO high</div>
-          <div class="value" style="color:var(--warn)">Ocioso</div>
-          <div class="sub">~1,2 MiB TRKRDR com janela low</div>
+          <div class="label">Cart GEO high (B1)</div>
+          <div class="value" style="color:var(--ok)">OFF</div>
+          <div class="sub">código/cue · confirmar MEM10 C:</div>
         </div>
         <div class="kpi">
           <div class="label">TBKLOD2 / lod2</div>
           <div class="value" style="color:var(--ok)">Resolvido</div>
           <div class="sub">+89 KiB Cart em log8</div>
         </div>
+        <div class="kpi">
+          <div class="label">LWR céu (C3)</div>
+          <div class="value" style="color:var(--ok)">LWR0</div>
+          <div class="sub">bitmap só em VDP2 NBG0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">SEGCAP floors</div>
+          <div class="value" style="color:var(--warn)">sk:0</div>
+          <div class="sub">sem folga · não baixar C1/C2</div>
+        </div>
+        <div class="kpi">
+          <div class="label">B2 TCOL reserve</div>
+          <div class="value" style="color:var(--warn)">r:64</div>
+          <div class="sub">cue B2 · reteste plant + MEM10 C:</div>
+        </div>
       </div>
     </section>
 
     <footer>
-      Fontes: map mesh5 · log5/log8 MEM10 · makefile LOD 0/20/0 ·
+      Fontes: map mesh5 · log5/log8 MEM10 (baseline pré-B1) · B1/C3/SEGCAP cues ·
+      cd/data sizes (TRKRDRL/TCOL/CAR1/SKY/ENGSD) · makefile LOD 0/20/0 ·
       <a href="./DIAGNOSTICO_MEMORIA_PIPELINE_2026-10-28_172338.md">diagnóstico 2026-10-28_172338</a> ·
       Chart.js CDN. Atualizar após cada ISO / MEM10 relevante.
     </footer>
@@ -365,6 +543,146 @@
     Chart.defaults.font.family = "'Segoe UI', Arial, sans-serif";
     const commonLegend = { position: "bottom", labels: { boxWidth: 12, padding: 14 } };
     const kiB = (n) => Math.round(n * 10) / 10;
+
+    // Ordens de grandeza por módulo (KiB de asset / residente típico). HWR = fatia
+    // ilustrativa do .text (não medição nm por TU). LWR esteira = pressão da janela.
+    const moduleLabels = ["Esteira", "Background", "Carro", "Física", "Som"];
+    new Chart(document.getElementById("chartModulesPools"), {
+      type: "bar",
+      data: {
+        labels: moduleLabels,
+        datasets: [
+          {
+            label: "Cart (KiB asset)",
+            data: [396 + 335, 0, 47, 917, 0],
+            backgroundColor: "rgba(205,169,255,0.8)",
+            borderRadius: 6
+          },
+          {
+            label: "LWR (KiB típico)",
+            data: [280, 0, 8, 11, 0],
+            backgroundColor: "rgba(140,242,186,0.75)",
+            borderRadius: 6
+          },
+          {
+            label: "VDP1 / VDP2 / Sound (KiB)",
+            data: [240, 128, 40, 0, 172],
+            backgroundColor: "rgba(255,184,107,0.8)",
+            borderRadius: 6
+          },
+          {
+            label: "HWR .text (fatia est.)",
+            data: [180, 12, 45, 90, 20],
+            backgroundColor: "rgba(110,215,255,0.7)",
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: commonLegend,
+          title: {
+            display: true,
+            text: "Recursos por módulo (KiB · ordens de grandeza)",
+            color: "#e8f0ff"
+          },
+          tooltip: {
+            callbacks: {
+              afterBody: (items) => {
+                const tips = [
+                  "TRKRDRL+TBKLOD0; GEO/MAT na janela; tex 64²",
+                  "SKY.tga em VDP2; LWR0 após C3",
+                  "CAR1.NYA + texturas/mesh no submit",
+                  "TCOL Cart + sim/.text + PATH LWR",
+                  "ENGSD.WAV na Sound RAM (SCSP)"
+                ];
+                return tips[items[0].dataIndex];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { stacked: false },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "KiB" }
+          }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartModulesFaces"), {
+      type: "bar",
+      data: {
+        labels: ["Teto SGL", "Esteira", "Carro", "NPC×1", "Soma típica", "Soma+NPC"],
+        datasets: [{
+          label: "Faces / frame",
+          data: [1700, 1350, 118, 118, 1468, 1586],
+          backgroundColor: [
+            "rgba(158,193,255,0.45)",
+            "rgba(140,242,186,0.85)",
+            "rgba(255,184,107,0.85)",
+            "rgba(246,166,255,0.75)",
+            "rgba(110,215,255,0.75)",
+            "rgba(126,240,177,0.85)"
+          ],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: "Orçamento de faces — módulos 3D",
+            color: "#e8f0ff"
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, max: 1900, title: { display: true, text: "faces" } }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chartModulesShare"), {
+      type: "doughnut",
+      data: {
+        labels: [
+          "Esteira (Cart packs)",
+          "Física (TCOL)",
+          "Som (ENGSD)",
+          "Background (SKY)",
+          "Carro (CAR1)",
+          "Resto Cart livre / outros"
+        ],
+        datasets: [{
+          // Sketch vs ~4096 Cart + som separado: fatias relativas dos assets grandes
+          data: [731, 917, 172, 128, 47, Math.max(0, 4096 - 731 - 917 - 47)],
+          backgroundColor: [
+            "rgba(140,242,186,0.8)",
+            "rgba(205,169,255,0.8)",
+            "rgba(255,211,109,0.85)",
+            "rgba(246,166,255,0.75)",
+            "rgba(255,184,107,0.8)",
+            "rgba(110,215,255,0.25)"
+          ],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: commonLegend,
+          title: {
+            display: true,
+            text: "Peso relativo dos assets dos módulos",
+            color: "#e8f0ff"
+          }
+        }
+      }
+    });
 
     new Chart(document.getElementById("chartPools"), {
       type: "bar",
@@ -420,7 +738,7 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: commonLegend,
-          title: { display: true, text: "MEM10 livre: log5 vs log8", color: "#e8f0ff" }
+          title: { display: true, text: "MEM10 livre: log5 vs log8 (baseline pré-B1)", color: "#e8f0ff" }
         },
         scales: {
           y: {
@@ -483,23 +801,23 @@
       type: "doughnut",
       data: {
         labels: [
-          "TRKRDR high (ocioso)",
+          "TRKRDR high OFF (B1)",
           "TRKRDRL low",
           "TCOL",
           "TBKLOD0 64²",
           "TBKLOD2 OFF",
-          "Outros / livre"
+          "Outros / livre (incl. ~B1)"
         ],
         datasets: [{
-          // Approximate residency sketch vs 4096 Cart (order-of-magnitude)
-          data: [1202, 396, 917, 335, 0, 4096 - 1202 - 396 - 917 - 335],
+          // Pós-B1: high não residente; fatia 0 + livre inclui ~1202 recuperados
+          data: [0, 396, 917, 335, 0, 4096 - 396 - 917 - 335],
           backgroundColor: [
-            "rgba(255,143,143,0.85)",
+            "rgba(80,90,100,0.35)",
             "rgba(140,242,186,0.75)",
             "rgba(110,215,255,0.7)",
             "rgba(255,184,107,0.75)",
             "rgba(80,90,100,0.4)",
-            "rgba(205,169,255,0.35)"
+            "rgba(126,240,177,0.45)"
           ],
           borderWidth: 0
         }]
@@ -508,7 +826,7 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: commonLegend,
-          title: { display: true, text: "Cart ~4096 KiB — consumidores principais", color: "#e8f0ff" }
+          title: { display: true, text: "Cart ~4096 KiB — pós-B1 (high OFF)", color: "#e8f0ff" }
         }
       }
     });
@@ -563,14 +881,23 @@
     new Chart(document.getElementById("chartRoadmap"), {
       type: "bar",
       data: {
-        labels: ["B1 TRKRDR high", "C LWR floors+céu", "B2 reserva TCOL", "D LOD perfil", "E SGL margem", "A traces (diferido)"],
+        labels: [
+          "B1 TRKRDR high (feito)",
+          "C3 céu LWR0 (feito)",
+          "C1/C2 floors (skip sk:0)",
+          "B2 reserva TCOL (próximo)",
+          "D LOD perfil",
+          "E SGL margem",
+          "A traces (diferido)"
+        ],
         datasets: [{
           label: "Economia estimada (KiB, log scale)",
-          data: [1000, 90, 80, 140, 27, 10],
+          data: [1000, 28, 1, 80, 140, 27, 10],
           backgroundColor: [
+            "rgba(126,240,177,0.85)",
+            "rgba(126,240,177,0.75)",
+            "rgba(120,120,120,0.4)",
             "rgba(255,143,143,0.85)",
-            "rgba(140,242,186,0.75)",
-            "rgba(205,169,255,0.75)",
             "rgba(255,184,107,0.75)",
             "rgba(158,193,255,0.75)",
             "rgba(120,120,120,0.45)"
@@ -583,14 +910,15 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          title: { display: true, text: "Potencial por fase (A diferida no dev)", color: "#e8f0ff" },
+          title: { display: true, text: "Potencial por fase (B2 próximo · A diferida)", color: "#e8f0ff" },
           tooltip: {
             callbacks: {
               afterLabel: (ctx) => {
                 const tips = [
-                  "Próximo — Cart ~1 MiB se lod0=0",
-                  "256→192 + tile NBG0",
-                  "Após TC estável",
+                  "FEITO — PK B1 h:0 · confirmar MEM10 C:",
+                  "FEITO — SPN ok … LWR0",
+                  "SKIP — SEGCAP n=b=c=256 sk:0",
+                  "Próximo — kCartReserveAfterTcol 128→32–64",
                   "Opt-in visual 5/6/8",
                   "Margem TransList, não heap",
                   "Só polish/release — manter MEM10 agora"

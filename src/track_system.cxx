@@ -15277,10 +15277,18 @@ void TrackSystem::LoadSurfaceCollisionMaps()
 
 void TrackSystem::LoadTrackCollisionCartMaps()
 {
+    // B2: makefile TRACK_CART_RESERVE_AFTER_TCOL_KIB (default 64; override 128).
+#ifndef TRACK_CART_RESERVE_AFTER_TCOL_KIB
+#define TRACK_CART_RESERVE_AFTER_TCOL_KIB 64
+#endif
+    constexpr uint32_t kCartReserveAfterTcolBytes =
+        static_cast<uint32_t>(TRACK_CART_RESERVE_AFTER_TCOL_KIB) * 1024u;
+
     if (trackCollisionMapCartPtr_)
     {
         // Sticky: confirm residency even when boot RAM telemetry is off (124003).
-        SRL::Debug::Print(1, 12, "TCOL ok tc:1 wc:%u cf:%u",
+        SRL::Debug::Print(1, 12, "TCOL ok r:%u wc:%u cf:%u",
+                          static_cast<unsigned>(TRACK_CART_RESERVE_AFTER_TCOL_KIB),
                           static_cast<unsigned>(TrackCollisionWallCount()),
                           static_cast<unsigned>(SRL::Memory::CartRam::GetReport().FreeSize));
         return;
@@ -15299,7 +15307,6 @@ void TrackSystem::LoadTrackCollisionCartMaps()
     // need+reserve ≈ 1.45 MiB unreachable after the visual belt. TCOL is the
     // LOD0 collider (not VDP1); prioritize it over FSMAP and keep a small
     // post-load slack only.
-    constexpr uint32_t kCartReserveAfterTcolBytes = 128u * 1024u;
     uint32_t tcolNeedBytes = 0u;
     SRL::Cd::ChangeDir((const char*)0);
     for (size_t i = 0u; i < sizeof(trackCollisionCandidates) / sizeof(trackCollisionCandidates[0]); ++i)
@@ -15366,7 +15373,9 @@ void TrackSystem::LoadTrackCollisionCartMaps()
     if (trackCollisionMapCartPtr_)
     {
         const auto cartAfter = SRL::Memory::CartRam::GetReport();
-        SRL::Debug::Print(1, 12, "TCOL ok tc:1 wc:%u cf:%u%s",
+        // Fingerprint B2 reserve KiB (r:) — ≤45 chars with typical cf.
+        SRL::Debug::Print(1, 12, "TCOL ok r:%u wc:%u cf:%u%s",
+                          static_cast<unsigned>(TRACK_CART_RESERVE_AFTER_TCOL_KIB),
                           static_cast<unsigned>(TrackCollisionWallCount()),
                           static_cast<unsigned>(cartAfter.FreeSize),
                           tightFit ? " t" : "");
