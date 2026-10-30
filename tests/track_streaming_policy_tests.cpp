@@ -730,6 +730,25 @@ void TestHardCapTextureRebuildRequiresMatchingSafeWindow(TestContext& ctx)
     EXPECT_TRUE(ctx, ShouldRunHardCapTextureResidencyRebuild(64u, 0u, true, true, false));
 }
 
+void TestFocusHandoffRetreatIsIncremental(TestContext& ctx)
+{
+    using TrackStreamingPolicy::ResolveFocusHandoffTarget;
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(20, 15, 290, 20, +1), 19);
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(19, 15, 290, 20, +1), 18);
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(1, 290, 290, 20, +1), 290);
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(20, 25, 290, 20, -1), 21);
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(20, 25, 290, 20, +1), 25);
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(20, 15, 290, 20, -1), 15);
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(20, 20, 290, 20, +1), 20);
+    // Far targets need direct relocation around the car, not a trip across
+    // 60 intervening slots. Four of the 20 ranks remain behind the target.
+    EXPECT_EQ(ctx, ResolveFocusHandoffTarget(20, 76, 290, 20, +1), 20);
+    EXPECT_EQ(ctx, TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+        80, 290, 20, +1), 76);
+    EXPECT_EQ(ctx, TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+        80, 290, 20, -1), 84);
+}
+
 struct TestCase
 {
     const char* name = "";
@@ -750,6 +769,7 @@ int main()
         {"ConservativeAabbCameraRejection", &TestConservativeAabbCameraRejection},
         {"StagedSlideSeparatesPreparationFromCommit", &TestStagedSlideSeparatesPreparationFromCommit},
         {"HardCapTextureRebuildRequiresMatchingSafeWindow", &TestHardCapTextureRebuildRequiresMatchingSafeWindow},
+        {"FocusHandoffRetreatIsIncremental", &TestFocusHandoffRetreatIsIncremental},
         {"RingReorientationWrapsAtLapBoundary", &TestRingReorientationWrapsAtLapBoundary},
         {"TurnaroundReserveKeepsRoadBehindCarResident", &TestTurnaroundReserveKeepsRoadBehindCarResident},
         {"WindowRetreatRecyclesTailInBothOrientations", &TestWindowRetreatRecyclesTailInBothOrientations},

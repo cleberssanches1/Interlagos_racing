@@ -36,7 +36,7 @@ GAME_MENU_ENABLED ?= 1
 AUTO_LAP_PHYSICS_DRIVER ?= 1
 # Populate PATH.NYA side rails (0 and 2) for Auto Lap NPC pose-followers.
 # Default OFF: NPC LWR/HWR work regressed Auto Lap start (fail:2 / car stuck).
-# NPC side-rail pose-follow + mesh. Disable: make AUTO_LAP_NPC_RAILS=0
+# NPC side-rail physical drivers + mesh. Disable: make AUTO_LAP_NPC_RAILS=0
 AUTO_LAP_NPC_RAILS ?= 1
 # 1 = omit NPC runtime .text (track/Auto Lap boot). 0 = full NPC after heap OK.
 # 0 = mesh CAR1 no NPC; 1 = pose/cruzes only (menos .text)
@@ -103,6 +103,11 @@ SOURCES += $(patsubst ./%,%,$(shell find src/ -name '*.cxx'))
 # Include shared makefile
 SDK_ROOT = ../../saturnringlib
 include $(SDK_ROOT)/shared.mk
+
+# The Auto Lap controller is header-heavy and resides in main.cxx. Keep its
+# code compact so the High Work RAM heap still begins below SGL's work area.
+# -Os comes after the shared -O2 and only affects this translation unit.
+src/main.o: CCFLAGS += -Os
 
 # Re-bake both map assets once per build. The game uses only MPILUT.BIN at
 # runtime; NumPy/ICP work stays on the host, never on either SH-2.

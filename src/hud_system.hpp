@@ -24,6 +24,16 @@ public:
         if (minimap_) minimap_->UpdateSegment(activeGroundSegmentId, carYawDeg);
     }
 
+    void BeginMinimapFrame()
+    {
+        if (minimap_) minimap_->BeginFrame();
+    }
+
+    void EndMinimapFrame()
+    {
+        if (minimap_) minimap_->EndFrame();
+    }
+
     void UpdateNpcMinimap(uint8_t npcSlot, int32_t segmentId, int32_t yawDeg)
     {
         if (minimap_) minimap_->UpdateNpcSegment(npcSlot, segmentId, yawDeg);

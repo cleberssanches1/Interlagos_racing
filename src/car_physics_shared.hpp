@@ -18,6 +18,8 @@ struct DynamicsState
 {
     Fxp forwardSpeed = Fxp::BuildRaw(0);
     Fxp lateralSpeed = Fxp::BuildRaw(0);
+    Fxp contactVelX = Fxp::BuildRaw(0);
+    Fxp contactVelZ = Fxp::BuildRaw(0);
     Fxp yawRateDegPerFrame = Fxp::BuildRaw(0);
     Fxp steerDeg = Fxp::BuildRaw(0);
     Fxp surfaceGripScale = Fxp::BuildRaw(1 << 16);
@@ -451,6 +453,10 @@ struct Tunables
     static constexpr uint8_t kGradeHoldMaxFrames = 64u;                       // heave only
     // Both-axle miss: keep sticky Y briefly, then drop support (115458).
     static constexpr uint8_t kBothAxleMissHoldFrames = 8u;
+    // G2.2: longer sticky when last plant was asphalt and car still moving —
+    // absorbs brief TCOL flicker without floating forever in the void.
+    static constexpr uint8_t kBothAxleMissHoldFramesNearAsphalt = 12u;
+    static constexpr int16_t kBothAxleMissAsphaltMinSpeedKmh = 20;
     // Attitude/cam grade hold — keep nose on face when F−R collapses mid-slab.
     static constexpr uint8_t kGradeAttitudeHoldMaxFrames = 32u;
     // Continuous pitch chord — room for real Senna faces (tan~0.39 → ~29 u).

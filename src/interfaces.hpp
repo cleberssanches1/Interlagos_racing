@@ -91,6 +91,9 @@ struct GameplayFrameState
     uint8_t resetRequested : 1 = 0;
     Vector3D respawnPosition{};
     int32_t respawnYawDeg = 0;
+    // One-shot world-XZ kick from Master car-car contact, consumed by physics.
+    int32_t autoLapContactKickXRaw = 0;
+    int32_t autoLapContactKickZRaw = 0;
 };
 
 struct SurfaceContact

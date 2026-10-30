@@ -17,6 +17,17 @@ public:
             spawnInitialized_ = true;
         }
 
+        if (ioFrameState.resetRequested)
+        {
+            // The Master already validated this Auto Lap respawn against TCOL.
+            // Sampling the old pose here would replace its destination segment
+            // and could even overwrite the request with the drift fallback.
+            spawnPosition_ = ioFrameState.respawnPosition;
+            spawnYawDeg_ = ioFrameState.respawnYawDeg;
+            lastCheckpointSegmentId_ = ioFrameState.activeSegmentId;
+            return;
+        }
+
         int32_t segmentId = -1;
         Vector3D surfaceNormal{};
         if (trackQuery)

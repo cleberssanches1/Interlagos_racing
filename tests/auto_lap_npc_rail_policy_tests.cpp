@@ -11,13 +11,27 @@ int main()
     using AutoLapNpcRailPolicy::kNpcRailCount;
     using AutoLapNpcRailPolicy::kRightGuideLineIndex;
 
-    assert(kNpcRailCount == 2u);
+    // Current VDP1 budget permits one NPC in addition to the player.
+    assert(kNpcRailCount == 1u);
     assert(GuideLineIndexForNpcSlot(0) == kLeftGuideLineIndex);
-    assert(GuideLineIndexForNpcSlot(1) == kRightGuideLineIndex);
+    assert(GuideLineIndexForNpcSlot(1) == -1);
     assert(GuideLineIndexForNpcSlot(2) == -1);
     assert(NpcSlotForGuideLineIndex(0) == 0);
-    assert(NpcSlotForGuideLineIndex(2) == 1);
+    assert(NpcSlotForGuideLineIndex(kRightGuideLineIndex) == -1);
     assert(NpcSlotForGuideLineIndex(1) == -1);
+
+    using AutoLapNpcRailPolicy::ShouldAdvanceForSimulationFrame;
+    assert(!ShouldAdvanceForSimulationFrame(false, 5u, false, 0u));
+    assert(ShouldAdvanceForSimulationFrame(true, 5u, false, 0u));
+    assert(!ShouldAdvanceForSimulationFrame(true, 5u, true, 5u));
+    assert(ShouldAdvanceForSimulationFrame(true, 6u, true, 5u));
+    assert(ShouldAdvanceForSimulationFrame(true, 0u, true, 0xFFFFFFFFu));
+
+    // Speed matching preserves a local gap without snapping route progress.
+    assert(AutoLapNpcRailPolicy::StepUnitsForNpc(66, 1) == 12);
+    assert(AutoLapNpcRailPolicy::StepUnitsForNpc(66, -3) > 12);
+    assert(AutoLapNpcRailPolicy::StepUnitsForNpc(66, 5) < 12);
+    assert(AutoLapNpcRailPolicy::StepUnitsForNpc(0, 5) == 0);
 
     assert(!IsNonZeroRouteXZ(0, 0));
     assert(IsNonZeroRouteXZ(5303 << 16, 0));

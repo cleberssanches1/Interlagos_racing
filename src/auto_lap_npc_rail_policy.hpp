@@ -14,6 +14,17 @@ constexpr int32_t kRightGuideLineIndex = 2;
 constexpr int32_t kNpcGuideLineIndices[kNpcRailCount] = {
     kLeftGuideLineIndex};
 
+// The Master may render several frames while the Slave is still computing one
+// player physics frame. NPC physics must consume that result at most once.
+inline bool ShouldAdvanceForSimulationFrame(bool hasPublishedFrame,
+                                            uint32_t publishedFrameId,
+                                            bool hasConsumedFrame,
+                                            uint32_t consumedFrameId)
+{
+    return hasPublishedFrame &&
+           (!hasConsumedFrame || publishedFrameId != consumedFrameId);
+}
+
 inline int32_t GuideLineIndexForNpcSlot(size_t slot)
 {
     if (slot >= kNpcRailCount) return -1;
@@ -30,6 +41,22 @@ inline int32_t NpcSlotForGuideLineIndex(int32_t lineIndex)
         }
     }
     return -1;
+}
+
+// Keep an independently moving NPC near the player's streamed track window.
+// A small station error changes speed, never position or PATH pointIndex.
+inline int16_t StepUnitsForNpc(int16_t playerSpeedKmh, int32_t stationGap)
+{
+    int32_t step = (playerSpeedKmh > 0)
+        ? (static_cast<int32_t>(playerSpeedKmh) * 100) / 550
+        : 0;
+    int32_t gapError = 1 - stationGap; // target: roughly one PATH point ahead
+    if (gapError < -4) gapError = -4;
+    if (gapError > 4) gapError = 4;
+    step += gapError * 2;
+    if (step < 0) step = 0;
+    if (step > 22) step = 22;
+    return static_cast<int16_t>(step);
 }
 
 // Guard against the prior NPC attempt where route point[0] arrived as (0,0).

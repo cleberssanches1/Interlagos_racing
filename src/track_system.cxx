@@ -14356,6 +14356,9 @@ void TrackSystem::UpdateCameraDrivenWindowDirection(const Vector3D& trackOffset,
                                                     const Vector3D& cameraLocation,
                                                     const Vector3D& cameraLookTarget)
 {
+    // During a distant focus transfer the old camera still renders behind a
+    // cover. Its heading must not reverse the belt being staged for the target.
+    if (focusTransferPreparing_) return;
     if (!SegmentsReady() || totalSegmentCount_ == 0 || segmentRenderers_.empty()) return;
 
     Vector3D cameraForward{};
@@ -14555,6 +14558,12 @@ bool TrackSystem::UpdateActiveSegmentWindowForPosition(const Vector3D& worldPosi
     // This avoids full window rebuild churn when driving in reverse.
     if (!SegmentsReady() || totalSegmentCount_ == 0) return false;
     if (segmentCenterCatalog_.empty()) return false;
+    // SetObservedCarSegmentId already selected the next staged slot for an
+    // explicit focus cut. Do not let the local center heuristic replace that
+    // one-slot retreat with a wraparound forward target in the same frame.
+    if (focusTransferPreparing_ ||
+        (focusHandoffPending_ && targetWindowStartId_ != activeWindowStartId_))
+        return false;
     const int8_t desiredDirection = (cameraWindowDirection_ < 0) ? -1 : 1;
     if (activeWindowSwitchCooldown_ > 0)
     {
@@ -14786,6 +14795,8 @@ void TrackSystem::ResetInitializationState()
     trackedCarSegmentId_ = 1;
     SetTrackedCarSegmentValid(false);
     observedCarSegmentId_ = -1;
+    focusHandoffPending_ = false;
+    focusTransferPreparing_ = false;
     lastLapWrapProbeSegmentId_ = -1;
     lapWrapScrubCooldown_ = 0;
     slotFaceCapacityFloor_ = 0;
@@ -17372,6 +17383,26 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
     const int32_t currentStartId = WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_);
     const int32_t currentTargetId = WrapSegmentIdToRange(targetWindowStartId_, totalSegmentCount_);
     const size_t windowCount = segmentRenderers_.size();
+    if (focusHandoffPending_ && currentStartId > 0)
+    {
+        const int32_t handoffTarget = TrackStreamingPolicy::ResolveFocusHandoffTarget(
+            currentStartId, desiredStartId, totalSegmentCount_,
+            windowCount, desiredDirection);
+        if (currentStartId == desiredStartId)
+        {
+            focusHandoffPending_ = false;
+        }
+        else if (handoffTarget > 0 && handoffTarget != currentStartId)
+        {
+            // A focus cut can jump backwards inside the resident window.
+            // Stage only one reverse slot; the existing frame plan commits it.
+            targetWindowStartId_ = handoffTarget;
+            trackedCarSegmentId_ = observedId;
+            SetTrackedCarSegmentValid(true);
+            activeWindowSwitchCooldown_ = 0;
+            return;
+        }
+    }
     const int32_t windowForwardDistance =
         WrapDistanceForward(currentStartId, desiredStartId, totalSegmentCount_);
     const int32_t windowBackwardDistance =
@@ -17423,6 +17454,72 @@ void TrackSystem::SetObservedCarSegmentId(int32_t segmentId)
         trackedCarSegmentId_ = observedId;
         SetTrackedCarSegmentValid(true);
     }
+}
+
+bool TrackSystem::RelocateFocusWindow(int32_t segmentId)
+{
+    if (!ReadyFlag() || !SegmentsReady() || segmentId <= 0 ||
+        totalSegmentCount_ == 0 || segmentRenderers_.empty()) return false;
+    const size_t windowCount = segmentRenderers_.size();
+    const int8_t direction = (windowDirection_ < 0) ? -1 : 1;
+    const int32_t desiredStart = TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+        segmentId, totalSegmentCount_, windowCount, direction);
+    if (desiredStart <= 0) return false;
+    if (FocusHandoffReadyForSegment(segmentId)) return true;
+
+    const int32_t previousStart = activeWindowStartId_;
+    const int32_t previousTracked = trackedCarSegmentId_;
+    // A staged slide for the old window must never commit after this cut.
+    ResetSlideBackBuffer();
+    const bool built = RebuildActiveSegmentWindow(desiredStart, windowCount, direction);
+    if (!built || !FocusHandoffReadyForSegment(segmentId))
+    {
+        // RebuildActiveSegmentWindow can retain a partial window on failure.
+        // Attempt to restore the old anchor instead of handing the camera an
+        // incomplete target window. This rare path stays on Master.
+        ResetSlideBackBuffer();
+        (void)RebuildActiveSegmentWindow(previousStart, windowCount, direction);
+        targetWindowStartId_ = activeWindowStartId_;
+        trackedCarSegmentId_ = previousTracked;
+        focusHandoffPending_ = false;
+        SRL::Debug::Print(1, 11, "CAM focus rebuild fail id:%d", segmentId);
+        return false;
+    }
+
+    targetWindowStartId_ = activeWindowStartId_;
+    trackedCarSegmentId_ = static_cast<int16_t>(segmentId);
+    observedCarSegmentId_ = static_cast<int16_t>(segmentId);
+    SetTrackedCarSegmentValid(true);
+    cameraWindowDirection_ = direction;
+    cameraDirectionReferenceValid_ = false;
+    cameraDirectionConfirmFrames_ = 0u;
+    activeWindowSwitchCooldown_ = 0u;
+    focusHandoffPending_ = false;
+    return true;
+}
+
+bool TrackSystem::FocusHandoffReadyForSegment(int32_t segmentId) const
+{
+    if (!ReadyFlag() || !SegmentsReady() || segmentId <= 0 ||
+        totalSegmentCount_ == 0 || segmentRenderers_.empty()) return false;
+    const int32_t desiredStart = TrackStreamingPolicy::ResolveWindowStartFromCarSegment(
+        segmentId, totalSegmentCount_, segmentRenderers_.size(), windowDirection_);
+    if (desiredStart != WrapSegmentIdToRange(activeWindowStartId_, totalSegmentCount_))
+        return false;
+    // The segment id can enter the logical ring before its staged renderer is
+    // committed. Require the complete destination window, not mere id range.
+    const size_t windowCount = segmentRenderers_.size();
+    const int32_t direction = (windowDirection_ < 0) ? -1 : 1;
+    for (size_t rank = 0u; rank < windowCount; ++rank)
+    {
+        const size_t physical = LogicalToPhysicalWindowIndex(rank, windowCount);
+        const int32_t expectedId = WrapSegmentIdToRange(
+            desiredStart + direction * static_cast<int32_t>(rank), totalSegmentCount_);
+        const SegmentRenderEntry& entry = segmentRenderers_[physical];
+        if (entry.id != expectedId || !entry.renderer || !entry.lodState.Ready())
+            return false;
+    }
+    return true;
 }
 
 std::vector<TrackSystem::SegmentHandle> TrackSystem::BuildVisibleSegmentOrder(

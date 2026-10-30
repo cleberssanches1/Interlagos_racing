@@ -120,6 +120,15 @@ void CameraSystem::ResetToDefaultView()
     if (mode_ != Mode::Cinematic) mode_ = Mode::Chase;
 }
 
+void CameraSystem::ResetFollowHistory()
+{
+    CameraWallImpact::Reset(wallImpactState_);
+    cameraLocationInitialized_ = false;
+    lookTargetInitialized_ = false;
+    hasObservedCarWorldPosition_ = false;
+    camPitchInitialized_ = false;
+}
+
 void CameraSystem::ObserveWallContact(bool hit, int16_t pushX, int16_t pushZ,
                                       const Vector3D& carWorldPosition)
 {
@@ -136,7 +145,8 @@ void CameraSystem::ObserveWallContact(bool hit, int16_t pushX, int16_t pushZ,
 void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
                                  int32_t& carYawDeg,
                                  CameraRig::OrbitState& orbitState,
-                                 bool allowCarYawInput)
+                                 bool allowCarYawInput,
+                                 bool allowXCalibration)
 {
     // Keep chase rig stable frame to frame.
     // Generic input update can modify strafe/location and destabilize the camera matrix.
@@ -155,7 +165,8 @@ void CameraSystem::UpdateFromPad(SRL::Input::Digital& pad,
     const bool xHeld = pad.IsHeld(SRL::Input::Digital::Button::X);
     // Keep chase calibration disabled in normal gameplay to avoid runtime drift.
     const bool chaseNearCalibActive =
-        debugLogsEnabled_ && xHeld && (chasePreset_ == ChasePreset::ChaseNear);
+        allowXCalibration && debugLogsEnabled_ && xHeld &&
+        (chasePreset_ == ChasePreset::ChaseNear);
 
     if (chaseNearCalibActive)
     {

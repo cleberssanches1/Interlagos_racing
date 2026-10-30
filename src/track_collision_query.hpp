@@ -10,11 +10,28 @@
 class TrackCollisionQueryFromSystem final : public Game::ITrackCollisionQuery
 {
 public:
+    TrackCollisionQueryFromSystem() = default;
+
     TrackCollisionQueryFromSystem(const TrackSystem* trackSystem,
                                   const SRL::Math::Types::Vector3D* trackOffset)
         : trackSystem_(trackSystem)
         , trackOffset_(trackOffset)
     {}
+
+    void Configure(const TrackSystem* trackSystem,
+                   const SRL::Math::Types::Vector3D* trackOffset)
+    {
+        trackSystem_ = trackSystem;
+        trackOffset_ = trackOffset;
+        lastSegmentId_ = -1;
+        contactGlobalFallbackCountdown_ = 0u;
+        contactMissStreak_ = 0u;
+        wallGlobalFallbackCountdown_ = 0u;
+    }
+
+    // NPC physics must not write the shared TCOL face cache (autolap48).
+    void SetIsolateFaceCache(bool isolate) { isolateFaceCache_ = isolate; }
+    bool IsolateFaceCache() const { return isolateFaceCache_; }
 
     bool Sample(const SRL::Math::Types::Vector3D& worldPosition,
                 SRL::Math::Types::Vector3D& outSurfaceNormal,
@@ -206,7 +223,13 @@ public:
             surfaceTypeCount,
             outSurfaceY,
             sampledSegmentPtr,
-            resolvedSeedSegmentId);
+            resolvedSeedSegmentId,
+            true,
+            nullptr,
+            nullptr,
+            nullptr,
+            -1,
+            !isolateFaceCache_);
         if (found && *sampledSegmentPtr > 0)
         {
             lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
@@ -241,7 +264,12 @@ public:
             outSurfaceY,
             sampledSegmentPtr,
             resolvedSeedSegmentId,
-            false);
+            false,
+            nullptr,
+            nullptr,
+            nullptr,
+            -1,
+            !isolateFaceCache_);
         if (found && *sampledSegmentPtr > 0)
         {
             lastSegmentId_ = static_cast<int16_t>(*sampledSegmentPtr);
@@ -280,7 +308,8 @@ public:
             &outContact.familyId,
             &outContact.surfaceType,
             &outContact.faceIndex,
-            hintFaceIndex);
+            hintFaceIndex,
+            !isolateFaceCache_);
         if (!found) return false;
         outContact.valid = true;
         if (outContact.segmentId > 0)
@@ -484,6 +513,7 @@ private:
         return true;
     }
 
+    bool isolateFaceCache_ = false;
     const TrackSystem* trackSystem_ = nullptr;
     const SRL::Math::Types::Vector3D* trackOffset_ = nullptr;
     mutable int16_t lastSegmentId_ = -1;

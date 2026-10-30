@@ -71,7 +71,10 @@ public:
     void UpdateFromPad(SRL::Input::Digital& pad,
                        int32_t& carYawDeg,
                        CameraRig::OrbitState& orbitState,
-                       bool allowCarYawInput = true);
+                       bool allowCarYawInput = true,
+                       bool allowXCalibration = true);
+    // Forget smoothing from the previous car before a spectator focus switch.
+    void ResetFollowHistory();
 
     // Build world camera location using car world position plus manual camera offset.
     Vector3D CameraLocation(const Vector3D& carWorldPosition) const;

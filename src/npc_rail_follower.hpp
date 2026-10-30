@@ -14,6 +14,8 @@ struct State
     int16_t yawDeg = 0;
     uint8_t groundSampleCountdown = 0;
     uint8_t flags = 0;
+    int32_t contactKickXRaw = 0;
+    int32_t contactKickZRaw = 0;
     SRL::Math::Types::Vector3D pos{};
 
     static constexpr uint8_t kActiveBit = 1u << 0;
@@ -63,13 +65,63 @@ inline void AdvanceHorizontal(State& state,
     const int32_t maxAxis = (nAdx > nAdz) ? nAdx : nAdz;
     if (maxAxis <= 0) return;
 
-    const int32_t stepRaw = (static_cast<int32_t>(state.stepUnits) << 16);
+    const int32_t requestedStepRaw = (static_cast<int32_t>(state.stepUnits) << 16);
+    const int32_t stepRaw = (requestedStepRaw < maxAxis) ? requestedStepRaw : maxAxis;
     const int64_t moveX64 =
         (static_cast<int64_t>(ndx) * static_cast<int64_t>(stepRaw)) / maxAxis;
     const int64_t moveZ64 =
         (static_cast<int64_t>(ndz) * static_cast<int64_t>(stepRaw)) / maxAxis;
     state.pos.X += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveX64));
     state.pos.Z += SRL::Math::Types::Fxp::BuildRaw(static_cast<int32_t>(moveZ64));
+}
+
+inline void AddContactKick(State& state, int32_t xRaw, int32_t zRaw)
+{
+    constexpr int32_t kMaxKickRaw = 6 << 16;
+    const int64_t x = static_cast<int64_t>(state.contactKickXRaw) + xRaw;
+    const int64_t z = static_cast<int64_t>(state.contactKickZRaw) + zRaw;
+    state.contactKickXRaw = static_cast<int32_t>(
+        x < -kMaxKickRaw ? -kMaxKickRaw : (x > kMaxKickRaw ? kMaxKickRaw : x));
+    state.contactKickZRaw = static_cast<int32_t>(
+        z < -kMaxKickRaw ? -kMaxKickRaw : (z > kMaxKickRaw ? kMaxKickRaw : z));
+}
+
+inline void RecoverTowardRail(State& state,
+                              const SRL::Math::Types::Vector3D& current,
+                              const SRL::Math::Types::Vector3D& next)
+{
+    const int32_t segX = next.X.RawValue() - current.X.RawValue();
+    const int32_t segZ = next.Z.RawValue() - current.Z.RawValue();
+    const int64_t lenSq = static_cast<int64_t>(segX) * segX +
+                          static_cast<int64_t>(segZ) * segZ;
+    const int64_t divisor = lenSq >> 16;
+    if (divisor <= 0) return;
+    const int32_t fromX = state.pos.X.RawValue() - current.X.RawValue();
+    const int32_t fromZ = state.pos.Z.RawValue() - current.Z.RawValue();
+    const int64_t dot = static_cast<int64_t>(fromX) * segX +
+                        static_cast<int64_t>(fromZ) * segZ;
+    int64_t tRaw = dot / divisor;
+    if (tRaw < 0) tRaw = 0;
+    if (tRaw > (1 << 16)) tRaw = 1 << 16;
+    const int32_t targetX = current.X.RawValue() + static_cast<int32_t>(
+        (static_cast<int64_t>(segX) * tRaw) >> 16);
+    const int32_t targetZ = current.Z.RawValue() + static_cast<int32_t>(
+        (static_cast<int64_t>(segZ) * tRaw) >> 16);
+    int32_t errorX = targetX - state.pos.X.RawValue();
+    int32_t errorZ = targetZ - state.pos.Z.RawValue();
+    const int32_t absX = errorX < 0 ? -errorX : errorX;
+    const int32_t absZ = errorZ < 0 ? -errorZ : errorZ;
+    const int32_t maxAxis = absX > absZ ? absX : absZ;
+    constexpr int32_t kMaxRecoveryRaw = 2 << 16;
+    if (maxAxis > kMaxRecoveryRaw)
+    {
+        errorX = static_cast<int32_t>(
+            (static_cast<int64_t>(errorX) * kMaxRecoveryRaw) / maxAxis);
+        errorZ = static_cast<int32_t>(
+            (static_cast<int64_t>(errorZ) * kMaxRecoveryRaw) / maxAxis);
+    }
+    state.pos.X += SRL::Math::Types::Fxp::BuildRaw(errorX);
+    state.pos.Z += SRL::Math::Types::Fxp::BuildRaw(errorZ);
 }
 
 inline void Step(State& state,
@@ -103,6 +155,38 @@ inline void Step(State& state,
     const auto& currentCenter = route.centers[current];
     const auto& nextCenter = route.centers[next];
     AdvanceHorizontal(state, currentCenter, nextCenter);
+    const auto guidedPos = state.pos;
+    const bool hasContactKick = state.contactKickXRaw != 0 ||
+                                state.contactKickZRaw != 0;
+    state.pos.X += SRL::Math::Types::Fxp::BuildRaw(state.contactKickXRaw);
+    state.pos.Z += SRL::Math::Types::Fxp::BuildRaw(state.contactKickZRaw);
+    state.contactKickXRaw = static_cast<int32_t>(
+        (static_cast<int64_t>(state.contactKickXRaw) * 3) / 4);
+    state.contactKickZRaw = static_cast<int32_t>(
+        (static_cast<int64_t>(state.contactKickZRaw) * 3) / 4);
+    if (state.contactKickXRaw > -(1 << 12) && state.contactKickXRaw < (1 << 12))
+        state.contactKickXRaw = 0;
+    if (state.contactKickZRaw > -(1 << 12) && state.contactKickZRaw < (1 << 12))
+        state.contactKickZRaw = 0;
+    RecoverTowardRail(state, currentCenter, nextCenter);
+    if (hasContactKick && trackSystem != nullptr)
+    {
+        static constexpr uint8_t kAsphalt = 1u;
+        SRL::Math::Types::Fxp surfaceY{};
+        if (!trackSystem->FindSurfaceYBySurfaceTypeSet(
+                state.pos, trackSegOffset, &kAsphalt, 1u,
+                surfaceY, nullptr, -1, false))
+        {
+            state.pos.X = guidedPos.X;
+            state.pos.Z = guidedPos.Z;
+            state.contactKickXRaw = 0;
+            state.contactKickZRaw = 0;
+        }
+        else
+        {
+            state.pos.Y = surfaceY;
+        }
+    }
 
     if (HasNpcRailYawAtIndex(route, current))
     {

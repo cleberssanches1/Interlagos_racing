@@ -35,6 +35,8 @@ public:
             return;
         }
 
+        CarPhysics::DynamicsModel::AddContactKick(dynamicsState_, ioFrameState);
+
         UpdateSurfaceGripScale(trackQuery, ioFrameState, ioCarWorldPosition);
 
         const Vector3D preStepPosition = ioCarWorldPosition;

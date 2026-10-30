@@ -394,6 +394,35 @@ constexpr int32_t ResolveWindowStartFromCarSegment(int32_t carSegmentId,
         totalSegmentCount);
 }
 
+// An explicit spectator-camera handoff may put the new anchor several
+// segments behind the current window target. The normal belt permits only a
+// one-segment retreat, so walk that handoff back one slot at a time. Forward
+// handoffs can use the existing bounded staged-slide backlog. A remote focus
+// must use the explicit window relocation; never traverse the intervening
+// track here just to reach another car.
+constexpr int32_t ResolveFocusHandoffTarget(int32_t currentStartId,
+                                             int32_t desiredStartId,
+                                             uint16_t totalSegmentCount,
+                                             size_t windowCount,
+                                             int8_t windowDirection) noexcept
+{
+    if (totalSegmentCount == 0u || windowCount == 0u ||
+        currentStartId <= 0 || desiredStartId <= 0) return -1;
+    const int32_t total = static_cast<int32_t>(totalSegmentCount);
+    const int32_t current = WrapSegmentIdToRange(currentStartId, totalSegmentCount);
+    const int32_t desired = WrapSegmentIdToRange(desiredStartId, totalSegmentCount);
+    const int32_t routeForward = (desired - current + total) % total;
+    const int32_t routeBackward = (current - desired + total) % total;
+    const int32_t forward = windowDirection < 0 ? routeBackward : routeForward;
+    const int32_t backward = windowDirection < 0 ? routeForward : routeBackward;
+    if (forward == 0) return current;
+    if (backward < forward && backward <= static_cast<int32_t>(windowCount))
+        return WrapSegmentIdToRange(current - (windowDirection < 0 ? -1 : 1),
+                                    totalSegmentCount);
+    if (forward <= static_cast<int32_t>(windowCount)) return desired;
+    return current;
+}
+
 constexpr int32_t ResolveCarSegmentFromWindowStart(int32_t windowStartId,
                                                     uint16_t totalSegmentCount,
                                                     size_t windowCount,

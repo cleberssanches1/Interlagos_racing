@@ -37,8 +37,13 @@
 #include "auto_lap_route_build_ops.hpp"
 #include "auto_lap_drive_policy.hpp"
 #include "auto_lap_npc_rail_policy.hpp"
+#include "auto_lap_speed_policy.hpp"
 #include "auto_lap_route_selection_policy.hpp"
 #if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+#include "auto_lap_camera_focus_policy.hpp"
+#include "auto_lap_car_contact_policy.hpp"
+#include "auto_lap_traffic_policy.hpp"
+#include "npc_auto_lap_physical_driver.hpp"
 #include "npc_rail_follower.hpp"
 #include "npc_rail_route.hpp"
 #endif
@@ -285,6 +290,9 @@ public:
 #endif
             const FrameInputState input = PollFrameInput();
             ConsumeCompletedJobs();
+            // Resolve the just-published pair before dispatching the next
+            // Slave job; otherwise an async job can suppress every contact.
+            ResolveAutoLapCarContact();
             if (context_.TimeAttackEnabled()) timeAttack_.Tick(SRL_AppGetVblankCounter());
 #if MASTER_FRAME_PHASE_TELEMETRY
             const FramePhaseTelemetry::Stamp inputTicksEnd = CaptureMasterPhaseStamp();
@@ -839,10 +847,143 @@ private:
 
     int32_t CurrentCameraYawDeg() const
     {
-        // Camera heading must follow gameplay/physics yaw.
-        // The render path already has its own model-space orientation correction.
+        // Spectator focus changes only the view; gameplay remains on car 1.
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (cameraNpcFocus_ && NpcFocusTargetValid())
+            return NormalizeYawDeg360(
+                autoLapNpcDrivers_[0].StreamingYawDeg(autoLapNpcFollowers_[0]));
+#endif
         return NormalizeYawDeg360(carYawDeg_);
     }
+
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+    bool NpcFocusTargetValid() const
+    {
+        if (!AutoLapPhysicsEnabled() || !npcRailsArmed_ ||
+            !autoLapNpcFollowers_[0].Active() ||
+            !autoLapNpcDrivers_[0].Active() || !context_.trackSystem)
+            return false;
+        return autoLapNpcDrivers_[0].HasSafeAnchor();
+    }
+
+    bool NpcFocusCanSwitch() const
+    {
+        return NpcFocusTargetValid() &&
+               autoLapNpcDrivers_[0].Frame().debugGroundSupport != 0u;
+    }
+
+    bool SegmentInRenderWindow(int32_t segmentId) const
+    {
+        if (!context_.trackSystem || segmentId <= 0) return false;
+        int32_t windowStart = 0;
+        int8_t windowDirection = 0;
+        uint16_t windowCount = 0u;
+        if (!context_.trackSystem->GetRenderWindowDebugSnapshot(
+                windowStart, windowDirection, windowCount)) return false;
+        for (size_t i = 0u; i < windowCount; ++i)
+        {
+            int32_t residentId = -1;
+            if (context_.trackSystem->GetRenderWindowSegmentIdAt(i, residentId) &&
+                residentId == segmentId) return true;
+        }
+        return false;
+    }
+
+    bool CanFocusAutoLapNpc() const
+    {
+        return AutoLapCameraFocusPolicy::MaySwitch(
+            NpcFocusCanSwitch(),
+            SegmentInRenderWindow(autoLapNpcDrivers_[0].StreamingSegmentId()));
+    }
+
+    bool CanFocusAutoLapPlayer() const
+    {
+        return AutoLapCameraFocusPolicy::MaySwitch(
+            AutoLapPhysicsEnabled() && latestActiveSegmentId_ > 0,
+            SegmentInRenderWindow(latestActiveSegmentId_));
+    }
+
+    void RequestAutoLapCameraFocus(bool npc)
+    {
+        const bool targetValid = npc
+            ? NpcFocusCanSwitch()
+            : (AutoLapPhysicsEnabled() && latestActiveSegmentId_ > 0);
+        if (!targetValid || !context_.trackSystem) return;
+        if (npc ? CanFocusAutoLapNpc() : CanFocusAutoLapPlayer())
+        {
+            SetCameraNpcFocus(npc);
+            return;
+        }
+        cameraFocusTransferPending_ = true;
+        cameraFocusTransferNpc_ = npc;
+        cameraFocusTransferNeedsRelocate_ = true;
+        context_.trackSystem->BeginFocusTransfer();
+    }
+
+    void AdvanceAutoLapCameraFocusTransfer()
+    {
+        if (!cameraFocusTransferPending_ || !context_.trackSystem) return;
+        const bool targetValid = cameraFocusTransferNpc_
+            ? NpcFocusTargetValid()
+            : (AutoLapPhysicsEnabled() && latestActiveSegmentId_ > 0);
+        if (!targetValid)
+        {
+            // If the requested NPC disappears mid-transfer, restore the
+            // previous camera's window through the same incremental path.
+            if (cameraFocusTransferNpc_ &&
+                AutoLapPhysicsEnabled() && latestActiveSegmentId_ > 0)
+            {
+                cameraFocusTransferNpc_ = false;
+                cameraFocusTransferNeedsRelocate_ = true;
+                context_.trackSystem->BeginFocusTransfer();
+                return;
+            }
+            context_.trackSystem->EndFocusTransfer(false);
+            cameraFocusTransferPending_ = false;
+            cameraFocusTransferNeedsRelocate_ = false;
+            return;
+        }
+        const int32_t targetSegmentId = cameraFocusTransferNpc_
+            ? autoLapNpcDrivers_[0].StreamingSegmentId()
+            : latestActiveSegmentId_;
+        if (!context_.trackSystem->FocusHandoffReadyForSegment(targetSegmentId)) return;
+        context_.trackSystem->EndFocusTransfer(true);
+        cameraFocusTransferPending_ = false;
+        cameraFocusTransferNeedsRelocate_ = false;
+        SetCameraNpcFocus(cameraFocusTransferNpc_);
+    }
+
+    void DrawAutoLapCameraFocusTransferCover()
+    {
+        if (!cameraFocusTransferPending_) return;
+        // One opaque VDP1 command covers a remote-window rebuild and any
+        // subsequent short catch-up if the destination car moved meanwhile.
+        const int16_t halfWidth = static_cast<int16_t>(SRL::TV::Width / 2u);
+        const int16_t halfHeight = static_cast<int16_t>(SRL::TV::Height / 2u);
+        SPRITE cover{};
+        cover.CTRL = FUNC_Polygon;
+        cover.PMOD = 0x0080 | ((CL32KRGB & 7) << 3);
+        cover.COLR = SRL::Types::HighColor::Colors::Black;
+        cover.XA = -halfWidth; cover.YA = -halfHeight;
+        cover.XB = halfWidth;  cover.YB = -halfHeight;
+        cover.XC = halfWidth;  cover.YC = halfHeight;
+        cover.XD = -halfWidth; cover.YD = halfHeight;
+        // Z=0 is outside SGL's sprite display range and silently hid the
+        // previous cover. A positive near Z puts this above track polygons.
+        (void)slSetSprite(&cover, 1 << 16);
+        SRL::Debug::Print(10, 13, "CAMERA %u CARREGANDO", cameraFocusTransferNpc_ ? 2u : 1u);
+    }
+
+    void SetCameraNpcFocus(bool enabled)
+    {
+        if (cameraNpcFocus_ == enabled) return;
+        cameraNpcFocus_ = enabled;
+        if (context_.trackSystem) context_.trackSystem->RequestFocusHandoff();
+        if (context_.cameraSystem) context_.cameraSystem->ResetFollowHistory();
+        CameraSurfaceGuard::Reset(cameraSurfaceGuardState_);
+        cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
+    }
+#endif
 
     void SyncCameraHeadingFromCar()
     {
@@ -884,10 +1025,29 @@ private:
         const bool zHeld = pad_.IsHeld(SRL::Input::Digital::Button::Z);
         const bool xHeld = input.xHeld;
 
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        AdvanceAutoLapCameraFocusTransfer();
+        if (AutoLapPhysicsEnabled() && xHeld && !cameraXHeldPrev_ && !zHeld)
+        {
+            if (!cameraFocusTransferPending_ && cameraNpcFocus_)
+            {
+                RequestAutoLapCameraFocus(false);
+            }
+            else if (!cameraFocusTransferPending_)
+            {
+                RequestAutoLapCameraFocus(true);
+            }
+        }
+        if (cameraNpcFocus_ && !NpcFocusTargetValid()) SetCameraNpcFocus(false);
+        cameraXHeldPrev_ = xHeld;
+#endif
+
         int32_t yawForCamera = carYawDeg_;
         const bool allowManualYawInput =
             !AutoLapTestEnabled() && (context_.carPhysics == nullptr);
-        context_.cameraSystem->UpdateFromPad(pad_, yawForCamera, orbitState_, allowManualYawInput);
+        context_.cameraSystem->UpdateFromPad(
+            pad_, yawForCamera, orbitState_, allowManualYawInput,
+            !AutoLapPhysicsEnabled());
         if (allowManualYawInput)
         {
             carYawDeg_ = yawForCamera;
@@ -895,38 +1055,22 @@ private:
 
         if (Game::CarSystem* car = ActiveCarSystem())
         {
-            if (xHeld)
+            if (xHeld && !AutoLapTestEnabled())
             {
-                if (AutoLapTestEnabled())
+                if (carForwardOffsetRepeatFrames_ > 0) --carForwardOffsetRepeatFrames_;
+                if (carForwardOffsetRepeatFrames_ == 0)
                 {
-                    // In auto-lap, show dynamic path-driven forward offset.
-                    SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", static_cast<int>(autoLapRoute_.currentOffDeg));
-                }
-                else
-                {
-                    if (carForwardOffsetRepeatFrames_ > 0) --carForwardOffsetRepeatFrames_;
-                    if (carForwardOffsetRepeatFrames_ == 0)
+                    int32_t nextOffsetDeg = car->VisualYawOffsetDegrees();
+                    bool changed = false;
+                    if (input.lHeld) { nextOffsetDeg -= 5; changed = true; }
+                    if (input.rHeld) { nextOffsetDeg += 5; changed = true; }
+                    if (changed)
                     {
-                        int32_t nextOffsetDeg = car->VisualYawOffsetDegrees();
-                        bool changed = false;
-                        if (input.lHeld)
-                        {
-                            nextOffsetDeg -= 5;
-                            changed = true;
-                        }
-                        if (input.rHeld)
-                        {
-                            nextOffsetDeg += 5;
-                            changed = true;
-                        }
-                        if (changed)
-                        {
-                            car->SetVisualYawOffsetDegrees(nextOffsetDeg);
-                            carForwardOffsetRepeatFrames_ = 2;
-                        }
+                        car->SetVisualYawOffsetDegrees(nextOffsetDeg);
+                        carForwardOffsetRepeatFrames_ = 2;
                     }
-                    SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", car->VisualYawOffsetDegrees());
                 }
+                SRL::Debug::Print(1, 27, "CAR FWD off:%d    ", car->VisualYawOffsetDegrees());
                 const int32_t gameplayYawDeg = NormalizeYawDeg360(carYawDeg_);
                 const int32_t renderYawDeg =
                     NormalizeYawDeg360(gameplayYawDeg + car->VisualYawOffsetDegrees());
@@ -969,6 +1113,9 @@ private:
                 if (AutoLapInputToggleEnabled())
                 {
                     SetAutoLapTestEnabled(!AutoLapTestEnabled());
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+                    SetCameraNpcFocus(false);
+#endif
                     autoLapDriveState_ = {};
                     AutoLapRouteDomain::ClearAutoLapStartupYawAlignment(autoLapRoute_);
                     ClearAutoLapNpcRailRoutes();
@@ -1001,6 +1148,10 @@ private:
                                  const SRL::Math::Types::Vector3D& worldPosition,
                                  int32_t yawDeg)
     {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        npcPublishedSimFrameId_ = frameState.frameId;
+        npcPublishedSimFrameValid_ = true;
+#endif
 #if MASTER_FRAME_PHASE_TELEMETRY
         lastCommittedSimulationFrameId_ = frameState.frameId;
         lastCommittedSimulationFrameValid_ = true;
@@ -1009,6 +1160,14 @@ private:
         carYawDeg_ = yawDeg;
         SyncCameraHeadingFromCar();
         latestActiveSegmentId_ = frameState.activeSegmentId;
+        // autolap48: keep a live belt anchor while GS flickers to 0.
+        if (frameState.debugGroundSupport != 0u && frameState.activeSegmentId > 0)
+        {
+            playerLastValidSegmentId_ = frameState.activeSegmentId;
+            playerSafePose_ = worldPosition;
+            playerSafeYawDeg_ = static_cast<int16_t>(yawDeg);
+            playerSafePoseValid_ = true;
+        }
         if (context_.TimeAttackEnabled())
             timeAttack_.Observe(frameState.frameId, frameState.activeSegmentId,
                                 SRL_AppGetVblankCounter());
@@ -1021,6 +1180,21 @@ private:
             // Keep PCM/SGL sound driver calls on the Master SH2.
             context_.audioEvents->OnFrame(frameState);
         }
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (playerRecoveryAwaitingPublish_ &&
+            frameState.frameId == playerRecoveryFrameId_)
+        {
+            // The respawn is authoritative only after its simulation result
+            // arrives. A distant destination cannot be reached by the normal
+            // eight-segment target-jump guard, so reuse the focus handoff.
+            playerRecoveryAwaitingPublish_ = false;
+            if (AutoLapCameraFocusPolicy::NeedsRecoveryHandoff(
+                    true, !cameraNpcFocus_, cameraFocusTransferPending_,
+                    latestActiveSegmentId_,
+                    SegmentInRenderWindow(latestActiveSegmentId_)))
+                RequestAutoLapCameraFocus(false);
+        }
+#endif
     }
 
     bool IsTrackProducerJobInFlightHint()
@@ -1198,6 +1372,11 @@ private:
         autoLapRoute_.index = static_cast<uint16_t>(nearest);
         AutoLapRouteDomain::MarkAutoLapInitialized(autoLapRoute_);
         autoLapDriveState_ = {};
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        playerStallState_ = {};
+        playerRecoveryRetryCountdown_ = 0u;
+        playerRecoveryAwaitingPublish_ = false;
+#endif
         if (groundSegmentId > 0)
             latestActiveSegmentId_ = static_cast<int16_t>(groundSegmentId);
         car->SyncRenderState(context_.carWorldPosition, carYawDeg_);
@@ -1205,6 +1384,59 @@ private:
         cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
         return StartFail::kOk;
     }
+
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+    bool ProbeAutoLapPassPoint(AutoLapDrivePolicy::Point point,
+                               SRL::Math::Types::Fxp approximateY,
+                               int32_t forwardXRaw, int32_t forwardZRaw) const
+    {
+        using SRL::Math::Types::Fxp;
+        using SRL::Math::Types::Vector3D;
+        static constexpr uint8_t kAsphalt = 1u;
+        Vector3D sample(Fxp::BuildRaw(point.xRaw), approximateY,
+                        Fxp::BuildRaw(point.zRaw));
+        Fxp surfaceY{};
+        int32_t segmentId = -1;
+        if (!context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                sample, context_.trackSegOffset, &kAsphalt, 1u,
+                surfaceY, &segmentId, latestActiveSegmentId_, false)) return false;
+        sample.Y = surfaceY + Game::CarPhysics::GetRideHeightOffset();
+        const Vector3D forward(Fxp::BuildRaw(forwardXRaw), Fxp::BuildRaw(0),
+                               Fxp::BuildRaw(forwardZRaw));
+        Vector3D wallPush{};
+        if (context_.trackSystem->FindPlanarWallPush(
+                sample, context_.trackSegOffset, forward,
+                Fxp::BuildRaw(30 << 16), wallPush, nullptr, segmentId,
+                false, false, &sample) &&
+            (wallPush.X.RawValue() != 0 || wallPush.Z.RawValue() != 0)) return false;
+        return true;
+    }
+
+    bool TryAutoLapPassSide(const AutoLapDrivePolicy::Point& routeTarget,
+                            const AutoLapTrafficPolicy::Vehicle& other,
+                            SRL::Math::Types::Fxp otherY,
+                            int32_t routeForwardXRaw,
+                            int32_t routeForwardZRaw,
+                            int8_t side) const
+    {
+        using AutoLapTrafficPolicy::OffsetTarget;
+        const auto entry = OffsetTarget(routeTarget,
+            routeForwardXRaw, routeForwardZRaw, side);
+        const auto beside = OffsetTarget({other.xRaw, other.zRaw},
+            routeForwardXRaw, routeForwardZRaw, side);
+        AutoLapDrivePolicy::Point exit = beside;
+        exit.xRaw += static_cast<int32_t>(
+            (static_cast<int64_t>(routeForwardXRaw) * (100 << 16)) >> 16);
+        exit.zRaw += static_cast<int32_t>(
+            (static_cast<int64_t>(routeForwardZRaw) * (100 << 16)) >> 16);
+        return ProbeAutoLapPassPoint(entry, context_.carWorldPosition.Y,
+                                    routeForwardXRaw, routeForwardZRaw) &&
+               ProbeAutoLapPassPoint(beside, otherY,
+                                    routeForwardXRaw, routeForwardZRaw) &&
+               ProbeAutoLapPassPoint(exit, otherY,
+                                    routeForwardXRaw, routeForwardZRaw);
+    }
+#endif
 
     void BuildAutoLapDriveInput(Game::CarSystem& car,
                                 Game::CarSystem::GameplayInputSnapshot& outInput)
@@ -1260,14 +1492,169 @@ private:
         drive.forwardXRaw = forwardX.RawValue();
         drive.forwardZRaw = -forwardZ.RawValue();
         drive.speedKmh = carDebug.speedKmh;
+        drive.plannedSpeedKmh = AutoLapSpeedPolicy::RouteSpeed(
+            autoLapRoute_, current, drive.car.xRaw, drive.car.zRaw);
+        AutoLapSpeedPolicy::RouteLookahead(
+            autoLapRoute_, current, drive.car.xRaw, drive.car.zRaw,
+            drive.speedKmh, drive.routeTarget.xRaw, drive.routeTarget.zRaw);
+        drive.hasRouteTarget = true;
         drive.upcomingTurnDeg = static_cast<int16_t>(std::max(
             std::abs(ShortestDeltaDeg(autoLapRoute_.yawDeg[current], autoLapRoute_.yawDeg[next])),
             std::abs(ShortestDeltaDeg(autoLapRoute_.yawDeg[next], autoLapRoute_.yawDeg[afterNext]))));
         drive.surfaceType = carDebug.groundSurfaceType;
         drive.groundSupported = carDebug.GroundSupport();
         drive.wallHit = carDebug.WallHit();
-        const AutoLapDrivePolicy::Output command =
+        // autolap48: plant BEFORE AutoLapDrivePolicy::Step so missingGround
+        // never latches the >8 accel cut (policy clears only when GS=true).
+        // autolap50: skip while hard-recover is armed — soft+hard fought and looped.
+        bool playerPlantAssist = false;
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        const bool hardRecoverArmed =
+            playerRecoveryAwaitingPublish_ || playerRecoveryRetryCountdown_ > 0u;
+#else
+        const bool hardRecoverArmed = false;
+#endif
+        // G2: near mid-rail XZ — brief GS flicker should not cut accel.
+        bool playerFlickerGrace = false;
+        if (!drive.groundSupported &&
+            AutoLapPhysicsEnabled() &&
+            autoLapRoute_.Built() &&
+            !autoLapRoute_.centers.empty() &&
+            autoLapDriveState_.missingGroundFrames < 16u)
+        {
+            const size_t count = autoLapRoute_.centers.size();
+            const size_t idx =
+                static_cast<size_t>(autoLapRoute_.index) % count;
+            const auto& pt = autoLapRoute_.centers[idx];
+            const int32_t dx = drive.car.xRaw - pt.X.RawValue();
+            const int32_t dz = drive.car.zRaw - pt.Z.RawValue();
+            const int32_t adx = dx < 0 ? -dx : dx;
+            const int32_t adz = dz < 0 ? -dz : dz;
+            constexpr int32_t kNearRailLim = 96 << 16;
+            if (adx < kNearRailLim && adz < kNearRailLim)
+            {
+                playerFlickerGrace = true;
+                drive.groundSupported = true;
+            }
+        }
+        if (!drive.groundSupported &&
+            autoLapDriveState_.missingGroundFrames >= 4u &&
+            !hardRecoverArmed)
+        {
+            playerPlantAssist = TryPlayerSoftPlantAsphalt(car);
+            if (playerPlantAssist)
+            {
+                drive.groundSupported = true;
+                autoLapDriveState_.missingGroundFrames = 0u;
+            }
+        }
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        AutoLapTrafficPolicy::Vehicle ego{};
+        AutoLapTrafficPolicy::Vehicle other{};
+        bool haveNpc = npcRailsArmed_ && autoLapNpcFollowers_[0].Active();
+        bool passing = false;
+        if (haveNpc)
+        {
+            const auto& npc = autoLapNpcFollowers_[0];
+            ego = {drive.car.xRaw, drive.car.zRaw,
+                   drive.forwardXRaw, drive.forwardZRaw, drive.speedKmh};
+            const auto npcYaw = SRL::Math::Types::Angle::FromDegrees(
+                SRL::Math::Types::Fxp::BuildRaw(
+                    static_cast<int32_t>(npc.yawDeg) << 16));
+            other = {npc.pos.X.RawValue(), npc.pos.Z.RawValue(),
+                     SRL::Math::Trigonometry::Sin(npcYaw).RawValue(),
+                     -SRL::Math::Trigonometry::Cos(npcYaw).RawValue(),
+                     autoLapNpcDrivers_[0].Frame().carSpeedKmh};
+            const int64_t pathDx = static_cast<int64_t>(drive.next.xRaw) - drive.current.xRaw;
+            const int64_t pathDz = static_cast<int64_t>(drive.next.zRaw) - drive.current.zRaw;
+            const int64_t absDx = pathDx < 0 ? -pathDx : pathDx;
+            const int64_t absDz = pathDz < 0 ? -pathDz : pathDz;
+            const int64_t pathLength = absDx > absDz ? absDx : absDz;
+            if (pathLength >= (1 << 16))
+            {
+                const int32_t pathFx = static_cast<int32_t>((pathDx << 16) / pathLength);
+                const int32_t pathFz = static_cast<int32_t>((pathDz << 16) / pathLength);
+                const auto routeTarget = drive.routeTarget;
+                if (playerPassState_.cooldown > 0u) --playerPassState_.cooldown;
+                if (playerPassState_.side != 0 &&
+                    (AutoLapTrafficPolicy::PassedObstacle(ego, other) ||
+                     ++playerPassState_.activeFrames > 180u))
+                {
+                    playerPassState_ = {};
+                    playerPassState_.cooldown = 30u;
+                }
+                if (playerPassState_.side != 0 &&
+                    playerPassState_.checkCountdown == 0u &&
+                    !TryAutoLapPassSide(routeTarget, other, npc.pos.Y,
+                                        pathFx, pathFz, playerPassState_.side))
+                {
+                    playerPassState_ = {};
+                    playerPassState_.cooldown = 30u;
+                }
+                if (playerPassState_.side == 0 && playerPassState_.cooldown == 0u &&
+                    AutoLapTrafficPolicy::StoppedObstacleAhead(ego, other))
+                {
+                    const int8_t preferred = AutoLapTrafficPolicy::PreferredPassSide(ego, other);
+                    if (TryAutoLapPassSide(routeTarget, other, npc.pos.Y,
+                                           pathFx, pathFz, preferred))
+                        playerPassState_.side = preferred;
+                    else if (TryAutoLapPassSide(routeTarget, other, npc.pos.Y,
+                                                pathFx, pathFz, -preferred))
+                        playerPassState_.side = -preferred;
+                    if (playerPassState_.side != 0)
+                        playerPassState_.checkCountdown = 8u;
+                    else
+                        playerPassState_.cooldown = 24u;
+                }
+                if (playerPassState_.side != 0)
+                {
+                    drive.hasOverrideTarget = true;
+                    drive.overrideTarget = AutoLapTrafficPolicy::OffsetTarget(
+                        routeTarget, pathFx, pathFz, playerPassState_.side);
+                    passing = true;
+                    if (playerPassState_.checkCountdown > 0u)
+                        --playerPassState_.checkCountdown;
+                }
+            }
+        }
+        else playerPassState_ = {};
+#endif
+        auto command =
             AutoLapDrivePolicy::Step(drive, autoLapDriveState_);
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (haveNpc && !passing)
+        {
+            const int16_t limit = AutoLapTrafficPolicy::LimitSpeed(
+                ego, other, command.targetSpeedKmh, playerTrafficState_);
+            AutoLapTrafficPolicy::ApplySpeedLimit(command, drive.speedKmh, limit);
+        }
+        else if (passing)
+        {
+            playerTrafficState_ = {};
+            const auto relative = AutoLapTrafficPolicy::RelativeTo(ego, other);
+            const int32_t sideRaw = relative.sideRaw < 0 ? -relative.sideRaw : relative.sideRaw;
+            AutoLapTrafficPolicy::ApplySpeedLimit(
+                command, drive.speedKmh, sideRaw < (75 << 16) ? 18 : 42);
+        }
+        if (playerContactRecoveryFrames_ > 0u)
+        {
+            --playerContactRecoveryFrames_;
+            AutoLapTrafficPolicy::ApplySpeedLimit(
+                command, drive.speedKmh, playerContactSpeedLimitKmh_);
+        }
+#endif
+        // Extra grace vs policy's >8 cut; plant/flicker already cleared the latch.
+        if (autoLapDriveState_.missingGroundFrames > 16u &&
+            !playerPlantAssist && !playerFlickerGrace)
+            command.accelerate = false;
+        if (drive.wallHit && drive.speedKmh < 8)
+        {
+            command.accelerate = false;
+            command.brake = false;
+        }
+        if ((playerPlantAssist || playerFlickerGrace) &&
+            !command.accelerate && drive.speedKmh < 40)
+            command.accelerate = true;
         outInput.SetAccelerateHeld(command.accelerate);
         outInput.SetBrakeHeld(command.brake);
         outInput.SetAnalogSteering(command.steering);
@@ -1318,6 +1705,28 @@ private:
                                            carYawDeg_,
                                            AutoLapLegacyEnabled(),
                                            frameState);
+            // G1.1: seed TCOL probes from mid-rail PATH segment (stable ±4 window).
+            if (AutoLapPhysicsEnabled() && autoLapRoute_.Built() &&
+                AutoLapRouteDomain::HasConsistentMappedRoute(autoLapRoute_) &&
+                !autoLapRoute_.centers.empty() &&
+                autoLapRoute_.ids.size() == autoLapRoute_.centers.size())
+            {
+                const size_t count = autoLapRoute_.centers.size();
+                const size_t idx =
+                    static_cast<size_t>(autoLapRoute_.index) % count;
+                const int32_t railSeg =
+                    static_cast<int32_t>(autoLapRoute_.ids[idx]);
+                if (railSeg > 0)
+                    frameState.activeSegmentId = railSeg;
+            }
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+            if (AutoLapPhysicsEnabled())
+            {
+                frameState.autoLapContactKickXRaw = pendingCarContactKickXRaw_;
+                frameState.autoLapContactKickZRaw = pendingCarContactKickZRaw_;
+                RecoverStalledAutoLapCar(frameState, car->RuntimeDebug().speedKmh);
+            }
+#endif
         }
         else
         {
@@ -1327,6 +1736,152 @@ private:
         }
         return frameState;
     }
+
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+    // Resolve a stable mid-rail index: lastValid segment → nearest PATH → route.index.
+    size_t ResolvePlayerRailRecoverIndex() const
+    {
+        const size_t count = autoLapRoute_.centers.size();
+        if (count == 0u) return 0u;
+        if (playerLastValidSegmentId_ > 0 &&
+            autoLapRoute_.ids.size() == count)
+        {
+            for (size_t i = 0u; i < count; ++i)
+            {
+                if (static_cast<int32_t>(autoLapRoute_.ids[i]) ==
+                    playerLastValidSegmentId_)
+                {
+                    return i;
+                }
+            }
+        }
+        size_t nearest = static_cast<size_t>(autoLapRoute_.index) % count;
+        if (AutoLapRouteDomain::FindNearestRoutePointIndex(
+                autoLapRoute_, context_.carWorldPosition, nearest))
+        {
+            return nearest % count;
+        }
+        return nearest % count;
+    }
+
+    void RecoverStalledAutoLapCar(Game::GameplayFrameState& frameState,
+                                  int16_t speedKmh)
+    {
+        // An async Slave job can make ExecuteGameplayFrame discard this frame.
+        // Do not advance stall/recovery state until a new frame can be accepted.
+        if (simState_.JobInFlight()) return;
+        if (playerRecoveryRetryCountdown_ > 0u)
+        {
+            --playerRecoveryRetryCountdown_;
+            return;
+        }
+        // autolap50: do not hard-recover while a previous respawn is in flight —
+        // that stacked RelocateFocusWindow + teleports into a search loop.
+        if (playerRecoveryAwaitingPublish_) return;
+
+        const bool lostGround =
+            autoLapDriveState_.missingGroundFrames >= 24u;
+        const bool stalled = AutoLapTrafficPolicy::TickStall(
+            playerStallState_, context_.carWorldPosition.X.RawValue(),
+            context_.carWorldPosition.Z.RawValue(), speedKmh, true);
+        if (!lostGround && !stalled) return;
+        if (!context_.trackSystem || !context_.trackSystem->TrackCollisionMapReady() ||
+            autoLapRoute_.centers.empty() ||
+            !AutoLapRouteDomain::HasConsistentMappedRoute(autoLapRoute_)) return;
+
+        static constexpr uint8_t kAsphalt = 1u;
+        const size_t count = autoLapRoute_.centers.size();
+        const size_t startIndex = ResolvePlayerRailRecoverIndex();
+        // One relocate to the anchor rail, then probe a few points ahead in
+        // the *same* window — never RelocateFocusWindow per candidate (autolap50).
+        const int32_t anchorSeed =
+            static_cast<int32_t>(autoLapRoute_.ids[startIndex]);
+        if (anchorSeed > 0)
+            (void)context_.trackSystem->RelocateFocusWindow(anchorSeed);
+
+        size_t chosen = startIndex;
+        SRL::Math::Types::Vector3D candidate = autoLapRoute_.centers[startIndex];
+        int32_t segmentId = anchorSeed;
+        bool havePose = false;
+
+        for (size_t advance = 0u; advance <= 4u; ++advance)
+        {
+            const size_t index = (startIndex + advance) % count;
+            const auto& point = autoLapRoute_.centers[index];
+            if (advance > 0u && npcRailsArmed_ && autoLapNpcFollowers_[0].Active())
+            {
+                const auto& npc = autoLapNpcFollowers_[0].pos;
+                const int64_t dx = static_cast<int64_t>(point.X.RawValue()) - npc.X.RawValue();
+                const int64_t dz = static_cast<int64_t>(point.Z.RawValue()) - npc.Z.RawValue();
+                if (dx > -(140LL << 16) && dx < (140LL << 16) &&
+                    dz > -(140LL << 16) && dz < (140LL << 16)) continue;
+            }
+            const int32_t seed = static_cast<int32_t>(autoLapRoute_.ids[index]);
+            SRL::Math::Types::Fxp groundY{};
+            int32_t plantedSeg = -1;
+            if (!context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                    point, context_.trackSegOffset, &kAsphalt, 1u,
+                    groundY, &plantedSeg, seed > 0 ? seed : anchorSeed,
+                    true, nullptr, nullptr, nullptr, -1, false) ||
+                plantedSeg <= 0)
+            {
+                continue;
+            }
+            SRL::Math::Types::Vector3D tryPos = point;
+            tryPos.Y = groundY + Game::CarPhysics::GetRideHeightOffset();
+            const auto yaw = SRL::Math::Types::Angle::FromDegrees(
+                SRL::Math::Types::Fxp::BuildRaw(
+                    static_cast<int32_t>(autoLapRoute_.yawDeg[index]) << 16));
+            const SRL::Math::Types::Vector3D forward(
+                SRL::Math::Trigonometry::Sin(yaw),
+                SRL::Math::Types::Fxp::BuildRaw(0),
+                -SRL::Math::Trigonometry::Cos(yaw));
+            SRL::Math::Types::Vector3D wallPush{};
+            if (context_.trackSystem->FindPlanarWallPush(
+                    tryPos, context_.trackSegOffset, forward,
+                    SRL::Math::Types::Fxp::BuildRaw(30 << 16),
+                    wallPush, nullptr, plantedSeg, false, false, &tryPos) &&
+                (wallPush.X.RawValue() != 0 || wallPush.Z.RawValue() != 0))
+            {
+                continue;
+            }
+            chosen = index;
+            candidate = tryPos;
+            segmentId = plantedSeg;
+            havePose = true;
+            break;
+        }
+
+        if (!havePose)
+        {
+            // Stable fallback: exact PATH point under the single relocated window.
+            candidate = autoLapRoute_.centers[startIndex];
+            candidate.Y = candidate.Y + Game::CarPhysics::GetRideHeightOffset();
+            segmentId = anchorSeed > 0 ? anchorSeed : playerLastValidSegmentId_;
+            chosen = startIndex;
+        }
+
+        frameState.resetRequested = true;
+        frameState.respawnPosition = candidate;
+        frameState.respawnYawDeg = autoLapRoute_.yawDeg[chosen];
+        frameState.activeSegmentId = segmentId;
+        playerRecoveryFrameId_ = frameState.frameId;
+        playerRecoveryAwaitingPublish_ = true;
+        autoLapRoute_.index = static_cast<uint16_t>(chosen);
+        autoLapDriveState_ = {};
+        playerTrafficState_ = {};
+        playerPassState_ = {};
+        playerStallState_ = {};
+        playerLastValidSegmentId_ = segmentId;
+        playerSafePose_ = candidate;
+        playerSafeYawDeg_ = static_cast<int16_t>(autoLapRoute_.yawDeg[chosen]);
+        playerSafePoseValid_ = true;
+        if (context_.cameraSystem) context_.cameraSystem->ResetFollowHistory();
+        cameraPathRuntime_.SetPrevCarWorldPositionValid(false);
+        // Long grace — prevents autolap50 teleport search loop.
+        playerRecoveryRetryCountdown_ = 60u;
+    }
+#endif
 
     void RunGameplayFrameSynchronously(Game::GameplayFrameState& frameState)
     {
@@ -1340,6 +1895,10 @@ private:
                                       context_.trackCollision,
                                       frameState.carWorldPosition,
                                       frameState.carYawDeg);
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+            pendingCarContactKickXRaw_ = 0;
+            pendingCarContactKickZRaw_ = 0;
+#endif
         }
         if (frameState.resetRequested)
         {
@@ -1402,6 +1961,10 @@ private:
                                   context_.trackCollision);
         SRL::Slave::ExecuteOnSlave(simulationTask_);
         SimulationSchedulerDomain::MarkSimulationDispatched(simState_, slot);
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        pendingCarContactKickXRaw_ = 0;
+        pendingCarContactKickZRaw_ = 0;
+#endif
         return true;
     }
 
@@ -1491,7 +2054,7 @@ private:
     {
         if (!context_.EnableBg() || !context_.bgManager) return;
         AppState::Set(AppState::Stage::LoopBackground, frameCounter_);
-        context_.bgManager->Update(context_.cameraSystem->State(), carYawDeg_);
+        context_.bgManager->Update(context_.cameraSystem->State(), CurrentCameraYawDeg());
     }
 
     SRL::Math::Types::Vector3D ResolveCameraWallOcclusion(
@@ -1602,7 +2165,13 @@ private:
             const int32_t seedSegmentId =
                 (cameraSurfaceGuardState_.segmentId > 0)
                     ? static_cast<int32_t>(cameraSurfaceGuardState_.segmentId)
-                    : static_cast<int32_t>(latestActiveSegmentId_);
+                    : static_cast<int32_t>(
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+                        cameraNpcFocus_ && NpcFocusTargetValid()
+                            ? autoLapNpcDrivers_[0].StreamingSegmentId()
+                            :
+#endif
+                        latestActiveSegmentId_);
             const bool found = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
                 desiredCameraLocation,
                 context_.trackSegOffset,
@@ -1639,21 +2208,47 @@ private:
     // Resolve camera snapshot for the current authoritative car state.
     CameraFrameState ResolveCameraFrameState()
     {
-        UpdateCameraPathFrameContext();
+        bool focusNpc = false;
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        focusNpc = cameraNpcFocus_ && NpcFocusTargetValid();
+        if (cameraNpcFocus_ && !focusNpc) SetCameraNpcFocus(false);
+#endif
+        if (focusNpc) PublishEmptyCameraPathFrameContext();
+        else UpdateCameraPathFrameContext();
+        const SRL::Math::Types::Vector3D focusPosition =
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+            focusNpc ? autoLapNpcDrivers_[0].StreamingPosition(autoLapNpcFollowers_[0]) :
+#endif
+            context_.carWorldPosition;
         // Feed road attitude from car (grade/pitch already computed). No track probes.
         if (context_.cameraSystem)
         {
-            const Game::CarSystem::RuntimeDebugSnapshot carDbg = CarRuntimeDebugSnapshot();
-            context_.cameraSystem->SetRoadAttitude(carDbg.gradeTanX100, carDbg.bodyPitchDeg);
-            context_.cameraSystem->ObserveWallContact(carDbg.WallHit(),
-                                                      carDbg.wallPushX,
-                                                      carDbg.wallPushZ,
-                                                      context_.carWorldPosition);
+            context_.cameraSystem->SetCarYawDegrees(CurrentCameraYawDeg());
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+            if (focusNpc)
+            {
+                const auto& npcFrame = autoLapNpcDrivers_[0].Frame();
+                context_.cameraSystem->SetRoadAttitude(npcFrame.debugGradeTanX100, 0);
+                context_.cameraSystem->ObserveWallContact(
+                    npcFrame.debugWallHit != 0u,
+                    npcFrame.debugWallPushX, npcFrame.debugWallPushZ,
+                    focusPosition);
+            }
+            else
+#endif
+            {
+                const Game::CarSystem::RuntimeDebugSnapshot carDbg = CarRuntimeDebugSnapshot();
+                context_.cameraSystem->SetRoadAttitude(carDbg.gradeTanX100, carDbg.bodyPitchDeg);
+                context_.cameraSystem->ObserveWallContact(carDbg.WallHit(),
+                                                          carDbg.wallPushX,
+                                                          carDbg.wallPushZ,
+                                                          focusPosition);
+            }
         }
         SRL::Math::Types::Vector3D rawCameraLocation =
-            context_.cameraSystem->CameraLocation(context_.carWorldPosition);
+            context_.cameraSystem->CameraLocation(focusPosition);
         SRL::Math::Types::Vector3D rawLookTarget =
-            context_.cameraSystem->LookTarget(context_.carWorldPosition, context_.modelOffset);
+            context_.cameraSystem->LookTarget(focusPosition, context_.modelOffset);
 
         const SRL::Math::Types::Vector3D resolvedCameraLocation =
             ResolveCameraSurfaceGuard(rawCameraLocation);
@@ -1685,14 +2280,28 @@ private:
     // HUD consumes the resolved camera snapshot and current world state.
     void UpdateHud(const CameraFrameState& camera)
     {
+        context_.hudSystem->BeginMinimapFrame();
         context_.hudSystem->UpdateMinimap(latestActiveSegmentId_, carYawDeg_);
         UpdateNpcMinimapMarkers();
+        context_.hudSystem->EndMinimapFrame();
         context_.hudSystem->Update(context_.cameraSystem->State(),
                                    context_.modelOffset,
                                    camera.location,
                                    context_.carWorldPosition);
         if (Game::CarSystem* car = ActiveCarSystem())
         {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+            if (cameraNpcFocus_ && NpcFocusTargetValid())
+            {
+                const auto& npcFrame = autoLapNpcDrivers_[0].Frame();
+                const int16_t gear = npcFrame.carGear;
+                const char gearChar = gear < 0 ? 'R' :
+                    (gear == 0 ? 'N' : static_cast<char>('0' + (gear > 9 ? 9 : gear)));
+                context_.hudSystem->UpdateDrivetrain(
+                    npcFrame.carSpeedKmh, npcFrame.carEngineRpm, gearChar);
+                return;
+            }
+#endif
             const auto drivetrain = car->BuildDrivetrainDebugSnapshot();
             context_.hudSystem->UpdateDrivetrain(drivetrain.speedKmh,
                                                 drivetrain.engineRpm,
@@ -2008,21 +2617,7 @@ private:
         {
             return base;
         }
-        Game::CarSystem* car = ActiveCarSystem();
-        const int32_t visualYawOffsetDeg = car ? car->VisualYawOffsetDegrees() : 0;
-        const int32_t yawDeg = NormalizeYawDeg360(carYawDeg_ + visualYawOffsetDeg);
-        int32_t dx = 0;
-        int32_t dz = 0;
-        if (!ResolveNpcCarFrameLateralRaw(slot, yawDeg, dx, dz))
-        {
-            dx = 72 << 16;
-            dz = -(76 << 16);
-        }
-        SRL::Math::Types::Vector3D pos{};
-        pos.X = SRL::Math::Types::Fxp::BuildRaw(base.X.RawValue() + dx);
-        pos.Y = SRL::Math::Types::Fxp::BuildRaw(base.Y.RawValue());
-        pos.Z = SRL::Math::Types::Fxp::BuildRaw(base.Z.RawValue() + dz);
-        return pos;
+        return autoLapNpcFollowers_[slot].pos;
 #else
         (void)slot;
         return base;
@@ -2042,10 +2637,7 @@ private:
 
         Game::CarSystem* car = ActiveCarSystem();
         const int32_t visualYawOffsetDeg = car ? car->VisualYawOffsetDegrees() : 0;
-        const int32_t playerRenderYawDeg = NormalizeYawDeg360(
-            carYawDeg_ + visualYawOffsetDeg);
         const SRL::Math::Types::Vector3D playerBase = ResolveCarRenderPosition();
-        const int32_t playerYRaw = playerBase.Y.RawValue();
         npcBaseXRaw_ = playerBase.X.RawValue();
         npcBaseZRaw_ = playerBase.Z.RawValue();
 
@@ -2053,24 +2645,13 @@ private:
         {
             if (!autoLapNpcFollowers_[slot].Active()) continue;
 
-            int32_t dx = 0;
-            int32_t dz = 0;
-            if (!ResolveNpcCarFrameLateralRaw(slot, playerRenderYawDeg, dx, dz))
-            {
-                dx = 72 << 16;
-                dz = -(76 << 16);
-            }
-
-            npcDrawPos_[slot].X = SRL::Math::Types::Fxp::BuildRaw(
-                playerBase.X.RawValue() + dx);
-            npcDrawPos_[slot].Y = SRL::Math::Types::Fxp::BuildRaw(playerYRaw);
-            npcDrawPos_[slot].Z = SRL::Math::Types::Fxp::BuildRaw(
-                playerBase.Z.RawValue() + dz);
-
-            npcDrawYawDeg_[slot] = static_cast<int16_t>(playerRenderYawDeg);
+            npcDrawPos_[slot] = ResolveNpcCarDrawPosition(slot);
+            npcDrawYawDeg_[slot] = static_cast<int16_t>(NormalizeYawDeg360(
+                static_cast<int32_t>(autoLapNpcFollowers_[slot].yawDeg) +
+                visualYawOffsetDeg));
             npcDrawValid_[slot] = true;
-            npcLatDxRaw_[slot] = dx;
-            npcLatDzRaw_[slot] = dz;
+            npcLatDxRaw_[slot] = npcDrawPos_[slot].X.RawValue() - playerBase.X.RawValue();
+            npcLatDzRaw_[slot] = npcDrawPos_[slot].Z.RawValue() - playerBase.Z.RawValue();
 
             SRL::Math::Types::Vector2D screen{};
             const auto depth = SRL::Scene3D::ProjectToScreen(npcDrawPos_[slot], &screen);
@@ -2146,16 +2727,20 @@ private:
         const unsigned act0 = autoLapNpcFollowers_[0].Active() ? 1u : 0u;
         const unsigned v0 = npcDrawValid_[0] ? 1u : 0u;
         SRL::Debug::Print(
-            0, 0, "ISO NPC mesh5 a:%u v:%u f:%u",
+            0, 0, "ISO NPC a:%u v:%u f:%u c:%u cam:%u",
             act0, v0,
-            static_cast<unsigned>(npcReuseFaces_[0]));
+            static_cast<unsigned>(npcReuseFaces_[0]),
+            static_cast<unsigned>(npcContactHits_),
+            cameraNpcFocus_ ? 2u : 1u);
 
         // Car-frame lateral (projected onto right); side should stay stable in turns.
         SRL::Debug::Print(
-            0, 14, "d:%d/%d y:%d",
+            0, 14, "d:%d/%d y:%d g:%u v:%d",
             static_cast<int>(npcLatDxRaw_[0] >> 16),
             static_cast<int>(npcLatDzRaw_[0] >> 16),
-            static_cast<int>(npcDrawYawDeg_[0]));
+            static_cast<int>(npcDrawYawDeg_[0]),
+            static_cast<unsigned>(autoLapNpcDrivers_[0].Frame().debugGroundSupport),
+            static_cast<int>(autoLapNpcDrivers_[0].Frame().carSpeedKmh));
 #endif
     }
 
@@ -2196,7 +2781,70 @@ private:
 
     void UpdateNpcMinimapMarkers()
     {
-        // Fase 3: minimapa NPC deferido para poupar .text/HWR na Fase 1.
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (!AutoLapPhysicsEnabled() || !npcRailsArmed_) return;
+        for (size_t slot = 0u; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
+        {
+            if (!autoLapNpcFollowers_[slot].Active() ||
+                !autoLapNpcDrivers_[slot].Active()) continue;
+            // Pose-based segment (not StreamingSegmentId): when GS=0 the stream
+            // id freezes on lastValid while the mesh stays at npc.pos → desync.
+            const int32_t segmentId = autoLapNpcDrivers_[slot].MinimapSegmentId(
+                autoLapNpcFollowers_[slot]);
+            if (segmentId <= 0) continue;
+            context_.hudSystem->UpdateNpcMinimap(
+                static_cast<uint8_t>(slot), segmentId,
+                autoLapNpcFollowers_[slot].yawDeg);
+        }
+#endif
+    }
+
+    // Re-plant player Y on asphalt (mid-rail XZ untouched). Isolates from NPC
+    // shared-face-cache thrash (autolap48).
+    bool TryPlayerSoftPlantAsphalt(Game::CarSystem& car)
+    {
+        if (!context_.trackSystem || !context_.trackSystem->TrackCollisionMapReady())
+            return false;
+        const int32_t seed = playerLastValidSegmentId_ > 0
+            ? playerLastValidSegmentId_
+            : static_cast<int32_t>(latestActiveSegmentId_);
+        if (seed <= 0) return false;
+        static constexpr uint8_t kAsphalt = 1u;
+        SRL::Math::Types::Vector3D sample = context_.carWorldPosition;
+        SRL::Math::Types::Fxp groundY{};
+        int32_t segmentId = -1;
+        if (!context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                sample, context_.trackSegOffset, &kAsphalt, 1u,
+                groundY, &segmentId, seed, true,
+                nullptr, nullptr, nullptr, -1, false) ||
+            segmentId <= 0)
+        {
+            if (!autoLapRoute_.Built() || autoLapRoute_.centers.empty()) return false;
+            const size_t count = autoLapRoute_.centers.size();
+            const size_t index =
+                static_cast<size_t>(autoLapRoute_.index) % count;
+            sample = autoLapRoute_.centers[index];
+            sample.Y = context_.carWorldPosition.Y;
+            if (!context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                    sample, context_.trackSegOffset, &kAsphalt, 1u,
+                    groundY, &segmentId, seed, true,
+                    nullptr, nullptr, nullptr, -1, false) ||
+                segmentId <= 0)
+            {
+                return false;
+            }
+            context_.carWorldPosition.X = sample.X;
+            context_.carWorldPosition.Z = sample.Z;
+        }
+        context_.carWorldPosition.Y =
+            groundY + Game::CarPhysics::GetRideHeightOffset();
+        car.SetWorldPosition(context_.carWorldPosition);
+        latestActiveSegmentId_ = static_cast<int16_t>(segmentId);
+        playerLastValidSegmentId_ = segmentId;
+        playerSafePose_ = context_.carWorldPosition;
+        playerSafeYawDeg_ = static_cast<int16_t>(carYawDeg_);
+        playerSafePoseValid_ = true;
+        return true;
     }
 
     SRL::Math::Types::Vector3D ResolveCarRenderPosition()
@@ -2297,6 +2945,9 @@ private:
         const FramePhaseTelemetry::Stamp carTicksStart = CaptureMasterPhaseStamp();
 #endif
         RenderCar(camera);
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        DrawAutoLapCameraFocusTransferCover();
+#endif
 #if MASTER_FRAME_PHASE_TELEMETRY
         const FramePhaseTelemetry::Stamp carTicksEnd = CaptureMasterPhaseStamp();
         masterFrameTiming_.carTicks =
@@ -2333,21 +2984,75 @@ private:
 #if MASTER_FRAME_PHASE_TELEMETRY
         const FramePhaseTelemetry::Stamp trackRenderTicksStart = CaptureMasterPhaseStamp();
 #endif
+        int32_t renderAnchorSegmentId = latestActiveSegmentId_;
+        const SRL::Math::Types::Vector3D* renderAnchorPosition =
+            &context_.carWorldPosition;
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (cameraFocusTransferPending_ && cameraFocusTransferNeedsRelocate_)
+        {
+            // A remote rebuild reuses the live renderer slots. Finish any
+            // outstanding Slave simulation read before mutating that window.
+            (void)DrainSimulationJobIfInFlight(true);
+            const int32_t destinationSegment = cameraFocusTransferNpc_
+                ? autoLapNpcDrivers_[0].StreamingSegmentId()
+                : latestActiveSegmentId_;
+            const bool relocated =
+                context_.trackSystem->RelocateFocusWindow(destinationSegment);
+            cameraFocusTransferNeedsRelocate_ = false;
+            if (!relocated)
+            {
+                context_.trackSystem->EndFocusTransfer(false);
+                cameraFocusTransferPending_ = false;
+            }
+        }
+        const auto focusAnchor = AutoLapCameraFocusPolicy::Select(
+            cameraFocusTransferPending_ ? cameraFocusTransferNpc_ : cameraNpcFocus_,
+            NpcFocusTargetValid(), latestActiveSegmentId_,
+            autoLapNpcDrivers_[0].StreamingSegmentId());
+        if (focusAnchor.npc)
+        {
+            renderAnchorSegmentId = focusAnchor.segmentId;
+            renderAnchorPosition =
+                &autoLapNpcDrivers_[0].StreamingPosition(autoLapNpcFollowers_[0]);
+        }
+#endif
+        // autolap48: when player GS dies, keep belt on lastValid so the scene
+        // does not empty around a stopped car 1 (NPC focus excluded above).
+        if (AutoLapPhysicsEnabled() &&
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+            !(cameraNpcFocus_ && NpcFocusTargetValid()) &&
+#endif
+            playerLastValidSegmentId_ > 0)
+        {
+            const bool liveBad = renderAnchorSegmentId <= 0 ||
+                !SegmentInRenderWindow(renderAnchorSegmentId);
+            if (liveBad)
+            {
+                renderAnchorSegmentId = playerLastValidSegmentId_;
+                if (playerSafePoseValid_)
+                    renderAnchorPosition = &playerSafePose_;
+                if (!SegmentInRenderWindow(playerLastValidSegmentId_))
+                    (void)context_.trackSystem->RelocateFocusWindow(
+                        playerLastValidSegmentId_);
+            }
+        }
+        // The render belt must follow the same car as the camera. Player
+        // simulation, TCOL and lap timing still use the authoritative car 1.
         const auto trackFrameContext = TrackRenderDomain::BuildTrackFrameContext(
             frameCounter_,
-            latestActiveSegmentId_,
+            renderAnchorSegmentId,
             true,
             context_.trackSegOffset,
             context_.lightDirection,
             camera.location,
             camera.lookTarget,
-            context_.carWorldPosition);
+            *renderAnchorPosition);
         const auto trackRenderPacket =
             TrackRenderDomain::BuildTrackRenderPacket(trackFrameContext, context_.trackSystem);
         lastSubmittedTrackFacesThisFrame_ = trackRenderPacket.submittedTrackFaces;
         GameLoopRuntime::CaptureTrackReuseRuntimeEnabledRequest(
             frameCounter_,
-            latestActiveSegmentId_,
+            renderAnchorSegmentId,
             IsTrackProducerJobInFlightHint(),
             trackReuseState_);
 
@@ -3653,8 +4358,30 @@ private:
     void ClearAutoLapNpcRailRoutes()
     {
 #if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (cameraFocusTransferPending_ && context_.trackSystem)
+            context_.trackSystem->EndFocusTransfer(false);
+        cameraFocusTransferPending_ = false;
+        cameraFocusTransferNpc_ = false;
+        cameraFocusTransferNeedsRelocate_ = false;
+        SetCameraNpcFocus(false);
+        cameraXHeldPrev_ = false;
+        npcPublishedSimFrameValid_ = false;
+        npcConsumedSimFrameValid_ = false;
+        npcContactSimFrameValid_ = false;
+        npcContactPrevValid_ = false;
+        npcContactCooldown_ = 0u;
+        pendingCarContactKickXRaw_ = 0;
+        pendingCarContactKickZRaw_ = 0;
+        playerTrafficState_ = {};
+        playerPassState_ = {};
+        playerStallState_ = {};
+        playerRecoveryRetryCountdown_ = 0u;
+        playerRecoveryAwaitingPublish_ = false;
+        playerContactRecoveryFrames_ = 0u;
+        playerContactSpeedLimitKmh_ = 30;
         for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
         {
+            autoLapNpcDrivers_[slot].Clear();
             ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
             NpcRailFollower::Reset(autoLapNpcFollowers_[slot]);
             autoLapNpcRailCounts_[slot] = 0u;
@@ -3734,6 +4461,7 @@ private:
         uint8_t ready = 0u;
         for (size_t slot = 0; slot < AutoLapNpcRailPolicy::kNpcRailCount; ++slot)
         {
+            autoLapNpcDrivers_[slot].Clear();
             NpcRailFollower::Reset(autoLapNpcFollowers_[slot]);
             ReleaseNpcRailRoute(autoLapNpcRoutes_[slot]);
             autoLapNpcRailCounts_[slot] = 0u;
@@ -3787,12 +4515,12 @@ private:
                 continue;
             }
             const uint16_t startIndex = static_cast<uint16_t>(nearest);
-            const int16_t stepUnits = static_cast<int16_t>(
-                std::max<int32_t>(6, static_cast<int32_t>(autoLapStepUnits_)));
-            if (NpcRailFollower::Bind(autoLapNpcFollowers_[slot],
-                                       autoLapNpcRoutes_[slot],
-                                       startIndex,
-                                       stepUnits))
+            if (autoLapNpcDrivers_[slot].Bind(autoLapNpcFollowers_[slot],
+                                              autoLapNpcRoutes_[slot],
+                                              startIndex,
+                                              context_.trackSystem,
+                                              context_.trackSegOffset,
+                                              latestActiveSegmentId_))
             {
                 autoLapNpcRailCounts_[slot] = static_cast<uint16_t>(
                     autoLapNpcRoutes_[slot].centers.size());
@@ -3840,6 +4568,7 @@ private:
         }
 
         npcRailsArmed_ = true;
+        npcContactPrevValid_ = false;
         LogAutoLapNpcRailsTelemetry();
         SRL::Debug::Print(
             1, 25, "AUTO NPC pose F1 dx:%d/%d",
@@ -3860,8 +4589,19 @@ private:
             {
                 ClearAutoLapNpcRailRoutes();
             }
+            npcPublishedSimFrameValid_ = false;
+            npcConsumedSimFrameValid_ = false;
             return;
         }
+
+        if (!AutoLapNpcRailPolicy::ShouldAdvanceForSimulationFrame(
+                npcPublishedSimFrameValid_, npcPublishedSimFrameId_,
+                npcConsumedSimFrameValid_, npcConsumedSimFrameId_))
+        {
+            return;
+        }
+        npcConsumedSimFrameId_ = npcPublishedSimFrameId_;
+        npcConsumedSimFrameValid_ = true;
 
         if (!npcRailsArmed_)
         {
@@ -3897,57 +4637,223 @@ private:
                 if (FindNearestNpcRailPointIndex(
                         autoLapNpcRoutes_[slot], context_.carWorldPosition, nearest))
                 {
-                    const int16_t stepUnits = static_cast<int16_t>(
-                        std::max<int32_t>(6, static_cast<int32_t>(autoLapStepUnits_)));
-                    NpcRailFollower::Bind(
-                        autoLapNpcFollowers_[slot],
-                        autoLapNpcRoutes_[slot],
+                    autoLapNpcDrivers_[slot].Bind(
+                        autoLapNpcFollowers_[slot], autoLapNpcRoutes_[slot],
                         static_cast<uint16_t>(nearest),
-                        stepUnits);
+                        context_.trackSystem, context_.trackSegOffset,
+                        latestActiveSegmentId_);
                 }
             }
             if (!autoLapNpcFollowers_[slot].Active()) continue;
 
-            // Keep side-rail station near the player's mid-rail index so yaw
-            // changes through corners match the master's timing.
-            if (!autoLapRoute_.centers.empty() &&
-                autoLapNpcRoutes_[slot].Built() &&
-                !autoLapNpcRoutes_[slot].centers.empty())
+            // Independent car physics: PATH is only the steering target.
+            // Never overwrite the resulting pose with a waypoint coordinate.
+            const auto playerYaw = SRL::Math::Types::Angle::FromDegrees(
+                SRL::Math::Types::Fxp::BuildRaw(
+                    NormalizeYawDeg360(carYawDeg_) << 16));
+            const auto* activeCar = ActiveCarSystem();
+            const int16_t playerSpeedKmh = activeCar
+                ? static_cast<int16_t>(activeCar->RuntimeDebug().speedKmh)
+                : 0;
+            const AutoLapTrafficPolicy::Vehicle opponent{
+                context_.carWorldPosition.X.RawValue(),
+                context_.carWorldPosition.Z.RawValue(),
+                SRL::Math::Trigonometry::Sin(playerYaw).RawValue(),
+                -SRL::Math::Trigonometry::Cos(playerYaw).RawValue(),
+                playerSpeedKmh};
+            const uint8_t previousRecoveries = autoLapNpcDrivers_[slot].RecoveryCount();
+            autoLapNpcDrivers_[slot].Step(autoLapNpcFollowers_[slot],
+                                          autoLapNpcRoutes_[slot], &opponent);
+            if (slot == 0u && cameraNpcFocus_ && !cameraFocusTransferPending_ &&
+                autoLapNpcDrivers_[slot].RecoveryCount() != previousRecoveries &&
+                NpcFocusTargetValid() &&
+                !SegmentInRenderWindow(autoLapNpcDrivers_[slot].StreamingSegmentId()))
             {
-                const size_t midCount = autoLapRoute_.centers.size();
-                const size_t sideCount = autoLapNpcRoutes_[slot].centers.size();
-                const size_t midIndex =
-                    static_cast<size_t>(autoLapRoute_.index) % midCount;
-                const size_t sideIndex = (sideCount == midCount)
-                    ? midIndex
-                    : ((midIndex * sideCount) / midCount);
-                auto& follower = autoLapNpcFollowers_[slot];
-                follower.pointIndex = static_cast<uint16_t>(sideIndex);
-                follower.pos = autoLapNpcRoutes_[slot].centers[sideIndex];
-                if (HasNpcRailYawAtIndex(autoLapNpcRoutes_[slot], sideIndex))
-                {
-                    follower.yawDeg = autoLapNpcRoutes_[slot].yawDeg[sideIndex];
-                }
-                follower.SetActive(true);
-            }
-            else
-            {
-                NpcRailFollower::Step(
-                    autoLapNpcFollowers_[slot],
-                    autoLapNpcRoutes_[slot],
-                    context_.trackSystem,
-                    context_.trackSegOffset,
-                    8u);
+                // A validated respawn can jump beyond the normal belt guard.
+                // Reuse the existing one-shot remote focus handoff only then.
+                cameraFocusTransferPending_ = true;
+                cameraFocusTransferNpc_ = true;
+                cameraFocusTransferNeedsRelocate_ = true;
+                context_.trackSystem->BeginFocusTransfer();
             }
         }
 
         if ((frameCounter_ & 7u) == 0u)
         {
             SRL::Debug::Print(
-                1, 21, "NPC i:%u p:%u",
-                static_cast<unsigned>(autoLapNpcFollowers_[0].pointIndex),
-                static_cast<unsigned>(autoLapRoute_.index));
+                1, 21, "N2 v:%d d:%d/%d g:%u s:%u m:%u r:%u",
+                static_cast<int>(autoLapNpcDrivers_[0].Frame().carSpeedKmh),
+                static_cast<int>(autoLapNpcDrivers_[0].Frame().debugNetDx),
+                static_cast<int>(autoLapNpcDrivers_[0].Frame().debugNetDz),
+                static_cast<unsigned>(autoLapNpcDrivers_[0].Frame().debugGroundSupport),
+                static_cast<unsigned>(autoLapNpcDrivers_[0].StalledFrames()),
+                static_cast<unsigned>(autoLapNpcDrivers_[0].MissingGroundFrames()),
+                static_cast<unsigned>(autoLapNpcDrivers_[0].RecoveryCount()));
         }
+#endif
+    }
+
+    void ResolveAutoLapCarContact()
+    {
+#if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
+        if (!AutoLapPhysicsEnabled() || !npcRailsArmed_ ||
+            !autoLapNpcFollowers_[0].Active() ||
+            !context_.trackSystem ||
+            !context_.trackSystem->TrackCollisionMapReady())
+        {
+            npcContactPrevValid_ = false;
+            npcContactSimFrameValid_ = false;
+            return;
+        }
+        // Never modify the published player pose while an older Slave result
+        // is still in flight: that result would overwrite the correction.
+        if (simState_.JobInFlight()) return;
+
+        if (!AutoLapNpcRailPolicy::ShouldAdvanceForSimulationFrame(
+                npcPublishedSimFrameValid_, npcPublishedSimFrameId_,
+                npcContactSimFrameValid_, npcContactSimFrameId_)) return;
+        npcContactSimFrameId_ = npcPublishedSimFrameId_;
+        npcContactSimFrameValid_ = true;
+
+        auto& npc = autoLapNpcFollowers_[0];
+        const auto playerNow = context_.carWorldPosition;
+        const auto npcNow = npc.pos;
+        if (!npcContactPrevValid_)
+        {
+            prevContactPlayerPos_ = playerNow;
+            prevContactNpcPos_ = npcNow;
+            npcContactPrevValid_ = true;
+            return;
+        }
+        if (npcContactCooldown_ > 0u) --npcContactCooldown_;
+
+        using SRL::Math::Types::Angle;
+        using SRL::Math::Types::Fxp;
+        const Angle playerYaw = Angle::FromDegrees(Fxp::BuildRaw(carYawDeg_ * (1 << 16)));
+        const Angle npcYaw = Angle::FromDegrees(Fxp::BuildRaw(
+            static_cast<int32_t>(npc.yawDeg) * (1 << 16)));
+        AutoLapCarContactPolicy::Pose playerPose{};
+        playerPose.xRaw = playerNow.X.RawValue();
+        playerPose.zRaw = playerNow.Z.RawValue();
+        playerPose.forwardXRaw = SRL::Math::Trigonometry::Sin(playerYaw).RawValue();
+        playerPose.forwardZRaw = -SRL::Math::Trigonometry::Cos(playerYaw).RawValue();
+        AutoLapCarContactPolicy::Pose playerPrevPose = playerPose;
+        playerPrevPose.xRaw = prevContactPlayerPos_.X.RawValue();
+        playerPrevPose.zRaw = prevContactPlayerPos_.Z.RawValue();
+        AutoLapCarContactPolicy::Pose npcPose{};
+        npcPose.xRaw = npcNow.X.RawValue();
+        npcPose.zRaw = npcNow.Z.RawValue();
+        npcPose.forwardXRaw = SRL::Math::Trigonometry::Sin(npcYaw).RawValue();
+        npcPose.forwardZRaw = -SRL::Math::Trigonometry::Cos(npcYaw).RawValue();
+        AutoLapCarContactPolicy::Pose npcPrevPose = npcPose;
+        npcPrevPose.xRaw = prevContactNpcPos_.X.RawValue();
+        npcPrevPose.zRaw = prevContactNpcPos_.Z.RawValue();
+
+        const int64_t yDifference = static_cast<int64_t>(playerNow.Y.RawValue()) -
+            static_cast<int64_t>(npcNow.Y.RawValue());
+        if (yDifference >= -(16 << 16) && yDifference <= (16 << 16))
+        {
+            const auto response = AutoLapCarContactPolicy::ResolveSwept(
+                playerPrevPose, playerPose, npcPrevPose, npcPose,
+                npcContactCooldown_ == 0u);
+            if (response.contact)
+            {
+                static constexpr uint8_t kAsphalt = 1u;
+                Fxp playerGroundY{};
+                Fxp npcGroundY{};
+                SRL::Math::Types::Vector3D playerCandidate = playerNow;
+                SRL::Math::Types::Vector3D npcCandidate = npcNow;
+                if (response.swept)
+                {
+                    playerCandidate.X = Fxp::BuildRaw(response.playerImpactXRaw);
+                    playerCandidate.Z = Fxp::BuildRaw(response.playerImpactZRaw);
+                    npcCandidate.X = Fxp::BuildRaw(response.npcImpactXRaw);
+                    npcCandidate.Z = Fxp::BuildRaw(response.npcImpactZRaw);
+                }
+                const auto playerImpactBase = playerCandidate;
+                const auto npcImpactBase = npcCandidate;
+                playerCandidate.X += Fxp::BuildRaw(response.playerPushXRaw);
+                playerCandidate.Z += Fxp::BuildRaw(response.playerPushZRaw);
+                npcCandidate.X += Fxp::BuildRaw(response.npcPushXRaw);
+                npcCandidate.Z += Fxp::BuildRaw(response.npcPushZRaw);
+                bool playerAllowed = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                    playerCandidate, context_.trackSegOffset, &kAsphalt, 1u,
+                    playerGroundY, nullptr, latestActiveSegmentId_, false);
+
+                const int32_t npcSeed = autoLapNpcDrivers_[0].Frame().activeSegmentId;
+                bool npcAllowed = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                    npcCandidate, context_.trackSegOffset, &kAsphalt, 1u,
+                    npcGroundY, nullptr, npcSeed > 0 ? npcSeed : latestActiveSegmentId_, false);
+                if (response.swept && (!playerAllowed || !npcAllowed))
+                {
+                    // A curb may reject the lateral push. Keep both cars at
+                    // first contact instead of allowing them to cross.
+                    playerCandidate = playerImpactBase;
+                    npcCandidate = npcImpactBase;
+                    playerAllowed = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                        playerCandidate, context_.trackSegOffset, &kAsphalt, 1u,
+                        playerGroundY, nullptr, latestActiveSegmentId_, false);
+                    npcAllowed = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                        npcCandidate, context_.trackSegOffset, &kAsphalt, 1u,
+                        npcGroundY, nullptr, npcSeed > 0 ? npcSeed : latestActiveSegmentId_, false);
+                }
+                if (response.swept && (!playerAllowed || !npcAllowed))
+                {
+                    // The previous pair is the last known non-overlapping
+                    // state. Both cars roll back together or neither does.
+                    playerCandidate = prevContactPlayerPos_;
+                    npcCandidate = prevContactNpcPos_;
+                    playerAllowed = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                        playerCandidate, context_.trackSegOffset, &kAsphalt, 1u,
+                        playerGroundY, nullptr, latestActiveSegmentId_, false);
+                    npcAllowed = context_.trackSystem->FindSurfaceYBySurfaceTypeSet(
+                        npcCandidate, context_.trackSegOffset, &kAsphalt, 1u,
+                        npcGroundY, nullptr, npcSeed > 0 ? npcSeed : latestActiveSegmentId_, false);
+                }
+                if (response.swept && (!playerAllowed || !npcAllowed))
+                {
+                    playerAllowed = false;
+                    npcAllowed = false;
+                }
+                if (playerAllowed) context_.carWorldPosition = playerCandidate;
+                if (npcAllowed)
+                {
+                    npc.pos = npcCandidate;
+                    npc.pos.Y = npcGroundY + Game::CarPhysics::GetRideHeightOffset();
+                }
+                if (playerAllowed && npcAllowed)
+                {
+                    pendingCarContactKickXRaw_ = response.playerKickXRaw;
+                    pendingCarContactKickZRaw_ = response.playerKickZRaw;
+                    const int16_t playerSpeed = ActiveCarSystem()
+                        ? ActiveCarSystem()->RuntimeDebug().speedKmh : 0;
+                    const int16_t npcSpeed = autoLapNpcDrivers_[0].Frame().carSpeedKmh;
+                    const auto contactLimits =
+                        AutoLapCarContactPolicy::ContactSpeedLimits(
+                            response, playerSpeed, npcSpeed);
+                    autoLapNpcDrivers_[0].AddContactKick(
+                        response.npcKickXRaw, response.npcKickZRaw,
+                        contactLimits.npcKmh);
+                    if (contactLimits.playerKmh >= 0)
+                    {
+                        playerContactRecoveryFrames_ = 8u;
+                        playerContactSpeedLimitKmh_ = contactLimits.playerKmh;
+                    }
+                    else
+                    {
+                        playerContactRecoveryFrames_ = 0u;
+                        playerTrafficState_ = {};
+                    }
+                    if (response.playerKickXRaw != 0 || response.playerKickZRaw != 0)
+                    {
+                        npcContactCooldown_ = 6u;
+                    }
+                    if (npcContactHits_ < 65535u) ++npcContactHits_;
+                }
+            }
+        }
+        prevContactPlayerPos_ = context_.carWorldPosition;
+        prevContactNpcPos_ = npc.pos;
 #endif
     }
 
@@ -4089,6 +4995,10 @@ private:
     GameLoopRuntime::SimulationReuseRuntimeState simulationReuseState_{};
     GameLoopRuntime::TrackReuseRuntimeState trackReuseState_{};
     int16_t latestActiveSegmentId_ = -1;
+    int32_t playerLastValidSegmentId_ = -1;
+    SRL::Math::Types::Vector3D playerSafePose_{};
+    int16_t playerSafeYawDeg_ = 0;
+    bool playerSafePoseValid_ = false;
     ShadowDebugState shadowDebug_{};
 
     OverlayEventState overlayEventState_{};
@@ -4117,6 +5027,7 @@ private:
 #if AUTO_LAP_NPC_RAILS && !AUTO_LAP_NPC_SLIM
     std::array<NpcRailRoute, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcRoutes_{};
     std::array<NpcRailFollower::State, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcFollowers_{};
+    std::array<NpcAutoLapPhysicalDriver, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcDrivers_{};
     std::array<uint16_t, AutoLapNpcRailPolicy::kNpcRailCount> autoLapNpcRailCounts_{};
     std::array<SRL::Math::Types::Vector3D, AutoLapNpcRailPolicy::kNpcRailCount> npcDrawPos_{};
     std::array<int16_t, AutoLapNpcRailPolicy::kNpcRailCount> npcDrawYawDeg_{};
@@ -4133,10 +5044,36 @@ private:
     uint8_t autoLapNpcRailReadyCount_ = 0u;
     uint8_t npcStableFrames_ = 0u;
     bool npcRailsArmed_ = false;
+    uint32_t npcPublishedSimFrameId_ = 0u;
+    uint32_t npcConsumedSimFrameId_ = 0u;
+    uint32_t npcContactSimFrameId_ = 0u;
+    bool npcPublishedSimFrameValid_ = false;
+    bool npcConsumedSimFrameValid_ = false;
+    bool npcContactSimFrameValid_ = false;
     bool autoLapGuideReversed_ = false;
     bool lastAlGround_ = false;
     bool lastAlAccel_ = false;
     int16_t lastAlSpeedKmh_ = 0;
+    SRL::Math::Types::Vector3D prevContactPlayerPos_{};
+    SRL::Math::Types::Vector3D prevContactNpcPos_{};
+    int32_t pendingCarContactKickXRaw_ = 0;
+    int32_t pendingCarContactKickZRaw_ = 0;
+    uint16_t npcContactHits_ = 0u;
+    uint8_t npcContactCooldown_ = 0u;
+    bool npcContactPrevValid_ = false;
+    bool cameraNpcFocus_ = false;
+    bool cameraFocusTransferPending_ = false;
+    bool cameraFocusTransferNpc_ = false;
+    bool cameraFocusTransferNeedsRelocate_ = false;
+    bool cameraXHeldPrev_ = false;
+    AutoLapTrafficPolicy::State playerTrafficState_{};
+    AutoLapTrafficPolicy::PassState playerPassState_{};
+    AutoLapTrafficPolicy::StallState playerStallState_{};
+    uint8_t playerRecoveryRetryCountdown_ = 0u;
+    uint32_t playerRecoveryFrameId_ = 0u;
+    bool playerRecoveryAwaitingPublish_ = false;
+    uint8_t playerContactRecoveryFrames_ = 0u;
+    int16_t playerContactSpeedLimitKmh_ = 30;
 #endif
     AutoLapDrivePolicy::State autoLapDriveState_{};
     CameraPathRuntimeState cameraPathRuntime_{};

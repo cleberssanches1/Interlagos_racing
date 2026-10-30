@@ -120,6 +120,27 @@ public:
                      const SRL::Math::Types::Vector3D& cameraLookTarget,
                      const SRL::Math::Types::Vector3D& carWorldPosition);
     void SetObservedCarSegmentId(int32_t segmentId);
+    // Rare spectator cut: rebuild the single resident window at the target,
+    // without streaming through every segment between the two cars.
+    bool RelocateFocusWindow(int32_t segmentId);
+    // Keep the live ring and transfer its anchor incrementally on a camera cut.
+    void RequestFocusHandoff() { focusHandoffPending_ = true; }
+    void BeginFocusTransfer()
+    {
+        cameraWindowDirection_ = (windowDirection_ < 0) ? -1 : 1;
+        focusTransferPreparing_ = true;
+        focusHandoffPending_ = true;
+    }
+    void EndFocusTransfer(bool completed)
+    {
+        focusTransferPreparing_ = false;
+        if (!completed)
+        {
+            focusHandoffPending_ = false;
+            targetWindowStartId_ = activeWindowStartId_;
+        }
+    }
+    bool FocusHandoffReadyForSegment(int32_t segmentId) const;
 
     // Present telemetry and update adaptive budget targets for next frame.
     void EndFrame();
@@ -945,6 +966,8 @@ private:
     int16_t targetWindowStartId_ = 1;
     int16_t trackedCarSegmentId_ = 1;
     int16_t observedCarSegmentId_ = -1;
+    bool focusHandoffPending_ = false;
+    bool focusTransferPreparing_ = false;
     // Snapshot for seam two-pass near classification (set each RenderFrame).
     SRL::Math::Types::Vector3D seamCarWorldPosition_{};
     bool seamCarWorldValid_ = false;

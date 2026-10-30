@@ -7,6 +7,20 @@ namespace Game::CarPhysics
 class DynamicsModel
 {
 public:
+    static void AddContactKick(DynamicsState& ioState,
+                               const GameplayFrameState& frameState)
+    {
+        constexpr int32_t kMaxRaw = 6 << 16;
+        const int64_t x = static_cast<int64_t>(ioState.contactVelX.RawValue()) +
+                          frameState.autoLapContactKickXRaw;
+        const int64_t z = static_cast<int64_t>(ioState.contactVelZ.RawValue()) +
+                          frameState.autoLapContactKickZRaw;
+        ioState.contactVelX = Fxp::BuildRaw(static_cast<int32_t>(
+            std::clamp<int64_t>(x, -kMaxRaw, kMaxRaw)));
+        ioState.contactVelZ = Fxp::BuildRaw(static_cast<int32_t>(
+            std::clamp<int64_t>(z, -kMaxRaw, kMaxRaw)));
+    }
+
     static void IntegratePlanar(GameplayFrameState& ioFrameState,
                                 DynamicsState& ioState,
                                 Vector3D& ioCarWorldPosition,
@@ -777,8 +791,22 @@ public:
         const Fxp negCosYaw = Fxp::BuildRaw(-outStep.cosYaw.RawValue());
         outStep.planarDx = (outStep.sinYaw * ioState.forwardSpeed) + (outStep.cosYaw * ioState.lateralSpeed);
         outStep.planarDz = (negCosYaw * ioState.forwardSpeed) + (outStep.sinYaw * ioState.lateralSpeed);
+        // Car-car rebound is a short world-space impulse. The arcade steering
+        // path zeros lateralSpeed every frame, so it must live separately.
+        outStep.planarDx += ioState.contactVelX;
+        outStep.planarDz += ioState.contactVelZ;
         ioCarWorldPosition.X += outStep.planarDx;
         ioCarWorldPosition.Z += outStep.planarDz;
+        ioState.contactVelX = Fxp::BuildRaw(static_cast<int32_t>(
+            (static_cast<int64_t>(ioState.contactVelX.RawValue()) * 3) / 4));
+        ioState.contactVelZ = Fxp::BuildRaw(static_cast<int32_t>(
+            (static_cast<int64_t>(ioState.contactVelZ.RawValue()) * 3) / 4));
+        if (ioState.contactVelX.RawValue() > -(1 << 12) &&
+            ioState.contactVelX.RawValue() < (1 << 12))
+            ioState.contactVelX = Fxp::BuildRaw(0);
+        if (ioState.contactVelZ.RawValue() > -(1 << 12) &&
+            ioState.contactVelZ.RawValue() < (1 << 12))
+            ioState.contactVelZ = Fxp::BuildRaw(0);
 
         // Final integration and authoritative publication.
         if (forceStraightLaunch && ioState.launchStraightFrames > 0u)
@@ -837,6 +865,8 @@ public:
     {
         ioState.forwardSpeed = Fxp::BuildRaw(0);
         ioState.lateralSpeed = Fxp::BuildRaw(0);
+        ioState.contactVelX = Fxp::BuildRaw(0);
+        ioState.contactVelZ = Fxp::BuildRaw(0);
         ioState.yawRateDegPerFrame = Fxp::BuildRaw(0);
         ioState.steerDeg = Fxp::BuildRaw(0);
         ioState.surfaceGripScale = Tunables::kGripScaleAsphalt;

@@ -20,9 +20,14 @@ struct Input
     int32_t forwardZRaw = -(1 << 16);
     int16_t speedKmh = 0;
     int16_t upcomingTurnDeg = 0;
+    int16_t plannedSpeedKmh = 0; // 0 retains the legacy short-route policy
     uint8_t surfaceType = 0;
     bool groundSupported = false;
     bool wallHit = false;
+    Point overrideTarget{};
+    bool hasOverrideTarget = false;
+    Point routeTarget{};
+    bool hasRouteTarget = false;
 };
 
 struct State
@@ -91,6 +96,7 @@ inline int16_t TargetSpeedKmh(const Input& input, State& state)
                      (turn > 25) ? 44 :
                      (turn > 12) ? 56 :
                      (turn > 5) ? 68 : 82;
+    if (input.plannedSpeedKmh > 0) target = input.plannedSpeedKmh;
     if (input.surfaceType == 2u || input.surfaceType == 3u)
     {
         target = Min(target, 28);
@@ -111,7 +117,9 @@ inline int16_t TargetSpeedKmh(const Input& input, State& state)
 inline Output Step(const Input& input, State& state)
 {
     Output output{};
-    output.target = LookaheadTarget(input);
+    output.target = input.hasOverrideTarget
+        ? input.overrideTarget :
+        (input.hasRouteTarget ? input.routeTarget : LookaheadTarget(input));
     output.targetSpeedKmh = TargetSpeedKmh(input, state);
 
     const int32_t dx = output.target.xRaw - input.car.xRaw;

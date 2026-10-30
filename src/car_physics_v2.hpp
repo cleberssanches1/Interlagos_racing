@@ -31,6 +31,8 @@ public:
             return;
         }
 
+        CarPhysics::DynamicsModel::AddContactKick(dynamicsState_, ioFrameState);
+
         if constexpr (CarPhysics::Tunables::kEnableSaturnLowCostPhysics)
         {
             StepOnce(ioFrameState, trackQuery, ioCarWorldPosition, ioCarYawDeg);

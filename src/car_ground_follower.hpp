@@ -179,7 +179,15 @@ public:
             Tunables::kPreferReducedGroundProbe;
         ioState.surfaceProbeCooldown = 0u;
 
+        // G1: Auto Lap / NPC prefer PATH segment id already written into
+        // activeSegmentId so seed±4 stays on the guide rail, not a stale
+        // progressive Sample() lock after GS flicker.
         int32_t sampledSegmentId = -1;
+        if (ioFrameState.activeSegmentId > 0)
+        {
+            sampledSegmentId = ioFrameState.activeSegmentId;
+        }
+        else
         {
             Vector3D sampledNormal{};
             (void)trackQuery->Sample(worldPosition, sampledNormal, sampledSegmentId);
@@ -1165,8 +1173,9 @@ private:
         publishWheel(rr, ioFrameState.debugWheelSurfYRr, ioFrameState.debugWheelDistRr);
 
         // Incomplete F+R: keep last heave/grade (anti-float / anti-escada).
-        // Both axles miss: sticky only for kBothAxleMissHoldFrames, then clear
-        // support so g:1 does not latch forever while floating (video 115458).
+        // Both axles miss: sticky briefly, then clear support so g:1 does not
+        // latch forever while floating (video 115458). G2.2 extends the hold
+        // when the last plant was asphalt and the car is still moving.
         if (!frontValid || !rearValid)
         {
             if (!frontValid && !rearValid)
@@ -1175,7 +1184,13 @@ private:
                 {
                     ++ioState.bothAxleMissFrames;
                 }
-                if (ioState.bothAxleMissFrames > Tunables::kBothAxleMissHoldFrames)
+                const uint8_t holdLimit =
+                    (ioState.lastSurfaceType == Tunables::kSurfaceTypeAsphalt &&
+                     ioFrameState.carSpeedKmh >
+                         Tunables::kBothAxleMissAsphaltMinSpeedKmh)
+                        ? Tunables::kBothAxleMissHoldFramesNearAsphalt
+                        : Tunables::kBothAxleMissHoldFrames;
+                if (ioState.bothAxleMissFrames > holdLimit)
                 {
                     ioState.hasGroundSupport = false;
                     ioState.surfaceYFilterInitialized = false;
