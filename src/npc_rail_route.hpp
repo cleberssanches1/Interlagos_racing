@@ -17,6 +17,7 @@ struct NpcRailRoute
 {
     TrackLowWorkVectorBase<SRL::Math::Types::Vector3D> centers{};
     TrackLowWorkVectorBase<int16_t> yawDeg{};
+    TrackLowWorkVectorBase<int16_t> ids{};
     int8_t selectedGuideLine = -1;
     uint8_t flags = 0u;
 
@@ -39,6 +40,10 @@ inline void ReleaseNpcRailRoute(NpcRailRoute& route)
     {
         TrackLowWorkVectorBase<int16_t> emptyYaw{};
         emptyYaw.swap(route.yawDeg);
+    }
+    {
+        TrackLowWorkVectorBase<int16_t> emptyIds{};
+        emptyIds.swap(route.ids);
     }
     route.selectedGuideLine = -1;
     route.SetBuilt(false);
@@ -211,6 +216,48 @@ inline bool PromoteGuideLineToNpcRail(
     }
     dst.SetBuilt(true);
     return true;
+}
+
+// Copy the player route's segment id onto each NPC point so every car reads
+// the same section speed. Same point count keeps the index. Otherwise the
+// nearest player point wins. Skips the allocate when LWR cannot hold it;
+// RouteSpeed then keeps the curvature cap for that car.
+template <typename PlayerRoute>
+inline void StampNpcRailSegmentIds(NpcRailRoute& npc, const PlayerRoute& player)
+{
+    const size_t npcCount = npc.centers.size();
+    const size_t playerCount = player.centers.size();
+    if (npcCount < 2u || player.ids.size() != playerCount) return;
+
+    const size_t bytes = npcCount * sizeof(int16_t) + 32u;
+    if (SRL::Memory::LowWorkRam::GetLargestFreeBlockSize() < bytes) return;
+
+    npc.ids.clear();
+    npc.ids.reserve(npcCount);
+    if (npc.ids.capacity() < npcCount) return;
+
+    if (npcCount == playerCount)
+    {
+        for (size_t i = 0u; i < npcCount; ++i)
+            npc.ids.push_back(player.ids[i]);
+        return;
+    }
+
+    for (size_t i = 0u; i < npcCount; ++i)
+    {
+        const auto& point = npc.centers[i];
+        size_t best = 0u;
+        SRL::Math::Types::Fxp bestScore = SRL::Math::Types::Fxp::BuildRaw(0x7FFFFFFF);
+        for (size_t j = 0u; j < playerCount; ++j)
+        {
+            const auto& sample = player.centers[j];
+            const auto score = (sample.X - point.X).Abs() + (sample.Z - point.Z).Abs();
+            if (!(score < bestScore)) continue;
+            best = j;
+            bestScore = score;
+        }
+        npc.ids.push_back(player.ids[best]);
+    }
 }
 
 inline SRL::Math::Types::Fxp ResolveNpcRailGroundYAt(

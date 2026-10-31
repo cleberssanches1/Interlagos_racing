@@ -24,6 +24,12 @@ struct TestRoute
     std::vector<RoutePoint> centers;
     std::vector<int16_t> yawDeg;
 };
+struct NamedRoute
+{
+    std::vector<RoutePoint> centers;
+    std::vector<int16_t> yawDeg;
+    std::vector<int16_t> ids;
+};
 }
 
 int main()
@@ -123,8 +129,46 @@ int main()
         route.centers.push_back({{0}, {Unit(-i * 500)}});
         route.yawDeg.push_back(0);
     }
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(0) == 0);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(26) == 335);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(27) == 128);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(35) == 128);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(36) == 56);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(40) == 56);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(41) == 262);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(62) == 308);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(63) == 335);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(90) == 332);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(91) == 80);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(95) == 80);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(97) == 80);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(98) == 80);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(99) == 230);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(142) == 150);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(166) == 90);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(175) == 104);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(190) == 50);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(224) == 90);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(203) == 260);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(254) == 335);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(269) == 335);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(281) == 335);
+    assert(AutoLapSpeedPolicy::SectionTargetKmh(291) == 0);
     assert(AutoLapSpeedPolicy::RouteSpeed(route, 0, 0, 0) == 335);
-    route.yawDeg[8] = 90;
+    NamedRoute named{};
+    for (int i = 0; i < 20; ++i)
+    {
+        named.centers.push_back({{0}, {Unit(-i * 500)}});
+        named.yawDeg.push_back(0);
+        named.ids.push_back(281);
+    }
+    named.yawDeg[8] = 90;
+    assert(AutoLapSpeedPolicy::RouteSpeed(named, 0, 0, 0) == 335);
+    named.ids[4] = 190;
+    const int16_t towardBico = AutoLapSpeedPolicy::RouteSpeed(named, 0, 0, 0);
+    assert(towardBico < 335 && towardBico > 50);
+    // Index 7 sits inside the k=28 brake horizon. Index 8 is already past it.
+    route.yawDeg[7] = 90;
     const int16_t early = AutoLapSpeedPolicy::RouteSpeed(route, 0, 0, 0);
     const int16_t near = AutoLapSpeedPolicy::RouteSpeed(
         route, 6, 0, Unit(-3000));

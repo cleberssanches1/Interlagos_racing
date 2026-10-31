@@ -1492,8 +1492,10 @@ private:
         drive.forwardXRaw = forwardX.RawValue();
         drive.forwardZRaw = -forwardZ.RawValue();
         drive.speedKmh = carDebug.speedKmh;
+        int16_t bindingCornerLimitKmh = 0;
         drive.plannedSpeedKmh = AutoLapSpeedPolicy::RouteSpeed(
-            autoLapRoute_, current, drive.car.xRaw, drive.car.zRaw);
+            autoLapRoute_, current, drive.car.xRaw, drive.car.zRaw,
+            &bindingCornerLimitKmh);
         AutoLapSpeedPolicy::RouteLookahead(
             autoLapRoute_, current, drive.car.xRaw, drive.car.zRaw,
             drive.speedKmh, drive.routeTarget.xRaw, drive.routeTarget.zRaw);
@@ -1673,6 +1675,12 @@ private:
                               static_cast<unsigned>(autoLapDriveState_.missingGroundFrames),
                               command.accelerate ? 1u : 0u,
                               static_cast<int>(drive.speedKmh));
+            // C0: planned envelope vs binding corner limit vs local turn.
+            // Col 0 row 22 — avoids OVR/ENSURE fighting on (1,23).
+            SRL::Debug::Print(0, 22, "AL v:%d lim:%d t:%d",
+                              static_cast<int>(drive.plannedSpeedKmh),
+                              static_cast<int>(bindingCornerLimitKmh),
+                              static_cast<int>(drive.upcomingTurnDeg));
         }
     }
 
@@ -4504,6 +4512,7 @@ private:
                 NpcRailFollower::Reset(autoLapNpcFollowers_[slot]);
                 continue;
             }
+            StampNpcRailSegmentIds(autoLapNpcRoutes_[slot], autoLapRoute_);
 
             // Same station as the player on this rail (mesh1 +8 ahead + faster
             // step made NPCs race ahead and corner out of sync with the master).
